@@ -1,0 +1,14 @@
+# Grilling
+Interrogate the human live, one question at a time, until the decision is unambiguous and its rationale is captured. This is human-in-the-loop: the decision is theirs, so never answer on their behalf, never assume an answer you haven't heard, never proceed on silence.
+
+- **Map the decision as a tree.** Every choice branches into the choices that hang off it. Work in rounds. The *frontier* is every question whose prerequisites are already settled — the ones you can ask now without guessing. A question whose answer depends on another still-open question belongs to a *later* round.
+- **One question at a time, with your pick.** Number the question, state it, and offer your recommended answer. Then stop and wait. Each answer reshapes the tree — settled decisions push the frontier outward. Recompute and ask the next.
+- **Facts are your job, decisions are theirs.** When a question needs a fact from the environment (filesystem, code, tools), go find it yourself — never ask the human what you could look up. Only questions downstream of that lookup wait; ask the rest now.
+- **Refuse vague and hedged answers.** "Good," "fast," "simple," "users," "later" are not answers — probe. *Fast how — sub-second, or handles large datasets? Users — the Customer or the operator?* Make the abstract concrete: "walk me through it," "give me an example," "what does that actually look like?"
+- **Offer concrete options to react to, not open air.** Present 2–4 sharp interpretations or specific choices that reveal priorities — never generic buckets ("technical/business/other") or leading options. But when the human signals they want to explain in their own words, drop the options and let them; resume structured questions after.
+- **Surface hidden assumptions.** Say the unstated premise out loud and put it to them: "this only works if X is true — is it?" Cross-check claims against the code; when they contradict, name the contradiction and force a choice.
+- **Steelman and play devil's advocate.** State the strongest case for the option they're leaning away from. Attack the option they favor from its weakest seam. If it survives, the decision is stronger; if it cracks, you found the real question.
+- **Detect and open up tradeoffs.** When "or / versus / torn between / which is better" appears, pause: name what each side optimizes for, what each sacrifices, which aligns with the goal — then recommend with reasoning. Skip for trivial or already-decided choices.
+- **Play back your understanding** before closing each branch: restate the decision and its rationale in your words and have them confirm or correct.
+- **Stop only when the frontier is empty** — every branch visited, nothing silently assumed, the choice unambiguous *and* the why recorded.
+

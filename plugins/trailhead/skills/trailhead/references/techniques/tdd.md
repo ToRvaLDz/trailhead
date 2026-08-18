@@ -1,0 +1,11 @@
+# TDD
+Use TDD wherever behaviour has a definable input→output: business logic, parsers, validators, transforms, algorithms, state machines, API contracts. The gate: can you write `expect(fn(input)).toBe(output)` before `fn` exists? If yes, go test-first. Skip it for UI layout/styling, config, glue, one-off scripts, trivial CRUD, and exploratory spikes — add tests after if they earn their keep.
+
+Before writing any test, name the **seams** — the public boundaries where behaviour is observable without reaching inside — and confirm them. Tests live at seams, never against internals. Work in vertical slices, one behaviour at a time: one test → one implementation → repeat. Never write all tests then all code (that tests *imagined* behaviour and locks in structure you don't yet understand).
+
+- **RED** — one failing test that pins the intended behaviour as a specification (`should reject empty email`, not `test1`). Run it; SEE it fail for the *right reason* — a real assertion mismatch, not an import/syntax error. If it passes before you write code, STOP: the feature already exists or the test is wrong. Commit `test(...): add failing test for X`.
+- **GREEN** — the minimal code to pass. No cleverness, no speculative features, no anticipating future tests. If unrelated tests break, stop and investigate coupling. Commit `feat(...): implement X`.
+- **REFACTOR** — only with tests green, clean up; rerun — tests MUST still pass or you undo and go smaller. Commit if changed: `refactor(...): clean up X`.
+
+A good test verifies behaviour through the public interface and survives refactors. Reject **implementation-coupled** tests (mock internal collaborators, assert private state, hit the DB not the interface — break on refactor though behaviour didn't) and **tautological** tests (recompute the expected value the way the code does — expected values come from an independent source: a known-good literal, a worked example, the spec). Prefer integration tests exercising real seams over isolated unit mocks. The discipline is absolute: **no implementation code before a failing test exists.**
+

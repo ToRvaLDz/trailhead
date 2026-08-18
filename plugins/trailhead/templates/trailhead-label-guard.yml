@@ -1,0 +1,55 @@
+# trailhead label guard — repo-side enforcement.
+# Copy this file to your repository's .github/workflows/ directory.
+# It strips any `trailhead:*` label applied by an actor without write access,
+# so external / triage users (and stray automations) can't inject tickets into
+# the trailhead map. Maintainers (write/admin/maintain) apply labels normally.
+#
+# Optional: set a repo variable TRAILHEAD_LABEL_ALLOWLIST to a comma-separated
+# list of extra logins that are always allowed (e.g. a bot account trailhead runs as).
+
+name: trailhead label guard
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          ALLOWLIST: ${{ vars.TRAILHEAD_LABEL_ALLOWLIST }}
+        with:
+          script: |
+            const label = context.payload.label && context.payload.label.name || '';
+            if (!label.startsWith('trailhead:')) return;
+
+            const actor = context.payload.sender.login;
+            const extra = (process.env.ALLOWLIST || '')
+              .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            if (extra.includes(actor.toLowerCase())) return;
+
+            let permission = 'none';
+            try {
+              const r = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner, repo: context.repo.repo, username: actor });
+              permission = r.data.permission; // admin | write | read | none  (triage→read, maintain→write)
+            } catch (e) { /* not a collaborator → none */ }
+
+            if (['admin', 'write', 'maintain'].includes(permission)) return; // authorized
+
+            // Unauthorized: strip the reserved label and explain.
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.issue.number, name: label,
+            }).catch(() => {});
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `⚠️ \`${label}\` is a **trailhead-reserved** label and was removed automatically — only repo maintainers (write access) apply \`trailhead:*\` labels. It was applied by @${actor}, who lacks write access. If this issue should join the trailhead map, a maintainer will adopt it.`,
+            }).catch(() => {});

@@ -1,0 +1,33 @@
+{
+  "name": "@torvaldz/trailhead",
+  "version": "0.1.0",
+  "description": "Start and drive large projects as a map of tickets on GitHub Issues. Wayfinder's map-based onboarding + a discuss→plan→execute→verify engine, all on the Issues. Installs the trailhead skill, commands, and hooks into your agent's config dir.",
+  "bin": {
+    "trailhead": "bin/trailhead.js"
+  },
+  "files": [
+    "bin/",
+    "plugins/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "trailhead",
+    "claude-code",
+    "wayfinder",
+    "gsd",
+    "github-issues",
+    "planning",
+    "agent-skill"
+  ],
+  "author": "Marco Migozzi (https://github.com/ToRvaLDz)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ToRvaLDz/trailhead.git"
+  },
+  "homepage": "https://github.com/ToRvaLDz/trailhead"
+}

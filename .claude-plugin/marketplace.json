@@ -1,0 +1,24 @@
+{
+  "name": "trailhead",
+  "owner": {
+    "name": "Marco Migozzi",
+    "url": "https://github.com/ToRvaLDz"
+  },
+  "metadata": {
+    "description": "trailhead — Wayfinder map + GSD engine on GitHub Issues"
+  },
+  "plugins": [
+    {
+      "name": "trailhead",
+      "source": "./plugins/trailhead",
+      "description": "Start and drive large projects as a map of tickets on GitHub Issues. Map-based onboarding + a discuss→plan→execute→verify engine, all on the Issues. Self-contained: inspired by Wayfinder and GSD, no external skill required.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Marco Migozzi"
+      },
+      "homepage": "https://github.com/ToRvaLDz/trailhead",
+      "repository": "https://github.com/ToRvaLDz/trailhead",
+      "license": "MIT"
+    }
+  ]
+}
