@@ -370,7 +370,7 @@ gh issue list --state open --json number,title,author,labels \
 
 **B. Parked fog — any ready to graduate?** The open `trailhead:fog` issues, **most-recently-active first** — recent discussion is exactly where the fog has likely cleared, so you review those, not all of them:
 ```bash
-gh issue list --label trailhead:fog --state open --sort updated
+gh issue list --label trailhead:fog --state open --search "sort:updated-desc"
 ```
 This is **how you notice a fog has cleared**: you don't watch each thread — you run the inbox (as you would to triage new issues), and section B surfaces the parked items that moved. For each, decide: **graduate** (adopt in place — see Fog), **keep parked** (still vague), or **drop** (turned out out-of-scope/dead → `trailhead:out-of-scope` + close). Optionally, a participant can nudge readiness by commenting on the thread; you confirm at graduation.
 
