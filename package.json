@@ -5,6 +5,9 @@
   "bin": {
     "trailhead": "bin/trailhead.js"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "bin/",
     "plugins/",
