@@ -241,12 +241,12 @@ Update with `/plugin update trailhead`; remove with `/plugin uninstall trailhead
 
 ### Or via npm (installs into your agent's config dir)
 ```
-npx @torvaldz/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
-npx @torvaldz/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
-npx @torvaldz/trailhead --uninstall  # remove everything it added
-npx @torvaldz/trailhead --dir=<path> # target a specific config dir
+npx @marcomigozzi/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
+npx @marcomigozzi/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
+npx @marcomigozzi/trailhead --uninstall  # remove everything it added
+npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
 ```
-It copies the skill (+ its `references/`), the `/trailhead:*` commands, the two hooks (into `hooks/`, registered in `settings.json`), and the label-guard template — idempotently. Re-run `npx @torvaldz/trailhead` to update. The installer uses a per-agent adapter (Claude Code today) so it can grow to target other AI CLIs later.
+It copies the skill (+ its `references/`), the `/trailhead:*` commands, the two hooks (into `hooks/`, registered in `settings.json`), and the label-guard template — idempotently. Re-run `npx @marcomigozzi/trailhead` to update. The installer uses a per-agent adapter (Claude Code today) so it can grow to target other AI CLIs later.
 
 ### After installing
 Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry) — or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained — no other skill or plugin is required.
