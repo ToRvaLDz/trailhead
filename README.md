@@ -78,6 +78,21 @@ Initial frontier = ①③④ — three people can start in parallel. Then:
 
 The preparatory types (`research`/`decision`/`prototype`/`task`) unblock the constructive ones (`build`/`bug`); parallelism is real but across sessions on the frontier, not inside one.
 
+### …then a suggestion arrives — inbox → fog → graduation
+
+The app is live, and a user *not on the team* files a plain issue: *"can we add Apple sign-in too?"* — no `trailhead:*` label, so it isn't a ticket yet. Here's how an outside voice becomes a first-class ticket on the map, without losing the reporter's authorship:
+
+1. **Inbox** — `/trailhead:inbox` lists it under *New — to triage*. It's in scope but not sharp: web only or native? does it need the paid Apple Developer account? You can't phrase one answerable Question yet — so you don't force a ticket.
+2. **Fog** — label it `trailhead:fog` and **keep the issue open as a clarification space**. A comment posts the sharpening questions (async grilling); the reporter and anyone interested refine it in the thread. It's off the frontier but tracked — `gh issue list --label trailhead:fog` is the durable list, and the reporter follows their own issue.
+3. **Graduation** — the discussion converges. Next time you run `/trailhead:inbox`, its *Parked fog* section surfaces the thread as recently-active — that's how you notice the fog cleared. Now the Question is phrasable, so you **adopt it in place**: swap `trailhead:fog` for `trailhead:ticket` + a type label, add the `Parent:` line and the `## Question`. Same issue number, same reporter credited — it lands on the frontier, ready for `/trailhead:work`.
+
+```
+suggestion issue ──inbox──► 🌫️ fog (kept open, discussed) ──sharpens──► 🎫 ticket on the frontier
+                                                                       (same #, reporter still credited)
+```
+
+No separate backlog, no lost credit: the map absorbs external suggestions the same way it grows its own — through fog that graduates when it's sharp.
+
 ---
 
 ## Commands
