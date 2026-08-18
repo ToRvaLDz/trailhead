@@ -57,8 +57,18 @@ Missing text in a capture → ask for the line. Unrecognised verb → treat the 
 
 - **Execution inside the map (default).** Unlike pure Wayfinder ("plan, don't do"), here the map carries **construction** within it: after the decision tickets, build tickets graduate from the fog and are **executed** as children of the map. The destination is the **working** artifact (a deployed app), not a spec document — the spec is a waypoint. *Override:* a project that must stop at the spec declares it in the map's `## Notes` (that wins over this default).
 - **Refer by name.** Every map and ticket is an issue, so it has a **title**. In everything the human reads, refer by name, never by a bare `#number`. A wall of `#42, #43, #44` is illegible; names read at a glance. The id and URL don't vanish — a name wraps its link — but they ride *inside* the name.
-- **One ticket per session.** Do not resolve more than one ticket per session — exception: `research` tickets (AFK) and `capture` operations.
+- **One ticket per session — hard rule.** Resolve **at most one** ticket per session; once one is resolved, do **not** start a second — end the session instead. The only exceptions: `research` tickets (AFK, run in parallel) and `capture` operations (they resolve nothing). On resolving a ticket, close the session with the **[Session handoff](#session-handoff)** ritual.
 - **Commit straight to `main`.** Build tickets commit straight to `main`, conventional commits, no feature branch/PR unless explicitly requested. Never `Co-Authored-By`.
+
+## Session handoff
+
+Resolving a ticket **ends the session** — one ticket per session is a hard rule (see [Principles](#principles)). So every resolution closes the same way. After the resolution comment + `gh issue close` + the `Decisions so far` update, **always** sign off with, in order:
+
+1. **A one-line confirmation** the ticket is resolved, by name (not a bare `#number`).
+2. **An invitation to `/clear`** — start the next ticket with clean context. State it **every time**, not only when context is heavy.
+3. **The concrete next command** — read the frontier and name it: `/trailhead:work <next frontier ticket by name>`. If the frontier is empty, or the choice is ambiguous (several equal candidates), suggest `/trailhead:map` instead so the user picks.
+
+This ritual fires from every **Resolve** step (`build`, `bug`) and from **Mode 2**'s close (which resolves `decision` / `prototype` / `task` too). It does **not** fire after a `capture` (resolves nothing) or a parallel `research` batch (AFK, not session-ending).
 
 ## Substrate: GitHub Issues
 
@@ -229,7 +239,7 @@ The ticket that *builds*. Lean cycle, all in **ticket comments**:
 2. **Plan** — a `PLAN` comment: the steps, the seams, the files touched, the verification criteria. Apply **TDD** per `config.tdd` (`seams`/`on`/`off`). When `config.models.plan` differs from `config.models.execute`, produce this plan via a *planner subagent* on the plan model, then execute in the session on the execute model. If `config.plan_review` is on, run **Cross-AI plan review** before Execute — send the plan to external AI CLIs and converge on their concerns.
 3. **Execute** — implement with **atomic commits straight to `main`** (conventional commits). One commit = one verifiable step.
 4. **Verify** — a `VERIFY` comment: run the tests / the plan's criterion; then the **Code review** technique; then **Acceptance testing** if the change is user-facing (browser-drive it, or hand the user a guided UAT checklist). Report the outcome honestly (if a test fails, say so).
-5. **Resolve** — a resolution comment with what was done → `gh issue close` → update `Decisions so far` on the map.
+5. **Resolve** — a resolution comment with what was done → `gh issue close` → update `Decisions so far` on the map. Then close the session with the **[Session handoff](#session-handoff)** ritual (`/clear` + next command).
 
 New scope that surfaces mid-build (while planning, executing, or testing) → **capture or split, never expand this ticket in flight** (see [Scope that surfaces while working a ticket](#capture-zero-friction--tracker)).
 
@@ -246,7 +256,7 @@ Then run the cycle, all in ticket comments:
 2. **Diagnose** — run the **Debug** technique. A `DIAGNOSIS` comment with the root cause.
 3. **Fix** — implement the correction with **atomic commits to `main`**. Where sensible, a test that fails before and passes after (**TDD**).
 4. **Verify** — a `VERIFY` comment: the repro now passes, no regressions; **Code review** on the fix; **Acceptance testing** if the bug was user-facing (browser-drive the fixed flow, or a guided UAT checklist).
-5. **Resolve** — a resolution comment (cause + fix) → `gh issue close` → update `Decisions so far`.
+5. **Resolve** — a resolution comment (cause + fix) → `gh issue close` → update `Decisions so far`. Then close the session with the **[Session handoff](#session-handoff)** ritual (`/clear` + next command).
 
 A **blocking** bug that halts other work is worked immediately; an isolated one is a normal frontier ticket. New scope surfacing while fixing → capture or split, never expand this ticket in flight (see [Scope that surfaces while working a ticket](#capture-zero-friction--tracker)).
 
@@ -404,6 +414,7 @@ The user invokes with a map (URL or number). A ticket is optional — without on
 3. Resolve it with its type's engine — **zoom as needed**: fetch the full body of related/closed tickets on demand. If in doubt on a `decision` ticket, run **Grilling** + **Domain vocabulary**. If in doubt on a `build`, **stop and ask** (see the Discuss step) — never auto-grill.
 4. Record the resolution: a comment with the answer, `gh issue close`, add the pointer to *Decisions so far*. Then **unblock dependents**: for every ticket this one was blocking, if it was the last open blocker, remove its `trailhead:blocked` label so it graduates onto the frontier.
 5. Add newly-surfaced tickets (create-then-wire, labelling blocked ones `trailhead:blocked`); graduate the fog that became specifiable, clearing the patch from *Not yet specified*. If the answer reveals a ticket sits beyond the destination, **out of scope** (label + close) instead of resolving it. If the decision invalidates other parts of the map, update or delete them.
+6. **Hand off.** Close the session with the **[Session handoff](#session-handoff)** ritual: confirm the ticket is resolved by name, invite `/clear`, and suggest the next command — `/trailhead:work <next frontier ticket by name>`, or `/trailhead:map` if the frontier is empty/ambiguous.
 
 ### Mode 3 — Capture — `/trailhead:bug|todo|idea|seed|note`
 The user fires a capture on the fly → route it per the **Capture** section and confirm with one line.
