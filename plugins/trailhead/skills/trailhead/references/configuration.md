@@ -13,7 +13,7 @@ Effective config = built-in defaults ← global `~/.claude/trailhead/config.json
 | `plan_review` | **`off`** \| `on` \| CLI list (`gemini,codex`) | send `build` PLANs to external AI CLIs for review (**Cross-AI plan review**) |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 
-**Models.** Overrides apply to **every subagent trailhead spawns** (`research`, codebase-map, code review) — passed as the subagent's model. The interactive `build` loop runs on the session's own model; when `models.plan` differs from `models.execute`, run the **Plan** step as a *planner subagent* on `models.plan`, then execute in the session on `models.execute`. If a value is unset, inherit the session model (never hard-fail on an unknown id — warn and inherit).
+**Models.** Overrides apply to **every subagent trailhead spawns** (`research`, codebase-map, code review) — passed as the subagent's model. The interactive `build` loop runs on the session's own model; when `models.plan` differs from `models.execute`, run the **Plan** step as a *planner subagent* on `models.plan`, then execute in the session on `models.execute`. If a value is unset, inherit the session model (never hard-fail on an unknown id — warn and inherit). **Store a full model id** (e.g. `claude-opus-5`, `claude-fable-5`), never a bare family alias like `opus` — a family now spans several live versions, so an alias can't say which one.
 
 **tdd.** `seams` (default) = TDD at critical seams only; `on` = TDD for all behaviour with a definable input→output; `off` = tests after, or none for throwaway. The `build` engine's Plan/Execute honour this.
 
@@ -33,7 +33,7 @@ Example global `~/.claude/trailhead/config.json`:
 `/trailhead config` (no args) runs an **interactive walkthrough** — never make the user hand-edit JSON. Present each step as an `AskUserQuestion` menu with **icon-labelled options** and the current value pre-selected; write the answers to the chosen scope at the end and show a summary.
 
 1. **Scope** — 🌍 Global default · 📁 This project (the map's `## Config`). Skip to global when there's no map.
-2. **🧠 Models** — pick for **plan** and **execute** (offer the session model, `opus`, `sonnet`, `haiku`, and "inherit"); the rarer `research`/`review`/`debug` sit behind an "Advanced" option.
+2. **🧠 Models** — pick for **plan** and **execute**. Offer **inherit session** (the default) plus the session's own model and the concrete models it can reach — **always by full id**, because bare family names are now ambiguous (a family spans several live versions, e.g. Opus 4.8 *and* Opus 5). Never store `opus`/`sonnet`/`haiku` alone. Present the current lineup as options: the Opus family (`claude-opus-5`, `claude-opus-4-8`), `claude-sonnet-5`, `claude-haiku-4-5`, and `claude-fable-5` (Anthropic's most capable) — this list ages, so verify it against the models actually available at setup time rather than trusting it verbatim. The rarer `research`/`review`/`debug` sit behind an "Advanced" option.
 3. **🎨 Design** — 💾 Local disk · 🖼️ claude.ai/design. *Mode only — don't ask for a URL here; the concrete project is created or reused at execution time (see Prototype).* Then **✅ Mockup approval** — 🖐️ Explicit (wait for a go-ahead before UI code) · ⏩ Auto (proceed without blocking).
 4. **🧪 TDD** — 🎯 Seams only · ✅ On (all definable behaviour) · ⛔ Off.
 5. **🌐 Acceptance testing** — 🤖 Auto · ▶️ Always browser · 🙋 Guided UAT only. If browser is enabled, ask **🔗 base URL** and confirm it's a web app.
