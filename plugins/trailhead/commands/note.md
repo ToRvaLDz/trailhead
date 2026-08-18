@@ -3,4 +3,6 @@ description: Capture a verbatim note
 argument-hint: "<text>"
 ---
 
-Invoke the `trailhead` skill for the **note** action: call the Skill tool with skill name `trailhead` and arguments `note $ARGUMENTS`, then carry out the skill's instructions for that verb. Do not re-implement the behaviour here — the skill is the single source of truth.
+Run the **note** action of the `trailhead` skill.
+
+The skill is not model-invocable via the Skill tool (`disable-model-invocation`), so do **not** call the Skill tool. Instead load it by reading `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/SKILL.md`, then carry out its instructions for the **note** verb with arguments `note $ARGUMENTS`. Resolve any `references/…` paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/`. The SKILL.md is the single source of truth — do not re-implement the behaviour here.

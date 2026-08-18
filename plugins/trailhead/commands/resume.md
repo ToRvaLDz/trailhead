@@ -3,4 +3,6 @@ description: Resume a paused ticket from its checkpoint
 argument-hint: "[ticket]"
 ---
 
-Invoke the `trailhead` skill for the **resume** action: call the Skill tool with skill name `trailhead` and arguments `resume $ARGUMENTS`, then carry out the skill's instructions for that verb. Do not re-implement the behaviour here — the skill is the single source of truth.
+Run the **resume** action of the `trailhead` skill.
+
+The skill is not model-invocable via the Skill tool (`disable-model-invocation`), so do **not** call the Skill tool. Instead load it by reading `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/SKILL.md`, then carry out its instructions for the **resume** verb with arguments `resume $ARGUMENTS`. Resolve any `references/…` paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/`. The SKILL.md is the single source of truth — do not re-implement the behaviour here.

@@ -3,4 +3,6 @@ description: Capture a seed — work gated on a future trigger
 argument-hint: "<text>"
 ---
 
-Invoke the `trailhead` skill for the **seed** action: call the Skill tool with skill name `trailhead` and arguments `seed $ARGUMENTS`, then carry out the skill's instructions for that verb. Do not re-implement the behaviour here — the skill is the single source of truth.
+Run the **seed** action of the `trailhead` skill.
+
+The skill is not model-invocable via the Skill tool (`disable-model-invocation`), so do **not** call the Skill tool. Instead load it by reading `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/SKILL.md`, then carry out its instructions for the **seed** verb with arguments `seed $ARGUMENTS`. Resolve any `references/…` paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/trailhead/`. The SKILL.md is the single source of truth — do not re-implement the behaviour here.
