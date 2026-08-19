@@ -22,6 +22,8 @@ Only an **authenticated `gh` CLI** — the tracker is GitHub Issues. Nothing els
 
 The **first word** of `$ARGUMENTS` is the verb; the rest is the text (or a ticket number). With no verb, `/trailhead` does **smart entry**: it detects the repo state and proposes — no map → offer *chart* or *adopt*; map present → *work* the next frontier ticket.
 
+**First-time config offer (once per project).** When a project has a map but **no `.trailhead/config.json` yet**, smart entry first offers to run `/trailhead:config` (set models/design/TDD/… — or continue on defaults), then proceeds. Ask this **only once**: running config writes the file, and *continue on defaults* writes an empty `{}` — so once `.trailhead/config.json` exists it's never offered again (a `{}` file means "reviewed, using defaults"). This fires only on the bare `/trailhead`, never in the middle of working a ticket.
+
 Every verb is also a **namespaced command** — `/trailhead:new`, `/trailhead:work`, `/trailhead:bug`, … — so typing `/trailhead` lists them all in the picker. They're thin wrappers that delegate here; `/trailhead <verb>` and `/trailhead:<verb>` are equivalent.
 
 **Flow**
