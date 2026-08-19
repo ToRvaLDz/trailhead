@@ -76,7 +76,9 @@ Resolving a ticket **ends the session**: one ticket per session is a hard rule (
    > - poi `/trailhead:work <numero>` per lavorare **<nome del prossimo ticket>** (oppure `/trailhead:work` che prende **<numero>** in automatico)
    > - in alternativa `/trailhead:map` per la vista completa e scegliere tu
 
-   Name the next frontier ticket so the user knows what they're taking; put its **number** in the command (never the title). If the frontier is empty or several candidates tie, lead the block to `/trailhead:map` instead. (The example is Italian; match whatever language you're conversing in.)
+   Name the next frontier ticket so the user knows what they're taking; put its **number** in the command (never the title). **No handoff command ever takes a free-text argument.** The only commands a handoff block may contain are `/clear`, `/trailhead:work` (bare or `<number>`), and `/trailhead:map`. Never hand the user a `/trailhead:ticket <type> "<title>"` (or any title-bearing command) to type.
+
+   **If the frontier is empty**, that usually means fog that this resolution made specifiable should have been **graduated into a ticket already** (Mode 2 step 5), so the frontier isn't actually empty. If it genuinely is (nothing ticketable yet, or the user must choose which fog item to take next), point the block to **`/trailhead:map`** and offer to open the next ticket *yourself* once they say which one, rather than pre-filling a `/trailhead:ticket` command for them. (The example is Italian; match whatever language you're conversing in.)
 
 **This block is required whenever you point the user at the next ticket**, including in a **later follow-up**, after answering their questions, not only in the instant you resolve the ticket. Never write "next: `/trailhead:work …`" without the `/clear` line above it.
 
