@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Tests for trailhead-secret-guard.js. Run: node trailhead-secret-guard.test.js
-// No framework — plain asserts + child_process for the end-to-end hook behaviour.
+// No framework: plain asserts + child_process for the end-to-end hook behaviour.
 const assert = require('assert');
 const { execFileSync } = require('child_process');
 const path = require('path');
@@ -64,7 +64,7 @@ const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUAR
 ok('could-not-scan does not block (exit 0)', f.code === 0);
 ok('could-not-scan is OBSERVABLE, not byte-identical to a clean pass',
   /could NOT complete its scan/.test(f.out) && f.out.trim() !== '');
-// And it only fires on an identified write — a read that errors stays silent (nothing to say):
+// And it only fires on an identified write; a read that errors stays silent (nothing to say):
 const f2 = runHook('gh issue view 5 --json body', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.trim() === '');
 

@@ -1,4 +1,4 @@
-# trailhead label guard — repo-side enforcement.
+# trailhead label guard: repo-side enforcement.
 # Copy this file to your repository's .github/workflows/ directory.
 # It strips any `trailhead:*` label applied by an actor without write access,
 # so external / triage users (and stray automations) can't inject tickets into
@@ -51,5 +51,5 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              body: `⚠️ \`${label}\` is a **trailhead-reserved** label and was removed automatically — only repo maintainers (write access) apply \`trailhead:*\` labels. It was applied by @${actor}, who lacks write access. If this issue should join the trailhead map, a maintainer will adopt it.`,
+              body: `⚠️ \`${label}\` is a **trailhead-reserved** label and was removed automatically: only repo maintainers (write access) apply \`trailhead:*\` labels. It was applied by @${actor}, who lacks write access. If this issue should join the trailhead map, a maintainer will adopt it.`,
             }).catch(() => {});

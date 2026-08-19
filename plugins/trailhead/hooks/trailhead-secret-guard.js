@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// trailhead-secret-guard.js — PreToolUse(Bash) hook.
+// trailhead-secret-guard.js: PreToolUse(Bash) hook.
 // trailhead posts a lot to GitHub Issues/PRs (ticket bodies, engine comments,
 // codebase/conventions issues, resolutions) while working on codebases that hold
 // secrets. This is the outbound barrier: it scans what a `gh` write is about to
 // post to an issue/PR/comment and BLOCKS if it looks like a secret is in it, so
 // nothing sensitive lands on the tracker.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
-// Fail-OPEN on error to keep the workflow moving — but the failure is made
+// Fail-OPEN on error to keep the workflow moving, but the failure is made
 // OBSERVABLE (an advisory), never byte-identical to a clean pass: once a write is
 // identified, a scan error emits a "could-not-scan" advisory instead of silently
 // allowing. (Anti-pattern: a guard whose failure looks exactly like a success.)
@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 
-// High-confidence secret formats — a match here is almost never a false positive.
+// High-confidence secret formats: a match here is almost never a false positive.
 const SECRET_PATTERNS = [
   { name: 'private key block', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/ },
   { name: 'GitHub token', re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/ },
@@ -76,16 +76,16 @@ function block(reason) {
   process.exit(2);
 }
 
-// A scan we could NOT complete on a write we DID identify — surface it, don't hide it.
+// A scan we could NOT complete on a write we DID identify: surface it, don't hide it.
 function adviseUnscanned(kind, err) {
   const detail = String((err && err.message) || err || 'unknown').slice(0, 120);
-  process.stderr.write(`trailhead secret-guard: could not scan this ${kind} write (${detail}) — NOT verified secret-free\n`);
+  process.stderr.write(`trailhead secret-guard: could not scan this ${kind} write (${detail}): NOT verified secret-free\n`);
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       additionalContext:
         `⚠️ trailhead secret-guard could NOT complete its scan of this ${kind} write (${detail}). ` +
-        'It did NOT verify the content is secret-free — check the body by hand before it lands, or re-run. ' +
+        'It did NOT verify the content is secret-free. Check the body by hand before it lands, or re-run. ' +
         'Do not treat this as a clean pass.',
     },
   }));
@@ -96,10 +96,10 @@ function run(data) {
   try {
     cmd = (JSON.parse(data).tool_input || {}).command || '';
   } catch {
-    process.exit(0); // unparseable input — nothing meaningful to say
+    process.exit(0); // unparseable input: nothing meaningful to say
   }
   const kind = ghIssueWrite(cmd);
-  if (!kind) process.exit(0); // not a tracker write — out of scope
+  if (!kind) process.exit(0); // not a tracker write: out of scope
 
   // From here we KNOW it's a tracker write, so a scan failure must be OBSERVABLE.
   try {
@@ -108,12 +108,12 @@ function run(data) {
     if (hit) {
       block(
         `trailhead: this ${kind === 'api' ? 'GitHub API write' : `gh ${kind}`} looks like it contains a secret (${hit}). ` +
-        'Nothing sensitive may land on the tracker. Redact it — replace the value with `<REDACTED>` or an env-var reference ' +
-        '(e.g. `$SUPABASE_KEY`) — and post again. If this is a false positive (not a real secret), reword so it no longer matches a credential pattern.'
+        'Nothing sensitive may land on the tracker. Redact it: replace the value with `<REDACTED>` or an env-var reference ' +
+        '(e.g. `$SUPABASE_KEY`), and post again. If this is a false positive (not a real secret), reword so it no longer matches a credential pattern.'
       );
     }
   } catch (e) {
-    adviseUnscanned(kind, e); // fail open, but loudly — never a silent clean-looking pass
+    adviseUnscanned(kind, e); // fail open, but loudly: never a silent clean-looking pass
   }
   process.exit(0);
 }

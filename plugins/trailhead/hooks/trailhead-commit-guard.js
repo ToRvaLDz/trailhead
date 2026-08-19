@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// trailhead-commit-guard.js — PreToolUse(Bash) hook.
+// trailhead-commit-guard.js: PreToolUse(Bash) hook.
 // Enforces trailhead's commit discipline on `git commit`:
 //   1. NEVER a Co-Authored-By trailer.
 //   2. Conventional Commits subject: <type>(<scope>)?: <subject>, <=72 chars.
@@ -59,7 +59,7 @@ process.stdin.on('end', () => {
       const subject = msg.split('\n')[0].trim();
       if (!CONVENTIONAL.test(subject)) {
         block('CONVENTIONAL_COMMITS_VIOLATION',
-          `trailhead: commit subject must be Conventional Commits — <type>(<scope>)?: <subject>. Valid types: ${TYPES.replace(/\|/g, ', ')}.`);
+          `trailhead: commit subject must be Conventional Commits: <type>(<scope>)?: <subject>. Valid types: ${TYPES.replace(/\|/g, ', ')}.`);
       }
       if (subject.length > 72) {
         block('COMMIT_SUBJECT_TOO_LONG', 'trailhead: commit subject must be 72 characters or less.');
