@@ -83,6 +83,7 @@ The tracker is GitHub via the `gh` CLI (account already authenticated). Conventi
 | Element | How |
 |----------|------|
 | Map | an issue with label `trailhead:map` |
+| Codebase | a **single per-repo** issue with label `trailhead:codebase` — the distilled codebase map (architecture, stack, conventions, decisions embodied, risks, test/build). It's repo-scoped: **shared by every map of this repo, owned by none**, so it survives when a map is finished. Each map's Notes *links* it (never re-inlines it). Not a `trailhead:ticket`, so it's off the frontier. Written at adopt, refreshed only on major drift. |
 | Ticket | a child issue with label `trailhead:ticket` + exactly one **type** label: `trailhead:decision` / `trailhead:research` / `trailhead:prototype` / `trailhead:build` / `trailhead:bug` / `trailhead:task` |
 | Child→map link | a `Parent: <map name>(link)` line in the ticket body |
 | Blocking | **Find every blocker first — from the ticket's own Question.** Each still-open ticket whose output this ticket *consumes as an input* is a blocker: a decision that needs another's answer, a build that needs a decision, a formula that needs the very thing another ticket defines. Read the Question and wire **all** of them — miss one and the ticket surfaces on the frontier prematurely and gets worked before its prerequisite. Then wiring a blocker is **three moves**: (1) list *which* tickets block in the `## Blocked by` body section (name+link); (2) create the **native GitHub dependency** so the frontier renders visually in GitHub's own UI — `gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=<blocker's internal .id>`; (3) add the **`trailhead:blocked`** label. The **label is the frontier's source of truth** — native dependencies aren't cheaply queryable in one search, so the label is what keeps the frontier **one query**. On unblock, **remove the label the moment the last blocker closes** (that's what graduates the ticket onto the frontier); the native edge needs no cleanup — GitHub auto-reflects a closed blocker. **The three moves are one fact in three views — they must name the *same* blocker.** The `## Blocked by` line must link the **real blocker ticket** the native edge targets (its actual number), never a superseded parent, a split-origin, or a by-role placeholder like "child A"; wire the prose line and the native dependency in the same pass, from the same id, so they can't drift. |
@@ -118,7 +119,7 @@ gh issue edit <n> --add-assignee @me
 gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 ```
 **First-use repo setup (do BOTH, every chart or adopt — never skip either):**
-1. Create any missing labels with `gh label create` (all fourteen: `trailhead:map`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
+1. Create any missing labels with `gh label create` (all fifteen: `trailhead:map`, `trailhead:codebase`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
 2. **Check the label guard is installed** — `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it (see [Trust & provenance → Repo-side enforcement](#working-as-a-team)). This is part of standing up trailhead in a repo, not an optional extra — *check every time*, so a repo can never end up with the labels but no guard.
 
 ## The Map
@@ -142,7 +143,7 @@ Map body (loaded once per session):
 <what reaching the end of this map looks like — the spec, decision, or change this effort tends toward. The working artifact, unless overridden. One or two lines; every session orients to it before choosing a ticket.>
 
 ## 🗒️ Notes
-<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override. Config is NOT here — it lives in `.trailhead/config.json` at the repo root; see Configuration.>
+<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override; a **link to the repo's `trailhead:codebase` issue** (the codebase map lives there, repo-scoped — never re-inline it here). Config is NOT here either — it lives in `.trailhead/config.json` at the repo root; see Configuration.>
 
 ## ✅ Decisions so far
 <!-- the index — one line per closed ticket -->
@@ -210,7 +211,7 @@ The ticket engines call these by name. Each technique's full protocol lives in i
 | **Prototype** | `references/techniques/prototype.md` | throwaway artifact for "how should it look/behave"; routes UI mockups (disk / claude.ai/design) |
 | **Research** | `references/techniques/research.md` | a focused subagent gathers a decision-ready fact from primary sources |
 | **TDD** | `references/techniques/tdd.md` | RED → GREEN → REFACTOR at the seams; no implementation before a failing test |
-| **Codebase map** | `references/techniques/codebase-map.md` | one-time fan-out of 5 read-only readers, distilled into the map's Notes |
+| **Codebase map** | `references/techniques/codebase-map.md` | one-time fan-out of 5 read-only readers, distilled into the repo's `trailhead:codebase` issue |
 | **Debug** | `references/techniques/debug.md` | scientific method: reproduce → localise → falsifiable hypotheses → confirm cause → verify |
 | **Code review** | `references/techniques/code-review.md` | review the diff on 4 axes, adversarially verify each finding before reporting |
 | **Acceptance testing** | `references/techniques/acceptance-testing.md` | prove it does what the *user* wanted: automated → browser-drive → guided UAT |
@@ -401,7 +402,7 @@ The user invokes with a loose idea.
 ### Mode 1-bis — Adopt an existing project — `/trailhead:adopt`
 When the code already exists (project in progress). Like Mode 1, but start from **reality**, not a blank page. One heavy step at entry, then all lean.
 
-1. **Map the codebase (once).** Heavy step, *only* at adoption — it does not repeat per ticket. Run the **Codebase map** technique (a parallel fan-out of reader subagents) for a structured understanding: architecture, stack, decisions already embodied, risk areas. Distil the essence into a `## Codebase` block in the map's *Notes* and discard the raw. The tracker stays the source of truth; the per-ticket cycle stays lean.
+1. **Map the codebase (once per repo).** Heavy step, *only* at adoption — it does not repeat per ticket, and **not per map**. First check for an existing **`trailhead:codebase`** issue: if one exists (an earlier map on this repo created it) and the code hasn't materially drifted, just **link it** from this map's Notes and skip the fan-out. Otherwise run the **Codebase map** technique (a parallel fan-out of reader subagents) for a structured understanding — architecture, stack, decisions already embodied, risk areas — and distil the essence into the repo's **`trailhead:codebase` issue** (create it, label `trailhead:codebase`), then link that issue from the map's Notes. Discard the raw. Because it's a standalone repo-scoped issue, the next map reuses it instead of re-deriving or losing it.
 2. **Name the destination of the remaining stretch.** **Grilling** + **Domain vocabulary**, **seeded by the map you just built**: not "what is the project" but "what's left to reach working / the next milestone".
 3. **Backfill the decisions already made.** Choices already embodied in the code (now visible from the map) or stated by the user go into `Decisions so far` as **ticket-less** lines (they're already closed), so the map reflects reality and doesn't pretend greenfield. Link to code/commits where useful.
 4. **Map the frontier of the remainder** → tickets specifiable now + fog in *Not yet specified*, then wire the blocking and fire the research. As Mode 1, steps 4–6.
