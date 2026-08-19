@@ -26,7 +26,7 @@ Everything but `plan`/`execute` runs as a subagent, passed that model. The inter
 
 **tdd.** `seams` (default) = TDD at critical seams only; `on` = TDD for all behaviour with a definable input→output; `off` = tests after, or none for throwaway. The `build` engine's Plan/Execute honour this.
 
-**acceptance.browser.** `auto` (default) = drive the browser when `testing.webapp` + `testing.url` are set, else fall back to a guided UAT checklist; `on` = always attempt browser-driving; `off` = always hand the human a UAT checklist. The Verify step honours this.
+**acceptance.browser.** `auto` (default) = drive the browser when `testing.webapp` + `testing.url` are set, else fall back to a guided UAT checklist; `on` = always attempt browser-driving; `off` = always hand the human a UAT checklist. **`off` disables *browser-driving*, not acceptance** — a user-facing change still gets a guided UAT checklist (see the Acceptance testing technique). The Verify step honours this.
 
 **design.approval.** `explicit` (default) = a UI mockup must be **explicitly approved by the user** before the `build` engine writes any real UI code — surface the mockup and wait for a clear go-ahead. `auto` = surface the mockup and proceed without blocking on a confirmation (the user can still object). The Prototype technique honours this.
 
