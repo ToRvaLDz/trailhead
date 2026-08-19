@@ -1,6 +1,6 @@
 # Configuration — keys and guided setup
 
-Effective config = built-in defaults ← global `~/.claude/trailhead/config.json` ← the map's `## Config` block (project wins, key by key). The two layers and precedence are summarised in SKILL.md; this file holds the keys and the guided setup.
+Effective config = built-in defaults ← global `~/.claude/trailhead/config.json` ← project `.trailhead/config.json` at the repo root (project wins, key by key). **Config never lives in the map issue** — it's a plain file the user owns and changes at will. The layers and precedence are summarised in SKILL.md; this file holds the keys and the guided setup.
 
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
@@ -26,16 +26,16 @@ Effective config = built-in defaults ← global `~/.claude/trailhead/config.json
 
 **plan_review.** `off` (default) = build PLANs are not externally reviewed; `on` = review with every external AI CLI detected on the PATH; a comma list (`gemini,codex`) = only those. Needs the named CLIs installed; if none are available it's skipped, never failed. The `build` engine's Plan step runs **Cross-AI plan review** when this is on.
 
-Example global `~/.claude/trailhead/config.json`:
+Example `config.json` (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 ```json
-{ "models": { "plan": "opus", "execute": "sonnet" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
+{ "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
 ## Guided setup
 
 `/trailhead config` (no args) runs an **interactive walkthrough** — never make the user hand-edit JSON. Present each step as an `AskUserQuestion` menu with **icon-labelled options** and the current value pre-selected; write the answers to the chosen scope at the end and show a summary.
 
-1. **Scope** — 🌍 Global default · 📁 This project (the map's `## Config`). Skip to global when there's no map.
+1. **Scope** — 🌍 Global default (`~/.claude/trailhead/config.json`) · 📁 This project (`.trailhead/config.json` at the repo root). Skip to global outside a repo.
 2. **🌐 Ticket language** — the language trailhead writes its GitHub prose & commit descriptions in (`ticket.language`, ISO 639-1). Offer 🇬🇧 English (`en`, default) · 🇮🇹 Italiano (`it`) · 🇪🇸 Español (`es`) · 🇫🇷 Français (`fr`) · 🇩🇪 Deutsch (`de`) · 🇵🇹 Português (`pt`), plus a free-code option for any other ISO 639-1 code. Note in the prompt that this is *not* the language the agent converses in.
 3. **🧠 Models** — pick for **plan** and **execute**. Offer **inherit session** (the default) plus the session's own model and the concrete models it can reach — **always by full id**, because bare family names are now ambiguous (a family spans several live versions, e.g. Opus 4.8 *and* Opus 5). Never store `opus`/`sonnet`/`haiku` alone. Present the current lineup as options: the Opus family (`claude-opus-5`, `claude-opus-4-8`), `claude-sonnet-5`, `claude-haiku-4-5`, and `claude-fable-5` (Anthropic's most capable) — this list ages, so verify it against the models actually available at setup time rather than trusting it verbatim. The rarer `research`/`review`/`debug` sit behind an "Advanced" option.
 4. **🎨 Design** — 💾 Local disk · 🖼️ claude.ai/design. *Mode only — don't ask for a URL here; the concrete project is created or reused at execution time (see Prototype).* Then **✅ Mockup approval** — 🖐️ Explicit (wait for a go-ahead before UI code) · ⏩ Auto (proceed without blocking).

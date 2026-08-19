@@ -187,10 +187,11 @@ Tickets that spin off from other work carry a lineage pointer in their body, so 
 
 ## Configuration
 
-Two optional layers — **project overrides global**, key by key (built-in defaults otherwise):
+Three layers — **nearest wins**, key by key (a key unset at one layer inherits the next):
 
+- **Project** — a `.trailhead/config.json` file at the repo root: overrides for this project, committed so a team shares one config. Config lives in a plain file, **never in the map issue** — it's yours to change at any time.
 - **Global** — `~/.claude/trailhead/config.json`: your standing defaults across every project.
-- **Project** — a `## Config` block in the map issue: overrides for this map, right on the tracker.
+- **Defaults** — the built-in values.
 
 `/trailhead:config` runs a **guided, menu-driven setup** — pick the scope, then walk each setting (🧠 models · 🎨 design · 🧪 TDD · 🌐 acceptance testing) as an icon-labelled menu; no hand-editing JSON. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
@@ -203,10 +204,10 @@ Two optional layers — **project overrides global**, key by key (built-in defau
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 
-**Models** apply to every subagent trailhead spawns (research, codebase-map, review); when `models.plan` differs from `models.execute`, the build's Plan step runs as a planner subagent on the plan model, then execution continues on the execute model. Example `~/.claude/trailhead/config.json`:
+**Models** apply to every subagent trailhead spawns (research, codebase-map, review); when `models.plan` differs from `models.execute`, the build's Plan step runs as a planner subagent on the plan model, then execution continues on the execute model. Example config file (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 
 ```json
-{ "models": { "plan": "opus", "execute": "sonnet" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
+{ "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
 ---

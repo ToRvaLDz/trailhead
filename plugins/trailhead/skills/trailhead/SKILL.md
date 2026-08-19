@@ -132,19 +132,7 @@ Map body (loaded once per session):
 <what reaching the end of this map looks like — the spec, decision, or change this effort tends toward. The working artifact, unless overridden. One or two lines; every session orients to it before choosing a ticket.>
 
 ## 🗒️ Notes
-<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override.>
-
-## ⚙️ Config
-<!-- overrides the global ~/.claude/trailhead/config.json; omitted keys inherit global, then defaults. See Configuration. -->
-models: { plan: opus, execute: sonnet, research: sonnet, review: sonnet, debug: opus }
-design: disk                       # disk | claude.ai/design   (mode; project URL auto-cached below)
-design.approval: explicit          # explicit | auto  (require explicit mockup approval before UI code?)
-# design.project:                  # auto-filled at execution when a claude.ai/design project is created
-tdd: seams                         # seams | on | off
-acceptance.browser: auto           # auto | on | off
-testing: { webapp: true, url: http://localhost:3000 }
-plan_review: off                   # off | on | gemini,codex   (external AI review of build PLANs)
-plan_review.rounds: 2
+<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override. Config is NOT here — it lives in `.trailhead/config.json` at the repo root; see Configuration.>
 
 ## ✅ Decisions so far
 <!-- the index — one line per closed ticket -->
@@ -161,9 +149,10 @@ Section names are matched by their **text** — the emoji are cosmetic anchors, 
 
 ## Configuration
 
-Two optional layers, **project wins over global**, key by key (built-in defaults otherwise):
+Three layers, **nearest wins**, key by key — a key unset at one layer inherits the next:
+- **Project** — a `.trailhead/config.json` file at the repo root: overrides for this project, committed so a team shares one config. **Config never lives in the map issue** — the map is an index of decisions, while config is the user's to change at any time, so it stays in a plain file (and never asserted into the map by the agent).
 - **Global** — `~/.claude/trailhead/config.json` (honour `$CLAUDE_CONFIG_DIR`): your standing defaults across every project.
-- **Project** — the map's `## Config` block: overrides for this map. Omitted keys inherit global, then defaults.
+- **Defaults** — the built-in values documented in `references/configuration.md`.
 
 Load the effective config at the start of a work session. The **keys, their values, the model/tdd/acceptance semantics, and the guided menu setup live in `references/configuration.md`** — read it when running `/trailhead:config` or when you need a key's exact meaning. `/trailhead:config` with no args runs the guided setup; `config get` prints the merged config; `config set <key> <value>` writes one key.
 
@@ -193,10 +182,10 @@ The answer isn't in the body: it's recorded on resolution as a comment. Assets c
 |---|---|---|---|---|
 | `decision` | 🧭 | | Destination | 🎯 |
 | `research` | 🔬 | | Notes | 🗒️ |
-| `prototype` | 🎨 | | Config | ⚙️ |
-| `build` | 🔨 | | Decisions so far | ✅ |
-| `bug` | 🐛 | | Not yet specified | 🌫️ |
-| `task` | 🔧 | | Out of scope | 🚫 |
+| `prototype` | 🎨 | | Decisions so far | ✅ |
+| `build` | 🔨 | | Not yet specified | 🌫️ |
+| `bug` | 🐛 | | Out of scope | 🚫 |
+| `task` | 🔧 | | | |
 
 The map issue title is prefixed 🗺. Keep the icons stable and don't add others — they're anchors, not decoration.
 
@@ -425,7 +414,7 @@ The user fires a capture on the fly → route it per the **Capture** section and
 ### Auxiliary verbs — `/trailhead:ticket|config|grill|split|pause|resume`
 - **`ticket <type> <title>`** — open ticket(s) of the map on the fly, for any of the six types (`decision`, `research`, `prototype`, `build`, `bug`, `task`) — the escape hatch the capture verbs don't cover. **Adding a ticket is a micro-charting act, so diverge briefly first, don't blind-commit to a single piece:** run a short breadth-first pass around the request — is this really *one* session-sized ticket, or a small **cluster** (a `decision` that needs a `research` before it, a UI `build` that needs a `prototype`, obvious siblings)? Does it imply a blocker? Surface the neighbours, *then* create the ticket(s): each gets `trailhead:ticket` + its `trailhead:<type>`, a `Parent:` line, a `## Question`; put each on the frontier, or wire `## Blocked by` + `trailhead:blocked`. This is a framing brainstorm (is this the right work?), distinct from the `decision` engine's option brainstorm (which choice?). If `<type>` is missing or invalid, ask which of the six. *(The zero-friction captures — `bug`/`todo`/`idea`/`seed`/`note` — deliberately skip this; they're one action, one confirmation.)*
 - **`grill [topic|ticket]`** — run a standalone **Grilling** (+ **Domain vocabulary**) session on a decision or topic, or on a named ticket, without committing to the full work cycle. Record the outcome where it belongs: a ticket's resolution, the map's `Decisions so far`, or a fresh `decision` ticket.
-- **`config`** — a **guided, menu-driven** setup (see [Configuration → Guided setup](#configuration)): pick the scope, then walk each setting as an `AskUserQuestion` menu with icon-labelled options, and write the result. `config get` prints the effective config read-only (global merged with the map's `## Config`, showing which source wins each key); `config set <key> <value>` writes one key directly — to the map's `## Config`, or to `~/.claude/trailhead/config.json` with `--global`.
+- **`config`** — a **guided, menu-driven** setup (see [Configuration → Guided setup](#configuration)): pick the scope, then walk each setting as an `AskUserQuestion` menu with icon-labelled options, and write the result. `config get` prints the effective config read-only (project `.trailhead/config.json` merged over global over defaults, showing which source wins each key); `config set <key> <value>` writes one key directly — to the project `.trailhead/config.json`, or to `~/.claude/trailhead/config.json` with `--global`.
 - **`split [ticket]`** — split the named (or in-play) ticket per [Splitting a ticket](#working-as-a-team): create children, supersede & close the original.
 - **`pause [note]`** / **`resume [ticket]`** — checkpoint and pick back up per [Pausing & resuming](#working-as-a-team).
 
