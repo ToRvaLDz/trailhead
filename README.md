@@ -16,7 +16,7 @@ Two approaches to agent-driven project work each nail one half of the problem:
 
 Working across both, one pattern kept recurring: **use Wayfinder's map and onboarding to decide the shape of the work, then use GSD's engine to build each piece — without ever leaving the issue tracker.** `trailhead` is that pattern made into a single skill.
 
-> **trailhead is self-contained.** Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill — grilling, TDD, systematic debugging, codebase mapping, code review — is **built in here as an inline protocol**. trailhead's core invokes no other skill; its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. The only thing to install is trailhead itself. (One opt-in exception: `claude.ai/design` mockup mode uses Claude Code's built-in Claude Design when enabled, and silently falls back to local-disk mockups when it isn't.)
+> **trailhead is self-contained.** Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill — grilling, TDD, systematic debugging, codebase mapping, code review — is **built in here as an inline protocol**. trailhead's core invokes no other skill; its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. The only thing to install is trailhead itself. (One opt-in exception: `claude.ai/design` mockup mode pushes to a design-system project via DesignSync (the `claude_design` MCP + `/design-sync` skill) when enabled, and silently falls back to local-disk mockups when it isn't.)
 
 The design choices that fall out of it:
 
@@ -193,22 +193,27 @@ Three layers — **nearest wins**, key by key (a key unset at one layer inherits
 - **Global** — `~/.claude/trailhead/config.json`: your standing defaults across every project.
 - **Defaults** — the built-in values.
 
-`/trailhead:config` runs a **guided, menu-driven setup** — pick the scope, then walk each setting (🧠 models · 🎨 design · 🧪 TDD · 🌐 acceptance testing) as an icon-labelled menu; no hand-editing JSON. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+`/trailhead:config` runs a **guided, menu-driven setup** — pick the scope, then walk each setting (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
-| `models.{plan,execute,research,review,debug}` | a model id (**inherit session**) | which model runs each activity |
-| `design` | **`disk`** \| a claude.ai/design project URL | where UI mockups go |
+| `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead **writes** its GitHub prose & commit descriptions in — decoupled from the language it converses in |
+| `models.{plan,execute,research,review,debug}` | a full **versioned** model id (**inherit session**) | which model runs each activity — `plan` and `execute` are always set separately |
+| `design` | **`disk`** \| `claude.ai/design` | where UI mockups go — local throwaway HTML, or a design-system project on claude.ai/design via DesignSync |
+| `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or hand a UAT checklist |
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
+| `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 
-**Models** apply to every subagent trailhead spawns (research, codebase-map, review); when `models.plan` differs from `models.execute`, the build's Plan step runs as a planner subagent on the plan model, then execution continues on the execute model. Example config file (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
+**Models** apply to every subagent trailhead spawns (research, codebase-map, review); `plan` and `execute` are always chosen separately, by **full versioned id** (never a bare `opus`/`sonnet`). When they differ, the build's Plan step runs as a planner subagent on the plan model, then execution continues on the execute model. Example config file (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 
 ```json
-{ "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
+{ "ticket": { "language": "en" }, "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
+
+**Design mockups.** `design: disk` (default) drops a throwaway static HTML mockup next to the code, linked from the ticket. `design: claude.ai/design` instead pushes the mockup to a **design-system project** on claude.ai/design via **DesignSync** (the `/design-sync` skill + `claude_design` MCP), where you refine it visually. On the first UI screen trailhead asks which design system to use — **pick from your 10 most-recent**, **paste a `claude.ai/design/p/<id>` URL**, or **create a new one** (it asks you for the name) — and caches its id in `design.project`. Each screen is pushed there and its URL linked from the ticket; once you approve, trailhead **re-fetches** the current design (in case you edited it live) before writing any UI code. DesignSync drives only **design-system** projects, not regular ones — for a regular project you place the mockup by hand. `design.approval` decides whether the build waits for your explicit go-ahead (`explicit`) or proceeds after surfacing the mockup (`auto`).
 
 ---
 
