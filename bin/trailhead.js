@@ -42,7 +42,7 @@ const P = {
   templates: path.join(configDir, 'trailhead', 'templates'),
   settings: path.join(configDir, 'settings.json'),
 };
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js'];
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js'];
 const hookCmd = (name) => `node "${path.join(P.hooksDir, name)}"`;
 
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
@@ -77,6 +77,7 @@ if (uninstall) {
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
   const s = readJSON(P.settings);
   stripHook(s, 'PreToolUse', 'trailhead-commit-guard.js');
+  stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
   writeJSON(P.settings, s);
   console.log(`trailhead uninstalled from ${configDir}`);
@@ -95,6 +96,7 @@ for (const f of HOOK_FILES) {
 const s = readJSON(P.settings);
 const added = [
   addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
+  addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
   addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
 ].some(Boolean);
 writeJSON(P.settings, s);

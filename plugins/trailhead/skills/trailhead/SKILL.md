@@ -78,7 +78,7 @@ This ritual fires from every **Resolve** step (`build`, `bug`) and from **Mode 2
 
 ## Substrate: GitHub Issues
 
-The tracker is GitHub via the `gh` CLI (account already authenticated). Conventions:
+The tracker is GitHub via the `gh` CLI (account already authenticated). **Never post a secret to an issue** — everything trailhead writes (ticket bodies, engine comments, the codebase/conventions issues, resolutions) is public tracker text, so redact credentials proactively with `<REDACTED>` or an env-var reference (the Debug **Redact** protocol applies to *all* engine writes, not just debugging). A shipped **secret-guard hook** hard-blocks any `gh` issue/PR write that still contains one, but don't rely on it — write clean. Conventions:
 
 | Element | How |
 |----------|------|
