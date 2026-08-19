@@ -6,7 +6,7 @@
 
 ---
 
-## Why trailhead exists
+## 💡 Why trailhead exists
 
 Two approaches to agent-driven project work each nail one half of the problem:
 
@@ -26,7 +26,7 @@ The design choices that fall out of it:
 
 ---
 
-## How it works
+## 🗺️ How it works
 
 A **map** is one GitHub issue labelled `trailhead:map`. It's an index, not a store: a Destination, standing Notes, the `Decisions so far`, the `Not yet specified` fog, and what's `Out of scope`.
 
@@ -43,7 +43,7 @@ Together with the map, these three fill GitHub's **3 pinned-issue slots**, so a 
 
 ---
 
-## Workflow
+## 🔄 Workflow
 
 **The lifecycle.** Every project walks the same loop:
 
@@ -102,7 +102,7 @@ No separate backlog, no lost credit: the map absorbs external suggestions the sa
 
 ---
 
-## Commands
+## ⌨️ Commands
 
 `trailhead` is user-invoked (it won't fire on its own). The **first word** is the verb; the rest is text or a ticket number. With no verb, `/trailhead` does **smart entry**: it inspects the repo and proposes the right next move.
 
@@ -138,7 +138,7 @@ The four fog/ticket captures form a spectrum of commitment and timing: **note < 
 
 ---
 
-## Ticket types and their engines
+## 🎫 Ticket types and their engines
 
 Each ticket carries a type label; each type has its own way of being resolved.
 
@@ -146,29 +146,29 @@ Each type has its own inline engine — no external skill is invoked.
 
 | Type | Produces | Mode | Engine |
 |---|---|---|---|
-| `decision` | a choice | HITL | diverge the options if unclear, then grill to converge on one |
-| `research` | a fact | AFK | a subagent on a throwaway branch (the only type run in parallel) |
-| `prototype` | an approved direction | HITL | a rough throwaway artifact to react to; UI screens go through this (disk, or a configured claude.ai/design project) before UI code |
-| `build` | working code | HITL/AFK | `discuss → plan → execute → verify` — atomic commits, TDD at seams, code review + acceptance testing (browser-drive or guided UAT) |
-| `bug` | corrected code | HITL/AFK | `repro → diagnose → fix → verify`; a defect in closed work is a *new* ticket (`Regression of:`), not a reopen |
-| `task` | an external state change | HITL/AFK | manual work that unblocks a decision (provision access, move data, sign up) |
+| 🧭 `decision` | a choice | HITL | diverge the options if unclear, then grill to converge on one |
+| 🔬 `research` | a fact | AFK | a subagent on a throwaway branch (the only type run in parallel) |
+| 🎨 `prototype` | an approved direction | HITL | a rough throwaway artifact to react to; UI screens go through this (disk, or a configured claude.ai/design project) before UI code |
+| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify` — atomic commits, TDD at seams, code review + acceptance testing (browser-drive or guided UAT) |
+| 🐛 `bug` | corrected code | HITL/AFK | `repro → diagnose → fix → verify`; a defect in closed work is a *new* ticket (`Regression of:`), not a reopen |
+| 🔧 `task` | an external state change | HITL/AFK | manual work that unblocks a decision (provision access, move data, sign up) |
 
 Two rules of thumb: build tickets **never auto-grill** — on blocking ambiguity the skill stops and asks; and brainstorming (divergence) lives in charting, in `ticket`'s micro-charting, and in a `decision`'s option phase — never in the grilling itself, which only converges.
 
 ---
 
-## Labels
+## 🏷️ Labels
 
 Everything the map needs is expressed as GitHub labels, so state is queryable in the tracker UI:
 
 - **Structural:** `trailhead:map`, `trailhead:ticket`
 - **Repo-scoped anchors (one each per repo):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working)
-- **Type (one per ticket):** `trailhead:decision` · `research` · `prototype` · `build` · `bug` · `task`
+- **Type (one per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 
 The **frontier** is then a single query — open, unassigned, not `trailhead:blocked` — no body-parsing needed.
 
-## Working as a team
+## 👥 Working as a team
 
 Many people (and their agent sessions) share one map and work it concurrently:
 
@@ -179,7 +179,7 @@ Many people (and their agent sessions) share one map and work it concurrently:
 - **Labels are protected from outsiders.** `trailhead:*` labels drive the map, so trailhead trusts a labelled issue only when a write-access collaborator applied the label and (for a ticket) it carries a valid `Parent:`. Anything else is quarantined as `trailhead:unverified`, off the frontier. GitHub already blocks non-write users from labelling; against triage users and automations, trailhead can **install the label guard GitHub Action for you** (from `templates/trailhead-label-guard.yml`) into your repo's `.github/workflows/`, where it strips unauthorized `trailhead:*` labels at the source. Installing a workflow needs a token with the `workflow` scope, so trailhead runs `gh auth refresh -s workflow` if the push is rejected.
 - **Issues opened by others are triaged, not trusted blindly.** `/trailhead:inbox` lists inbound issues (bug reports, requests, questions that aren't yet trailhead tickets) and integrates the worthwhile ones **in place** — reframing them as tickets, keeping the reporter's authorship, and applying the labels on adoption. The rest routes to fog, out-of-scope, duplicate, or needs-info.
 
-## Keeping tickets honest
+## ✅ Keeping tickets honest
 
 A ticket is one answerable Question, sized to one session — so you never grow it in flight. When new scope surfaces while you're working (testing especially sparks ideas), you decide per idea: small and part of the same Question → just do it; balloons the ticket past one session → **split** it; separate work or a follow-up → **capture** it (`idea`/`todo`/`ticket`/`bug`) and keep going. Extras never become silent lines inside the ticket you're on.
 
@@ -193,7 +193,7 @@ Tickets that spin off from other work carry a lineage pointer in their body, so 
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 Three layers — **nearest wins**, key by key (a key unset at one layer inherits the next):
 
@@ -244,13 +244,13 @@ DesignSync drives only design-system projects, not regular ones; for a regular p
 
 ---
 
-## Requirements
+## 📋 Requirements
 
 Just an **authenticated `gh` CLI** — the tracker is GitHub Issues. Nothing else.
 
 `trailhead` is **self-contained**: every technique it uses (grilling, TDD, systematic debugging, codebase mapping, code review) is built in as an inline protocol, and its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. No companion plugins, no preflight, no version drift.
 
-## Hooks
+## 🪝 Hooks
 
 Beyond the skill's instructions, trailhead ships two of its own hooks (in `hooks/`, self-contained via `${CLAUDE_PLUGIN_ROOT}`) that *enforce* the parts of the discipline the model shouldn't be trusted to remember:
 
@@ -261,7 +261,7 @@ Both are crash-safe (any error → allow) and active whenever the plugin is inst
 
 ---
 
-## Install
+## 📦 Install
 
 **Prerequisites:** an authenticated [`gh` CLI](https://cli.github.com) (the tracker is GitHub Issues) and a GitHub repo to work in. The npm path also needs Node 18+.
 
@@ -286,7 +286,7 @@ Restart or reload your agent so the commands register, then run **`/trailhead`**
 
 ---
 
-## Acknowledgements
+## 🙏 Acknowledgements
 
 `trailhead` stands on the shoulders of two bodies of work. It is an original, self-contained methodology **inspired by** them — it does not copy or redistribute their code, and it invokes none of their skills; it reimplements the ideas as its own inline protocols:
 
@@ -297,6 +297,6 @@ Thank you. If you like the ideas here, go star and use the originals — they go
 
 ---
 
-## License
+## 📄 License
 
 MIT © Marco Migozzi ([@ToRvaLDz](https://github.com/ToRvaLDz))
