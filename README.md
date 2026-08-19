@@ -215,13 +215,32 @@ Three layers — **nearest wins**, key by key (a key unset at one layer inherits
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 
-**Models** — each key runs its activity as a **subagent** on the given model, so the whole per-activity split applies in **one** work session whatever model that session runs on: `plan` and `execute` (the build/bug engine's steps — Execute is a subagent too, committing to `main`), plus `research`, `review`, `debug`, and the codebase-map fan-out. `plan` and `execute` are always chosen separately, by **full versioned id** (never a bare `opus`/`sonnet`); a key that's unset — or equal to the session model — just runs inline. The **main session stays the orchestrator**: it holds the interactive moments (a build's Discuss, Verify's acceptance/UAT) and does **charting, grilling, and ticket-writing on its own model** — so run charting sessions on your strong model, since no key governs ticket quality. Example config file (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
+**Models.** Each key runs its activity as a **subagent** on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
+
+- `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
+- `research`, `review`, `debug`, and the codebase-map fan-out each run on their own key.
+
+Choose `plan` and `execute` separately, each by **full versioned id** (never a bare `opus` or `sonnet`). A key that is unset, or equal to the session model, simply runs inline.
+
+The **main session stays the orchestrator**. It holds the interactive moments — a build's Discuss, and Verify's acceptance/UAT — and it does charting, grilling, and ticket-writing on its own model. No key governs ticket quality, so run charting sessions on your strong model.
+
+Example config file (the same shape works for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 
 ```json
 { "ticket": { "language": "en" }, "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
-**Design mockups.** `design: disk` (default) drops a throwaway static HTML mockup next to the code, linked from the ticket. `design: claude.ai/design` instead pushes the mockup to a **design-system project** on claude.ai/design via **DesignSync** (the `/design-sync` skill + `claude_design` MCP), where you refine it visually. On the first UI screen trailhead asks which design system to use — **pick from your 10 most-recent**, **paste a `claude.ai/design/p/<id>` URL**, or **create a new one** (it asks you for the name) — and caches its id in `design.project`. Each screen is pushed there and its URL linked from the ticket; once you approve, trailhead **re-fetches** the current design (in case you edited it live) before writing any UI code. DesignSync drives only **design-system** projects, not regular ones — for a regular project you place the mockup by hand. `design.approval` decides whether the build waits for your explicit go-ahead (`explicit`) or proceeds after surfacing the mockup (`auto`).
+**Design mockups.** `design: disk` (the default) drops a throwaway static HTML mockup next to the code and links it from the ticket. `design: claude.ai/design` instead pushes the mockup to a **design-system project** on claude.ai/design via **DesignSync** (the `/design-sync` skill plus the `claude_design` MCP), where you refine it visually.
+
+On the first UI screen, trailhead asks which design system to use. You can:
+
+- **pick from your 10 most-recent**,
+- **paste a `claude.ai/design/p/<id>` URL**, or
+- **create a new one** (it asks you for the name).
+
+It caches the chosen id in `design.project`. Each screen is pushed there, and its URL is linked from the ticket. Once you approve, trailhead **re-fetches** the current design (in case you edited it live) before writing any UI code.
+
+DesignSync drives only design-system projects, not regular ones; for a regular project you place the mockup by hand. `design.approval` decides whether the build waits for your explicit go-ahead (`explicit`), or proceeds right after surfacing the mockup (`auto`).
 
 ---
 
