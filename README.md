@@ -49,7 +49,7 @@ npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
 It copies the skill (+ its `references/`), the `/trailhead:*` commands, the three hooks (into `hooks/`, registered in `settings.json`), and the label-guard template — idempotently. Re-run `npx @marcomigozzi/trailhead` to update.
 
 ### After installing
-Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry) — or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained — no other skill or plugin is required.
+Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry) — or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained — no other skill or plugin is required, no preflight, no version drift.
 
 ---
 
@@ -272,12 +272,6 @@ It caches the chosen id in `design.project`. Each screen is pushed there, and it
 DesignSync drives only design-system projects, not regular ones; for a regular project you place the mockup by hand. `design.approval` decides whether the build waits for your explicit go-ahead (`explicit`), or proceeds right after surfacing the mockup (`auto`).
 
 ---
-
-## 📋 Requirements
-
-Just an **authenticated `gh` CLI** — the tracker is GitHub Issues. Nothing else.
-
-`trailhead` is **self-contained**: every technique it uses (grilling, TDD, systematic debugging, codebase mapping, code review) is built in as an inline protocol, and its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. No companion plugins, no preflight, no version drift.
 
 ## 🪝 Hooks
 
