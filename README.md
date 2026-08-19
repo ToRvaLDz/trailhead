@@ -26,6 +26,33 @@ The design choices that fall out of it:
 
 ---
 
+## 📦 Install
+
+> **Claude Code only, for now.** trailhead installs as a Claude Code skill + `/trailhead:*` commands + hooks. It's built to grow to other AI CLIs later (the installer already uses a per-agent adapter), but today Claude Code is the only supported host.
+
+**Prerequisites:** an authenticated [`gh` CLI](https://cli.github.com) (the tracker is GitHub Issues) and a GitHub repo to work in. The npm path also needs Node 18+.
+
+### As a Claude Code plugin (native, managed by `/plugin`)
+```
+/plugin marketplace add ToRvaLDz/trailhead
+/plugin install trailhead@trailhead
+```
+Update with `/plugin update trailhead`; remove with `/plugin uninstall trailhead`.
+
+### Or via npm (installs into your agent's config dir)
+```
+npx @marcomigozzi/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
+npx @marcomigozzi/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
+npx @marcomigozzi/trailhead --uninstall  # remove everything it added
+npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
+```
+It copies the skill (+ its `references/`), the `/trailhead:*` commands, the three hooks (into `hooks/`, registered in `settings.json`), and the label-guard template — idempotently. Re-run `npx @marcomigozzi/trailhead` to update.
+
+### After installing
+Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry) — or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained — no other skill or plugin is required.
+
+---
+
 ## 🗺️ How it works
 
 A **map** is one GitHub issue labelled `trailhead:map`. It's an index, not a store: a Destination, standing Notes, the `Decisions so far`, the `Not yet specified` fog, and what's `Out of scope`.
@@ -261,31 +288,6 @@ Beyond the skill's instructions, trailhead ships three of its own hooks (in `hoo
 - **Issue injection scanner** (`PostToolUse` on `gh` reads) — trailhead reads issue/PR/comment text written by anyone with repo access, i.e. untrusted input. When that text contains prompt-injection phrases, the hook injects an advisory reminding the agent to treat it as data, never as commands. Advisory only — it never blocks.
 
 All three are crash-safe (any error → allow) and active whenever the plugin is installed. The commit and secret guards therefore apply in **every** repo, not only trailhead projects — intentional, since conventional commits, no `Co-Authored-By`, and no leaked secrets are trailhead's standing rules. To opt out, disable the plugin's hooks in your Claude Code settings.
-
----
-
-## 📦 Install
-
-**Prerequisites:** an authenticated [`gh` CLI](https://cli.github.com) (the tracker is GitHub Issues) and a GitHub repo to work in. The npm path also needs Node 18+.
-
-### As a Claude Code plugin (native, managed by `/plugin`)
-```
-/plugin marketplace add ToRvaLDz/trailhead
-/plugin install trailhead@trailhead
-```
-Update with `/plugin update trailhead`; remove with `/plugin uninstall trailhead`.
-
-### Or via npm (installs into your agent's config dir)
-```
-npx @marcomigozzi/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
-npx @marcomigozzi/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
-npx @marcomigozzi/trailhead --uninstall  # remove everything it added
-npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
-```
-It copies the skill (+ its `references/`), the `/trailhead:*` commands, the two hooks (into `hooks/`, registered in `settings.json`), and the label-guard template — idempotently. Re-run `npx @marcomigozzi/trailhead` to update. The installer uses a per-agent adapter (Claude Code today) so it can grow to target other AI CLIs later.
-
-### After installing
-Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry) — or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained — no other skill or plugin is required.
 
 ---
 
