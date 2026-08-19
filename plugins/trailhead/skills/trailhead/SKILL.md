@@ -103,6 +103,8 @@ The tracker is GitHub via the `gh` CLI (account already authenticated). **Never 
 
 **Frontier** = open, unassigned tickets that are **not** `trailhead:blocked` and **not** `trailhead:unverified`. That's the whole query — the labels are the pre-computed answers to "are all blockers closed?" and "is this a trusted trailhead ticket?", so no per-ticket body parsing.
 
+**Blocked-by reconciliation (drift check).** The `## Blocked by` prose and the native dependency are two copies of one fact, so they can drift (it has happened — a body naming the split-*origin* while the native edge pointed at the sibling). When rendering `/trailhead:map` and before working a ticket, **reconcile them deterministically**: parse the issue numbers in the ticket's `## Blocked by`, read its native `blocked_by` (`gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by`), and if the two sets differ, **surface an advisory** naming both sides (the native edge is the structured reference) — never auto-fix, never block. If the body has no parseable `## Blocked by`, report it **uncheckable**, never assume they agree. This is the one deterministic, false-positive-free consistency axis; higher-level "does a ticket contradict the map's decisions" drift is left to human judgement.
+
 Base commands:
 ```bash
 # create the map
@@ -133,7 +135,7 @@ A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a
 - **Destination** — the one-line where-we're-headed.
 - **Frontier** — takeable now (open, unassigned, not blocked/unverified), each with its type.
 - **In progress** — claimed tickets, with who holds each.
-- **Blocked** — with what each waits on.
+- **Blocked** — with what each waits on; flag any **blocked-by drift** (prose `## Blocked by` ≠ native dependency — see [Blocked-by reconciliation](#substrate-github-issues)) as an advisory line.
 - **Decisions so far** — the index of what's settled.
 - **Not yet specified** + **parked fog** — the coarse fog, and a count/link of open `trailhead:fog` issues.
 - **Out of scope** — what's been ruled out.
