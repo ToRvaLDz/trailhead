@@ -80,7 +80,7 @@ The tracker is GitHub via the `gh` CLI (account already authenticated). Conventi
 | Map | an issue with label `trailhead:map` |
 | Ticket | a child issue with label `trailhead:ticket` + exactly one **type** label: `trailhead:decision` / `trailhead:research` / `trailhead:prototype` / `trailhead:build` / `trailhead:bug` / `trailhead:task` |
 | Child→map link | a `Parent: <map name>(link)` line in the ticket body |
-| Blocking | the `## Blocked by` body section lists *which* tickets block (name+link); the **`trailhead:blocked`** label marks *that* it is currently blocked, so the frontier is **one query**. Add the label when you wire a blocker; **remove it the moment the last blocker closes** (that's what graduates a ticket onto the frontier). GitHub *does* now have native issue dependencies (REST `…/dependencies/blocked_by`), which render a frontier visually in its UI — but they aren't cheaply queryable in a single search, so the label stays the source of truth for the frontier. Optionally mirror a blocker into a native dependency too, for the in-UI view; the label, not the native edge, is what the frontier query reads. |
+| Blocking | wiring a blocker is **three moves**: (1) list *which* tickets block in the `## Blocked by` body section (name+link); (2) create the **native GitHub dependency** so the frontier renders visually in GitHub's own UI — `gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=<blocker's internal .id>`; (3) add the **`trailhead:blocked`** label. The **label is the frontier's source of truth** — native dependencies aren't cheaply queryable in one search, so the label is what keeps the frontier **one query**. On unblock, **remove the label the moment the last blocker closes** (that's what graduates the ticket onto the frontier); the native edge needs no cleanup — GitHub auto-reflects a closed blocker. |
 | Claim | assign the ticket to yourself: `gh issue edit <n> --add-assignee @me` — the assignee *is* the claim; the claimer owns it end to end and closes it (no approver). Re-check before starting; on a collision, stop and ask the user. See [Working as a team](#working-as-a-team). |
 | Resolution | comment with the answer → `gh issue close` → update `Decisions so far` on the map |
 
@@ -100,9 +100,12 @@ Base commands:
 gh issue create --label "trailhead:map" --title "<destination>" --body-file <body>
 # create a child ticket (add trailhead:blocked too if it has an open blocker)
 gh issue create --label "trailhead:ticket,trailhead:build" --title "<question/goal>" --body-file <body>
+# wire a blocker: native dependency (visual frontier in the UI) + the label (the query)
+gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
+gh issue edit <blocked> --add-label "trailhead:blocked"
 # the frontier: open, unassigned, not blocked, not unverified — one query
 gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
-# unblock a ticket once its last blocker closes
+# unblock a ticket once its last blocker closes (label only; native edge auto-reflects)
 gh issue edit <n> --remove-label "trailhead:blocked"
 # claim
 gh issue edit <n> --add-assignee @me
@@ -384,7 +387,7 @@ The user invokes with a loose idea.
 1. **Name the destination.** Run the **Grilling** + **Domain vocabulary** techniques to pin down what this map tends toward. The destination fixes the scope, so it's settled first. Default: a working artifact.
 2. **Map the frontier.** Grill again, **breadth-first**: fan out across the whole space rather than deep on one thread, surfacing the open decisions and the first steps takeable now. **If no fog surfaces** — the way is already clear, the whole thing fits one session — you don't need a map: stop and ask how to proceed.
 3. **Create the map** (`trailhead:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into *Not yet specified*.
-4. **Create the tickets you can specify now** as child issues — then wire the blocking in a **second pass** (issues need ids before they can reference each other): fill each blocked ticket's `## Blocked by` and add the `trailhead:blocked` label. Wiring sorts them into frontier (unlabelled) and blocked; the rest stays fog.
+4. **Create the tickets you can specify now** as child issues — then wire the blocking in a **second pass** (issues need ids before they can reference each other): for each blocked ticket run the three-move wiring (`## Blocked by` line + native dependency + `trailhead:blocked` label — see [Substrate](#substrate-github-issues)). Wiring sorts them into frontier (unlabelled) and blocked; the rest stays fog.
 5. **Fire the research subagents.** For each `research` ticket created, run the **Research** technique in parallel, findings on a `research/<name>` branch with a pointer from the ticket.
 6. Stop — charting is one session's work; it hand-resolves nothing.
 
