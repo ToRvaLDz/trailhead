@@ -67,7 +67,12 @@ Resolving a ticket **ends the session** — one ticket per session is a hard rul
 
 1. **A one-line confirmation** the ticket is resolved, by name (not a bare `#number`).
 2. **An invitation to `/clear`** — start the next ticket with clean context. State it **every time**, not only when context is heavy.
-3. **The concrete next command** — name the next frontier ticket in the sentence, then give the command with its **number**, not its title: `/trailhead:work <number>`. E.g. *"Next: **Refresh-on-open — gate viewed_refreshed_at** → `/trailhead:work 51`."* If the frontier is empty, or the choice is ambiguous (several equal candidates), suggest `/trailhead:map` instead so the user picks.
+3. **The concrete next command** — name the next frontier ticket in the sentence, then give the **lightest** command that reaches it:
+   - if it's simply the next on the frontier (unambiguous), **`/trailhead:work` with no argument** takes it automatically — nothing to type (bare `/trailhead` does the same via smart entry). Prefer this.
+   - only to steer to a *specific* ticket that isn't the default next, pass its **number** (never its title): `/trailhead:work <number>`.
+   - if the frontier is empty or several candidates tie, suggest **`/trailhead:map`** so the user picks.
+
+   E.g. *"Next: **Refresh-on-open — gate viewed_refreshed_at**; just `/trailhead:work` to take it."*
 
 This ritual fires from every **Resolve** step (`build`, `bug`) and from **Mode 2**'s close (which resolves `decision` / `prototype` / `task` too). It does **not** fire after a `capture` (resolves nothing) or a parallel `research` batch (AFK, not session-ending).
 
@@ -409,7 +414,7 @@ The user invokes with a map (URL or number). A ticket is optional — without on
 3. Resolve it with its type's engine — **zoom as needed**: fetch the full body of related/closed tickets on demand. If in doubt on a `decision` ticket, run **Grilling** + **Domain vocabulary**. If in doubt on a `build`, **stop and ask** (see the Discuss step) — never auto-grill.
 4. Record the resolution: a comment with the answer, `gh issue close`, add the pointer to *Decisions so far*. Then **unblock dependents**: for every ticket this one was blocking, if it was the last open blocker, remove its `trailhead:blocked` label so it graduates onto the frontier.
 5. Add newly-surfaced tickets (create-then-wire, labelling blocked ones `trailhead:blocked`); graduate the fog that became specifiable, clearing the patch from *Not yet specified*. If the answer reveals a ticket sits beyond the destination, **out of scope** (label + close) instead of resolving it. If the decision invalidates other parts of the map, update or delete them.
-6. **Hand off.** Close the session with the **[Session handoff](#session-handoff)** ritual: confirm the ticket is resolved by name, invite `/clear`, and suggest the next command — name the next ticket in prose but give the command with its number, `/trailhead:work <number>`, or `/trailhead:map` if the frontier is empty/ambiguous.
+6. **Hand off.** Close the session with the **[Session handoff](#session-handoff)** ritual: confirm the ticket is resolved by name, invite `/clear`, and suggest the next command — prefer bare `/trailhead:work` (no argument auto-takes the next frontier ticket), a `/trailhead:work <number>` only to steer to a specific one, or `/trailhead:map` if the frontier is empty/ambiguous.
 
 ### Mode 3 — Capture — `/trailhead:bug|todo|idea|seed|note`
 The user fires a capture on the fly → route it per the **Capture** section and confirm with one line.
