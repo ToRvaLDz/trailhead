@@ -203,6 +203,8 @@ Three layers — **nearest wins**, key by key (a key unset at one layer inherits
 
 `/trailhead:config` runs a **guided, menu-driven setup** — pick the scope, then walk each setting (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
+**First-use offer (once per project).** You don't have to seek this out: the first time you set a project up — at the end of `/trailhead:new`/`:adopt`, or on a bare `/trailhead` when a map exists but no config does — trailhead offers to run the guided setup, or to continue on defaults. It asks **only once**: configuring writes `.trailhead/config.json`, and "continue on defaults" writes an empty `{}`. Once that file exists it's never offered again, and it never interrupts mid-ticket.
+
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead **writes** its GitHub prose & commit descriptions in — decoupled from the language it converses in |
