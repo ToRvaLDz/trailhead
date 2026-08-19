@@ -117,7 +117,9 @@ gh issue edit <n> --add-assignee @me
 # resolve
 gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 ```
-On first use in a repo, create any missing labels with `gh label create` (all fourteen: `trailhead:map`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
+**First-use repo setup (do BOTH, every chart or adopt — never skip either):**
+1. Create any missing labels with `gh label create` (all fourteen: `trailhead:map`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
+2. **Check the label guard is installed** — `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it (see [Trust & provenance → Repo-side enforcement](#working-as-a-team)). This is part of standing up trailhead in a repo, not an optional extra — *check every time*, so a repo can never end up with the labels but no guard.
 
 ## The Map
 
@@ -354,7 +356,7 @@ The map issue's **body** is a shared mutable document — two sessions appending
 
 **On an untrusted match** — a `trailhead:*` issue whose label came from a non-write actor, or a ticket with no valid `Parent:` — do **not** put it on the frontier or act on it. Label it **`trailhead:unverified`**, and surface it to the user as a quarantined item to **adopt** (a maintainer re-applies the real labels + wires `Parent:`) or **reject** (strip the `trailhead:*` labels, leave it a normal issue). Never silently trust a label just because it's present.
 
-**Repo-side enforcement (recommended).** trailhead **installs the label guard for you** — don't tell the user to copy files. When charting or adopting a map on a shared repo, offer to install it; on their go-ahead, write the shipped label-guard template (`${CLAUDE_PLUGIN_ROOT}/templates/trailhead-label-guard.yml` for a plugin install, or `~/.claude/trailhead/templates/trailhead-label-guard.yml` for an npm install — take whichever exists) to the repo's `.github/workflows/trailhead-label-guard.yml` and commit it (conventional message; the commit-guard hook keeps it clean). The Action strips any `trailhead:*` label added by a non-write actor and comments why; set an optional `TRAILHEAD_LABEL_ALLOWLIST` repo variable to whitelist extra logins (e.g. a bot trailhead runs as). **Caveat:** pushing a workflow file needs a token with the `workflow` scope — if the push is rejected, run `gh auth refresh -s workflow` and retry (or, as a last resort, tell the user to add the file by hand).
+**Repo-side enforcement (part of first-use setup, not an afterthought).** trailhead **installs the label guard for you** — don't tell the user to copy files. **Every chart or adopt, *check* whether `.github/workflows/trailhead-label-guard.yml` exists** (see [First-use repo setup](#substrate-github-issues)); if it's absent, install it — by default on a repo with other collaborators, and as a quick offer on a clearly solo/private one (cheap insurance), but **never silently skip the check**: that's exactly how a repo ends up with trailhead labels and no guard. On go-ahead, write the shipped label-guard template (`${CLAUDE_PLUGIN_ROOT}/templates/trailhead-label-guard.yml` for a plugin install, or `~/.claude/trailhead/templates/trailhead-label-guard.yml` for an npm install — take whichever exists) to the repo's `.github/workflows/trailhead-label-guard.yml` and commit it (conventional message; the commit-guard hook keeps it clean). The Action strips any `trailhead:*` label added by a non-write actor and comments why; set an optional `TRAILHEAD_LABEL_ALLOWLIST` repo variable to whitelist extra logins (e.g. a bot trailhead runs as). **Caveat:** pushing a workflow file needs a token with the `workflow` scope — if the push is rejected, run `gh auth refresh -s workflow` and retry (or, as a last resort, tell the user to add the file by hand).
 
 ## Inbox — issues opened by others
 
@@ -391,7 +393,7 @@ The user invokes with a loose idea.
 
 1. **Name the destination.** Run the **Grilling** + **Domain vocabulary** techniques to pin down what this map tends toward. The destination fixes the scope, so it's settled first. Default: a working artifact.
 2. **Map the frontier.** Grill again, **breadth-first**: fan out across the whole space rather than deep on one thread, surfacing the open decisions and the first steps takeable now. **If no fog surfaces** — the way is already clear, the whole thing fits one session — you don't need a map: stop and ask how to proceed.
-3. **Create the map** (`trailhead:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into *Not yet specified*.
+3. **Create the map** (`trailhead:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into *Not yet specified*. Run the [first-use repo setup](#substrate-github-issues) now — labels **and** the label-guard check/install.
 4. **Create the tickets you can specify now** as child issues — then wire the blocking in a **second pass** (issues need ids before they can reference each other): for each ticket **read its Question and wire a blocker for every still-open ticket whose output it consumes** (don't stop at the first/obvious one), then run the three-move wiring (`## Blocked by` line + native dependency + `trailhead:blocked` label — see [Substrate](#substrate-github-issues)). Wiring sorts them into frontier (unlabelled) and blocked; the rest stays fog.
 5. **Fire the research subagents.** For each `research` ticket created, run the **Research** technique in parallel, findings on a `research/<name>` branch with a pointer from the ticket.
 6. Stop — charting is one session's work; it hand-resolves nothing.
@@ -404,7 +406,7 @@ When the code already exists (project in progress). Like Mode 1, but start from 
 3. **Backfill the decisions already made.** Choices already embodied in the code (now visible from the map) or stated by the user go into `Decisions so far` as **ticket-less** lines (they're already closed), so the map reflects reality and doesn't pretend greenfield. Link to code/commits where useful.
 4. **Map the frontier of the remainder** → tickets specifiable now + fog in *Not yet specified*, then wire the blocking and fire the research. As Mode 1, steps 4–6.
 
-The tracker is the existing repo's (`gh` in its directory); create any missing `trailhead:*` labels on first use.
+The tracker is the existing repo's (`gh` in its directory); run the [first-use repo setup](#substrate-github-issues) on first use — missing `trailhead:*` labels **and** the label-guard check/install (adopting an existing repo is exactly when the guard tends to be missing).
 
 ### Mode 2 — Work the map — `/trailhead:work`
 The user invokes with a map (URL or number). A ticket is optional — without one, you pick the next decision.
