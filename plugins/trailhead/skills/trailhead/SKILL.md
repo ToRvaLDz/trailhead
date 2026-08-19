@@ -1,6 +1,6 @@
 ---
 name: trailhead
-description: Start and drive a large project — more than one agent session can hold — as a map of decision tickets on GitHub Issues, resolving one at a time until the way to the destination is clear. Self-contained: map-based onboarding and a discuss→plan→execute→verify engine with atomic commits, with everything — map, discussion, plan, verification — living on the Issues. No dependencies beyond an authenticated gh CLI. Invoke only when the user explicitly runs `/trailhead` (or a `/trailhead:<verb>` command) or asks to chart, adopt, or work a trailhead map — do not auto-invoke for generic planning, project, or task-tracking requests.
+description: "Start and drive a large project — more than one agent session can hold — as a map of decision tickets on GitHub Issues, resolving one at a time until the way to the destination is clear. Self-contained: map-based onboarding and a discuss→plan→execute→verify engine with atomic commits, with everything — map, discussion, plan, verification — living on the Issues. No dependencies beyond an authenticated gh CLI. Invoke only when the user explicitly runs `/trailhead` (or a `/trailhead:<verb>` command) or asks to chart, adopt, or work a trailhead map — do not auto-invoke for generic planning, project, or task-tracking requests."
 argument-hint: "[new|adopt|work|ticket|inbox|map|config|grill|split|pause|resume|bug|todo|idea|seed|note] [text | ticket]"
 ---
 
