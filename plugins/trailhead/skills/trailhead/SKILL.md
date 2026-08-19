@@ -59,7 +59,7 @@ Missing text in a capture → ask for the line. Unrecognised verb → treat the 
 - **Refer by name.** Every map and ticket is an issue, so it has a **title**. In everything the human reads, refer by name, never by a bare `#number`. A wall of `#42, #43, #44` is illegible; names read at a glance. The id and URL don't vanish — a name wraps its link — but they ride *inside* the name. **One exception: a command the user must run.** In `/trailhead:work <ticket>` the argument is machine input, not prose — give the **bare number** there (a long title, with its punctuation and jargon, is awkward and error-prone to type). Name the ticket in the surrounding sentence, put the number in the command.
 - **Result-oriented output.** In the chat, report **what was done and the next step** — refer to tickets by name and give the concrete next command. Do **not** expose trailhead's internal machinery: Mode labels (`Mode 1`, …), protocol/step names (`DISCUSS`/`PLAN`/`VERIFY`, "the build engine", "Session handoff", "graduate the fog", "the frontier"), or wrapper/SKILL.md mechanics. Explain that only when the user explicitly asks. (A map may reinforce this in its `## Notes`, but it holds regardless.)
 - **One ticket per session — hard rule.** Resolve **at most one** ticket per session; once one is resolved, do **not** start a second — end the session instead. The only exceptions: `research` tickets (AFK, run in parallel) and `capture` operations (they resolve nothing). On resolving a ticket, close the session with the **[Session handoff](#session-handoff)** ritual.
-- **Commit straight to `main`.** Build tickets commit straight to `main`, conventional commits, no feature branch/PR unless explicitly requested. Never `Co-Authored-By`.
+- **Git per the repo's conventions.** The default is commit straight to `main`, conventional commits, no feature branch/PR — but the repo's `trailhead:conventions` issue governs: honour its `git:` (`main` | `pr`) and `release:` (`command` | `auto`) header. Never `Co-Authored-By`.
 
 ## Session handoff
 
@@ -84,6 +84,7 @@ The tracker is GitHub via the `gh` CLI (account already authenticated). Conventi
 |----------|------|
 | Map | an issue with label `trailhead:map` |
 | Codebase | a **single per-repo** issue with label `trailhead:codebase` — the distilled codebase map (architecture, stack, conventions, decisions embodied, risks, test/build). It's repo-scoped: **shared by every map of this repo, owned by none**, so it survives when a map is finished. Each map's Notes *links* it (never re-inlines it). Not a `trailhead:ticket`, so it's off the frontier. Written at adopt, refreshed only on major drift. |
+| Conventions | a **single per-repo** issue with label `trailhead:conventions` — the project's **way of working**, readable by everyone. Repo-scoped and linked from every map's Notes, like Codebase. It opens with a small machine-read header the engine obeys, then human prose. Header keys (defaults **bold**): `git:` **`main`** \| `pr` (commit straight to `main`, or feature branch + PR) · `release:` **`command`** \| `auto` (never release without an explicit command, or release automatically per the project's flow). Below the header: any standing "how we work here" notes. Asked at chart/adopt (see below), not a `trailhead:ticket`, off the frontier. |
 | Ticket | a child issue with label `trailhead:ticket` + exactly one **type** label: `trailhead:decision` / `trailhead:research` / `trailhead:prototype` / `trailhead:build` / `trailhead:bug` / `trailhead:task` |
 | Child→map link | a `Parent: <map name>(link)` line in the ticket body |
 | Blocking | **Find every blocker first — from the ticket's own Question.** Each still-open ticket whose output this ticket *consumes as an input* is a blocker: a decision that needs another's answer, a build that needs a decision, a formula that needs the very thing another ticket defines. Read the Question and wire **all** of them — miss one and the ticket surfaces on the frontier prematurely and gets worked before its prerequisite. Then wiring a blocker is **three moves**: (1) list *which* tickets block in the `## Blocked by` body section (name+link); (2) create the **native GitHub dependency** so the frontier renders visually in GitHub's own UI — `gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=<blocker's internal .id>`; (3) add the **`trailhead:blocked`** label. The **label is the frontier's source of truth** — native dependencies aren't cheaply queryable in one search, so the label is what keeps the frontier **one query**. On unblock, **remove the label the moment the last blocker closes** (that's what graduates the ticket onto the frontier); the native edge needs no cleanup — GitHub auto-reflects a closed blocker. **The three moves are one fact in three views — they must name the *same* blocker.** The `## Blocked by` line must link the **real blocker ticket** the native edge targets (its actual number), never a superseded parent, a split-origin, or a by-role placeholder like "child A"; wire the prose line and the native dependency in the same pass, from the same id, so they can't drift. |
@@ -119,7 +120,7 @@ gh issue edit <n> --add-assignee @me
 gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 ```
 **First-use repo setup (do BOTH, every chart or adopt — never skip either):**
-1. Create any missing labels with `gh label create` (all fifteen: `trailhead:map`, `trailhead:codebase`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
+1. Create any missing labels with `gh label create` (all sixteen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
 2. **Check the label guard is installed** — `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it (see [Trust & provenance → Repo-side enforcement](#working-as-a-team)). This is part of standing up trailhead in a repo, not an optional extra — *check every time*, so a repo can never end up with the labels but no guard.
 
 ## The Map
@@ -143,7 +144,7 @@ Map body (loaded once per session):
 <what reaching the end of this map looks like — the spec, decision, or change this effort tends toward. The working artifact, unless overridden. One or two lines; every session orients to it before choosing a ticket.>
 
 ## 🗒️ Notes
-<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override; a **link to the repo's `trailhead:codebase` issue** (the codebase map lives there, repo-scoped — never re-inline it here). Config is NOT here either — it lives in `.trailhead/config.json` at the repo root; see Configuration.>
+<domain; vocabulary (see Domain vocabulary); standing preferences for this effort; any "stop at the spec" override; a **link to the repo's `trailhead:codebase` issue** (the codebase map lives there, repo-scoped — never re-inline it here) and a **link to the repo's `trailhead:conventions` issue** (the way of working — git/release + notes). Config is NOT here either — it lives in `.trailhead/config.json` at the repo root; see Configuration.>
 
 ## ✅ Decisions so far
 <!-- the index — one line per closed ticket -->
@@ -240,7 +241,7 @@ The ticket that *builds*. Lean cycle, all in **ticket comments**:
 
 1. **Discuss** — **never auto-grill.** Start from Plan. If reading the ticket surfaces blocking ambiguity, **stop and ask the user** whether they want a **Grilling** round: don't launch it on your own initiative. Only on their assent run the short round and post a `DISCUSS` comment with the closed choices. The user may also ask for it themselves at any time.
 2. **Plan** — a `PLAN` comment: the steps, the seams, the files touched, the verification criteria. Apply **TDD** per `config.tdd` (`seams`/`on`/`off`). When `config.models.plan` differs from `config.models.execute`, produce this plan via a *planner subagent* on the plan model, then execute in the session on the execute model. If `config.plan_review` is on, run **Cross-AI plan review** before Execute — send the plan to external AI CLIs and converge on their concerns.
-3. **Execute** — implement with **atomic commits straight to `main`** (conventional commits). One commit = one verifiable step.
+3. **Execute** — implement with **atomic commits** (conventional commits), following the repo's `trailhead:conventions` `git:` — straight to `main` by default, or a feature branch + PR when `git: pr`. One commit = one verifiable step.
 4. **Verify** — a `VERIFY` comment: run the tests / the plan's criterion; then the **Code review** technique; then **Acceptance testing** if the change is user-facing (browser-drive it, or hand the user a guided UAT checklist). Report the outcome honestly (if a test fails, say so).
 5. **Resolve** — a resolution comment with what was done → `gh issue close` → update `Decisions so far` on the map. Then close the session with the **[Session handoff](#session-handoff)** ritual (`/clear` + next command).
 
@@ -257,7 +258,7 @@ Then run the cycle, all in ticket comments:
 
 1. **Repro** — a `REPRO` comment: how to reproduce, expected vs observed behaviour.
 2. **Diagnose** — run the **Debug** technique. A `DIAGNOSIS` comment with the root cause.
-3. **Fix** — implement the correction with **atomic commits to `main`**. Where sensible, a test that fails before and passes after (**TDD**).
+3. **Fix** — implement the correction with **atomic commits** (per the repo's `trailhead:conventions` `git:` — `main` by default, else a branch + PR). Where sensible, a test that fails before and passes after (**TDD**).
 4. **Verify** — a `VERIFY` comment: the repro now passes, no regressions; **Code review** on the fix; **Acceptance testing** if the bug was user-facing (browser-drive the fixed flow, or a guided UAT checklist).
 5. **Resolve** — a resolution comment (cause + fix) → `gh issue close` → update `Decisions so far`. Then close the session with the **[Session handoff](#session-handoff)** ritual (`/clear` + next command).
 
@@ -394,7 +395,7 @@ The user invokes with a loose idea.
 
 1. **Name the destination.** Run the **Grilling** + **Domain vocabulary** techniques to pin down what this map tends toward. The destination fixes the scope, so it's settled first. Default: a working artifact.
 2. **Map the frontier.** Grill again, **breadth-first**: fan out across the whole space rather than deep on one thread, surfacing the open decisions and the first steps takeable now. **If no fog surfaces** — the way is already clear, the whole thing fits one session — you don't need a map: stop and ask how to proceed.
-3. **Create the map** (`trailhead:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into *Not yet specified*. Run the [first-use repo setup](#substrate-github-issues) now — labels **and** the label-guard check/install.
+3. **Create the map** (`trailhead:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into *Not yet specified*. Run the [first-use repo setup](#substrate-github-issues) now — labels **and** the label-guard check/install. Then set up **conventions**: if no `trailhead:conventions` issue exists, **ask the working method** — `git:` `main`|`pr`, `release:` `command`|`auto`, plus any "how we work here" notes — and create the issue (header + prose); link it from the map's Notes. If one already exists, just link it (reuse across maps).
 4. **Create the tickets you can specify now** as child issues — then wire the blocking in a **second pass** (issues need ids before they can reference each other): for each ticket **read its Question and wire a blocker for every still-open ticket whose output it consumes** (don't stop at the first/obvious one), then run the three-move wiring (`## Blocked by` line + native dependency + `trailhead:blocked` label — see [Substrate](#substrate-github-issues)). Wiring sorts them into frontier (unlabelled) and blocked; the rest stays fog.
 5. **Fire the research subagents.** For each `research` ticket created, run the **Research** technique in parallel, findings on a `research/<name>` branch with a pointer from the ticket.
 6. Stop — charting is one session's work; it hand-resolves nothing.
@@ -407,7 +408,7 @@ When the code already exists (project in progress). Like Mode 1, but start from 
 3. **Backfill the decisions already made.** Choices already embodied in the code (now visible from the map) or stated by the user go into `Decisions so far` as **ticket-less** lines (they're already closed), so the map reflects reality and doesn't pretend greenfield. Link to code/commits where useful.
 4. **Map the frontier of the remainder** → tickets specifiable now + fog in *Not yet specified*, then wire the blocking and fire the research. As Mode 1, steps 4–6.
 
-The tracker is the existing repo's (`gh` in its directory); run the [first-use repo setup](#substrate-github-issues) on first use — missing `trailhead:*` labels **and** the label-guard check/install (adopting an existing repo is exactly when the guard tends to be missing).
+The tracker is the existing repo's (`gh` in its directory); run the [first-use repo setup](#substrate-github-issues) on first use — missing `trailhead:*` labels **and** the label-guard check/install (adopting an existing repo is exactly when the guard tends to be missing) — and set up the `trailhead:conventions` issue: **ask the working method** (`git:` `main`|`pr`, `release:` `command`|`auto`, plus "how we work" notes), create it if absent, link it from the map's Notes.
 
 ### Mode 2 — Work the map — `/trailhead:work`
 The user invokes with a map (URL or number). A ticket is optional — without one, you pick the next decision.
