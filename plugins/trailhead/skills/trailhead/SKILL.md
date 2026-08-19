@@ -78,7 +78,7 @@ This ritual fires from every **Resolve** step (`build`, `bug`) and from **Mode 2
 
 ## Substrate: GitHub Issues
 
-The tracker is GitHub via the `gh` CLI (account already authenticated). **Never post a secret to an issue** — everything trailhead writes (ticket bodies, engine comments, the codebase/conventions issues, resolutions) is public tracker text, so redact credentials proactively with `<REDACTED>` or an env-var reference (the Debug **Redact** protocol applies to *all* engine writes, not just debugging). A shipped **secret-guard hook** hard-blocks any `gh` issue/PR write that still contains one, but don't rely on it — write clean. Conventions:
+The tracker is GitHub via the `gh` CLI (account already authenticated). **Never post a secret to an issue** — everything trailhead writes (ticket bodies, engine comments, the codebase/conventions issues, resolutions) is public tracker text, so redact credentials proactively with `<REDACTED>` or an env-var reference (the Debug **Redact** protocol applies to *all* engine writes, not just debugging). A shipped **secret-guard hook** hard-blocks any `gh` issue/PR write that still contains one. If it fires, treat the block as a **clean-and-retry cue, not a dead end**: redact the flagged value in place (`<REDACTED>` or an env-var reference like `$SUPABASE_KEY`), then re-post — silently, without surfacing the block to the user as a failure. (The hook only *blocks*; it can't rewrite the write, which is deliberate — a fail-safe block never leaks, whereas a silent auto-redact that didn't apply would. The redaction is yours to do.) If the block looks like a false positive, reword so it no longer matches a credential pattern. Conventions:
 
 | Element | How |
 |----------|------|
