@@ -34,6 +34,13 @@ Each **ticket** is a child issue with a type label and a one-question body. The 
 
 As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached.
 
+A map is scoped to **one** effort, so knowledge that belongs to the *repo* — not to any single map — lives in two **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
+
+- **`trailhead:codebase`** — the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
+- **`trailhead:conventions`** — the project's **way of working**, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`) over human prose. `/trailhead:adopt` and `:new` ask for it up front.
+
+Together with the map, these three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away. Project *config* (models, TDD, design…) is separate again — a plain `.trailhead/config.json` file at the repo root, never in an issue.
+
 ---
 
 ## Workflow
@@ -155,6 +162,7 @@ Two rules of thumb: build tickets **never auto-grill** — on blocking ambiguity
 Everything the map needs is expressed as GitHub labels, so state is queryable in the tracker UI:
 
 - **Structural:** `trailhead:map`, `trailhead:ticket`
+- **Repo-scoped anchors (one each per repo):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working)
 - **Type (one per ticket):** `trailhead:decision` · `research` · `prototype` · `build` · `bug` · `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 
