@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// trailhead installer — places the skill, commands, hooks, and templates into
+// trailhead installer: places the skill, commands, hooks, and templates into
 // an agent's config dir, and registers the hooks in settings.json.
 // No dependencies. Idempotent. Usage:
 //   npx @marcomigozzi/trailhead            install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
@@ -9,7 +9,7 @@
 //   npx @marcomigozzi/trailhead --dir=/path/to/configdir
 //
 // Multi-CLI: only the Claude adapter exists today. Add adapters below (config dir,
-// commands/hooks layout) to target Codex, Gemini, etc. — see ADAPTERS.
+// commands/hooks layout) to target Codex, Gemini, etc. See ADAPTERS.
 
 const fs = require('fs');
 const os = require('os');
