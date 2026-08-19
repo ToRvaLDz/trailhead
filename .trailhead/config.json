@@ -1,0 +1,4 @@
+{
+  "models": { "execute": "claude-sonnet-5" },
+  "design": { "approval": "auto" }
+}
