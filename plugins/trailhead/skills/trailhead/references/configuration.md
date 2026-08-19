@@ -21,7 +21,7 @@ Effective config = built-in defaults ← global `~/.claude/trailhead/config.json
 - `debug` — the **Debug** technique's diagnosis in the `bug` engine.
 
 **Every model key runs as a subagent, so all of them apply in one session whatever model it runs on.** The main session is the **orchestrator**: it holds the genuinely interactive moments — the `build`/`bug` **Discuss** (the "stop and ask" on blocking ambiguity, *before* implementing) and **Verify**'s acceptance/UAT (*after*) — and fans the rest out:
-- `plan` → a *planner subagent* (when it differs from `execute`).
+- `plan` → a *planner subagent* on `models.plan` (inline when it's unset or equals the session model).
 - `execute` → an **executor subagent** that implements the plan with atomic commits on `models.execute`. Execute itself is autonomous (no live user exchange happens *during* implementation — new scope surfacing is captured/split, not grilled), so it fans out cleanly; the commits still land on `main`, visible. Run it **inline in the session instead when `models.execute` is unset or equals the session model** (nothing to gain from spawning).
 - `research`/`review`/`debug`/codebase-map → their own subagents.
 
