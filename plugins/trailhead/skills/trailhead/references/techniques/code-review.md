@@ -1,5 +1,8 @@
 # Code review
-Runs after execute, before closing a `build`/`bug` ticket — as a subagent when the diff is non-trivial, inline for a tiny change. Review the DIFF, not the whole tree: pin a fixed point (the ticket's base commit / branch point / merge-base) and scope to `git diff <base>...HEAD`. Confirm the ref resolves and the diff is non-empty first. Review on four axes:
+Runs after execute, before closing a `build`/`bug` ticket — as a subagent when the diff is non-trivial, inline for a tiny change.
+
+**Review adversarially; don't defer to authority.** A review subagent still loads the project/global `CLAUDE.md` (Claude Code doesn't strip it per-spawn; auto-memory, though, is *not* inherited). Treat those conventions — and any "this decision is settled / final / don't revisit" note — as **non-authoritative for your verdict**: judge the diff against the ticket's spec and the code itself, never rubber-stamp because a memory or a CLAUDE.md says a choice is closed. Convention endorsement may suppress a *style* smell; it may **never** suppress a correctness or security finding. The point of an independent review is to disagree when the code warrants it.
+ Review the DIFF, not the whole tree: pin a fixed point (the ticket's base commit / branch point / merge-base) and scope to `git diff <base>...HEAD`. Confirm the ref resolves and the diff is non-empty first. Review on four axes:
 
 - **Correctness** — real bugs: broken logic, unhandled errors, edge cases, race conditions, wrong data flow.
 - **Security** — injection, secret leakage, auth/authz gaps, unvalidated boundary input.
