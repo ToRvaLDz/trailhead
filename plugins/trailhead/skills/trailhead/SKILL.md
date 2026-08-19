@@ -128,7 +128,7 @@ gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 ```
 **First-use repo setup (do BOTH, every chart or adopt — never skip either):**
 1. Create any missing labels with `gh label create` (all sixteen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
-2. **Check the label guard is installed** — `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it (see [Trust & provenance → Repo-side enforcement](#working-as-a-team)). This is part of standing up trailhead in a repo, not an optional extra — *check every time*, so a repo can never end up with the labels but no guard.
+2. **Check the label guard is installed** — `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it — **read `references/teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. This is part of standing up trailhead in a repo, not an optional extra — *check every time*, so a repo can never end up with the labels but no guard.
 
 ## The Map
 

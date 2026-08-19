@@ -3,4 +3,4 @@ description: Triage issues opened by others and integrate the worthwhile ones in
 argument-hint: "[issue]"
 ---
 
-Invoke the `trailhead` skill for the **inbox** action: call the Skill tool with skill name `trailhead` and arguments `inbox $ARGUMENTS`, then carry out the skill's instructions for that verb. Do not re-implement the behaviour here — the skill is the single source of truth.
+Invoke the `trailhead` skill for the **inbox** action: call the Skill tool with skill name `trailhead` and arguments `inbox $ARGUMENTS`, then **read the skill's `references/inbox.md` and follow it** — that file holds the full protocol for this action. Do not re-implement the behaviour here — the skill is the single source of truth.
