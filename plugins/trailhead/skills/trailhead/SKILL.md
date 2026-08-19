@@ -166,6 +166,8 @@ Two optional layers, **project wins over global**, key by key (built-in defaults
 
 Load the effective config at the start of a work session. The **keys, their values, the model/tdd/acceptance semantics, and the guided menu setup live in `references/configuration.md`** — read it when running `/trailhead:config` or when you need a key's exact meaning. `/trailhead:config` with no args runs the guided setup; `config get` prints the merged config; `config set <key> <value>` writes one key.
 
+**Ticket language (standing engine rule).** Write **all human-authored trailhead prose on the Issues** — ticket titles and bodies, every engine comment (`DISCUSS`/`PLAN`/`VERIFY`/`OPTIONS`/`REPRO`/`DIAGNOSIS`/`PAUSED`/resolution), and the map body sections — **and commit message descriptions** in `config.ticket.language` (ISO 639-1, default `en`). The conventional-commit **type prefix stays English** (`feat:`/`fix:`/…). This is **independent of the language the agent converses in** and never changes it; likewise it never touches code, identifiers, the fixed `trailhead:*` label names, or config keys/values. The skill's own source docs stay English regardless.
+
 ## The Tickets
 
 Each ticket is a child issue. Its **title carries the type icon** (see below); the body stays lean, one Question, sized to one ~100K-token session:
