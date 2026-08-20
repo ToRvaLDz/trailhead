@@ -64,7 +64,7 @@ As tickets resolve, the fog clears: questions that were too vague to phrase beco
 A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in two **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 
 - **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
-- **`trailhead:conventions`**: the project's **way of working**, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`) over human prose. `/trailhead:adopt` and `:new` ask for it up front.
+- **`trailhead:conventions`**: the project's **way of working**, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: none|worktree`) over human prose. `/trailhead:adopt` and `:new` ask for it up front. `isolation: worktree` gives each executing ticket its own `git worktree` + branch, so concurrent sessions on one clone (a monorepo especially) never share a working tree.
 
 Together with the map, these three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away. Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue.
 
