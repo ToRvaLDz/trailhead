@@ -44,7 +44,7 @@ Prefer `worktree` whenever more than one session may run on a single clone. On a
 
 ## Pausing & resuming
 Switching away from a ticket mid-work (to clear a blocker, chase an urgent bug, or just stop) must not lose the thread.
-- **Pause** (`/trailhead:pause [note]`): first commit any work-in-progress (atomic) so nothing is stranded, then post a **`PAUSED`** checkpoint comment: what's done, the exact next step, and any local state (branch, **worktree path under `isolation: worktree`**, how to run it). Keep the claim if you'll return soon; **release it** (unassign) if it's open-ended, so someone else can resume; the checkpoint is what makes that safe.
+- **Pause** (`/trailhead:pause [note]`): first commit any work-in-progress (atomic) so nothing is stranded, then post a **`PAUSED`** checkpoint comment: what's done, the exact next step, and any local state (branch, **worktree path under `isolation: worktree`**, how to run it). Keep the claim if you'll return soon; **release it** (unassign) if it's open-ended, so someone else can resume; the checkpoint is what makes that safe. If you release, also remove the `.trailhead/session-ticket` marker (SKILL.md Mode 2); if you keep the claim, leave it.
 - **Resume** (`/trailhead:resume [ticket]`): read the ticket's latest `PAUSED` checkpoint (and the `DISCUSS`/`PLAN` comments above it), then pick up at the recorded next step. Anyone may resume a *released* ticket; a still-claimed one, only its owner.
 - One ticket per session still holds: pausing A to work B ideally means B in a fresh session. If you must switch within one session, checkpoint A first; never leave it half-done and unrecorded.
 
