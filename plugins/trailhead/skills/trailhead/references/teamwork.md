@@ -5,7 +5,7 @@ Many people (and their agent sessions) share one map and work it concurrently. T
 ## Claiming
 Whoever claims a ticket **owns it end to end**: they work it and close it themselves. "Owner" means only "the current claimer of *this* ticket," never a project-wide approver; there is no gate and no one to wait on to close your own ticket. GitHub assignment isn't an atomic lock, so keep the protocol simple and human-decided:
 
-1. **Before claiming, check it's not already being worked.** Read the assignee. If it's already assigned to someone else, it's in progress; don't take it; pick another frontier ticket. (If the user explicitly named this taken ticket, stop and tell them it's assigned to `<login>`.)
+1. **Before claiming, check it's not already being worked.** Read the assignee. **trailhead runs as the user's own gh account, so `@me` is the user's login:** a ticket assigned to that account is **already yours**, so proceed silently to work it (this is the normal "continue / resume your own ticket" case), don't re-announce the claim or treat it as a collision. Only a **different** login means in-progress-by-someone-else: don't take it; pick another frontier ticket. (If the user explicitly named a ticket held by another login, stop and tell them it's assigned to `<login>`; if they named one already assigned to their own account, just work it.)
 2. **Claim it**: assign it to yourself: `gh issue edit <n> --add-assignee @me`.
 3. **Re-check right before starting work.** Read the assignee again. If someone else got assigned in the meantime, **do not do any work, stop and flag it to the user with a clear message**, e.g.:
 
