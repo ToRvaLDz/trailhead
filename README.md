@@ -176,7 +176,7 @@ Each type has its own inline engine: no external skill is invoked.
 | 🧭 `decision` | a choice | HITL | diverge the options if unclear, then grill to converge on one |
 | 🔬 `research` | a fact | AFK | a subagent on a throwaway branch (the only type run in parallel) |
 | 🎨 `prototype` | an approved direction | HITL | a rough throwaway artifact to react to; UI screens go through this (disk, or a configured claude.ai/design project) before UI code |
-| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, code review + acceptance testing (browser-drive or guided UAT) |
+| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, code review + acceptance testing (browser-drive or conversational step-by-step UAT) |
 | 🐛 `bug` | corrected code | HITL/AFK | `repro → diagnose → fix → verify`; a defect in closed work is a *new* ticket (`Regression of:`), not a reopen |
 | 🔧 `task` | an external state change | HITL/AFK | manual work that unblocks a decision (provision access, move data, sign up) |
 
@@ -241,7 +241,7 @@ Three layers: **nearest wins**, key by key (a key unset at one layer inherits th
 | `design` | **`disk`** \| `claude.ai/design` | where UI mockups go: local throwaway HTML, or a design-system project on claude.ai/design via DesignSync |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
-| `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or hand a UAT checklist |
+| `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or walk you through a conversational UAT (step by step in chat, not a checklist to self-serve) |
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
