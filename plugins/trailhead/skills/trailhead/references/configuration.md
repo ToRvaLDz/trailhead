@@ -57,6 +57,11 @@ Example `config.json` (same shape for the project `.trailhead/config.json` and t
 4. **🎨 Design**: 💾 Local disk · 🖼️ claude.ai/design (DesignSync → a **design-system** project). *Mode only, don't ask for a URL here; the concrete design-system project is created or reused at execution time via DesignSync, and its projectId cached in `design.project` (see Prototype).* Then **✅ Mockup approval**: 🖐️ Explicit (wait for a go-ahead before UI code) · ⏩ Auto (proceed without blocking).
 5. **🧪 TDD**: 🎯 Seams only · ✅ On (all definable behaviour) · ⛔ Off.
 6. **🖥️ Acceptance testing**: 🤖 Auto · ▶️ Always browser · 🙋 Guided UAT only. If browser is enabled, ask **🔗 base URL** and confirm it's a web app.
-7. **🧑‍⚖️ Plan review**: ⛔ Off · 🤝 All detected CLIs · 🎯 Pick specific (from the CLIs found on PATH). **Anything but Off has mandatory follow-ups, never skip them:** on *Pick specific*, first ask **which CLIs** (from those on PATH), **then** ask **🔁 rounds**; on *All detected CLIs*, ask **🔁 rounds** (default 2). Off is the only branch with no follow-up; every other path asks rounds explicitly rather than taking the default.
+7. **🧑‍⚖️ Plan review**: **before presenting this menu, first probe the PATH for known external AI CLIs** (e.g. `gemini`, `codex`, and any others the Cross-AI plan review technique recognises) — run the detection, then build the menu from what was actually found. Never present this step with a hard-coded two-option list; the options are computed from the probe:
+   - **No CLI found**: offer only ⛔ Off, and say in the prompt that no external AI CLI was detected on the PATH (so the other choices would do nothing).
+   - **One CLI found**: ⛔ Off · 🤝 Use `<name>`. (With a single CLI, "all" and "pick specific" collapse to the same thing, so don't show both.)
+   - **Two or more found**: ⛔ Off · 🤝 All detected (`<name>`, `<name>`, …) · 🎯 Pick specific. Always show all three; never drop *Pick specific*. On *Pick specific*, ask **which CLIs** as a **multi-select** listing each detected CLI by name (never a free-text field). List the actual names found by the probe, not the placeholder examples from this file.
+   
+   **Anything but Off has mandatory follow-ups, never skip them:** after the CLIs are settled (whether via *All detected* or *Pick specific*), ask **🔁 rounds** (default 2). Off is the only branch with no follow-up; every other path asks rounds explicitly rather than taking the default.
 
 Keep the icons stable so the menus read the same each run. `config get` shows the same fields as a compact icon summary, read-only.
