@@ -1,6 +1,8 @@
 # Debug (scientific method)
 A bug is a science problem: observe, hypothesize, test, confirm, verify. Never patch on a hunch: an unconfirmed fix is a guess that recurs. Treat the issue as persistent debug state: log every hypothesis, test, and eliminated cause as comments, so a context reset never restarts the investigation.
 
+When run as a subagent, spawn it as the built-in **`general-purpose`** agent (it adds instrumentation and regression tests, so it needs Write); **never** a specialised debugger agent that another installed tool registered.
+
 **Redact as you go.** These notes are posted on public Issues. When you show a command, output, or artifact, replace every secret with `<REDACTED>` and run loops against env vars, never inlined credentials; quote only the signal-carrying lines, not whole dumps. If a redacted artifact isn't enough to move forward, say so and ask the user; never paste the raw one to compensate.
 
 1. **Reproduce: build a feedback loop.** Get ONE command you've actually run that goes red on *this exact symptom* and green when fixed: a failing test at the nearest seam, a curl against a dev server, a CLI diff vs a known-good snapshot, a replayed trace. Tighten it: faster, sharper (assert the specific symptom), deterministic (pin time, seed RNG, freeze network). No red-capable command → do NOT hypothesize; say so, list what you tried, ask for env access or a redacted artifact. For flaky bugs, chase a *higher* repro rate (loop 100×, parallelize, widen timing windows). 50% is debuggable, 1% is not.
