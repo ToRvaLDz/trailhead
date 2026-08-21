@@ -3,17 +3,24 @@
 // trailhead installer: places the skill, commands, hooks, and templates into
 // an agent's config dir, and registers the hooks in settings.json.
 // No dependencies. Idempotent. Usage:
-//   npx @marcomigozzi/trailhead            install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
-//   npx @marcomigozzi/trailhead --symlink  dev install (symlink to the package, live edits)
+//   npx @marcomigozzi/trailhead                install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
+//   npx @marcomigozzi/trailhead --host=codex    install for Codex ($CODEX_HOME or ~/.codex)
+//   npx @marcomigozzi/trailhead --symlink       dev install (symlink to the package, live edits; Claude only)
 //   npx @marcomigozzi/trailhead --uninstall
 //   npx @marcomigozzi/trailhead --dir=/path/to/configdir
 //
-// Multi-CLI: only the Claude adapter exists today. Add adapters below (config dir,
-// commands/hooks layout) to target Codex, Gemini, etc. See ADAPTERS.
+// Multi-host: host layout/behaviour comes from bin/lib/host-descriptor.js
+// (the descriptor table for claude/codex) and, for Codex, the artifact
+// projection in bin/lib/codex-projection.js (engine text rewrites, prompt
+// generation). Interactive host prompt only fires on a TTY with no --host.
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const readline = require('readline');
+
+const { getHost, configDirFor, hyphenateCommand } = require('./lib/host-descriptor.js');
+const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexPromptFor } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -22,39 +29,65 @@ const has = (f) => args.includes(f);
 const useSymlink = has('--symlink');
 const uninstall = has('--uninstall');
 const dirArg = (args.find((a) => a.startsWith('--dir=')) || '').split('=')[1];
-
-// --- ADAPTERS: one config layout per target agent. Extend this map for multi-CLI. ---
-const ADAPTERS = {
-  claude: {
-    label: 'Claude Code',
-    configDir: process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
-  },
-  // codex:  { label: 'Codex',  configDir: process.env.CODEX_HOME  || path.join(os.homedir(), '.codex')  },
-  // gemini: { label: 'Gemini', configDir: process.env.GEMINI_CONFIG_DIR || path.join(os.homedir(), '.gemini') },
-};
-const adapter = ADAPTERS.claude; // only Claude for now
-const configDir = dirArg || adapter.configDir;
-
-const P = {
-  skill: path.join(configDir, 'skills', 'trailhead'),
-  commands: path.join(configDir, 'commands', 'trailhead'),
-  hooksDir: path.join(configDir, 'hooks'),
-  templates: path.join(configDir, 'trailhead', 'templates'),
-  settings: path.join(configDir, 'settings.json'),
-};
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-check-update.js'];
-const hookCmd = (name) => `node "${path.join(P.hooksDir, name)}"`;
+const hostArg = (args.find((a) => a.startsWith('--host=')) || '').split('=')[1];
 
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
 const ensure = (p) => fs.mkdirSync(p, { recursive: true });
-function place(src, dest) {
-  rmrf(dest);
-  ensure(path.dirname(dest));
-  if (useSymlink) fs.symlinkSync(src, dest, 'dir');
-  else fs.cpSync(src, dest, { recursive: true });
-}
 const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; } };
 const writeJSON = (p, o) => { ensure(path.dirname(p)); fs.writeFileSync(p, JSON.stringify(o, null, 2) + '\n'); };
+
+// --- host resolution -------------------------------------------------------
+// --host=<name> wins outright (validated against the descriptor table).
+// Otherwise, an interactive TTY gets asked; a non-interactive run (npx/CI,
+// no stdin TTY) defaults to claude so scripted installs never hang on a
+// prompt that has nobody to answer it.
+function promptForHost() {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('Install trailhead for which host?\n  1) Claude Code (default)\n  2) Codex\n> ', (answer) => {
+      rl.close();
+      const choice = String(answer).trim().toLowerCase();
+      resolve(choice === '2' || choice === 'codex' ? 'codex' : 'claude');
+    });
+  });
+}
+
+async function resolveHostName() {
+  if (hostArg) {
+    try {
+      getHost(hostArg); // throws on an unknown host name
+      return hostArg;
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  }
+  // --dir= alone signals scripted/automation usage (tests, CI harnesses),
+  // even when stdin happens to be a TTY, so it does not trigger the prompt.
+  if (process.stdin.isTTY && !dirArg) {
+    return promptForHost();
+  }
+  return 'claude';
+}
+
+// --- Claude adapter (unchanged behaviour) -----------------------------------
+function claudePaths(configDir) {
+  return {
+    skill: path.join(configDir, 'skills', 'trailhead'),
+    commands: path.join(configDir, 'commands', 'trailhead'),
+    hooksDir: path.join(configDir, 'hooks'),
+    templates: path.join(configDir, 'trailhead', 'templates'),
+    settings: path.join(configDir, 'settings.json'),
+  };
+}
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-check-update.js'];
+
+function place(src, dest, symlink) {
+  rmrf(dest);
+  ensure(path.dirname(dest));
+  if (symlink) fs.symlinkSync(src, dest, 'dir');
+  else fs.cpSync(src, dest, { recursive: true });
+}
 
 function addHook(s, event, matcher, command) {
   s.hooks = s.hooks || {};
@@ -72,7 +105,8 @@ function stripHook(s, event, substr) {
   s.hooks[event] = s.hooks[event].filter((g) => (g.hooks || []).length);
 }
 
-if (uninstall) {
+function uninstallClaude(configDir) {
+  const P = claudePaths(configDir);
   [P.skill, P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
   const s = readJSON(P.settings);
@@ -82,38 +116,166 @@ if (uninstall) {
   stripHook(s, 'SessionStart', 'trailhead-check-update.js');
   writeJSON(P.settings, s);
   console.log(`trailhead uninstalled from ${configDir}`);
-  process.exit(0);
 }
 
-// install (Claude adapter)
-place(path.join(SRC, 'skills', 'trailhead'), P.skill);
-place(path.join(SRC, 'commands'), P.commands);
-place(path.join(SRC, 'templates'), P.templates);
-ensure(P.hooksDir);
-for (const f of HOOK_FILES) {
-  fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(P.hooksDir, f));
-  fs.chmodSync(path.join(P.hooksDir, f), 0o755);
-}
-// version marker: serve al check-update hook per la versione installata (canale npm)
-const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
-if (pkgVersion) {
-  ensure(path.join(configDir, 'trailhead'));
-  fs.writeFileSync(path.join(configDir, 'trailhead', 'VERSION'), pkgVersion + '\n');
+function installClaude(configDir, { useSymlink }) {
+  const P = claudePaths(configDir);
+  const hookCmd = (name) => `node "${path.join(P.hooksDir, name)}"`;
+
+  place(path.join(SRC, 'skills', 'trailhead'), P.skill, useSymlink);
+  place(path.join(SRC, 'commands'), P.commands, useSymlink);
+  place(path.join(SRC, 'templates'), P.templates, useSymlink);
+  ensure(P.hooksDir);
+  for (const f of HOOK_FILES) {
+    fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(P.hooksDir, f));
+    fs.chmodSync(path.join(P.hooksDir, f), 0o755);
+  }
+  // version marker: serve al check-update hook per la versione installata (canale npm)
+  const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
+  if (pkgVersion) {
+    ensure(path.join(configDir, 'trailhead'));
+    fs.writeFileSync(path.join(configDir, 'trailhead', 'VERSION'), pkgVersion + '\n');
+  }
+
+  const s = readJSON(P.settings);
+  const added = [
+    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
+    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
+    addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
+    addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
+  ].some(Boolean);
+  writeJSON(P.settings, s);
+
+  console.log(`✓ trailhead installed for Claude Code → ${configDir}`);
+  console.log(`  skill     → ${P.skill}${useSymlink ? '  (symlink)' : ''}`);
+  console.log(`  commands  → ${P.commands}  (/trailhead:*)`);
+  console.log(`  hooks     → ${P.hooksDir}/  (${added ? 'registered' : 'already present'} in settings.json)`);
+  console.log(`  templates → ${P.templates}`);
+  console.log('\nRestart or reload your agent to pick up the commands, then run /trailhead to start.');
+  console.log('Note: the commit guard now runs on every git commit (conventional + no Co-Authored-By).');
 }
 
-const s = readJSON(P.settings);
-const added = [
-  addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
-  addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
-  addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
-  addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
-].some(Boolean);
-writeJSON(P.settings, s);
+// --- Codex adapter -----------------------------------------------------------
+// Codex has no Skill tool, no subagent toolkit, and no hook bus (see
+// host-descriptor.js degradations()). The engine text itself is projected
+// with convertToCodex + codexSkillAdapterHeader; the commands become flat
+// hyphenated prompt files via codexPromptFor. No agents/ dir (emitsAgentToml
+// is false for codex) and no hooks/settings.json touched.
 
-console.log(`✓ trailhead installed for ${adapter.label} → ${configDir}`);
-console.log(`  skill     → ${P.skill}${useSymlink ? '  (symlink)' : ''}`);
-console.log(`  commands  → ${P.commands}  (/trailhead:*)`);
-console.log(`  hooks     → ${P.hooksDir}/  (${added ? 'registered' : 'already present'} in settings.json)`);
-console.log(`  templates → ${P.templates}`);
-console.log('\nRestart or reload your agent to pick up the commands, then run /trailhead to start.');
-console.log('Note: the commit guard now runs on every git commit (conventional + no Co-Authored-By).');
+// Recursively copy plugins/trailhead/skills/trailhead into destDir, applying
+// convertToCodex to every .md file (and prepending the adapter header to the
+// top-level SKILL.md). Mirrors the source tree shape (references/, references/techniques/, ...).
+function copySkillConverted(srcDir, destDir, isRoot) {
+  ensure(destDir);
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copySkillConverted(srcPath, destPath, false);
+    } else if (entry.name.endsWith('.md')) {
+      const raw = fs.readFileSync(srcPath, 'utf8');
+      let converted = convertToCodex(raw);
+      if (isRoot && entry.name === 'SKILL.md') {
+        converted = codexSkillAdapterHeader() + '\n\n' + converted;
+      }
+      fs.writeFileSync(destPath, converted);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+// Parse the simple `key: value` frontmatter lines a command file uses (only
+// description and argument-hint matter for a Codex prompt).
+function parseCommandFrontmatter(md) {
+  const match = md.match(/^---\n([\s\S]*?)\n---/);
+  const head = match ? match[1] : '';
+  const descMatch = head.match(/^description:\s*(.*)$/m);
+  const hintMatch = head.match(/^argument-hint:\s*(.*)$/m);
+  const description = descMatch ? descMatch[1].trim() : '';
+  let argHint = hintMatch ? hintMatch[1].trim() : '';
+  // Strip a wrapping pair of quotes ("" or non-empty "...") the source files use.
+  if (argHint === '""' || argHint === "''") argHint = '';
+  else argHint = argHint.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+  return { description, argHint };
+}
+
+function installCodex(configDir, { useSymlink }) {
+  const L = codexLayout(configDir);
+
+  if (useSymlink) {
+    console.log('Note: symlink install is unavailable for Codex (artifacts are generated, not copied verbatim); installing copies instead.');
+  }
+
+  ensure(L.skillDir);
+  ensure(L.referencesDir);
+  ensure(L.promptsDir);
+  ensure(L.trailheadDir);
+
+  // Engine: clean copy for idempotency, then project with conversion.
+  rmrf(L.skillDir);
+  copySkillConverted(path.join(SRC, 'skills', 'trailhead'), L.skillDir, true);
+
+  // Prompts: clear out any previously generated trailhead prompts, then regenerate.
+  rmrf(path.join(L.promptsDir, 'trailhead.md'));
+  for (const f of fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : []) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
+  }
+  ensure(L.promptsDir);
+
+  const commandsDir = path.join(SRC, 'commands');
+  const verbs = fs.readdirSync(commandsDir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+  for (const verb of verbs) {
+    const md = fs.readFileSync(path.join(commandsDir, `${verb}.md`), 'utf8');
+    const { description, argHint } = parseCommandFrontmatter(md);
+    const promptBody = codexPromptFor(verb, description, argHint, L.skillMain);
+    const promptName = hyphenateCommand(`/trailhead:${verb}`); // -> trailhead-<verb>
+    fs.writeFileSync(path.join(L.promptsDir, `${promptName}.md`), promptBody);
+  }
+  fs.writeFileSync(
+    path.join(L.promptsDir, 'trailhead.md'),
+    codexPromptFor(null, 'Start or drive a trailhead map (smart entry)', null, L.skillMain)
+  );
+
+  // No agents/ dir: emitsAgentToml('codex') is false (host-descriptor.js), so
+  // there is nothing to emit here. No hooks/settings.json either: Codex has
+  // no hook bus (hooks.bus === 'none').
+
+  const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
+  if (pkgVersion) {
+    fs.writeFileSync(L.versionFile, pkgVersion + '\n');
+  }
+
+  console.log(`✓ trailhead installed for Codex → ${configDir}`);
+  console.log(`  prompts → ${L.promptsDir}/  (/trailhead-*)`);
+  console.log(`  skill   → ${L.skillMain}`);
+  console.log('  no hooks (Codex has no hook bus)');
+  console.log('\nRestart or reload Codex to pick up the prompts, then run /trailhead to start.');
+}
+
+function uninstallCodex(configDir) {
+  const L = codexLayout(configDir);
+  rmrf(path.join(L.promptsDir, 'trailhead.md'));
+  for (const f of fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : []) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
+  }
+  rmrf(L.trailheadDir);
+  console.log(`trailhead uninstalled from ${configDir}`);
+}
+
+// --- main --------------------------------------------------------------------
+async function main() {
+  const host = await resolveHostName();
+  const configDir = dirArg || configDirFor(host);
+
+  if (uninstall) {
+    if (host === 'codex') uninstallCodex(configDir);
+    else uninstallClaude(configDir);
+    return;
+  }
+
+  if (host === 'codex') installCodex(configDir, { useSymlink });
+  else installClaude(configDir, { useSymlink });
+}
+
+main().catch((e) => { console.error(e.message); process.exit(1); });
