@@ -14,7 +14,7 @@ Two approaches to agent-driven project work each nail one half of the problem:
 
 - **GSD** (the [open-gsd](https://github.com/open-gsd/gsd-core) workflow system) is brilliant at *doing*. Its `discuss → plan → execute → verify` cycle, atomic commits, and zero-friction capture make the actual construction reliable and reviewable. But its state lives in a local `.planning/` tree, separate from where the team can see it.
 
-Working across both, one pattern kept recurring: **use Wayfinder's map and onboarding to decide the shape of the work, then use GSD's engine to build each piece, without ever leaving the issue tracker.** `trailhead` is that pattern made into a single skill.
+Working across both, one pattern kept recurring: **use a Wayfinder-style map and onboarding to decide the shape of the work, then a GSD-style engine to build each piece, without ever leaving the issue tracker.** `trailhead` is that pattern made into a single skill, its own self-contained take on both ideas rather than a wrapper around either.
 
 > **trailhead is self-contained.** Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill (grilling, TDD, systematic debugging, codebase mapping, code review) is **built in here as an inline protocol**. trailhead's core invokes no other skill; its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. The only thing to install is trailhead itself. There is one opt-in exception: when enabled, `claude.ai/design` mockup mode pushes to a design-system project via DesignSync (the `claude_design` MCP plus the `/design-sync` skill). If that isn't available, it silently falls back to local-disk mockups.
 
