@@ -20,7 +20,7 @@ Only an **authenticated `gh` CLI**: the tracker is GitHub Issues. Nothing else t
 
 ## Commands
 
-The **first word** of `$ARGUMENTS` is the verb; the rest is the text (or a ticket number). With no verb, `/trailhead` does **smart entry**: it detects the repo state and proposes (no map → offer *chart* or *adopt*, or point at `/trailhead:whiteboard` if the repo has loose `trailhead:whiteboard` tickets but no map; map present → *work* the next frontier ticket).
+The **first word** of `$ARGUMENTS` is the verb; the rest is the text (or a ticket number). With no verb, `/trailhead` does **smart entry**: it detects the repo state and proposes (no map → offer *chart* or *adopt*, or point at `/trailhead:whiteboard` if the repo has loose `trailhead:whiteboard` tickets but no map; map present → *work* the next frontier ticket). Smart entry also **self-heals the pinned dashboard**: it ensures the repo's `trailhead:dashboard` index exists and is pinned (create + pin only if missing, re-pin if the pin was dropped; never a body rewrite), so a repo that adopted trailhead before the dashboard existed gets one on the next bare `/trailhead`. See [The dashboard's self-heal note](#the-dashboard-a-pinned-repo-index).
 
 **First-time config offer (once per project).** When a project has a map but **no `.trailhead/config.json` yet**, smart entry puts an **explicit two-way choice** to the user and waits for their pick: **(a) accept as-is** (continue on the current/proposed values, which writes an empty `{}`), or **(b) run `/trailhead:config`** to configure everything through the guided menu (models/design/TDD/…). **Always name both paths and let the user choose; never silently take one.** You may show the values you'd default to, but frame the close as this binary: **do not** pre-fill the config keys and ask for an open-ended inline edit ("ok tutto oppure le modifiche"), and **do not** interview the user key-by-key inline (that's exactly what `/trailhead:config`'s menu is for). Ask this **only once**: running config writes the file, and *accept as-is* writes an empty `{}`, so once `.trailhead/config.json` exists it's never offered again (a `{}` file means "reviewed, using defaults"). The same offer is made at the end of chart/adopt (Mode 1/1-bis). It fires on the bare `/trailhead` and when setting a project up, never in the middle of working a ticket.
 
@@ -150,7 +150,7 @@ gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 
 A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a store: it lists the decisions made and points at the tickets that hold their detail. A decision lives in exactly one place (its ticket); the map gists it and links.
 
-**`/trailhead:map`** renders this at low resolution as a read-only dashboard (it changes nothing on its own; see the exhaustion check below), the map body plus the live ticket state, by name:
+**`/trailhead:map`** renders this at low resolution as a read-only dashboard (it changes nothing on the map itself; see the dashboard self-heal and exhaustion check below), the map body plus the live ticket state, by name:
 - **Destination**: the one-line where-we're-headed.
 - **Frontier**: takeable now (open, unassigned, not blocked/unverified, and **not** `trailhead:whiteboard`, which has its own view), each with its type.
 - **In progress**: claimed tickets, with who holds each.
@@ -159,7 +159,9 @@ A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a
 - **Not yet specified** + **parked fog**: the coarse fog, and a count/link of open `trailhead:fog` issues.
 - **Out of scope**: what's been ruled out; **flag as an advisory** any line that's actually **deferred** rather than truly beyond the destination: it **names a gate/trigger** (*gated by X*, *quando X*, *dipende da X*), carries a **this-only qualifier** (*per questo slice*, *for now*, *in this milestone*), is a **feature wanted later** (another milestone/map), or **is the gate of an existing `trailhead:seed`** (a seed's trigger names it, so it cannot be "ruled out", and that cluster is mis-wired). **Flag only lines not yet properly parked**: a line **already annotated `→ future map`** whose dependent seeds are **wired to a live trigger** is settled, say nothing about it. When one or more **un-parked** such lines are present, **don't stay silent: name them and suggest `/trailhead:inbox` to re-route them** (seed/idea/todo). See [Out of scope](#out-of-scope).
 - **Inbox**: a count of untriaged inbound issues, as a nudge.
-- **Exhaustion check**: if the map is exhausted (no open tickets and no fog left: the destination is reached), **say so and ask whether to close the map issue**, the same ask as Mode 2's hand-off: on a yes, `gh issue close` it and refresh the dashboard so it drops off; on a no, leave it open. Maps aren't pinned, so there's no pin to free either way. Never close unprompted. Route any un-parked deferred *Out of scope* line first (above) so nothing wanted-later is lost. This user-confirmed close is the only state `/trailhead:map` ever changes, and only on an explicit yes.
+- **Exhaustion check**: if the map is exhausted (no open tickets and no fog left: the destination is reached), **say so and ask whether to close the map issue**, the same ask as Mode 2's hand-off: on a yes, `gh issue close` it and refresh the dashboard so it drops off; on a no, leave it open. Maps aren't pinned, so there's no pin to free either way. Never close unprompted. Route any un-parked deferred *Out of scope* line first (above) so nothing wanted-later is lost. This user-confirmed close is the only change `/trailhead:map` makes to the map, and only on an explicit yes (the dashboard self-heal below touches only the pinned index, never the map).
+
+**Dashboard self-heal.** Before rendering, ensure the repo's pinned `trailhead:dashboard` index exists and is pinned: create + pin it only if missing, re-pin it if the pin was dropped, and otherwise do nothing (never rewrite its body on a render). See [The dashboard's self-heal note](#the-dashboard-a-pinned-repo-index).
 
 Map body (loaded once per session):
 
@@ -382,6 +384,8 @@ gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state 
 - **In progress**: claimed whiteboard tickets, with who holds each.
 - **Blocked**: any blocked whiteboard ticket, with what it waits on (a whiteboard ticket can still block on another).
 
+**Dashboard self-heal.** Like the map render, ensure the repo's pinned `trailhead:dashboard` index exists and is pinned before rendering (create + pin only if missing, re-pin if the pin was dropped; never rewrite its body here). See [The dashboard's self-heal note](#the-dashboard-a-pinned-repo-index).
+
 **Working the whiteboard.** Take a ticket with [`quick <n>`](#quick-work-one-ticket-whole-off-the-map), or `work <n>` by number; both work a single whiteboard ticket. There is no book-keeping to fold back (no `Decisions so far`, no fog to graduate), so a whiteboard resolution is just the resolution comment, `gh issue close`, and the [Session handoff](#session-handoff). Whiteboard tickets are never pinned and take no map slot.
 
 ## The dashboard (a pinned repo index)
@@ -396,6 +400,13 @@ It holds:
 **`/trailhead:dashboard`** regenerates the pinned issue body from the live tracker and shows it, both the render and the on-demand refresh, consistent with `/trailhead:map` and `/trailhead:whiteboard`. It creates and pins the issue if the repo doesn't have one yet (ensuring the `trailhead:dashboard` label first, idempotently, like the whiteboard label).
 
 **Freshness: structural events + on demand.** The pinned issue is rewritten when the surface changes **structurally**, a map is **charted** (Mode 1/1-bis) or **exhausted** (a map appears or disappears), and **on demand** via `/trailhead:dashboard`. It is **not** rewritten on every ticket resolve: that would churn a pinned issue (and its notifications) constantly, and the native progress bars already track per-ticket progress. Links + counts stay good enough refreshed at structural events and on demand.
+
+**Self-heal (read-only entry points).** A repo that adopted trailhead before the dashboard existed, or one whose pin was later dropped, has no pinned index until the next chart/adopt or an explicit `/trailhead:dashboard`. To close that gap, the frequent **read-only entry points self-heal the pin**: the bare `/trailhead` [smart entry](#commands), the [`/trailhead:map`](#the-map) render, and the [`/trailhead:whiteboard`](#the-whiteboard-map-less-tickets) render each ensure the dashboard exists and is pinned before rendering, idempotently and cheaply, mirroring the "ensure the label exists before applying it" pattern: ensure the `trailhead:dashboard` label, then
+- **if no dashboard issue exists**, create it, write the current surface once, and pin it (the fixed 3rd slot);
+- **if it exists but is unpinned** (a dropped pin is exactly the drift to self-heal), re-pin it;
+- **if it exists and is already pinned**, do nothing.
+
+**Create + pin only when missing: never rewrite the body on these renders.** They are frequent read-only views, not the on-demand refresh, so the freshness rule above holds unbroken (`/trailhead:dashboard` and structural events stay the only writers of the body). The one body write these paths ever make is the initial one at creation (the dashboard appearing is itself a structural event).
 
 ## Working as a team
 
