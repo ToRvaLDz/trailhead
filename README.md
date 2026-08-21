@@ -170,7 +170,7 @@ The four fog/ticket captures form a spectrum of commitment and timing: **note < 
 The three that trip people up are **idea, seed, todo**, so here they are spelled out:
 
 - **`idea`** = *maybe, and not yet clear.* It lands in the **fog** (`Not yet specified`), **not** as a ticket, because you can't even phrase the question sharply yet, so there is nothing to work. It **graduates** into a ticket later, when the frontier reaches it or it simply gets clearer.
-- **`seed`** = *yes, but not yet.* It **is** a ticket, but **parked** (`trailhead:blocked`) on a **trigger** you name ("when the billing module exists", "when we pass 1k users"). The question is already sharp; what's missing is a **condition**, not clarity. When the trigger fires, it graduates onto the frontier.
+- **`seed`** = *yes, but not yet.* It **is** a ticket, but **parked** (`trailhead:blocked`) on a **trigger** you name ("when the public API ships", "when we pass 1k users"). The question is already sharp; what's missing is a **condition**, not clarity. When the trigger fires, it graduates onto the frontier.
 - **`todo`** = *yes, now.* Defined work you will just do: it's born a **`build` ticket on the frontier**, takeable immediately.
 
 The two cuts that matter: **idea vs seed** is waiting on *clarity* vs waiting on a *condition* (both land "later", for different reasons); **seed vs todo** is committed *later* vs committed *now*. Below all three sits **`note`** (raw text to remember, maybe never work), and off to the side is **`bug`** (a defect, not a commitment tier). The test for idea vs ticket is always: **can you phrase the question precisely now?** Yes → a ticket (`todo` if takeable, `seed` if gated); no → the fog (`idea`).
