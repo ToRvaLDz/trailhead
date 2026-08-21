@@ -66,4 +66,18 @@ for (const f of FIXTURES) {
   ok(`template hook: ${f.name} -> allowed=${expected}`, allowed === expected);
 }
 
+// --- stripComments seam: the `-m` guard path (stripComments:false) must NOT
+// treat a `#`-leading subject as a comment (git -m keeps `#` lines as text),
+// while the default file-semantics path (strip=true) does. Regression guard for
+// the parity gap the code review caught. ---
+const hashSubject = '#123 wip do stuff';
+ok('no-strip: #-leading subject is a real (non-conventional) subject -> block',
+  checkCommitMessage(hashSubject, { stripComments: false }).ok === false);
+ok('no-strip: #-leading subject blocks with the conventional code',
+  checkCommitMessage(hashSubject, { stripComments: false }).code === 'CONVENTIONAL_COMMITS_VIOLATION');
+ok('default strip: #-leading line is a comment -> empty subject -> allow',
+  checkCommitMessage(hashSubject).ok === true);
+ok('template hook: #-leading message is file-semantics (comment) -> allow',
+  runTemplateHook(hashSubject) === true);
+
 console.log(`✓ commit-message-check: ${passed} assertions passed`);

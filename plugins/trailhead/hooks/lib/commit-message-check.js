@@ -22,18 +22,27 @@ function messageRegion(raw) {
   return i === -1 ? text : text.slice(0, i);
 }
 
-// Subject = first non-empty, non-comment (`#`) line of the message region,
-// mirroring how git itself derives the subject from a commit-message file.
-function subjectOf(raw) {
+// Subject = first non-empty line of the message region. `opts.stripComments`
+// (default true) also skips git comment (`#`) lines: correct for a commit-msg
+// FILE, where git has not yet stripped its `#` boilerplate. It must be FALSE
+// for a `git commit -m` string, where cleanup=whitespace keeps `#` lines as
+// literal message text, so `#123 wip` is a real (non-conventional) subject and
+// must NOT be treated as a comment. This is the seam the PreToolUse guard and
+// the git hook diverge at (decision #16 defence in depth).
+function subjectOf(raw, opts = {}) {
+  const stripComments = opts.stripComments !== false;
   for (const line of messageRegion(raw).split('\n')) {
-    if (line.trim() === '' || line.startsWith('#')) continue;
+    if (line.trim() === '') continue;
+    if (stripComments && line.startsWith('#')) continue;
     return line.trim();
   }
   return '';
 }
 
-// checkCommitMessage(message) -> { ok: true } | { ok: false, code, reason }
-function checkCommitMessage(message) {
+// checkCommitMessage(message, opts?) -> { ok: true } | { ok: false, code, reason }
+// opts.stripComments is forwarded to subjectOf (see there): the git commit-msg
+// hook uses the default (file semantics); the PreToolUse `-m` guard passes false.
+function checkCommitMessage(message, opts = {}) {
   const region = messageRegion(message);
 
   if (CO_AUTHORED.test(region)) {
@@ -44,7 +53,7 @@ function checkCommitMessage(message) {
     };
   }
 
-  const subject = subjectOf(message);
+  const subject = subjectOf(message, opts);
   if (subject && !CONVENTIONAL.test(subject)) {
     return {
       ok: false,
