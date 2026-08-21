@@ -1,5 +1,5 @@
 ---
-description: Capture a seed: work gated on a future trigger
+description: "Capture a seed: work gated on a future trigger"
 argument-hint: "<text>"
 ---
 

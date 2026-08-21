@@ -1,5 +1,5 @@
 ---
-description: Adopt an existing project: map the codebase once, then go lean
+description: "Adopt an existing project: map the codebase once, then go lean"
 argument-hint: ""
 ---
 
