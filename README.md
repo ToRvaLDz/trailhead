@@ -1,19 +1,3 @@
-<div align="center">
-<pre>
-   ████████╗██████╗  █████╗ ██╗██╗     ██╗  ██╗███████╗ █████╗ ██████╗
-   ╚══██╔══╝██╔══██╗██╔══██╗██║██║     ██║  ██║██╔════╝██╔══██╗██╔══██╗
-      ██║   ██████╔╝███████║██║██║     ███████║█████╗  ███████║██║  ██║
-      ██║   ██╔══██╗██╔══██║██║██║     ██╔══██║██╔══╝  ██╔══██║██║  ██║
-      ██║   ██║  ██║██║  ██║██║███████╗██║  ██║███████╗██║  ██║██████╔╝
-      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝
-
-          chart a map of decisions ─ resolve one ─ arrive
-
-   ●━━━━━◇╌╌╌╌╌◇╌╌╌╌╌⋯ ⋯ ⋯                              ▲
-   start  forks you resolve one at a time    fog      destination
-</pre>
-</div>
-
 # trailhead
 
 **Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the way to the destination is clear.**
