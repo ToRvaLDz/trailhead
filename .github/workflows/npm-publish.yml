@@ -46,5 +46,18 @@ jobs:
           fi
           echo "Publishing @marcomigozzi/trailhead@$PKG"
 
+      - name: Skip if this version is already on npm
+        id: check
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VER is already on npm; skipping publish."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish (OIDC, no token)
+        if: steps.check.outputs.already == 'false'
         run: npm publish
