@@ -185,6 +185,8 @@ Load the effective config at the start of a work session, **from the map's proje
 
 **Ticket language (standing engine rule).** Write **all human-authored trailhead prose on the Issues** (ticket titles and bodies, every engine comment (`DISCUSS`/`PLAN`/`VERIFY`/`OPTIONS`/`REPRO`/`DIAGNOSIS`/`PAUSED`/resolution), and the map body sections) **and commit message descriptions** in `config.ticket.language` (ISO 639-1, default `en`). The conventional-commit **type prefix stays English** (`feat:`/`fix:`/…). This is **independent of the language the agent converses in** and never changes it; likewise it never touches code, identifiers, the fixed `trailhead:*` label names, or config keys/values. The skill's own source docs stay English regardless.
 
+**This is the single most-missed rule, and the trap is specific: when you are chatting in one language and go to write a ticket, the body reflexively comes out in the *chat's* language, which is wrong.** The chat language and the ticket language are decoupled on purpose. Before every `gh issue create`/`edit`/`comment` and every commit body, consciously write in `config.ticket.language` (default `en`), not the language of the conversation. This holds for the zero-friction captures too (`bug`/`todo`/`idea`/`seed`/`note`): a one-line Italian request still becomes an English ticket. If you catch a ticket, comment, or map section already written in the wrong language, **convert it in place before continuing** any other work.
+
 ## The Tickets
 
 Each ticket is a child issue. Its **title carries the type icon** (see below); the body stays lean, one Question, sized to one ~100K-token session:
