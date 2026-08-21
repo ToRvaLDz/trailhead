@@ -176,7 +176,7 @@ Each type has its own inline engine: no external skill is invoked.
 | 🧭 `decision` | a choice | HITL | diverge the options if unclear, then grill to converge on one |
 | 🔬 `research` | a fact | AFK | a subagent on a throwaway branch (the only type run in parallel) |
 | 🎨 `prototype` | an approved direction | HITL | a rough throwaway artifact to react to; UI screens go through this (disk, or a configured claude.ai/design project) before UI code |
-| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, code review + acceptance testing (browser-drive or conversational step-by-step UAT) |
+| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, **a mockup first for user-facing UI** (Prototype technique, gated by `design.approval`), code review + acceptance testing (browser-drive or conversational step-by-step UAT) |
 | 🐛 `bug` | corrected code | HITL/AFK | `repro → diagnose → fix → verify`; a defect in closed work is a *new* ticket (`Regression of:`), not a reopen |
 | 🔧 `task` | an external state change | HITL/AFK | manual work that unblocks a decision (provision access, move data, sign up) |
 
