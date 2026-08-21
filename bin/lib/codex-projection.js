@@ -89,8 +89,13 @@ Codex has no hook bus. The commit-guard, secret-guard, injection-scanner, and ch
 // when verb is null). The prompt's job is to point at the engine, not
 // reimplement it: the engine (SKILL.md) is the single source of truth.
 function codexPromptFor(verb, description, argHint, skillMainAbsPath) {
-  let frontmatter = `---\ndescription: ${description}\n`;
-  if (argHint) frontmatter += `argument-hint: ${argHint}\n`;
+  // Quote the frontmatter scalars: several command descriptions carry a colon
+  // (e.g. "Capture a seed: work gated on a future trigger"), and an unquoted
+  // `key: a: b` is ambiguous YAML. JSON.stringify yields a valid YAML
+  // double-quoted scalar (same reason GSD yamlQuote()s its descriptions).
+  const yamlScalar = (s) => JSON.stringify(String(s));
+  let frontmatter = `---\ndescription: ${yamlScalar(description)}\n`;
+  if (argHint) frontmatter += `argument-hint: ${yamlScalar(argHint)}\n`;
   frontmatter += '---\n\n';
 
   const action = verb

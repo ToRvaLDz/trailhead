@@ -47,7 +47,13 @@ const workPrompt = codexPromptFor('work', 'Work the next ticket', '[ticket]', '/
 ok('codexPromptFor(work) contains skillMainAbsPath', workPrompt.includes('/c/trailhead/skill/SKILL.md'));
 ok('codexPromptFor(work) contains $ARGUMENTS', workPrompt.includes('$ARGUMENTS'));
 ok('codexPromptFor(work) contains bold verb', workPrompt.includes('**work**'));
-ok('codexPromptFor(work) contains description line', workPrompt.includes('description: Work the next ticket'));
+ok('codexPromptFor(work) contains quoted description line', workPrompt.includes('description: "Work the next ticket"'));
+
+// A description carrying a colon must be YAML-quoted, not emitted raw (else
+// `key: a: b` is ambiguous YAML and a strict parser rejects the frontmatter).
+const colonPrompt = codexPromptFor('seed', 'Capture a seed: work gated on a future trigger', '[text]', '/c/SKILL.md');
+ok('codexPromptFor quotes a colon-bearing description', colonPrompt.includes('description: "Capture a seed: work gated on a future trigger"'));
+ok('codexPromptFor quotes argument-hint', colonPrompt.includes('argument-hint: "[text]"'));
 
 // --- codexPromptFor: bare (smart entry) ---
 const barePrompt = codexPromptFor(null, 'Smart entry', null, '/c/skill/SKILL.md');
