@@ -130,7 +130,7 @@ gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_i
 gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
 gh issue edit <blocked> --add-label "trailhead:blocked"
 # the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
-gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:whiteboard"
 # the whiteboard frontier: map-less loose tickets, its own query
 gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
 # unblock a ticket once its last blocker closes (label only; native edge auto-reflects)
@@ -150,7 +150,7 @@ A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a
 
 **`/trailhead:map`** renders this at low resolution as a read-only dashboard (it changes nothing on its own; see the exhaustion check below), the map body plus the live ticket state, by name:
 - **Destination**: the one-line where-we're-headed.
-- **Frontier**: takeable now (open, unassigned, not blocked/unverified), each with its type.
+- **Frontier**: takeable now (open, unassigned, not blocked/unverified, and **not** `trailhead:whiteboard`, which has its own view), each with its type.
 - **In progress**: claimed tickets, with who holds each.
 - **Blocked**: with what each waits on; flag any **blocked-by drift** (prose `## Blocked by` ≠ native dependency, see [Blocked-by reconciliation](#substrate-github-issues)) as an advisory line.
 - **Decisions so far**: the index of what's settled.
