@@ -26,11 +26,13 @@ jobs:
       - name: Setup Node + npm registry
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.1)
-        run: npm install -g npm@latest
+        # Pinned to 11.x: npm@latest (12.x) requires Node >= 22.22, which the
+        # runner may not have; npm@11 supports Trusted Publishing and runs here.
+        run: npm install -g npm@11
 
       - name: Verify package.json version matches the release tag
         if: github.event_name == 'release'
