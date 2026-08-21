@@ -75,12 +75,13 @@ Each **ticket** is a child issue with a type label and a one-question body. The 
 
 As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached.
 
-A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in two **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
+A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 
 - **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
 - **`trailhead:conventions`**: the project's **way of working**, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: none|worktree|clone`) over human prose. `/trailhead:adopt` and `:new` ask for it up front. `isolation: worktree` gives each executing ticket its own `git worktree` + branch (concurrent sessions on one clone never share a working tree); `isolation: clone` gives it a dedicated clone instead, for path-bound apps a worktree can't build.
+- **`trailhead:dashboard`**: the pinned index of the whole surface, a link to every open map (with GitHub's native progress bars), the whiteboard, and live counts (inbox, whiteboard frontier). Refreshed when a map is charted or exhausted, and on demand via `/trailhead:dashboard`.
 
-Together with the map, these three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away. Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue.
+These three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away; **maps themselves are never pinned** (they're indexed by the dashboard instead, since the "active" map is per-checkout local state, not a repo-global fact). Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue.
 
 ---
 
@@ -166,6 +167,7 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:split [ticket]` | split an oversized ticket into children, supersede the original |
 | `/trailhead:grill [topic]` | run a standalone grilling session on a decision/topic |
 | `/trailhead:map` | show the low-res map (destination, decisions, frontier, fog) |
+| `/trailhead:dashboard` | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
 
 ### Capture: zero friction, one confirmation line, resolves nothing
 
@@ -224,7 +226,7 @@ Two rules of thumb: build tickets **never auto-grill**: on blocking ambiguity th
 Everything the map needs is expressed as GitHub labels, so state is queryable in the tracker UI:
 
 - **Structural:** `trailhead:map`, `trailhead:ticket`
-- **Repo-scoped anchors (one each per repo):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working)
+- **Repo-scoped anchors (one each per repo, pinned):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working), `trailhead:dashboard` (the pinned index of maps + whiteboard + counts)
 - **Type (one per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 - **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
