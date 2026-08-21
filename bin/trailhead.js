@@ -3,16 +3,18 @@
 // trailhead installer: places the skill, commands, hooks, and templates into
 // an agent's config dir, and registers the hooks in settings.json.
 // No dependencies. Idempotent. Usage:
-//   npx @marcomigozzi/trailhead                install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
-//   npx @marcomigozzi/trailhead --host=codex    install for Codex ($CODEX_HOME or ~/.codex)
-//   npx @marcomigozzi/trailhead --symlink       dev install (symlink to the package, live edits; Claude only)
+//   npx @marcomigozzi/trailhead                install (auto-detects the CLI on your PATH; asks if it can't tell)
+//   npx @marcomigozzi/trailhead --claude       force install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
+//   npx @marcomigozzi/trailhead --codex        force install for Codex ($CODEX_HOME or ~/.codex)
+//   npx @marcomigozzi/trailhead --symlink      dev install (symlink to the package, live edits; Claude only)
 //   npx @marcomigozzi/trailhead --uninstall
 //   npx @marcomigozzi/trailhead --dir=/path/to/configdir
 //
 // Multi-host: host layout/behaviour comes from bin/lib/host-descriptor.js
 // (the descriptor table for claude/codex) and, for Codex, the artifact
 // projection in bin/lib/codex-projection.js (engine text rewrites, prompt
-// generation). Interactive host prompt only fires on a TTY with no --host.
+// generation). With no --codex/--claude flag the host is auto-detected from
+// the CLIs on $PATH; the interactive prompt only fires when that is ambiguous.
 
 const fs = require('fs');
 const os = require('os');
@@ -29,7 +31,6 @@ const has = (f) => args.includes(f);
 const useSymlink = has('--symlink');
 const uninstall = has('--uninstall');
 const dirArg = (args.find((a) => a.startsWith('--dir=')) || '').split('=')[1];
-const hostArg = (args.find((a) => a.startsWith('--host=')) || '').split('=')[1];
 
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
 const ensure = (p) => fs.mkdirSync(p, { recursive: true });
@@ -37,35 +38,68 @@ const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 const writeJSON = (p, o) => { ensure(path.dirname(p)); fs.writeFileSync(p, JSON.stringify(o, null, 2) + '\n'); };
 
 // --- host resolution -------------------------------------------------------
-// --host=<name> wins outright (validated against the descriptor table).
-// Otherwise, an interactive TTY gets asked; a non-interactive run (npx/CI,
-// no stdin TTY) defaults to claude so scripted installs never hang on a
-// prompt that has nobody to answer it.
-function promptForHost() {
+// Explicit --codex / --claude win outright. With neither, the host is
+// auto-detected from the CLIs on $PATH: exactly one found -> install for it,
+// no question; ambiguous (none, or several) on an interactive TTY -> ask; an
+// ambiguous non-interactive run (npx/CI, or --dir=) falls back to claude so
+// scripted installs never hang on a prompt nobody can answer.
+const KNOWN_HOSTS = ['claude', 'codex']; // preference order for the fallback; mirrors host-descriptor HOSTS
+
+// True if an executable named `bin` sits in one of $PATH's directories. No
+// child process: we just probe each PATH entry for an executable file.
+function isOnPath(bin, env = process.env) {
+  for (const dir of (env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+      return true;
+    } catch { /* not here, keep looking */ }
+  }
+  return false;
+}
+
+function detectInstalledHosts(env = process.env) {
+  return KNOWN_HOSTS.filter((name) => isOnPath(name, env));
+}
+
+function promptForHost(detected = []) {
+  const mark = (name) => (detected.includes(name) ? '  (detected)' : '');
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question('Install trailhead for which host?\n  1) Claude Code (default)\n  2) Codex\n> ', (answer) => {
-      rl.close();
-      const choice = String(answer).trim().toLowerCase();
-      resolve(choice === '2' || choice === 'codex' ? 'codex' : 'claude');
-    });
+    rl.question(
+      'Install trailhead for which host?\n' +
+        `  1) Claude Code${mark('claude')} (default)\n` +
+        `  2) Codex${mark('codex')}\n> `,
+      (answer) => {
+        rl.close();
+        const choice = String(answer).trim().toLowerCase();
+        resolve(choice === '2' || choice === 'codex' ? 'codex' : 'claude');
+      }
+    );
   });
 }
 
 async function resolveHostName() {
-  if (hostArg) {
-    try {
-      getHost(hostArg); // throws on an unknown host name
-      return hostArg;
-    } catch (e) {
-      console.error(e.message);
-      process.exit(1);
-    }
+  const wantCodex = has('--codex');
+  const wantClaude = has('--claude');
+  if (wantCodex && wantClaude) {
+    console.error('Pass only one of --codex or --claude.');
+    process.exit(1);
   }
-  // --dir= alone signals scripted/automation usage (tests, CI harnesses),
-  // even when stdin happens to be a TTY, so it does not trigger the prompt.
+  if (wantCodex) return 'codex';
+  if (wantClaude) return 'claude';
+
+  // No explicit flag: auto-detect from the CLIs on $PATH.
+  const detected = detectInstalledHosts();
+  if (detected.length === 1) {
+    console.log(`Detected ${getHost(detected[0]).label} on your PATH; installing for it.`);
+    return detected[0];
+  }
+  // --dir= alone signals scripted/automation usage (tests, CI harnesses), even
+  // when stdin happens to be a TTY, so it never triggers the prompt. Ambiguous
+  // (0 or 2+ CLIs) + interactive -> ask; otherwise fall back to claude.
   if (process.stdin.isTTY && !dirArg) {
-    return promptForHost();
+    return promptForHost(detected);
   }
   return 'claude';
 }
