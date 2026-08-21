@@ -39,6 +39,14 @@ assert.throws(() => getHost('gemini'), /gemini/i, 'getHost(gemini) throws naming
 ok('getHost(gemini) throws', (() => {
   try { getHost('gemini'); return false; } catch { return true; }
 })());
+// Inherited prototype keys are not hosts: getHost must throw, not hand back an
+// Object.prototype member (own-property check, not a bare index truthiness test).
+ok('getHost(toString) throws (no prototype-chain leak)', (() => {
+  try { getHost('toString'); return false; } catch { return true; }
+})());
+ok('getHost(constructor) throws (no prototype-chain leak)', (() => {
+  try { getHost('constructor'); return false; } catch { return true; }
+})());
 
 // --- frozen descriptors ---
 ok('getHost(codex) descriptor is frozen', Object.isFrozen(codex));

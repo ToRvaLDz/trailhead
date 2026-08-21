@@ -107,11 +107,13 @@ const HOSTS = Object.freeze({
 // both the offender and the known hosts, so a typo fails loud at the call
 // site instead of silently returning undefined.
 function getHost(name) {
-  const host = HOSTS[name];
-  if (!host) {
+  // Own-property check, not `HOSTS[name]`: a bare index walks the prototype
+  // chain, so inherited keys ('toString', 'constructor', ...) would slip past
+  // a truthiness guard and hand back a non-descriptor instead of throwing.
+  if (!Object.prototype.hasOwnProperty.call(HOSTS, name)) {
     throw new Error(`host-descriptor: unknown host "${name}" (known hosts: ${Object.keys(HOSTS).join(', ')})`);
   }
-  return host;
+  return HOSTS[name];
 }
 
 // Normalize a "host" argument that may already be a descriptor (has `axes`)
