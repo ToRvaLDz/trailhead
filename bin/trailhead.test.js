@@ -47,6 +47,11 @@ ok('codex: SKILL.md engine body has no /trailhead: substring', !engineBody.inclu
 
 ok('codex: references/techniques/grilling.md exists', fs.existsSync(path.join(codexDir, 'trailhead', 'skill', 'references', 'techniques', 'grilling.md')));
 
+const codexTemplate = path.join(codexDir, 'trailhead', 'templates', 'trailhead-commit-msg');
+ok('codex: commit-msg template projected', fs.existsSync(codexTemplate));
+ok('codex: commit-msg template is verbatim (not converted)',
+  fs.readFileSync(codexTemplate, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg'), 'utf8'));
+
 ok('codex: no agents dir', !fs.existsSync(path.join(codexDir, 'agents')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
 

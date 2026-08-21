@@ -35,6 +35,7 @@ const layout = codexLayout('/c');
 ok('codexLayout skillMain', layout.skillMain === '/c/trailhead/skill/SKILL.md');
 ok('codexLayout promptsDir', layout.promptsDir === '/c/prompts');
 ok('codexLayout versionFile', layout.versionFile === '/c/trailhead/VERSION');
+ok('codexLayout templatesDir', layout.templatesDir === '/c/trailhead/templates');
 
 // --- codexSkillAdapterHeader ---
 const header = codexSkillAdapterHeader();

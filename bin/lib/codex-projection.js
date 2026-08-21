@@ -27,6 +27,7 @@ function codexLayout(codexHome) {
     skillMain: path.join(skillDir, 'SKILL.md'),
     referencesDir: path.join(skillDir, 'references'),
     versionFile: path.join(trailheadDir, 'VERSION'),
+    templatesDir: path.join(trailheadDir, 'templates'),
   };
 }
 

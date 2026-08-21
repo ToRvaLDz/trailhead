@@ -216,6 +216,13 @@ function installCodex(configDir, { useSymlink }) {
   rmrf(L.skillDir);
   copySkillConverted(path.join(SRC, 'skills', 'trailhead'), L.skillDir, true);
 
+  // Templates (verbatim, never converted): the commit-msg git hook the engine
+  // installs into .git/hooks at repo first-use lives here, reachable on Codex
+  // exactly as on Claude Code. Decision #16 / ticket #22.
+  rmrf(L.templatesDir);
+  ensure(L.templatesDir);
+  fs.cpSync(path.join(SRC, 'templates'), L.templatesDir, { recursive: true });
+
   // Prompts: clear out any previously generated trailhead prompts, then regenerate.
   rmrf(path.join(L.promptsDir, 'trailhead.md'));
   for (const f of fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : []) {
@@ -249,6 +256,7 @@ function installCodex(configDir, { useSymlink }) {
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  prompts → ${L.promptsDir}/  (/trailhead-*)`);
   console.log(`  skill   → ${L.skillMain}`);
+  console.log(`  templates → ${L.templatesDir}/`);
   console.log('  no hooks (Codex has no hook bus)');
   console.log('\nRestart or reload Codex to pick up the prompts, then run /trailhead to start.');
 }
