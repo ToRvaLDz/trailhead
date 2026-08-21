@@ -108,8 +108,11 @@ The tracker is GitHub via the `gh` CLI (account already authenticated). **Never 
 - **`trailhead:superseded`**: closed because split into child tickets that replace it (see [Working as a team](#working-as-a-team)); *not* resolved, and out of `Decisions so far`.
 - **`trailhead:unverified`**: a `trailhead:*` issue whose provenance isn't trusted (see [Trust & provenance](#working-as-a-team)); quarantined off the frontier until a maintainer adopts or rejects it.
 - **`trailhead:fog`**: an in-scope-but-not-yet-sharp issue (usually an inbound suggestion) **kept open as a clarification space** (visible and tracked, off the frontier and out of the inbox) where the reporter and others discuss until it's sharp enough to graduate into a ticket. See [Inbox](#inbox-issues-opened-by-others).
+- **`trailhead:whiteboard`**: a **map-less** ticket, parked on the **whiteboard** (the container for work not tied to any map). **Mutually exclusive with a `trailhead:map-<n>` label**: a ticket is on a map or on the whiteboard, never both, and a whiteboard ticket has no `Parent:` line and no native sub-issue edge. It carries its own frontier (below), off every map's. Captured there when a capture is routed to the whiteboard, or born there by `quick`; see [The whiteboard](#the-whiteboard-map-less-tickets).
 
-**Frontier** = open, unassigned tickets that are **not** `trailhead:blocked` and **not** `trailhead:unverified`. That's the whole query: the labels are the pre-computed answers to "are all blockers closed?" and "is this a trusted trailhead ticket?", so no per-ticket body parsing. **With more than one live map on the repo**, add the active map's `trailhead:map-<n>` label to scope the frontier to that map (still one query); with a single map the repo-wide query above is the frontier. See [Multiple maps on one repo](#multiple-maps-on-one-repo-parking--concurrency).
+**Frontier** = open, unassigned tickets that are **not** `trailhead:blocked` and **not** `trailhead:unverified`. That's the whole query: the labels are the pre-computed answers to "are all blockers closed?" and "is this a trusted trailhead ticket?", so no per-ticket body parsing. **With more than one live map on the repo**, add the active map's `trailhead:map-<n>` label to scope the frontier to that map (still one query); with a single map the repo-wide query below is the frontier. See [Multiple maps on one repo](#multiple-maps-on-one-repo-parking--concurrency).
+
+**Map frontier vs whiteboard frontier.** The whiteboard (tickets labelled `trailhead:whiteboard`, map-less) has its **own** frontier, queried by that label with the same open/unassigned/not-blocked/not-unverified filter, and it is **excluded from every map frontier**: the multi-map query already excludes it (whiteboard tickets carry no `trailhead:map-<n>`), and the single-map repo-wide query adds `-label:trailhead:whiteboard`. So a map's frontier and the whiteboard's never overlap. `/trailhead:whiteboard` renders the whiteboard frontier; `/trailhead:map` and bare `/trailhead:work` stay on the map. See [The whiteboard](#the-whiteboard-map-less-tickets).
 
 **Blocked-by reconciliation (drift check).** The `## Blocked by` prose and the native dependency are two copies of one fact, so they can drift (it has happened: a body naming the split-*origin* while the native edge pointed at the sibling). When rendering `/trailhead:map` and before working a ticket, **reconcile them deterministically**: parse the issue numbers in the ticket's `## Blocked by`, read its native `blocked_by` (`gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by`), and if the two sets differ, **surface an advisory** naming both sides (the native edge is the structured reference); never auto-fix, never block. If the body has no parseable `## Blocked by`, report it **uncheckable**, never assume they agree. This is the one deterministic, false-positive-free consistency axis; higher-level "does a ticket contradict the map's decisions" drift is left to human judgement.
 
@@ -124,8 +127,10 @@ gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_i
 # wire a blocker: native dependency (visual frontier in the UI) + the label (the query)
 gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
 gh issue edit <blocked> --add-label "trailhead:blocked"
-# the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live)
+# the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
 gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+# the whiteboard frontier: map-less loose tickets, its own query
+gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
 # unblock a ticket once its last blocker closes (label only; native edge auto-reflects)
 gh issue edit <n> --remove-label "trailhead:blocked"
 # claim
@@ -134,7 +139,7 @@ gh issue edit <n> --add-assignee @me
 gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 ```
 **First-use repo setup (do BOTH, every chart or adopt, never skip either):**
-1. Create any missing labels with `gh label create` (all sixteen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`).
+1. Create any missing labels with `gh label create` (all seventeen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`, `trailhead:whiteboard`).
 2. **Check the label guard is installed**: `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it: **read `references/teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. This is part of standing up trailhead in a repo, not an optional extra: *check every time*, so a repo can never end up with the labels but no guard.
 
 ## The Map
