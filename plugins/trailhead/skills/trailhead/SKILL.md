@@ -363,6 +363,8 @@ gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state ope
 
 Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both.
 
+**Ensure the label exists before applying it.** A repo that adopted trailhead before the whiteboard existed never created `trailhead:whiteboard` (first-use setup ran the old label set), so applying it would fail. Every path that puts a ticket on the whiteboard (a whiteboard-routed [capture](#capture-zero-friction--tracker), or [`quick`](#quick-work-one-ticket-whole-off-the-map) creating one) must first create the label if missing, idempotently: `gh label create trailhead:whiteboard --color C5DEF5 --description "Map-less ticket: lives on the whiteboard" 2>/dev/null || true`. This is the same ensure the first-use label step does, just reachable outside chart/adopt.
+
 Work reaches the whiteboard two ways: a **capture routed there** (a ticket-producing `todo`/`bug`/`seed`/sharp-`idea` sent to the whiteboard instead of a map, see [Capture](#capture-zero-friction--tracker)), or a ticket **born there** by [`quick "<text>"`](#quick-work-one-ticket-whole-off-the-map).
 
 It has its **own frontier**, off every map's (see [Substrate](#substrate-github-issues), Map frontier vs whiteboard frontier):
