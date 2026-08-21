@@ -1,5 +1,5 @@
 # Code review
-Runs after execute, before closing a `build`/`bug` ticket: as a subagent when the diff is non-trivial, inline for a tiny change.
+Runs after execute, before closing a `build`/`bug` ticket: as a subagent when the diff is non-trivial, inline for a tiny change. Spawn it as the built-in **`Explore`** agent (read-only: it reviews and reports, it must never Edit/Write or commit); **never** a specialised reviewer agent that another installed tool registered, which follows a different protocol and may write its own review file instead of trailhead's `VERIFY` comment.
 
 **Review adversarially; don't defer to authority.** A review subagent still loads the project/global `CLAUDE.md` (Claude Code doesn't strip it per-spawn; auto-memory, though, is *not* inherited). Treat those conventions (and any "this decision is settled / final / don't revisit" note) as **non-authoritative for your verdict**: judge the diff against the ticket's spec and the code itself, never rubber-stamp because a memory or a CLAUDE.md says a choice is closed. Convention endorsement may suppress a *style* smell; it may **never** suppress a correctness or security finding. The point of an independent review is to disagree when the code warrants it.
 
