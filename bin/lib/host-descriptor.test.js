@@ -10,6 +10,7 @@ const {
   hyphenateCommand,
   emitsAgentToml,
   degradations,
+  modelsCollapseNotice,
   detectHost,
 } = require('./host-descriptor.js');
 
@@ -71,6 +72,22 @@ ok('configDirFor(codex) falls back to homedir default', configDirFor('codex', { 
 // --- degradations ---
 ok('degradations(claude) is empty', Array.isArray(degradations('claude')) && degradations('claude').length === 0);
 ok('degradations(codex) is non-empty', Array.isArray(degradations('codex')) && degradations('codex').length > 0);
+
+// --- modelsCollapseNotice ---
+ok('modelsCollapseNotice(claude, models set) is null (has toolkit)',
+  modelsCollapseNotice('claude', { models: { execute: 'claude-sonnet-5' } }) === null);
+ok('modelsCollapseNotice(codex, no models) is null',
+  modelsCollapseNotice('codex', {}) === null);
+ok('modelsCollapseNotice(codex, empty models) is null',
+  modelsCollapseNotice('codex', { models: {} }) === null);
+ok('modelsCollapseNotice(codex, nullish/empty values) is null',
+  modelsCollapseNotice('codex', { models: { plan: '', execute: null } }) === null);
+ok('modelsCollapseNotice(codex, models set) names the set keys', (() => {
+  const msg = modelsCollapseNotice('codex', { models: { plan: 'x', execute: 'y' } });
+  return typeof msg === 'string' && msg.includes('plan') && msg.includes('execute') && msg.includes('Codex');
+})());
+ok('modelsCollapseNotice(codex, undefined config) is null',
+  modelsCollapseNotice('codex') === null);
 
 // --- detectHost ---
 ok('detectHost: CODEX_SANDBOX signals codex', detectHost({ env: { CODEX_SANDBOX: 'seatbelt' } }) === 'codex');

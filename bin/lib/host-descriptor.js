@@ -183,6 +183,31 @@ function degradations(host) {
   return entries;
 }
 
+// --- Helper: modelsCollapseNotice --------------------------------------------
+// The one-time notice the engine surfaces at session start when models.* is
+// configured on a subagent-less host, where it cannot take effect: every
+// activity collapses to the single session model (see degradations()). Pure:
+// returns the notice string, or null when there is nothing to say (the host
+// has a subagent toolkit, or no models.* is set). The caller owns the
+// "one-time" bookkeeping (a marker file) and how the string is shown, so this
+// stays pure and trivially testable, mirroring detectHost/degradations.
+function modelsCollapseNotice(host, config) {
+  const descriptor = resolveHost(host);
+  if (descriptor.axes.subagentToolkit !== 'none') return null;
+  const models = config && typeof config === 'object' ? config.models : null;
+  if (!models || typeof models !== 'object') return null;
+  const set = Object.keys(models).filter(
+    (k) => models[k] != null && String(models[k]).trim() !== ''
+  );
+  if (set.length === 0) return null;
+  return (
+    `Heads up: trailhead is running on ${descriptor.label}, which has no ` +
+    `subagent fan-out, so your models.* setting (${set.join(', ')}) cannot ` +
+    `take effect here. Every activity runs inline on the one session model. ` +
+    `The keys stay in .trailhead/config.json and apply again on Claude Code.`
+  );
+}
+
 // --- Runtime host detection --------------------------------------------------
 // Mirrors GSD's host-runtime-detection.cjs in shape: a short signal ladder,
 // wrapped so it NEVER throws. This is what lets the engine's inline rules
@@ -246,6 +271,7 @@ module.exports = {
   hyphenateCommand,
   emitsAgentToml,
   degradations,
+  modelsCollapseNotice,
   detectHost,
   CODEX_SESSION_ENV_SIGNALS,
   CODEX_HOME_ENV,
