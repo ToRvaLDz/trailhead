@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
 *.log
+.trailhead/session-ticket
+.trailhead/active-map

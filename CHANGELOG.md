@@ -2,6 +2,24 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.3.0 (2026-08-21)
+
+### Added
+- **The whiteboard: map-less tickets.** Loose work that belongs to no map (a bug, a todo, a one-off task) now lives on the **whiteboard**: tickets labelled `trailhead:whiteboard`, with their own frontier, excluded from every map frontier. New `/trailhead:whiteboard` view. Ticket-producing captures (`todo`/`bug`/`seed`/sharp `idea`) ask, when a map is open, whether the ticket lands on the active map or the whiteboard.
+- **`/trailhead:quick`: work one ticket whole, off the map.** `quick "<text>"` opens a whiteboard ticket and works it end to end now; `quick <n>` works an existing one. Runs the full discuss→plan→execute→verify engine, grills only if needed, never splits. Bare `/trailhead:quick` asks for the piece.
+- **The dashboard: a pinned per-repo index.** A single `trailhead:dashboard` issue, pinned in the fixed 3rd slot (alongside codebase + conventions), indexes every open map (native progress bars), the whiteboard, and live counts. New `/trailhead:dashboard` regenerates and shows it. Read-only entry points (`/trailhead`, `/trailhead:map`, `/trailhead:whiteboard`) **self-heal** the pin, so a repo that adopted trailhead before the dashboard existed gets one on the next bare `/trailhead`.
+
+### Changed / Fixed
+- **Smart entry no longer dead-ends on an empty frontier.** When a map is complete-except-gated (everything left is gated or still fog), smart entry lays out the sensible next moves and surfaces `/trailhead:quick` as the off-map path, alongside `/trailhead:map`, `/trailhead:whiteboard`, `/trailhead:new`, and the captures.
+- **Session handoff offers off-map work.** The handoff block may now offer `/trailhead:quick` after `/clear`, carrying its seed text when a concrete off-map piece is at hand. The free-text rule is restated by its real reason (a handoff command must be self-sufficient or safe to hand-type): `work` always takes a number, `:ticket` is never pre-filled (it needs the diverge-first framing), and `quick`'s forgiving seed text is the one argument allowed there.
+- **`work <n>` can take a whiteboard ticket**; bare `work` stays on the map.
+- **Ticket-language rule** now names `quick` explicitly: the `"<text>"` seed is chat-language input, but the ticket it opens is written in `config.ticket.language`.
+- Technique subagents pinned to built-in agent types.
+- **Command frontmatter fix.** Quoted the `description:` in `todo`/`adopt`/`seed` (each held an internal `: `, which YAML read as a nested mapping and rejected). All command frontmatter now parses.
+
+### Docs
+- README documents the whiteboard and quick; argument-hint, smart entry, and capture surfaces updated.
+
 ## 0.2.0 (2026-08-21)
 
 ### Added
