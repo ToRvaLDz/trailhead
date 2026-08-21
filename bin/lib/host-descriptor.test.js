@@ -1,0 +1,83 @@
+#!/usr/bin/env node
+// Tests for host-descriptor.js. Run: node host-descriptor.test.js
+// No framework: plain asserts, mirrors the style of trailhead-secret-guard.test.js.
+const assert = require('assert');
+const {
+  AXES,
+  HOSTS,
+  getHost,
+  configDirFor,
+  hyphenateCommand,
+  emitsAgentToml,
+  degradations,
+  detectHost,
+} = require('./host-descriptor.js');
+
+let passed = 0;
+const ok = (name, cond) => { assert.ok(cond, name); passed++; };
+
+// --- AXES ---
+ok('AXES is frozen', Object.isFrozen(AXES));
+ok('AXES.commandSurface is frozen and correct', Object.isFrozen(AXES.commandSurface) &&
+  AXES.commandSurface.length === 2 &&
+  AXES.commandSurface.includes('slash-file') && AXES.commandSurface.includes('hyphen-prompt'));
+ok('AXES.subagentToolkit is frozen and correct', Object.isFrozen(AXES.subagentToolkit) &&
+  AXES.subagentToolkit.length === 2 &&
+  AXES.subagentToolkit.includes('full') && AXES.subagentToolkit.includes('none'));
+ok('AXES.hookBus is frozen and correct', Object.isFrozen(AXES.hookBus) &&
+  AXES.hookBus.length === 2 &&
+  AXES.hookBus.includes('host') && AXES.hookBus.includes('none'));
+
+// --- getHost ---
+const claude = getHost('claude');
+const codex = getHost('codex');
+ok('getHost(claude) has correct axes', claude.axes.commandSurface === 'slash-file' &&
+  claude.axes.subagentToolkit === 'full' && claude.axes.hookBus === 'host');
+ok('getHost(codex) has correct axes', codex.axes.commandSurface === 'hyphen-prompt' &&
+  codex.axes.subagentToolkit === 'none' && codex.axes.hookBus === 'none');
+assert.throws(() => getHost('gemini'), /gemini/i, 'getHost(gemini) throws naming the unknown host');
+ok('getHost(gemini) throws', (() => {
+  try { getHost('gemini'); return false; } catch { return true; }
+})());
+
+// --- frozen descriptors ---
+ok('getHost(codex) descriptor is frozen', Object.isFrozen(codex));
+ok('getHost(claude) descriptor is frozen', Object.isFrozen(claude));
+ok('HOSTS is frozen', Object.isFrozen(HOSTS));
+
+// --- emitsAgentToml ---
+ok('emitsAgentToml(claude) === false', emitsAgentToml('claude') === false);
+ok('emitsAgentToml(codex) === false', emitsAgentToml('codex') === false);
+
+// --- hyphenateCommand ---
+ok('hyphenateCommand strips leading slash and replaces colon', hyphenateCommand('/trailhead:work') === 'trailhead-work');
+ok('hyphenateCommand handles no leading slash', hyphenateCommand('trailhead:work') === 'trailhead-work');
+ok('hyphenateCommand handles no colon', hyphenateCommand('/trailhead') === 'trailhead');
+
+// --- configDirFor ---
+ok('configDirFor(claude) uses env override', configDirFor('claude', { env: { CLAUDE_CONFIG_DIR: '/x/y' }, homedir: '/home/u' }) === '/x/y');
+ok('configDirFor(claude) falls back to homedir default', configDirFor('claude', { env: {}, homedir: '/home/u' }).endsWith('/home/u/.claude') ||
+  configDirFor('claude', { env: {}, homedir: '/home/u' }) === require('path').join('/home/u', '.claude'));
+ok('configDirFor(codex) falls back to homedir default', configDirFor('codex', { env: {}, homedir: '/home/u' }) === require('path').join('/home/u', '.codex'));
+
+// --- degradations ---
+ok('degradations(claude) is empty', Array.isArray(degradations('claude')) && degradations('claude').length === 0);
+ok('degradations(codex) is non-empty', Array.isArray(degradations('codex')) && degradations('codex').length > 0);
+
+// --- detectHost ---
+ok('detectHost: CODEX_SANDBOX signals codex', detectHost({ env: { CODEX_SANDBOX: 'seatbelt' } }) === 'codex');
+ok('detectHost: CODEX_SANDBOX_NETWORK_DISABLED signals codex', detectHost({ env: { CODEX_SANDBOX_NETWORK_DISABLED: '1' } }) === 'codex');
+ok('detectHost: CODEX_HOME with marker file signals codex', detectHost({
+  env: { CODEX_HOME: '/c' },
+  fileExists: (p) => p === '/c/config.toml',
+}) === 'codex');
+ok('detectHost: CODEX_HOME without marker file falls back to claude', detectHost({
+  env: { CODEX_HOME: '/c' },
+  fileExists: () => false,
+}) === 'claude');
+ok('detectHost: no signals falls back to claude', detectHost({ env: {} }) === 'claude');
+ok('detectHost: never throws, degrades to claude', detectHost({
+  env: new Proxy({}, { get() { throw new Error('boom'); } }),
+}) === 'claude');
+
+console.log(`✓ host-descriptor: ${passed} assertions passed`);
