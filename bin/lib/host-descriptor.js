@@ -208,6 +208,26 @@ function modelsCollapseNotice(host, config) {
   );
 }
 
+// --- Helper: updateNotice -----------------------------------------------------
+// The one-line update notice the engine surfaces at session start on a host
+// WITHOUT a hook bus (no SessionStart check-update hook, no statusline flag):
+// there the engine runs the throttled check inline and shows this. Pure: given
+// the host and a parsed update-check cache object, returns the notice string,
+// or null when nothing should be shown (the host has a hook bus, or no update
+// is available). Keying on hookBus === 'none' means it never fires on a host
+// that already notifies via the hook + statusline (no double-notify). The
+// caller owns the cache I/O and throttling, mirroring modelsCollapseNotice.
+function updateNotice(host, cache) {
+  const descriptor = resolveHost(host);
+  if (descriptor.axes.hookBus !== 'none') return null;
+  if (!cache || typeof cache !== 'object' || !cache.updateAvailable) return null;
+  const latest = String(cache.latest || '').trim();
+  const installed = String(cache.installed || '').trim();
+  const ver = latest ? ` ${latest}` : '';
+  const from = installed ? ` (you have ${installed})` : '';
+  return `Heads up: trailhead${ver} is available${from}. Run /trailhead:update to install it.`;
+}
+
 // --- Runtime host detection --------------------------------------------------
 // Mirrors GSD's host-runtime-detection.cjs in shape: a short signal ladder,
 // wrapped so it NEVER throws. This is what lets the engine's inline rules
@@ -272,6 +292,7 @@ module.exports = {
   emitsAgentToml,
   degradations,
   modelsCollapseNotice,
+  updateNotice,
   detectHost,
   CODEX_SESSION_ENV_SIGNALS,
   CODEX_HOME_ENV,

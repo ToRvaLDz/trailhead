@@ -11,6 +11,7 @@ const {
   emitsAgentToml,
   degradations,
   modelsCollapseNotice,
+  updateNotice,
   detectHost,
 } = require('./host-descriptor.js');
 
@@ -88,6 +89,18 @@ ok('modelsCollapseNotice(codex, models set) names the set keys', (() => {
 })());
 ok('modelsCollapseNotice(codex, undefined config) is null',
   modelsCollapseNotice('codex') === null);
+
+// --- updateNotice ---
+ok('updateNotice(codex, update available) is a non-null string naming the version', (() => {
+  const msg = updateNotice('codex', { updateAvailable: true, latest: '0.3.0', installed: '0.2.0' });
+  return typeof msg === 'string' && msg.includes('0.3.0');
+})());
+ok('updateNotice(codex, no update available) is null',
+  updateNotice('codex', { updateAvailable: false }) === null);
+ok('updateNotice(codex, null cache) is null',
+  updateNotice('codex', null) === null);
+ok('updateNotice(claude, update available) is null (claude has a hook bus)',
+  updateNotice('claude', { updateAvailable: true, latest: '0.3.0' }) === null);
 
 // --- detectHost ---
 ok('detectHost: CODEX_SANDBOX signals codex', detectHost({ env: { CODEX_SANDBOX: 'seatbelt' } }) === 'codex');
