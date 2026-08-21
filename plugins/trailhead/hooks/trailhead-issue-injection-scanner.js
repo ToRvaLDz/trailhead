@@ -5,7 +5,7 @@
 // prompt-injection patterns and, on a hit, injects an advisory reminding the
 // agent to treat the content as DATA, never as instructions.
 // Advisory only. Never blocks. Crash-safe: any error → exit 0.
-// Pattern set mirrors GSD's gsd-read-injection-scanner.js; self-contained.
+// Self-contained pattern set, no dependencies.
 
 const INJECTION_PATTERNS = [
   /ignore\s+(all\s+)?previous\s+instructions/i,

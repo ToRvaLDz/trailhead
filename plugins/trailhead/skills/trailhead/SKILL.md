@@ -6,11 +6,11 @@ argument-hint: "[new|adopt|work|ticket|inbox|map|config|grill|split|pause|resume
 
 A loose idea has arrived, too big for one session: the way from here to the **destination** isn't visible yet. `trailhead` is where the trail begins. It charts the way as a **shared map on GitHub Issues**, then works its **tickets**, one at a time, until the road is clear and the destination reached.
 
-The method fuses two lineages, both as **inspiration**; `trailhead`'s core invokes no other skill and depends on nothing but an authenticated `gh` CLI (the one opt-in exception: `claude.ai/design` mockup mode uses **DesignSync** (the `claude_design` MCP + `/design-sync` skill) to push to a design-system project, and falls back to disk if it's unavailable):
-- **From Wayfinder: the map.** Question-driven onboarding, the destination named first, the frontier, the fog of war, reference *by name*, one ticket per session.
-- **From GSD: the engine.** Zero-friction capture and the `discuss → plan → execute → verify` cycle with atomic commits that resolves each build ticket *inside* the map.
+The method fuses two halves; `trailhead`'s core invokes no other skill and depends on nothing but an authenticated `gh` CLI (the one opt-in exception: `claude.ai/design` mockup mode uses **DesignSync** (the `claude_design` MCP + `/design-sync` skill) to push to a design-system project, and falls back to disk if it's unavailable):
+- **The map.** Question-driven onboarding, the destination named first, the frontier, the fog of war, reference *by name*, one ticket per session.
+- **The engine.** Zero-friction capture and the `discuss → plan → execute → verify` cycle with atomic commits that resolves each build ticket *inside* the map.
 
-The techniques those lineages package as separate skills (grilling, TDD, systematic debugging, codebase mapping, code review) are **built in here as inline protocols** (see [Techniques](#techniques)). `trailhead` is self-contained.
+The techniques commonly packaged as separate skills (grilling, TDD, systematic debugging, codebase mapping, code review) are **built in here as inline protocols** (see [Techniques](#techniques)). `trailhead` is self-contained.
 
 **Everything lives on the Issues.** No `.planning/`: the map is the parent issue, each ticket is a child issue, and discussion / plan / verification are **comments** on the ticket. The repo holds code only.
 
@@ -54,11 +54,11 @@ Every verb is also a **namespaced command** (`/trailhead:new`, `/trailhead:work`
 
 Missing text in a capture → ask for the line. Unrecognised verb → treat the whole string as `idea`.
 
-**Idea vs todo:** `idea` is a maybe-later thought (fog by default, graduates when the frontier reaches it); `todo` is defined work you will do (born a ticket). The test stays Wayfinder's: can you *phrase* the question precisely now? Yes → ticket, no → fog.
+**Idea vs todo:** `idea` is a maybe-later thought (fog by default, graduates when the frontier reaches it); `todo` is defined work you will do (born a ticket). The test: can you *phrase* the question precisely now? Yes → ticket, no → fog.
 
 ## Principles
 
-- **Execution inside the map (default).** Unlike pure Wayfinder ("plan, don't do"), here the map carries **construction** within it: after the decision tickets, build tickets graduate from the fog and are **executed** as children of the map. The destination is the **working** artifact (a deployed app), not a spec document; the spec is a waypoint. *Override:* a project that must stop at the spec declares it in the map's `## Notes` (that wins over this default).
+- **Execution inside the map (default).** Unlike a plan-only approach ("plan, don't do"), here the map carries **construction** within it: after the decision tickets, build tickets graduate from the fog and are **executed** as children of the map. The destination is the **working** artifact (a deployed app), not a spec document; the spec is a waypoint. *Override:* a project that must stop at the spec declares it in the map's `## Notes` (that wins over this default).
 - **Refer by name.** Every map and ticket is an issue, so it has a **title**. In everything the human reads, refer by name, never by a bare `#number`. A wall of `#42, #43, #44` is illegible; names read at a glance. The id and URL don't vanish (a name wraps its link) but they ride *inside* the name. **One exception: a command the user must run.** In `/trailhead:work <ticket>` the argument is machine input, not prose; give the **bare number** there (a long title, with its punctuation and jargon, is awkward and error-prone to type). Name the ticket in the surrounding sentence, put the number in the command.
 - **Result-oriented output.** In the chat, report **what was done and the next step**: refer to tickets by name and give the concrete next command. Do **not** expose trailhead's internal machinery: Mode labels (`Mode 1`, …), protocol/step names (`DISCUSS`/`PLAN`/`VERIFY`, "the build engine", "Session handoff", "graduate the fog", "the frontier"), or wrapper/SKILL.md mechanics. **Nor narrate the conventions and config you are silently obeying**: the git mode (`main`/`pr`), the isolation/worktree decision, submodule commit mechanics (commit-inside + gitlink bump), claim/assignment plumbing, which model ran a step. These are housekeeping you just *do*; reciting them ("the conventions say `git: main`, no worktree isolation, submodule work commits inside + a gitlink bump, and the ticket is already assigned to you") is noise, not a status update. Just act, then report the outcome. Surface a convention only when it **changes what the user must do** (a UAT they run, a release awaiting their command, a genuine claim collision with *another* login) or when they explicitly ask. (A map may reinforce this in its `## Notes`, but it holds regardless.)
 - **No em-dashes.** Write with ordinary punctuation: commas, colons, semicolons, parentheses, periods. Never use an em-dash (U+2014), and never a hyphen standing in for a comma. This holds for **everything trailhead produces**: ticket titles and bodies, engine comments, the map body, commit descriptions, chat output, and the skill's own source docs. En-dashes in numeric ranges (`1–2`) and the arrow `→` in trailhead's notation stay; only the em-dash is banned.
@@ -217,7 +217,7 @@ The map issue title is prefixed 🗺. Keep the icons stable and don't add others
 
 ## Techniques
 
-The ticket engines call these by name. Each technique's full protocol lives in its own file under `references/techniques/`: **read that file the first time a session needs the technique**, so only the ones in play load into context (don't preload them). They are `trailhead`'s own, self-contained (distilled from Wayfinder and GSD); subagents are spawned with the built-in `Agent` tool.
+The ticket engines call these by name. Each technique's full protocol lives in its own file under `references/techniques/`: **read that file the first time a session needs the technique**, so only the ones in play load into context (don't preload them). They are `trailhead`'s own, self-contained; subagents are spawned with the built-in `Agent` tool.
 
 | Technique | File | In one line |
 |---|---|---|

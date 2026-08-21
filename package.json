@@ -1,7 +1,7 @@
 {
   "name": "@marcomigozzi/trailhead",
   "version": "0.1.0",
-  "description": "Start and drive large projects as a map of tickets on GitHub Issues. Wayfinder's map-based onboarding + a discuss→plan→execute→verify engine, all on the Issues. Installs the trailhead skill, commands, and hooks into your agent's config dir.",
+  "description": "Start and drive large projects as a map of tickets on GitHub Issues. Map-based onboarding + a discuss→plan→execute→verify engine, all on the Issues. Installs the trailhead skill, commands, and hooks into your agent's config dir.",
   "bin": {
     "trailhead": "bin/trailhead.js"
   },
@@ -20,8 +20,6 @@
   "keywords": [
     "trailhead",
     "claude-code",
-    "wayfinder",
-    "gsd",
     "github-issues",
     "planning",
     "agent-skill"

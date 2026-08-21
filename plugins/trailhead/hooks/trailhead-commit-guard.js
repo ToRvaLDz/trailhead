@@ -5,7 +5,7 @@
 //   2. Conventional Commits subject: <type>(<scope>)?: <subject>, <=72 chars.
 // Blocks with exit 2 + {"decision":"block","reason":...}; allows everything else.
 // Crash-safe: any error → exit 0 (never wedge the user's workflow).
-// Inspired by GSD's gsd-validate-commit.sh; self-contained, no dependencies.
+// Self-contained, no dependencies.
 
 const TYPES = 'feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert';
 const CONVENTIONAL = new RegExp(`^(${TYPES})(\\([^)]+\\))?!?:\\s.+`);
