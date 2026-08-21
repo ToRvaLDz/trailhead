@@ -1,30 +1,39 @@
 name: Publish to npm
 
-# Pubblica il pacchetto su npm ogni volta che una GitHub Release viene pubblicata.
-# Richiede il secret NPM_TOKEN (un token npm "Automation", che bypassa la 2FA).
+# Pubblica il pacchetto su npm quando una GitHub Release viene pubblicata
+# (o manualmente via "Run workflow"). Usa Trusted Publishing (OIDC): nessun
+# token npm da salvare come secret, l'autenticazione avviene via OIDC a runtime.
+# Prerequisito una-tantum: configurare questo repo + workflow come "trusted
+# publisher" del pacchetto su npmjs.com (Package settings -> Trusted Publisher).
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  id-token: write   # richiesto da Trusted Publishing (OIDC)
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout the released tag
+      - name: Checkout the released tag (or the current ref on manual run)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - name: Setup Node + npm registry auth
+      - name: Setup Node + npm registry
         uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
+
       - name: Verify package.json version matches the release tag
+        if: github.event_name == 'release'
         run: |
           PKG="$(node -p "require('./package.json').version")"
           TAG="${{ github.event.release.tag_name }}"
@@ -35,7 +44,5 @@ jobs:
           fi
           echo "Publishing @marcomigozzi/trailhead@$PKG"
 
-      - name: Publish
+      - name: Publish (OIDC, no token)
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
