@@ -1,0 +1,41 @@
+name: Publish to npm
+
+# Pubblica il pacchetto su npm ogni volta che una GitHub Release viene pubblicata.
+# Richiede il secret NPM_TOKEN (un token npm "Automation", che bypassa la 2FA).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Node + npm registry auth
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify package.json version matches the release tag
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG) does not match release tag ($TAG). Bump the version, then re-cut the release."
+            exit 1
+          fi
+          echo "Publishing @marcomigozzi/trailhead@$PKG"
+
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
