@@ -141,7 +141,7 @@ gh issue comment <n> --body-file <resolution>   &&   gh issue close <n>
 
 A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a store: it lists the decisions made and points at the tickets that hold their detail. A decision lives in exactly one place (its ticket); the map gists it and links.
 
-**`/trailhead:map`** renders this at low resolution as a read-only dashboard (it changes nothing), the map body plus the live ticket state, by name:
+**`/trailhead:map`** renders this at low resolution as a read-only dashboard (it changes nothing on its own; see the exhaustion check below), the map body plus the live ticket state, by name:
 - **Destination**: the one-line where-we're-headed.
 - **Frontier**: takeable now (open, unassigned, not blocked/unverified), each with its type.
 - **In progress**: claimed tickets, with who holds each.
@@ -150,6 +150,7 @@ A single `trailhead:map` issue, the canonical artifact. It's an **index**, not a
 - **Not yet specified** + **parked fog**: the coarse fog, and a count/link of open `trailhead:fog` issues.
 - **Out of scope**: what's been ruled out; **flag as an advisory** any line that's actually **deferred** rather than truly beyond the destination: it **names a gate/trigger** (*gated by X*, *quando X*, *dipende da X*), carries a **this-only qualifier** (*per questo slice*, *for now*, *in this milestone*), is a **feature wanted later** (another milestone/map), or **is the gate of an existing `trailhead:seed`** (a seed's trigger names it, so it cannot be "ruled out", and that cluster is mis-wired). **Flag only lines not yet properly parked**: a line **already annotated `→ future map`** whose dependent seeds are **wired to a live trigger** is settled, say nothing about it. When one or more **un-parked** such lines are present, **don't stay silent: name them and suggest `/trailhead:inbox` to re-route them** (seed/idea/todo). See [Out of scope](#out-of-scope).
 - **Inbox**: a count of untriaged inbound issues, as a nudge.
+- **Exhaustion check**: if the map is exhausted (no open tickets and no fog left: the destination is reached), **say so and ask whether to close the map issue**, the same ask as Mode 2's hand-off: on a yes, unpin it and `gh issue close`; on a no, leave it open (just unpinned). Never close unprompted. Route any un-parked deferred *Out of scope* line first (above) so nothing wanted-later is lost. This user-confirmed close is the only state `/trailhead:map` ever changes, and only on an explicit yes.
 
 Map body (loaded once per session):
 
