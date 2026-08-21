@@ -33,6 +33,8 @@ Every verb is also a **namespaced command** (`/trailhead:new`, `/trailhead:work`
 | `/trailhead:new [idea]` | chart a new map → Mode 1 |
 | `/trailhead:adopt` | adopt an existing project → Mode 1-bis |
 | `/trailhead:work [ticket]` | work the map: the next frontier ticket, or the one you name → Mode 2 |
+| `/trailhead:quick [ticket \| "text"]` | work one ticket whole, off the map: `quick "text"` opens a whiteboard ticket and works it now, `quick <n>` works an existing one; full engine, grills only if needed, never splits |
+| `/trailhead:whiteboard` | show the whiteboard: the loose (map-less) tickets, their frontier and who holds each |
 | `/trailhead:inbox [issue]` | triage issues opened by others and integrate the worthwhile ones into the map |
 | `/trailhead:resume [ticket]` | resume a paused ticket: read its latest `PAUSED` checkpoint and continue |
 | `/trailhead:pause [note]` | checkpoint the ticket in play so it can be resumed later (by you or anyone) |
@@ -290,6 +292,16 @@ A **blocking** bug that halts other work is worked immediately; an isolated one 
 
 ### `task`: HITL or AFK
 Manual work that must happen before a *decision* can be made: signing up for a service to judge its API, provisioning access, moving data to see its shape. The agent drives it alone where it can (AFK); otherwise it hands the human a precise checklist (HITL). Resolved when the work is done; the answer records what was done and the resulting facts (where credentials live, new URLs, row counts) later tickets depend on.
+
+### `quick`: work one ticket whole, off the map
+A streamlined way to just get one ticket done, without map ceremony. `quick "<text>"` opens a **whiteboard** ticket (a `build`, or a `bug` when the text is clearly a defect) and works it end to end now; `quick <n>` works an **existing** ticket (whiteboard or map) the same way. Claim it first; still one ticket per session.
+
+It runs the **full engine** (the `build`/`bug` cycle: Discuss → Plan → Execute → Verify → Resolve), differing from `work` on three points:
+- **Grill only if needed** (Discuss): never auto-grill; start from Plan and stop to ask only if a blocking ambiguity surfaces, exactly as the `build` Discuss. The user may ask to grill at any time.
+- **Never splits.** If the ticket turns out large, work it whole anyway: that is the point of `quick`. Do not `split` it and do not spin children. (New scope that surfaces mid-work is still captured out, never folded in, see [Scope that surfaces while working a ticket](#capture-zero-friction--tracker).)
+- **No map book-keeping.** A whiteboard ticket has no map, so there is no `Decisions so far` update, no fog to graduate, no frontier re-scan. Everything else holds: atomic commits with `Refs: #<n>`, TDD / Code review / Acceptance testing per the cycle, the resolution comment + `gh issue close`, and the [Session handoff](#session-handoff). For `quick <n>` on a **map** ticket it still skips the split and the map book-keeping (that is what `quick` means); use `work <n>` when you want the normal map flow.
+
+Type follows the ticket: `quick "<text>"` defaults to `build` (`bug` if a defect); `quick <n>` uses the existing type and its matching engine.
 
 ## Fog of war
 
