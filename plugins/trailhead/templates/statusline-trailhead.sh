@@ -30,7 +30,7 @@ j() { printf '%s' "$input" | jq -r "$1 // empty" 2>/dev/null; }
 
 # --- colori ANSI (disattivabili con NO_COLOR) ---
 if [ -n "${NO_COLOR:-}" ]; then
-  C_RST= ; C_SEP= ; C_MODEL= ; C_PROJ= ; C_BRANCH= ; C_TICKET= ; C_CTX= ; C_5H= ; C_RESET= ; C_7D=
+  C_RST= ; C_SEP= ; C_MODEL= ; C_PROJ= ; C_BRANCH= ; C_TICKET= ; C_CTX= ; C_5H= ; C_RESET= ; C_7D= ; C_UPDATE=
 else
   e=$'\033['
   C_RST="${e}0m"        # reset
@@ -43,6 +43,7 @@ else
   C_5H="${e}33m"        # finestra 5h: giallo
   C_RESET="${e}32m"     # reset: verde
   C_7D="${e}96m"        # settimana: cyan chiaro
+  C_UPDATE="${e}91m"    # aggiornamento disponibile: rosso chiaro
 fi
 
 # --- modello ---
@@ -300,14 +301,26 @@ if [ "$MODE" = "--usage-only" ]; then
   printf '%s\n' "$USAGE"; exit 0
 fi
 
+# --- aggiornamento trailhead disponibile (dalla cache scritta dall'hook SessionStart) ---
+UPDATE=""
+UPD_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/trailhead/update-check.json"
+if [ -f "$UPD_FILE" ]; then
+  UPD_AV="$(jq -r '.updateAvailable // false' "$UPD_FILE" 2>/dev/null)"
+  if [ "$UPD_AV" = "true" ]; then
+    UPD_LATEST="$(jq -r '.latest // empty' "$UPD_FILE" 2>/dev/null)"
+    [ -n "$UPD_LATEST" ] && UPDATE="⬆ trailhead ${UPD_LATEST}"
+  fi
+fi
+
 SEP="${C_SEP} | ${C_RST}"
 
-# riga 1: modello | progetto | branch | usage | contesto
+# riga 1: modello | progetto | branch | usage | contesto | (update disponibile)
 OUT="${C_MODEL}${MODEL}${C_RST}"
 [ -n "$PROJ" ]   && OUT="${OUT}${SEP}${C_PROJ}${PROJ}${C_RST}"
 [ -n "$BRANCH" ] && OUT="${OUT}${SEP}${C_BRANCH}${BRANCH}${C_RST}"
 [ -n "$USAGE" ]  && OUT="${OUT}${SEP}${USAGE}"
 [ -n "$CTX" ]    && OUT="${OUT}${SEP}${C_CTX}${CTX}${C_RST}"
+[ -n "$UPDATE" ] && OUT="${OUT}${SEP}${C_UPDATE}${UPDATE}${C_RST}"
 printf '%s\n' "$OUT"
 
 # riga 2: ticket / operazione trailhead in corso (solo se presente)

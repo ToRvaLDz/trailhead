@@ -42,7 +42,7 @@ const P = {
   templates: path.join(configDir, 'trailhead', 'templates'),
   settings: path.join(configDir, 'settings.json'),
 };
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js'];
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-check-update.js'];
 const hookCmd = (name) => `node "${path.join(P.hooksDir, name)}"`;
 
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
@@ -79,6 +79,7 @@ if (uninstall) {
   stripHook(s, 'PreToolUse', 'trailhead-commit-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
+  stripHook(s, 'SessionStart', 'trailhead-check-update.js');
   writeJSON(P.settings, s);
   console.log(`trailhead uninstalled from ${configDir}`);
   process.exit(0);
@@ -93,11 +94,19 @@ for (const f of HOOK_FILES) {
   fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(P.hooksDir, f));
   fs.chmodSync(path.join(P.hooksDir, f), 0o755);
 }
+// version marker: serve al check-update hook per la versione installata (canale npm)
+const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
+if (pkgVersion) {
+  ensure(path.join(configDir, 'trailhead'));
+  fs.writeFileSync(path.join(configDir, 'trailhead', 'VERSION'), pkgVersion + '\n');
+}
+
 const s = readJSON(P.settings);
 const added = [
   addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
   addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
   addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
+  addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
 ].some(Boolean);
 writeJSON(P.settings, s);
 

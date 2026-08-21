@@ -41,6 +41,7 @@ Every verb is also a **namespaced command** (`/trailhead:new`, `/trailhead:work`
 | `/trailhead:grill [topic]` | run a standalone grilling session on a decision/topic (or a named ticket) |
 | `/trailhead:map` | show the low-res map (destination, decisions, frontier, fog) |
 | `/trailhead:config [get\|set …]` | show the effective config (global + project), or set a key |
+| `/trailhead:update` | check for a newer trailhead and install it where safe (see `references/updating.md`) |
 
 **Capture** (zero friction, one confirmation line, resolves nothing → Mode 3):
 | Command | Destination |
@@ -352,11 +353,12 @@ The user invokes with a map (URL or number). A ticket is optional: without one, 
 ### Mode 3: Capture, `/trailhead:bug|todo|idea|seed|note`
 The user fires a capture on the fly → route it per the **Capture** section and confirm with one line.
 
-### Auxiliary verbs: `/trailhead:ticket|config|grill|split|pause|resume`
+### Auxiliary verbs: `/trailhead:ticket|config|grill|split|pause|resume|update`
 - **`ticket <type> <title>`**: open ticket(s) of the map on the fly, for any of the six types (`decision`, `research`, `prototype`, `build`, `bug`, `task`), the escape hatch the capture verbs don't cover. **Adding a ticket is a micro-charting act, so diverge briefly first, don't blind-commit to a single piece:** run a short breadth-first pass around the request: is this really *one* session-sized ticket, or a small **cluster** (a `decision` that needs a `research` before it, a UI `build` that needs a `prototype`, obvious siblings)? Does it imply a blocker? Surface the neighbours, *then* create the ticket(s): each gets `trailhead:ticket` + its `trailhead:<type>`, a `Parent:` line, a `## Question`; put each on the frontier, or wire `## Blocked by` + `trailhead:blocked`. This is a framing brainstorm (is this the right work?), distinct from the `decision` engine's option brainstorm (which choice?). If `<type>` is missing or invalid, ask which of the six. *(The zero-friction captures, `bug`/`todo`/`idea`/`seed`/`note`, deliberately skip this; they're one action, one confirmation.)*
 - **`grill [topic|ticket]`**: run a standalone **Grilling** (+ **Domain vocabulary**) session on a decision or topic, or on a named ticket, without committing to the full work cycle. Record the outcome where it belongs: a ticket's resolution, the map's `Decisions so far`, or a fresh `decision` ticket.
 - **`config`**: a **guided, menu-driven** setup (see [Configuration → Guided setup](#configuration)): pick the scope, then walk each setting as an `AskUserQuestion` menu with icon-labelled options, and write the result. `config get` prints the effective config read-only (project `.trailhead/config.json` merged over global over defaults, showing which source wins each key); `config set <key> <value>` writes one key directly: to the project `.trailhead/config.json`, or to `~/.claude/trailhead/config.json` with `--global`.
 - **`split [ticket]`**: split the named (or in-play) ticket per [Splitting a ticket](#working-as-a-team): create children, supersede & close the original.
 - **`pause [note]`** / **`resume [ticket]`**: checkpoint and pick back up per [Pausing & resuming](#working-as-a-team).
+- **`update`**: check for a newer trailhead and install it where safe, per **`references/updating.md`** (detect the install channel, compare the installed version with the latest from the matching source, install on a go-ahead). The **`trailhead-check-update.js`** SessionStart hook keeps the check cache fresh; the statusline shows a `⬆ trailhead <version>` flag when one is available.
 
 The user may work unblocked tickets in parallel: expect concurrent sessions editing the tracker, see [Working as a team](#working-as-a-team) for claiming, splitting, and safe map edits.
