@@ -2,6 +2,8 @@
 
 Capture without breaking flow, but with the **tracker** as destination, not scattered files. The verbs are in the **Capture** table in SKILL.md's Commands section; here is the detail of each. One capture = one action + one confirmation line; it resolves nothing.
 
+**Language (do not skip):** the captured ticket (title + body) is written in `config.ticket.language` (default `en`), **regardless of the language you are chatting in**. A capture fired in Italian still lands as an English ticket. This is the easiest place to slip, because a capture echoes the user's one-line phrasing; translate it, do not mirror it. See SKILL.md's *Ticket language* rule.
+
 - **`note`** → a verbatim line in `## Not yet specified` (outside a project → `$HOME/.claude/notes/`). No questions, no rewriting.
 - **`idea`** → fog by default in `## Not yet specified`; becomes a ticket only if already phrasable as a sharp question. An idea in the fog is **not executable**: to work it, it must first **graduate** into a ticket (which happens when the frontier reaches it, or when you can now phrase it sharply). A `todo`, by contrast, is born a `build` ticket and is workable immediately.
 - **`todo`** → a small `trailhead:build` ticket on the frontier (defined work you will do: a todo is just a small build ticket). If it's a parking spot *beyond* the destination, it goes in `## Out of scope` instead.
