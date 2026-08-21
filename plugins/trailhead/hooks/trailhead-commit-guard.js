@@ -7,8 +7,8 @@
 // Crash-safe: any error → exit 0 (never wedge the user's workflow).
 // Self-contained, no dependencies.
 
-const TYPES = 'feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert';
-const CONVENTIONAL = new RegExp(`^(${TYPES})(\\([^)]+\\))?!?:\\s.+`);
+const { checkCommitMessage } = require('./lib/commit-message-check.js');
+
 const CO_AUTHORED = /co-authored-by\s*:/i;
 
 function block(code, reason) {
@@ -56,14 +56,8 @@ process.stdin.on('end', () => {
 
     const msg = extractMessage(cmd);
     if (msg) {
-      const subject = msg.split('\n')[0].trim();
-      if (!CONVENTIONAL.test(subject)) {
-        block('CONVENTIONAL_COMMITS_VIOLATION',
-          `trailhead: commit subject must be Conventional Commits: <type>(<scope>)?: <subject>. Valid types: ${TYPES.replace(/\|/g, ', ')}.`);
-      }
-      if (subject.length > 72) {
-        block('COMMIT_SUBJECT_TOO_LONG', 'trailhead: commit subject must be 72 characters or less.');
-      }
+      const verdict = checkCommitMessage(msg);
+      if (!verdict.ok) block(verdict.code, verdict.reason);
     }
   } catch {
     // fall through to allow
