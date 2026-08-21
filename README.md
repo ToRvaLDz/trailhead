@@ -24,6 +24,16 @@ The design choices that fall out of it:
 - **Execution happens inside the map.** Unlike pure Wayfinder ("plan, don't do"), build tickets graduate from the fog and are executed as children of the map. The destination is the **working artifact** (a deployed app), not a spec document, though a project can override that and stop at the spec.
 - **Lean by default.** The heavy machinery (codebase mapping, systematic debugging) runs once where it earns its keep; the per-ticket cycle stays light.
 
+- **Built for teams, because the plan is shared.** The tracker is the single source of truth, so the map is a **shared workspace**, not one person's local file. Many people (and their agents) work it at once, and the mechanics keep them from colliding:
+  - **Claiming.** You take a ticket by assigning it to yourself; the assignee *is* the lock. A collision stops you and asks, rather than clobbering someone else's work. Whoever claims a ticket owns it end to end and closes it, no separate approver.
+  - **A shared frontier, one ticket per session.** The **frontier** (open, unassigned, unblocked tickets) is the common queue of what's takeable now; each person picks a different one. Resolving a ticket ends the session, so work stays in reviewable, single-ticket chunks.
+  - **Isolation for concurrent sessions on one machine.** Two agents editing one checkout corrupt each other, so the `isolation:` convention gives each in-flight ticket its own **`git worktree`** (or a full **`clone`** for path-bound apps a worktree can't build); disjoint `Scope:` lines let non-overlapping work run in parallel and serialise only where it truly overlaps.
+  - **Pause, resume, split.** Any ticket can be **paused** with a checkpoint comment and **resumed** later by anyone (once released), or **split** into children when it outgrows a session, with blockers re-pointed so the frontier stays honest.
+  - **Several maps at once.** A repo can carry **more than one live map** (parallel milestones or features), each with its own scoped frontier, so two people can drive two efforts on the same repo without stepping on each other, and you can park one map to work another.
+  - **Outsiders and trust.** Issues opened by other people flow through an **inbox** that reframes the worthwhile ones into tickets *in place* (keeping the reporter's authorship), while a **trust and provenance** guard quarantines `trailhead:*`-labelled issues from untrusted sources until a maintainer adopts them, backed by a repo-side label-guard workflow.
+
+  The full protocol lives in the **Working as a team** section below.
+
 ---
 
 ## 📦 Install
