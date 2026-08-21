@@ -357,7 +357,26 @@ gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state ope
 
 **Team.** A teammate charts a new map → it gets its own `trailhead:map-<m>` + sub-issue parentage → their sessions scope to it. The two frontiers **never mix** (distinct labels). Per-ticket **claim/collision** rules are unchanged (the assignee is still the claim). Two maps can still touch the **same code**: the `Scope:` line + `isolation:` serialisation from [Working as a team](#working-as-a-team) now apply **across maps too**, not just within one.
 
-**One-map compatibility.** With a single open map the frontier stays **repo-wide** (as today); the map label + sub-issue are still applied at chart, so concurrency is ready the moment a second map appears. An older map charted before this (tickets lacking the label) needs a one-time **backfill** (add `trailhead:map-<n>` to its open tickets, set their sub-issue parent) only if you add a second map on that repo.
+**One-map compatibility.** With a single open map the frontier stays **repo-wide** (minus `trailhead:whiteboard` tickets, which carry their own frontier, see [The whiteboard](#the-whiteboard-map-less-tickets)); the map label + sub-issue are still applied at chart, so concurrency is ready the moment a second map appears. An older map charted before this (tickets lacking the label) needs a one-time **backfill** (add `trailhead:map-<n>` to its open tickets, set their sub-issue parent) only if you add a second map on that repo.
+
+## The whiteboard (map-less tickets)
+
+Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both.
+
+Work reaches the whiteboard two ways: a **capture routed there** (a ticket-producing `todo`/`bug`/`seed`/sharp-`idea` sent to the whiteboard instead of a map, see [Capture](#capture-zero-friction--tracker)), or a ticket **born there** by [`quick "<text>"`](#quick-work-one-ticket-whole-off-the-map).
+
+It has its **own frontier**, off every map's (see [Substrate](#substrate-github-issues), Map frontier vs whiteboard frontier):
+```bash
+gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open \
+  --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+```
+
+**`/trailhead:whiteboard`** renders this as a read-only dashboard, a mirror of [`/trailhead:map`](#the-map) minus destination, decisions, and fog (the whiteboard has no direction, only loose work), by name:
+- **Frontier**: takeable now (open, unassigned, not blocked/unverified whiteboard tickets), each with its type.
+- **In progress**: claimed whiteboard tickets, with who holds each.
+- **Blocked**: any blocked whiteboard ticket, with what it waits on (a whiteboard ticket can still block on another).
+
+**Working the whiteboard.** Take a ticket with [`quick <n>`](#quick-work-one-ticket-whole-off-the-map), or `work <n>` by number; both work a single whiteboard ticket. There is no book-keeping to fold back (no `Decisions so far`, no fog to graduate), so a whiteboard resolution is just the resolution comment, `gh issue close`, and the [Session handoff](#session-handoff). Whiteboard tickets are never pinned and take no map slot.
 
 ## Working as a team
 
