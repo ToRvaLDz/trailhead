@@ -157,6 +157,8 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:new [idea]` | chart a new map from a loose idea |
 | `/trailhead:adopt` | adopt an existing project (map the codebase once, then go lean) |
 | `/trailhead:work [ticket]` | work the next frontier ticket, or the one you name |
+| `/trailhead:quick [ticket \| "text"]` | work one ticket whole, off the map: opens a whiteboard ticket from `"text"` (or takes `<n>`), runs the full engine, grills only if needed, never splits |
+| `/trailhead:whiteboard` | show the whiteboard: the loose (map-less) tickets and their frontier |
 | `/trailhead:inbox [issue]` | triage issues opened by others and integrate the good ones into the map |
 | `/trailhead:resume [ticket]` | resume a paused ticket from its `PAUSED` checkpoint |
 | `/trailhead:pause [note]` | checkpoint the ticket in play so anyone can resume it |
@@ -176,6 +178,17 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:bug [--of <ticket>] <text>` | a `bug` ticket | a defect; `--of` records it as a `Regression of:` a closed ticket |
 
 The four fog/ticket captures form a spectrum of commitment and timing: **note < idea < seed < todo**.
+
+When a map is open, a capture that produces a ticket (`todo`/`bug`/`seed`/a sharp `idea`) asks whether to file it on the **active map** or the **whiteboard**, the home for loose, map-less work that doesn't belong to any map (or isn't worth charting one). With no map open it lands on the whiteboard. Work a whiteboard ticket with **`/trailhead:quick`** (which also opens one from `"text"` and works it in the same sitting), and see them all with `/trailhead:whiteboard`.
+
+### 🧯 Don't get trapped in a map: the whiteboard
+
+Deep in a map, something unrelated surfaces: a bug in another area, a chore, a quick idea you want to act on now. Forcing it onto the map's frontier pollutes the map; charting a whole new map for it is overkill. That is what the **whiteboard** is for, loose map-less work, and two moves keep you from getting stuck:
+
+- **Capture it aside.** A `todo`/`bug`/`seed`/sharp `idea` fired while a map is open asks *map or whiteboard?*. Send it to the whiteboard and it stays off the map: tracked, but out of the way, so the map's frontier keeps meaning "the way to this destination".
+- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting, the full discuss → plan → execute → verify engine (atomic commits, code review, the lot), except it **grills only if needed and never splits**, and skips every map book-keeping step. `/trailhead:quick <n>` does the same for a ticket that already exists.
+
+See the whole whiteboard with `/trailhead:whiteboard`. Nothing about the map changes: you just stepped off it, did the thing, and step back on when you're ready.
 
 The three that trip people up are **idea, seed, todo**, so here they are spelled out:
 
@@ -214,6 +227,7 @@ Everything the map needs is expressed as GitHub labels, so state is queryable in
 - **Repo-scoped anchors (one each per repo):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working)
 - **Type (one per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
+- **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
 
 The **frontier** is then a single query (open, unassigned, not `trailhead:blocked`), no body-parsing needed.
 
