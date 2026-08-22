@@ -143,5 +143,6 @@ ok('codexVersionGate well below the floor (minor) refuses', codexVersionGate('0.
 ok('codexVersionGate unparseable is undetermined but proceeds (fail-open)', (() => { const g = codexVersionGate('weird output'); return g.proceed === true && g.undetermined === true && typeof g.message === 'string'; })());
 ok('codexVersionGate null (codex absent) proceeds with a warning', (() => { const g = codexVersionGate(null); return g.proceed === true && g.undetermined === true && typeof g.message === 'string'; })());
 ok('codexVersionGate honours an explicit higher floor', codexVersionGate('0.150.0', '0.200.0').proceed === false);
+ok('codexVersionGate never throws on an unparseable floor (proceeds)', (() => { const g = codexVersionGate('0.149.0', 'not-a-version'); return g.proceed === true; })());
 
 console.log(`✓ host-descriptor: ${passed} assertions passed`);

@@ -292,7 +292,11 @@ function codexVersionGate(versionOutput, floor = CODEX_MIN_VERSION) {
       message: `Could not determine the Codex version (\`codex --version\` unavailable or unrecognised). trailhead needs Codex >= ${floor} for its multi_agent fan-out; proceeding, but the subagent features will not work on an older Codex.`,
     };
   }
-  if (compareVersion(got, parseVersion(floor)) < 0) {
+  // A caller-supplied floor that can't be parsed can't gate anything: treat it
+  // as no constraint (proceed) rather than dereferencing null in compareVersion,
+  // honouring the "never throws" contract. The default floor is always parseable.
+  const floorV = parseVersion(floor);
+  if (floorV && compareVersion(got, floorV) < 0) {
     return {
       ok: false, proceed: false, undetermined: false, version: got.join('.'), floor,
       message: `Codex ${got.join('.')} is below trailhead's floor of ${floor}: its multi_agent subagent tools are not stable, so trailhead will not install. Upgrade Codex to >= ${floor} and re-run.`,
