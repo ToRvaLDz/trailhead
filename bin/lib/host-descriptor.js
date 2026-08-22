@@ -51,8 +51,8 @@ const AXES = Object.freeze({
   //   'none' a host with no such toolkit; everything the engine needs runs inline
   subagentToolkit: Object.freeze(['full', 'none']),
   // Whether the host has a lifecycle hook bus (PreToolUse/PostToolUse/Stop/...).
-  //   'host' Claude: native hooks
-  //   'none' Codex:  no hook bus; guardrails must degrade to something else
+  //   'host' Claude: native hooks; Codex: the `features.hooks` lifecycle bus
+  //   'none' a host with no hook bus (no supported host today, kept for future hosts)
   hookBus: Object.freeze(['host', 'none']),
 });
 
@@ -96,7 +96,7 @@ const HOSTS = Object.freeze({
     axes: Object.freeze({
       commandSurface: 'skill',
       subagentToolkit: 'full',
-      hookBus: 'none',
+      hookBus: 'host',
     }),
     // A single native Codex skill folder, invoked `$trailhead <verb>`.
     commands: Object.freeze({
@@ -114,9 +114,11 @@ const HOSTS = Object.freeze({
     // cannot run; subagents inherit the one session model. Hence models.* still
     // collapses here even though fan-out is available.
     honorsModelKeys: false,
-    // No hook bus: guardrails (secret-guard, commit-guard, etc.) degrade
-    // per decision #16, see degradations() below.
-    hooks: Object.freeze({ bus: 'none' }),
+    // Codex now has a native hook bus (stable at the install floor #27), so
+    // the guardrails (secret-guard, commit-guard, etc.) run as real Codex
+    // hooks, projected into ~/.codex/hooks.json by the installer. The
+    // models.* collapse is the only remaining Codex degradation.
+    hooks: Object.freeze({ bus: 'host' }),
   }),
 });
 

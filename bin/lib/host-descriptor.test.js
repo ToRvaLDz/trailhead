@@ -40,7 +40,8 @@ const codex = getHost('codex');
 ok('getHost(claude) has correct axes', claude.axes.commandSurface === 'slash-file' &&
   claude.axes.subagentToolkit === 'full' && claude.axes.hookBus === 'host');
 ok('getHost(codex) has correct axes', codex.axes.commandSurface === 'skill' &&
-  codex.axes.subagentToolkit === 'full' && codex.axes.hookBus === 'none');
+  codex.axes.subagentToolkit === 'full' && codex.axes.hookBus === 'host');
+ok('getHost(codex).hooks.bus === "host"', codex.hooks.bus === 'host');
 assert.throws(() => getHost('gemini'), /gemini/i, 'getHost(gemini) throws naming the unknown host');
 ok('getHost(gemini) throws', (() => {
   try { getHost('gemini'); return false; } catch { return true; }
@@ -85,6 +86,8 @@ ok('degradations(codex) no longer lists subagent fan-out (it has multi_agent)',
   !degradations('codex').some((d) => /fan-out/.test(d.from)));
 ok('degradations(codex) still lists the per-activity model split collapse',
   degradations('codex').some((d) => /model split/.test(d.from)));
+ok('degradations(codex) no longer lists lifecycle hooks (it has a native hook bus)',
+  !degradations('codex').some((d) => /lifecycle hooks/.test(d.from)));
 
 // --- modelsCollapseNotice ---
 ok('modelsCollapseNotice(claude, models set) is null (has toolkit)',
@@ -105,10 +108,11 @@ ok('modelsCollapseNotice(claude, models set) is null (Claude honours the keys)',
   modelsCollapseNotice('claude', { models: { plan: 'claude-opus-5' } }) === null);
 
 // --- updateNotice ---
-ok('updateNotice(codex, update available) is a non-null string naming the version', (() => {
-  const msg = updateNotice('codex', { updateAvailable: true, latest: '0.3.0', installed: '0.2.0' });
-  return typeof msg === 'string' && msg.includes('0.3.0');
-})());
+// Both hosts now have a hook bus (hookBus !== 'none'), so updateNotice never
+// fires for either: the SessionStart hook + (on Codex) its stdout
+// additionalContext handle the notification instead.
+ok('updateNotice(codex, update available) is null (codex has a hook bus now)',
+  updateNotice('codex', { updateAvailable: true, latest: '9.9.9', installed: '0.0.1' }) === null);
 ok('updateNotice(codex, no update available) is null',
   updateNotice('codex', { updateAvailable: false }) === null);
 ok('updateNotice(codex, null cache) is null',
