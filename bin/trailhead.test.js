@@ -87,7 +87,12 @@ ok('codex: commit-msg template is verbatim (not converted)',
 
 ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
-ok('codex: no legacy prompts/trailhead.md file', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
+// #41: per-verb discoverability shims now live alongside the $trailhead skill.
+ok('codex: bare prompts/trailhead.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
+ok('codex: per-verb prompts/trailhead-work.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
+ok('codex: per-verb prompts/trailhead-bug.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-bug.md')));
+ok('codex: trailhead-work.md delegates to $trailhead work', fs.readFileSync(path.join(codexDir, 'prompts', 'trailhead-work.md'), 'utf8').includes('$trailhead work $ARGUMENTS'));
+ok('codex: bare trailhead.md is the smart-entry delegator', fs.readFileSync(path.join(codexDir, 'prompts', 'trailhead.md'), 'utf8').includes('$trailhead $ARGUMENTS'));
 
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
@@ -122,6 +127,8 @@ ok('codex: no trailhead-*.toml under agents/ when models.codex.* is unset',
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
 ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead')));
 ok('codex uninstall: legacy trailhead engine dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
+ok('codex uninstall: bare prompts/trailhead.md shim gone', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
+ok('codex uninstall: per-verb prompts/trailhead-work.md shim gone', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);

@@ -23,7 +23,7 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexPromptShimPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -257,6 +257,34 @@ function copySkillConverted(srcDir, destDir, isRoot) {
   }
 }
 
+// Read the canonical command surface from plugins/trailhead/commands/*.md:
+// each file's basename is the verb; its frontmatter description/argument-hint
+// (when present) ride along as the Codex prompt shim's discoverability metadata.
+// Single-sources the verb list so the Codex shims never drift from the commands.
+function readCommandVerbs() {
+  const dir = path.join(SRC, 'commands');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => {
+      const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+      return { verb: f.slice(0, -3), description: fmValue(raw, 'description'), argumentHint: fmValue(raw, 'argument-hint') };
+    })
+    .sort((a, b) => a.verb.localeCompare(b.verb));
+}
+
+// Extract one frontmatter scalar's raw value verbatim (an already-valid YAML
+// scalar re-serialises unchanged). Looks only inside the leading ---...--- block.
+// Returns undefined when the key is absent or its value is empty.
+function fmValue(md, key) {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(md);
+  const block = fm ? fm[1] : '';
+  const m = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(block);
+  if (!m) return undefined;
+  const v = m[1].trim();
+  return v === '' ? undefined : v;
+}
+
 // Best-effort `codex --version` probe for the install-time floor gate. Returns
 // the raw version string, or null when codex is not on PATH / errors out.
 function detectCodexVersion() {
@@ -287,11 +315,20 @@ function installCodex(configDir, { useSymlink }) {
   }
 
   // Migration: sweep the pre-#25 layout (prompts/trailhead*.md + the trailhead/ engine dir).
-  rmrf(path.join(L.legacyPromptsDir, 'trailhead.md'));
-  for (const f of (fs.existsSync(L.legacyPromptsDir) ? fs.readdirSync(L.legacyPromptsDir) : [])) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
+  rmrf(path.join(L.promptsDir, 'trailhead.md'));
+  for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
   }
   rmrf(L.legacyEngineDir);
+
+  // Per-verb discoverability shims (#41): one thin trailhead-<verb>.md per
+  // command + a bare trailhead.md smart-entry prompt, written AFTER the sweep so
+  // they land clean (not deleted by their own migration step). Verbs + their
+  // frontmatter come from the canonical commands/*.md, so the two surfaces never
+  // drift. Thin delegators only; SKILL.md stays the single source of truth.
+  ensure(L.promptsDir);
+  const shimPlan = codexPromptShimPlan(configDir, readCommandVerbs());
+  for (const w of shimPlan.writes) fs.writeFileSync(w.path, w.content);
 
   // Engine: clean skill dir, then project with conversion.
   rmrf(L.skillDir);
@@ -369,6 +406,7 @@ function installCodex(configDir, { useSymlink }) {
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
+  console.log(`  prompts   → ${L.promptsDir}/  (${shimPlan.writes.length} discoverability shims: trailhead + trailhead-<verb>)`);
   console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
   if (plan.writes.length > 0) {
     console.log(`  agents    → ${L.codexAgentsDir}/  (${plan.writes.length} model pin(s): ${plan.writes.map((w) => w.name + '.toml').join(', ')})`);
@@ -392,10 +430,11 @@ function installCodex(configDir, { useSymlink }) {
 function uninstallCodex(configDir) {
   const L = codexLayout(configDir);
   rmrf(L.skillDir);
-  // sweep any pre-#25 layout too
-  rmrf(path.join(L.legacyPromptsDir, 'trailhead.md'));
-  for (const f of (fs.existsSync(L.legacyPromptsDir) ? fs.readdirSync(L.legacyPromptsDir) : [])) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
+  // sweep the #41 discoverability shims (trailhead.md + trailhead-<verb>.md),
+  // as well as any pre-#25 layout in the same dir
+  rmrf(path.join(L.promptsDir, 'trailhead.md'));
+  for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
   }
   rmrf(L.legacyEngineDir);
   // Sweep trailhead's own per-technique model-pin TOMLs, never the user's
