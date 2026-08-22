@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Statusline trailhead-aware: "modello | progetto | branch | ticket | contesto | usage"
+# Statusline trailhead-aware: "modello | progetto | branch[ (WT)|(C)] | usage | contesto"
+# piu' una riga 2 col ticket in lavorazione. Il progetto e' sempre quello del
+# repo principale (anche da un worktree/clone); accanto al branch compare (WT)
+# in un worktree o (C) in un clone, niente sull'originale.
 #
 # Legge su stdin il JSON che Claude Code passa alle statusline
 # (.model.display_name, .model.id, .workspace.current_dir, .cwd, .transcript_path).
@@ -30,7 +33,7 @@ j() { printf '%s' "$input" | jq -r "$1 // empty" 2>/dev/null; }
 
 # --- colori ANSI (disattivabili con NO_COLOR) ---
 if [ -n "${NO_COLOR:-}" ]; then
-  C_RST= ; C_SEP= ; C_MODEL= ; C_PROJ= ; C_BRANCH= ; C_TICKET= ; C_CTX= ; C_5H= ; C_RESET= ; C_7D= ; C_UPDATE=
+  C_RST= ; C_SEP= ; C_MODEL= ; C_PROJ= ; C_BRANCH= ; C_CHECKOUT= ; C_TICKET= ; C_CTX= ; C_5H= ; C_RESET= ; C_7D= ; C_UPDATE=
 else
   e=$'\033['
   C_RST="${e}0m"        # reset
@@ -38,6 +41,7 @@ else
   C_MODEL="${e}36m"     # modello: cyan
   C_PROJ="${e}94m"      # progetto: blu chiaro
   C_BRANCH="${e}92m"    # branch: verde chiaro
+  C_CHECKOUT="${e}35m"  # tag checkout isolato ((WT)/(C)): magenta
   C_TICKET="${e}93m"    # ticket: giallo chiaro
   C_CTX="${e}95m"       # contesto: magenta chiaro
   C_5H="${e}33m"        # finestra 5h: giallo
@@ -55,9 +59,33 @@ DIR="$(j '.workspace.current_dir')"
 [ -z "$DIR" ] && DIR="$(j '.cwd')"
 [ -z "$DIR" ] && DIR="$PWD"
 
-# --- repo root + nome progetto ---
+# --- repo root, nome progetto, tipo di checkout ---
+# Il nome del progetto e' SEMPRE quello del repo principale, anche da un
+# worktree o da un clone: `git-common-dir` punta al `.git` del repo principale
+# (per un worktree linkato) o al proprio (per originale/clone), quindi il suo
+# genitore e' la root del progetto. Cosi' un worktree non mostra piu' il
+# basename della sua cartella (es. `wt-main`), ma il progetto vero.
 ROOT="$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$DIR")"
-PROJ="$(basename "$ROOT")"
+GIT_DIR="$(git -C "$DIR" rev-parse --absolute-git-dir 2>/dev/null)"
+COMMON="$(git -C "$DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+[ -z "$COMMON" ] && [ -n "$GIT_DIR" ] && COMMON="$GIT_DIR"   # git vecchio senza --path-format
+if [ -n "$COMMON" ]; then
+  PROJ="$(basename "$(dirname "$COMMON")")"
+else
+  PROJ="$(basename "$ROOT")"
+fi
+
+# CHECKOUT: tag mostrato accanto al branch. "" = originale (niente); "(WT)" =
+# worktree linkato (il suo git-dir e' separato dal common-dir); "(C)" = clone
+# per-ticket della convenzione trailhead (`../<repo>-t<n>`, repo a se' stante,
+# cartella `-t<n>`).
+CHECKOUT=""
+if [ -n "$GIT_DIR" ] && [ -n "$COMMON" ] && [ "$GIT_DIR" != "$COMMON" ]; then
+  CHECKOUT="(WT)"
+elif printf '%s' "$(basename "$ROOT")" | grep -qE -- '-t[0-9]+$'; then
+  CHECKOUT="(C)"
+  PROJ="$(basename "$ROOT" | sed -E 's/-t[0-9]+$//')"   # nome progetto senza il suffisso -t<n>
+fi
 
 # --- branch (con gestione detached HEAD) ---
 BRANCH="$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
@@ -314,11 +342,15 @@ fi
 
 SEP="${C_SEP} | ${C_RST}"
 
-# riga 1: modello | progetto | branch | usage | contesto | (update disponibile)
+# riga 1: modello | progetto | branch[ (WT)|(C)] | usage | contesto | (update)
 OUT="${C_MODEL}${MODEL}${C_RST}"
-[ -n "$PROJ" ]   && OUT="${OUT}${SEP}${C_PROJ}${PROJ}${C_RST}"
-[ -n "$BRANCH" ] && OUT="${OUT}${SEP}${C_BRANCH}${BRANCH}${C_RST}"
-[ -n "$USAGE" ]  && OUT="${OUT}${SEP}${USAGE}"
+[ -n "$PROJ" ] && OUT="${OUT}${SEP}${C_PROJ}${PROJ}${C_RST}"
+if [ -n "$BRANCH" ]; then
+  OUT="${OUT}${SEP}${C_BRANCH}${BRANCH}${C_RST}"
+  # tag checkout isolato: attaccato al branch (nessun separatore), non un campo a se'
+  [ -n "$CHECKOUT" ] && OUT="${OUT} ${C_CHECKOUT}${CHECKOUT}${C_RST}"
+fi
+[ -n "$USAGE" ] && OUT="${OUT}${SEP}${USAGE}"
 [ -n "$CTX" ]    && OUT="${OUT}${SEP}${C_CTX}${CTX}${C_RST}"
 [ -n "$UPDATE" ] && OUT="${OUT}${SEP}${C_UPDATE}${UPDATE}${C_RST}"
 printf '%s\n' "$OUT"
