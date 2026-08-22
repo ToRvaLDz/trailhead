@@ -38,8 +38,10 @@ function codexLayout(codexHome) {
     hooksScriptsDir: path.join(skillDir, 'hooks'),
     hooksJson: path.join(codexHome, 'hooks.json'),
     configToml: path.join(codexHome, 'config.toml'),
-    // pre-#25 layout, swept on install/uninstall for clean migration
-    legacyPromptsDir: path.join(codexHome, 'prompts'),
+    // Active Codex prompts dir: holds the #41 discoverability shims
+    // (trailhead.md smart entry + one trailhead-<verb>.md per verb). The
+    // install/uninstall sweep also migrates the pre-#25 layout out of it.
+    promptsDir: path.join(codexHome, 'prompts'),
     legacyEngineDir: path.join(codexHome, 'trailhead'),
   };
 }
@@ -231,6 +233,60 @@ function codexAgentTomlPlan(codexHome, codexModels) {
   return { writes };
 }
 
+// --- CODEX_SMART_ENTRY -----------------------------------------------------
+// Discoverability metadata for the bare `/trailhead` smart-entry prompt (the
+// one shim with no corresponding commands/*.md file).
+const CODEX_SMART_ENTRY = Object.freeze({
+  description: 'Smart entry: detect the trailhead state and take the next action',
+  argumentHint: '"[verb] [args]"',
+});
+
+// --- codexPromptShimContent ------------------------------------------------
+// One thin Codex custom-prompt shim: a small frontmatter (description + optional
+// argument-hint, reused from the verb's commands/*.md file for faithful
+// /-menu discoverability) over a single delegating line to `$trailhead <verb>`.
+// `verb` null/'' -> the bare smart-entry prompt. No engine logic lives here;
+// SKILL.md stays the single source of truth.
+function codexPromptShimContent({ verb, description, argumentHint } = {}) {
+  const isBare = verb == null || String(verb).trim() === '';
+  const fm = [];
+  if (description) fm.push(`description: ${description}`);
+  if (argumentHint) fm.push(`argument-hint: ${argumentHint}`);
+  const frontmatter = fm.length ? `---\n${fm.join('\n')}\n---\n\n` : '';
+  const body = isBare
+    ? "Invoke trailhead's smart entry on Codex: run `$trailhead $ARGUMENTS` and follow the skill's instructions. The `$trailhead` skill is the single source of truth; do not re-implement its behaviour here."
+    : `Invoke trailhead's **${String(verb).trim()}** action on Codex: run \`$trailhead ${String(verb).trim()} $ARGUMENTS\` and follow the skill's instructions. The \`$trailhead\` skill is the single source of truth; do not re-implement its behaviour here.`;
+  return frontmatter + body + '\n';
+}
+
+// --- codexPromptShimPlan ---------------------------------------------------
+// Given the resolved verb list (each { verb, description?, argumentHint? }, or a
+// bare string verb; normally read from plugins/trailhead/commands/*.md by the
+// installer), return the prompt-file writes: always the bare trailhead.md
+// smart-entry prompt, plus one trailhead-<verb>.md per verb. Skips empty/invalid
+// verbs. Mirrors codexAgentTomlPlan's shape.
+function codexPromptShimPlan(codexHome, verbs) {
+  const dir = codexLayout(codexHome).promptsDir;
+  const list = Array.isArray(verbs) ? verbs : [];
+  const writes = [{
+    verb: null,
+    path: path.join(dir, 'trailhead.md'),
+    content: codexPromptShimContent({ verb: null, ...CODEX_SMART_ENTRY }),
+  }];
+  for (const entry of list) {
+    const v = entry && typeof entry === 'object' ? entry.verb : entry;
+    if (v == null || String(v).trim() === '') continue;
+    const verb = String(v).trim();
+    const meta = entry && typeof entry === 'object' ? entry : {};
+    writes.push({
+      verb,
+      path: path.join(dir, `trailhead-${verb}.md`),
+      content: codexPromptShimContent({ verb, description: meta.description, argumentHint: meta.argumentHint }),
+    });
+  }
+  return { writes };
+}
+
 // --- codexHookEntries -----------------------------------------------------
 // The four guardrail hooks trailhead registers on Codex, as {event, matcher,
 // command} records. Commands run the copied guard scripts under hooksScriptsDir
@@ -308,6 +364,8 @@ module.exports = {
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
+  codexPromptShimContent,
+  codexPromptShimPlan,
   codexHookEntries,
   enableCodexFeatureFlag,
   enableCodexHooksFeature,

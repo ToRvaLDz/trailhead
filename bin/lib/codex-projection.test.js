@@ -10,6 +10,8 @@ const {
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
+  codexPromptShimContent,
+  codexPromptShimPlan,
   codexHookEntries,
   enableCodexHooksFeature,
   enableCodexMultiAgentV2Feature,
@@ -80,6 +82,41 @@ ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
   header.includes('base multi_agent v1') && header.includes('inherit the one session model'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
+
+// --- codexPromptShimContent (#41) ---
+ok('codexPromptShimContent: verb shim delegates to $trailhead <verb> $ARGUMENTS', (() => {
+  const out = codexPromptShimContent({ verb: 'work', description: 'Work the next frontier ticket', argumentHint: '"[ticket]"' });
+  return out.includes('$trailhead work $ARGUMENTS') && out.includes('description: Work the next frontier ticket') && out.includes('argument-hint: "[ticket]"');
+})());
+ok('codexPromptShimContent: bare shim is smart entry ($trailhead $ARGUMENTS)', (() => {
+  const out = codexPromptShimContent({ verb: null });
+  return out.includes('$trailhead $ARGUMENTS') && !out.includes('$trailhead null');
+})());
+ok('codexPromptShimContent: omits argument-hint when absent', (() => {
+  const out = codexPromptShimContent({ verb: 'update', description: 'Check for a newer trailhead' });
+  return out.includes('description: Check for a newer trailhead') && !out.includes('argument-hint');
+})());
+ok('codexPromptShimContent: delegates, does not re-implement engine logic', codexPromptShimContent({ verb: 'work' }).includes('single source of truth'));
+
+// --- codexPromptShimPlan (#41) ---
+ok('codexPromptShimPlan: always emits the bare trailhead.md', (() => {
+  const plan = codexPromptShimPlan('/c', [{ verb: 'work' }]);
+  return plan.writes.some((w) => w.path === '/c/prompts/trailhead.md' && w.verb === null);
+})());
+ok('codexPromptShimPlan: one trailhead-<verb>.md per verb', (() => {
+  const plan = codexPromptShimPlan('/c', [{ verb: 'work' }, { verb: 'bug' }]);
+  return plan.writes.length === 3 &&
+    plan.writes.some((w) => w.path === '/c/prompts/trailhead-work.md') &&
+    plan.writes.some((w) => w.path === '/c/prompts/trailhead-bug.md');
+})());
+ok('codexPromptShimPlan: accepts a bare-string verb and skips empty/invalid', (() => {
+  const plan = codexPromptShimPlan('/c', [{ verb: '' }, { verb: null }, 'work']);
+  return plan.writes.length === 2 && plan.writes.some((w) => w.path === '/c/prompts/trailhead-work.md');
+})());
+ok('codexPromptShimPlan: null verbs yields only the bare shim', codexPromptShimPlan('/c', null).writes.length === 1 && codexPromptShimPlan('/c').writes.length === 1);
+
+// --- codexLayout rename (#41) ---
+ok('codexLayout promptsDir', codexLayout('/c').promptsDir === '/c/prompts');
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
