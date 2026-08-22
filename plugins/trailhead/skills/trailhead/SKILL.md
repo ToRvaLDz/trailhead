@@ -229,7 +229,7 @@ The answer isn't in the body: it's recorded on resolution as a comment. Assets c
 | `bug` | 🐛 | | Out of scope | 🚫 |
 | `task` | 🔧 | | | |
 
-The map issue title is prefixed 🗺. Keep the icons stable and don't add others: they're anchors, not decoration.
+The map issue title is prefixed 🗺, and the three repo anchors carry their own title prefix too, so they stand apart at a glance in the pinned list and in search: **codebase 🧱, conventions 📜, dashboard 📊**. Keep the icons stable and don't add others: they're anchors, not decoration.
 
 ## Techniques
 

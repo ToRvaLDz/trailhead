@@ -226,7 +226,7 @@ Two rules of thumb: build tickets **never auto-grill**: on blocking ambiguity th
 Everything the map needs is expressed as GitHub labels, so state is queryable in the tracker UI:
 
 - **Structural:** `trailhead:map`, `trailhead:ticket`
-- **Repo-scoped anchors (one each per repo, pinned):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working), `trailhead:dashboard` (the pinned index of maps + whiteboard + counts)
+- **Repo-scoped anchors (one each per repo, pinned):** `trailhead:codebase` 🧱 (the distilled codebase map), `trailhead:conventions` 📜 (the way of working), `trailhead:dashboard` 📊 (the pinned index of maps + whiteboard + counts) — each title carries its icon (like the map's 🗺) so the pinned anchors stand apart at a glance
 - **Type (one per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 - **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
