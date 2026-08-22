@@ -106,6 +106,8 @@ ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHook
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
 
 ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
+ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-guard require target)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
 
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
@@ -144,7 +146,34 @@ const claudeSkillPath = path.join(claudeDir, 'skills', 'trailhead', 'SKILL.md');
 ok('claude: skills/trailhead/SKILL.md exists', fs.existsSync(claudeSkillPath));
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
+ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
+// Regression: the commit-guard does require('./lib/commit-message-check.js'), so
+// it only loads if the lib was copied alongside it. Run it with a benign Bash
+// payload and assert it does not crash with a missing-module error.
+ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
+  let out = '';
+  try {
+    out = String(execFileSync(process.execPath, [path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')],
+      { input: '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}', stdio: 'pipe' }));
+  } catch (e) {
+    out = String(e.stdout || '') + String(e.stderr || '');
+  }
+  return !out.includes('MODULE_NOT_FOUND') && !out.includes('Cannot find module');
+})());
 ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
+
+// --- claude uninstall: remove trailhead's lib, keep a co-tenant's -------------
+// The Claude hooks/lib dir is shared with other plugins. Drop a fake co-tenant
+// lib next to trailhead's, uninstall, and assert only trailhead's own lib file
+// is removed (never a recursive wipe of the shared dir).
+const coTenantDir = mktmp();
+runInstaller([`--claude`, `--dir=${coTenantDir}`]);
+const coTenantLib = path.join(coTenantDir, 'hooks', 'lib', 'other-plugin-lib.js');
+fs.writeFileSync(coTenantLib, '// not trailhead\n');
+runInstaller([`--claude`, `--dir=${coTenantDir}`, '--uninstall']);
+ok('claude uninstall: trailhead lib removed', !fs.existsSync(path.join(coTenantDir, 'hooks', 'lib', 'commit-message-check.js')));
+ok('claude uninstall: co-tenant lib preserved (no recursive wipe)', fs.existsSync(coTenantLib));
 
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));

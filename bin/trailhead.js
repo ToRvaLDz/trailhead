@@ -146,6 +146,29 @@ function claudePaths(configDir) {
   };
 }
 const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-check-update.js'];
+// Runtime libs the hook scripts require (trailhead-commit-guard.js does
+// require('./lib/commit-message-check.js')). Copied by name, never a recursive
+// sweep: the Claude hooks/lib dir is shared with other plugins, so we must not
+// clobber a co-tenant's lib nor ship our own *.test.js files.
+const HOOK_LIB_FILES = ['commit-message-check.js'];
+
+// Copy the hook scripts and their runtime libs into a destination hooks dir
+// (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
+// install paths so the lib copy can never drift from the script copy again.
+function copyHookScripts(destHooksDir) {
+  ensure(destHooksDir);
+  for (const f of HOOK_FILES) {
+    fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(destHooksDir, f));
+    fs.chmodSync(path.join(destHooksDir, f), 0o755);
+  }
+  if (HOOK_LIB_FILES.length) {
+    const libDest = path.join(destHooksDir, 'lib');
+    ensure(libDest);
+    for (const f of HOOK_LIB_FILES) {
+      fs.copyFileSync(path.join(SRC, 'hooks', 'lib', f), path.join(libDest, f));
+    }
+  }
+}
 
 function place(src, dest, symlink) {
   rmrf(dest);
@@ -174,6 +197,9 @@ function uninstallClaude(configDir) {
   const P = claudePaths(configDir);
   [P.skill, P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
+  // Remove only trailhead's own lib files by name: the hooks/lib dir is shared
+  // with other plugins, so never rmrf the whole dir.
+  HOOK_LIB_FILES.forEach((f) => rmrf(path.join(P.hooksDir, 'lib', f)));
   const s = readJSON(P.settings);
   stripHook(s, 'PreToolUse', 'trailhead-commit-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
@@ -190,11 +216,7 @@ function installClaude(configDir, { useSymlink }) {
   place(path.join(SRC, 'skills', 'trailhead'), P.skill, useSymlink);
   place(path.join(SRC, 'commands'), P.commands, useSymlink);
   place(path.join(SRC, 'templates'), P.templates, useSymlink);
-  ensure(P.hooksDir);
-  for (const f of HOOK_FILES) {
-    fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(P.hooksDir, f));
-    fs.chmodSync(path.join(P.hooksDir, f), 0o755);
-  }
+  copyHookScripts(P.hooksDir);
   // version marker: serve al check-update hook per la versione installata (canale npm)
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) {
@@ -349,12 +371,7 @@ function installCodex(configDir, { useSymlink }) {
 
   // Hooks: copy the 4 guard scripts into the skill dir and register them in
   // ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
-  ensure(L.hooksScriptsDir);
-  for (const f of HOOK_FILES) {
-    const dest = path.join(L.hooksScriptsDir, f);
-    fs.copyFileSync(path.join(SRC, 'hooks', f), dest);
-    fs.chmodSync(dest, 0o755);
-  }
+  copyHookScripts(L.hooksScriptsDir);
   const h = readJSON(L.hooksJson);
   for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
   writeJSON(L.hooksJson, h);
