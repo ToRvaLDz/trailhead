@@ -347,14 +347,21 @@ function installCodex(configDir, { useSymlink }) {
   for (const w of plan.writes) fs.writeFileSync(w.path, w.content);
 
   // Feature flag: Codex gates per-subagent model pinning behind
-  // features.multi_agent_v2 = true.
-  const updatedTomlV2 = enableCodexMultiAgentV2Feature(current);
+  // features.multi_agent_v2 = true. Enable it ONLY when we actually projected
+  // pins: with no models.codex.* set, base multi_agent already fans out and the
+  // adapter's §D runtime detection expects no trailhead agent_type registry, so
+  // leaving v2 off keeps that contract sound. (A reinstall that drops all pins
+  // sweeps the TOMLs above but leaves any prior v2 flag in place; harmless, as
+  // no trailhead-* agents remain for the runtime to dispatch to.)
   let featureManualV2 = false;
-  if (updatedTomlV2 && typeof updatedTomlV2 === 'string') {
-    ensure(path.dirname(L.configToml));
-    fs.writeFileSync(L.configToml, updatedTomlV2);
-  } else if (updatedTomlV2 && updatedTomlV2.unsafe) {
-    featureManualV2 = true;
+  if (plan.writes.length > 0) {
+    const updatedTomlV2 = enableCodexMultiAgentV2Feature(current);
+    if (updatedTomlV2 && typeof updatedTomlV2 === 'string') {
+      ensure(path.dirname(L.configToml));
+      fs.writeFileSync(L.configToml, updatedTomlV2);
+    } else if (updatedTomlV2 && updatedTomlV2.unsafe) {
+      featureManualV2 = true;
+    }
   }
 
   console.log(`✓ trailhead installed for Codex → ${configDir}`);

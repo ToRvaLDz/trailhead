@@ -99,7 +99,11 @@ ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSy
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
 ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('hooks = true'));
-ok('codex: config.toml enables multi_agent_v2 feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
+// v2 is gated on projected pins: this install (repoRoot, no models.codex.*)
+// projects none, so multi_agent_v2 stays OFF (base multi_agent still fans out;
+// adapter §D expects no trailhead agent_type registry in the no-pins case).
+ok('codex: config.toml does NOT enable multi_agent_v2 when no models.codex.* pins are projected',
+  !fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
 
 // --- codex agent TOML projection (#38) -----------------------------------------
 // repoRoot's own .trailhead/config.json has no models.codex.*, so a plain
@@ -198,6 +202,10 @@ ok('codex: models.codex.execute projects trailhead-execute.toml', fs.existsSync(
 const pinnedTomlContent = fs.existsSync(pinnedTomlPath) ? fs.readFileSync(pinnedTomlPath, 'utf8') : '';
 ok('codex: trailhead-execute.toml has the pinned model', pinnedTomlContent.includes('model = "gpt-5.6-terra"'));
 ok('codex: trailhead-execute.toml has the right name', pinnedTomlContent.includes('name = "trailhead-execute"'));
+// With a real pin projected, v2 IS enabled so Codex honours the agent_type registry.
+const pinConfigTomlPath = path.join(pinCodexHomeDir, 'config.toml');
+ok('codex: config.toml enables multi_agent_v2 when a models.codex.* pin is projected',
+  fs.existsSync(pinConfigTomlPath) && fs.readFileSync(pinConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
 
 // Uninstall must sweep the projected TOML too, without a --dir= cwd dependency.
 runInstaller([`--codex`, `--dir=${pinCodexHomeDir}`, '--uninstall']);

@@ -73,6 +73,10 @@ ok('codexSkillAdapterHeader §D detects the registry by spawn_agent schema intro
   header.includes('spawn_agent') && header.includes('schema'));
 ok('codexSkillAdapterHeader §D no longer calls per-subagent model pinning deferred',
   !header.includes('deferred'));
+ok('codexSkillAdapterHeader §D pins the exact agent_type dispatch call shape',
+  header.includes('spawn_agent(agent_type="trailhead-<technique>"'));
+ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
+  header.includes('base multi_agent v1') && header.includes('inherit the one session model'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
 
