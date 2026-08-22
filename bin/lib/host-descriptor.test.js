@@ -114,9 +114,15 @@ ok('modelsCollapseNotice is null once models.codex.* is set even if Claude model
   modelsCollapseNotice('codex', { models: { plan: 'claude-opus-5', codex: { plan: 'gpt-5.6-sol' } } }) === null);
 ok('modelsCollapseNotice: lone codex namespace, no Claude id, is null (k !== "codex" guard)',
   modelsCollapseNotice('codex', { models: { codex: { execute: 'gpt-5.6-terra' } } }) === null);
+// Exercises the k !== 'codex' guard directly: a lone codex namespace whose
+// values are all blank leaves codexSet empty, so control reaches the Claude-key
+// filter, where the bare `codex` object key must NOT be counted (String({}) is
+// non-empty). Without the guard this returns a spurious notice instead of null.
+ok('modelsCollapseNotice: lone all-blank codex namespace, no Claude id, is null (fails without the k !== "codex" guard)',
+  modelsCollapseNotice('codex', { models: { codex: { plan: '' } } }) === null);
 ok('modelsCollapseNotice: codex namespace with only empty/nullish values does not silence a real Claude-id notice', (() => {
   const msg = modelsCollapseNotice('codex', { models: { plan: 'claude-opus-5', codex: { plan: '' } } });
-  return typeof msg === 'string' && msg.includes('plan');
+  return typeof msg === 'string' && msg.includes('plan') && !msg.includes('codex)');
 })());
 
 // --- updateNotice ---
