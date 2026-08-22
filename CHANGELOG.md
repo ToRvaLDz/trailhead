@@ -2,6 +2,11 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Changed / Fixed
+- **A new whiteboard ticket now refreshes the dashboard.** Creating a whiteboard ticket (`/trailhead:quick "<text>"` or a capture routed to the whiteboard) — and resolving one — is now a **structural event** that rewrites the pinned `trailhead:dashboard`, so loose work shows up in its whiteboard section and count without waiting for a manual `/trailhead:dashboard`. Map tickets are unchanged (their native sub-issue progress bars already track them); the whiteboard has no such bar, so the dashboard is the only place its tickets show. Freshness rule, the dashboard/whiteboard/quick sections, and the capture reference all updated.
+
 ## 0.3.0 (2026-08-21)
 
 ### Added
