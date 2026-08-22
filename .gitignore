@@ -1,6 +1,6 @@
 node_modules/
 .DS_Store
 *.log
-.trailhead/active-map
 .trailhead/session-ticket
+.trailhead/active-map
 .trailhead/models-collapse-notice

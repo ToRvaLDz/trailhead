@@ -1,5 +1,5 @@
 ---
-description: Capture a small build ticket: defined work you will do now
+description: "Capture a small build ticket: defined work you will do now"
 argument-hint: "<text>"
 ---
 

@@ -1,5 +1,7 @@
 # trailhead
 
+🇬🇧 **English** · 🇮🇹 [Italiano](README.it.md)
+
 **Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the way to the destination is clear.**
 
 `trailhead` is an orchestrator skill for [Claude Code](https://docs.claude.com/en/docs/claude-code). It gives a big, foggy idea a place to begin (a *trailhead*) and a disciplined way to walk it to a working result, with the whole plan living on your issue tracker instead of in scattered local files.
@@ -75,12 +77,13 @@ Each **ticket** is a child issue with a type label and a one-question body. The 
 
 As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached.
 
-A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in two **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
+A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 
 - **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
 - **`trailhead:conventions`**: the project's **way of working**, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: none|worktree|clone`) over human prose. `/trailhead:adopt` and `:new` ask for it up front. `isolation: worktree` gives each executing ticket its own `git worktree` + branch (concurrent sessions on one clone never share a working tree); `isolation: clone` gives it a dedicated clone instead, for path-bound apps a worktree can't build.
+- **`trailhead:dashboard`**: the pinned index of the whole surface, a link to every open map (with GitHub's native progress bars), the whiteboard, and live counts (inbox, whiteboard frontier). Refreshed when a map is charted or exhausted, when a whiteboard ticket is born or resolved (it has no native progress bar, so the dashboard is the only place it shows), and on demand via `/trailhead:dashboard`.
 
-Together with the map, these three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away. Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue.
+These three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchors stay one click away; **maps themselves are never pinned** (they're indexed by the dashboard instead, since the "active" map is per-checkout local state, not a repo-global fact). Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue.
 
 ---
 
@@ -157,6 +160,8 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:new [idea]` | chart a new map from a loose idea |
 | `/trailhead:adopt` | adopt an existing project (map the codebase once, then go lean) |
 | `/trailhead:work [ticket]` | work the next frontier ticket, or the one you name |
+| `/trailhead:quick [ticket \| "text"]` | work one ticket whole, off the map: opens a whiteboard ticket from `"text"` (or takes `<n>`), runs the full engine, grills only if needed, never splits |
+| `/trailhead:whiteboard` | show the whiteboard: the loose (map-less) tickets and their frontier |
 | `/trailhead:inbox [issue]` | triage issues opened by others and integrate the good ones into the map |
 | `/trailhead:resume [ticket]` | resume a paused ticket from its `PAUSED` checkpoint |
 | `/trailhead:pause [note]` | checkpoint the ticket in play so anyone can resume it |
@@ -164,6 +169,7 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:split [ticket]` | split an oversized ticket into children, supersede the original |
 | `/trailhead:grill [topic]` | run a standalone grilling session on a decision/topic |
 | `/trailhead:map` | show the low-res map (destination, decisions, frontier, fog) |
+| `/trailhead:dashboard` | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
 
 ### Capture: zero friction, one confirmation line, resolves nothing
 
@@ -176,6 +182,17 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:bug [--of <ticket>] <text>` | a `bug` ticket | a defect; `--of` records it as a `Regression of:` a closed ticket |
 
 The four fog/ticket captures form a spectrum of commitment and timing: **note < idea < seed < todo**.
+
+When a map is open, a capture that produces a ticket (`todo`/`bug`/`seed`/a sharp `idea`) asks whether to file it on the **active map** or the **whiteboard**, the home for loose, map-less work that doesn't belong to any map (or isn't worth charting one). With no map open it lands on the whiteboard. Work a whiteboard ticket with **`/trailhead:quick`** (which also opens one from `"text"` and works it in the same sitting), and see them all with `/trailhead:whiteboard`.
+
+### 🧯 Don't get trapped in a map: the whiteboard
+
+Deep in a map, something unrelated surfaces: a bug in another area, a chore, a quick idea you want to act on now. Forcing it onto the map's frontier pollutes the map; charting a whole new map for it is overkill. That is what the **whiteboard** is for, loose map-less work, and two moves keep you from getting stuck:
+
+- **Capture it aside.** A `todo`/`bug`/`seed`/sharp `idea` fired while a map is open asks *map or whiteboard?*. Send it to the whiteboard and it stays off the map: tracked, but out of the way, so the map's frontier keeps meaning "the way to this destination".
+- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting, the full discuss → plan → execute → verify engine (atomic commits, code review, the lot), except it **grills only if needed and never splits**, and skips every map book-keeping step. `/trailhead:quick <n>` does the same for a ticket that already exists.
+
+See the whole whiteboard with `/trailhead:whiteboard`. Nothing about the map changes: you just stepped off it, did the thing, and step back on when you're ready.
 
 The three that trip people up are **idea, seed, todo**, so here they are spelled out:
 
@@ -211,9 +228,10 @@ Two rules of thumb: build tickets **never auto-grill**: on blocking ambiguity th
 Everything the map needs is expressed as GitHub labels, so state is queryable in the tracker UI:
 
 - **Structural:** `trailhead:map`, `trailhead:ticket`
-- **Repo-scoped anchors (one each per repo):** `trailhead:codebase` (the distilled codebase map), `trailhead:conventions` (the way of working)
+- **Repo-scoped anchors (one each per repo, pinned):** `trailhead:codebase` 🧱 (the distilled codebase map), `trailhead:conventions` 📜 (the way of working), `trailhead:dashboard` 📊 (the pinned index of maps + whiteboard + counts) — each title carries its icon (like the map's 🗺) so the pinned anchors stand apart at a glance
 - **Type (one per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
+- **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
 
 The **frontier** is then a single query (open, unassigned, not `trailhead:blocked`), no body-parsing needed.
 
@@ -257,7 +275,7 @@ Three layers: **nearest wins**, key by key (a key unset at one layer inherits th
 
 `/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
-The **📊 statusline** step offers to install trailhead's Claude Code status bar: one line with **model · project · branch · plan usage (`5h %` · reset · `7d %`) · a context-window bar**, plus a **second line with the active ticket** (`▸ #N Title`) whenever you're working one, and a `⬆ trailhead <version>` flag when a newer trailhead is available (run `/trailhead:update`). It's a global Claude Code setting; if you already run a statusline (e.g. `ccstatusline`) the setup asks before replacing it, and the script also exposes `--ticket-only` / `--context-only` / `--usage-only` segments to slot into an existing tool.
+The **📊 statusline** step offers to install trailhead's Claude Code status bar: one line with **model · project · branch · plan usage (`5h %` · reset · `7d %`) · a context-window bar**, plus a **second line with the active ticket** (`▸ #N Title`) whenever you're working one, and a `⬆ trailhead <version>` flag when a newer trailhead is available (run `/trailhead:update`). The project is always the main repo's name even from an isolated checkout, and the branch carries a `(WT)` tag in a worktree or `(C)` in a per-ticket clone (nothing on the original checkout). It's a global Claude Code setting; if you already run a statusline (e.g. `ccstatusline`) the setup asks before replacing it, and the script also exposes `--ticket-only` / `--context-only` / `--usage-only` segments to slot into an existing tool.
 
 **First-use offer (once per project).** You don't have to seek this out: the first time you set a project up (at the end of `/trailhead:new`/`:adopt`, or on a bare `/trailhead` when a map exists but no config does) trailhead offers to run the guided setup, or to continue on defaults. It asks **only once**: configuring writes `.trailhead/config.json`, and "continue on defaults" writes an empty `{}`. Once that file exists it's never offered again, and it never interrupts mid-ticket.
 
