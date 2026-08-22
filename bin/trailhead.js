@@ -21,8 +21,8 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 
-const { getHost, configDirFor, hyphenateCommand } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexPromptFor } = require('./lib/codex-projection.js');
+const { getHost, configDirFor } = require('./lib/host-descriptor.js');
+const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -219,21 +219,6 @@ function copySkillConverted(srcDir, destDir, isRoot) {
   }
 }
 
-// Parse the simple `key: value` frontmatter lines a command file uses (only
-// description and argument-hint matter for a Codex prompt).
-function parseCommandFrontmatter(md) {
-  const match = md.match(/^---\n([\s\S]*?)\n---/);
-  const head = match ? match[1] : '';
-  const descMatch = head.match(/^description:\s*(.*)$/m);
-  const hintMatch = head.match(/^argument-hint:\s*(.*)$/m);
-  const description = descMatch ? descMatch[1].trim() : '';
-  let argHint = hintMatch ? hintMatch[1].trim() : '';
-  // Strip a wrapping pair of quotes ("" or non-empty "...") the source files use.
-  if (argHint === '""' || argHint === "''") argHint = '';
-  else argHint = argHint.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
-  return { description, argHint };
-}
-
 function installCodex(configDir, { useSymlink }) {
   const L = codexLayout(configDir);
 
@@ -241,67 +226,46 @@ function installCodex(configDir, { useSymlink }) {
     console.log('Note: symlink install is unavailable for Codex (artifacts are generated, not copied verbatim); installing copies instead.');
   }
 
-  ensure(L.skillDir);
-  ensure(L.referencesDir);
-  ensure(L.promptsDir);
-  ensure(L.trailheadDir);
+  // Migration: sweep the pre-#25 layout (prompts/trailhead*.md + the trailhead/ engine dir).
+  rmrf(path.join(L.legacyPromptsDir, 'trailhead.md'));
+  for (const f of (fs.existsSync(L.legacyPromptsDir) ? fs.readdirSync(L.legacyPromptsDir) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
+  }
+  rmrf(L.legacyEngineDir);
 
-  // Engine: clean copy for idempotency, then project with conversion.
+  // Engine: clean skill dir, then project with conversion.
   rmrf(L.skillDir);
+  ensure(L.skillDir);
   copySkillConverted(path.join(SRC, 'skills', 'trailhead'), L.skillDir, true);
 
-  // Templates (verbatim, never converted): the commit-msg git hook the engine
-  // installs into .git/hooks at repo first-use lives here, reachable on Codex
-  // exactly as on Claude Code. Decision #16 / ticket #22.
-  rmrf(L.templatesDir);
+  // Templates (verbatim, never converted), bundled inside the skill dir so
+  // ${CLAUDE_PLUGIN_ROOT}/templates resolves to ~/.codex/skills/trailhead/templates.
   ensure(L.templatesDir);
   fs.cpSync(path.join(SRC, 'templates'), L.templatesDir, { recursive: true });
 
-  // Prompts: clear out any previously generated trailhead prompts, then regenerate.
-  rmrf(path.join(L.promptsDir, 'trailhead.md'));
-  for (const f of fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : []) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
-  }
-  ensure(L.promptsDir);
-
-  const commandsDir = path.join(SRC, 'commands');
-  const verbs = fs.readdirSync(commandsDir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
-  for (const verb of verbs) {
-    const md = fs.readFileSync(path.join(commandsDir, `${verb}.md`), 'utf8');
-    const { description, argHint } = parseCommandFrontmatter(md);
-    const promptBody = codexPromptFor(verb, description, argHint, L.skillMain);
-    const promptName = hyphenateCommand(`/trailhead:${verb}`); // -> trailhead-<verb>
-    fs.writeFileSync(path.join(L.promptsDir, `${promptName}.md`), promptBody);
-  }
-  fs.writeFileSync(
-    path.join(L.promptsDir, 'trailhead.md'),
-    codexPromptFor(null, 'Start or drive a trailhead map (smart entry)', null, L.skillMain)
-  );
-
-  // No agents/ dir: emitsAgentToml('codex') is false (host-descriptor.js), so
-  // there is nothing to emit here. No hooks/settings.json either: Codex has
-  // no hook bus (hooks.bus === 'none').
+  // agents/openai.yaml: UI metadata + explicit-only invocation (no auto-trigger).
+  ensure(L.agentsDir);
+  fs.writeFileSync(L.agentsYaml, codexAgentsYaml());
 
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
-  if (pkgVersion) {
-    fs.writeFileSync(L.versionFile, pkgVersion + '\n');
-  }
+  if (pkgVersion) fs.writeFileSync(L.versionFile, pkgVersion + '\n');
 
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
-  console.log(`  prompts → ${L.promptsDir}/  (/trailhead-*)`);
-  console.log(`  skill   → ${L.skillMain}`);
+  console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
   console.log('  no hooks (Codex has no hook bus)');
-  console.log('\nRestart or reload Codex to pick up the prompts, then run /trailhead to start.');
+  console.log('\nRestart or reload Codex to pick up the skill, then run $trailhead to start.');
 }
 
 function uninstallCodex(configDir) {
   const L = codexLayout(configDir);
-  rmrf(path.join(L.promptsDir, 'trailhead.md'));
-  for (const f of fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : []) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
+  rmrf(L.skillDir);
+  // sweep any pre-#25 layout too
+  rmrf(path.join(L.legacyPromptsDir, 'trailhead.md'));
+  for (const f of (fs.existsSync(L.legacyPromptsDir) ? fs.readdirSync(L.legacyPromptsDir) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
   }
-  rmrf(L.trailheadDir);
+  rmrf(L.legacyEngineDir);
   console.log(`trailhead uninstalled from ${configDir}`);
 }
 

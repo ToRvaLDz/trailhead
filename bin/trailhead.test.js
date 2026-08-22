@@ -4,6 +4,13 @@
 // Drives the real CLI via child_process against fresh temp dirs, passing an
 // explicit --codex/--claude flag (or a controlled $PATH for the auto-detect
 // cases) plus --dir= so no TTY prompt can fire.
+//
+// Since #25, BOTH codex and claude installs produce <dir>/skills/trailhead/
+// SKILL.md, so that path alone no longer tells them apart. Distinguish by:
+// codex has NO commands/ dir, NO settings.json, NO hooks/, and its SKILL.md
+// STARTS WITH <codex_skill_adapter> plus a skills/trailhead/agents/openai.yaml;
+// claude HAS commands/trailhead/, settings.json, hooks/, and its SKILL.md
+// does NOT start with the adapter header.
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -46,43 +53,47 @@ function fakeBinDir(names) {
 const codexDir = mktmp();
 runInstaller([`--codex`, `--dir=${codexDir}`]);
 
-ok('codex: trailhead-work.md prompt exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
-ok('codex: bare trailhead.md prompt exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
-
-const skillMainPath = path.join(codexDir, 'trailhead', 'skill', 'SKILL.md');
+const skillMainPath = path.join(codexDir, 'skills', 'trailhead', 'SKILL.md');
 ok('codex: SKILL.md exists', fs.existsSync(skillMainPath));
 const skillMainContent = fs.readFileSync(skillMainPath, 'utf8');
 ok('codex: SKILL.md starts with adapter header', skillMainContent.startsWith('<codex_skill_adapter>'));
-// The adapter header itself (Task 1c's mandated EXACT text) intentionally
-// contrasts the hyphen form with the old slash-namespace form ("never
-// `/trailhead:<verb>`"), so it legitimately contains that substring once.
-// Scope the "fully hyphenated" check to the converted engine body, after
-// the header, which is where the command-surface rewrite actually applies.
+// The adapter header itself (mandated EXACT text) intentionally contrasts the
+// $trailhead form with the old slash-namespace form ("Never /trailhead:<verb>"),
+// so it legitimately contains that substring once. Scope the check to the
+// converted engine body, after the header, which is where the command-surface
+// rewrite actually applies.
 const engineBody = skillMainContent.slice(skillMainContent.indexOf('</codex_skill_adapter>'));
 ok('codex: SKILL.md engine body has no /trailhead: substring', !engineBody.includes('/trailhead:'));
 
-ok('codex: references/techniques/grilling.md exists', fs.existsSync(path.join(codexDir, 'trailhead', 'skill', 'references', 'techniques', 'grilling.md')));
+ok('codex: references/techniques/grilling.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'references', 'techniques', 'grilling.md')));
 
-const codexTemplate = path.join(codexDir, 'trailhead', 'templates', 'trailhead-commit-msg');
+const agentsYamlPath = path.join(codexDir, 'skills', 'trailhead', 'agents', 'openai.yaml');
+ok('codex: agents/openai.yaml exists', fs.existsSync(agentsYamlPath));
+ok('codex: agents/openai.yaml disallows implicit invocation', fs.readFileSync(agentsYamlPath, 'utf8').includes('allow_implicit_invocation: false'));
+
+const codexTemplate = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-commit-msg');
 ok('codex: commit-msg template projected', fs.existsSync(codexTemplate));
 ok('codex: commit-msg template is verbatim (not converted)',
   fs.readFileSync(codexTemplate, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg'), 'utf8'));
 
-ok('codex: no agents dir', !fs.existsSync(path.join(codexDir, 'agents')));
+ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
+ok('codex: no legacy prompts/trailhead.md file', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
 
 // --- codex uninstall (same tmp) ----------------------------------------------
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
-ok('codex uninstall: trailhead-work.md gone', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
-ok('codex uninstall: trailhead dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
+ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead')));
+ok('codex uninstall: legacy trailhead engine dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
 
 // --- claude regression --------------------------------------------------------
 const claudeDir = mktmp();
 runInstaller([`--claude`, `--dir=${claudeDir}`]);
 
-ok('claude: skills/trailhead/SKILL.md exists', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead', 'SKILL.md')));
+const claudeSkillPath = path.join(claudeDir, 'skills', 'trailhead', 'SKILL.md');
+ok('claude: skills/trailhead/SKILL.md exists', fs.existsSync(claudeSkillPath));
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
+ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
@@ -93,19 +104,28 @@ ok('claude: settings.json references commit-guard', settingsContent.includes('tr
 // Only a fake `codex` on $PATH: the installer must pick codex on its own.
 const autoCodexDir = mktmp();
 runInstaller([`--dir=${autoCodexDir}`], { env: { PATH: fakeBinDir(['codex']) } });
-ok('auto-detect codex: bare trailhead.md prompt exists', fs.existsSync(path.join(autoCodexDir, 'prompts', 'trailhead.md')));
-ok('auto-detect codex: did not install the Claude layout', !fs.existsSync(path.join(autoCodexDir, 'skills', 'trailhead', 'SKILL.md')));
+const autoCodexSkillPath = path.join(autoCodexDir, 'skills', 'trailhead', 'SKILL.md');
+ok('auto-detect codex: skills/trailhead/SKILL.md exists', fs.existsSync(autoCodexSkillPath));
+ok('auto-detect codex: SKILL.md starts with adapter header (proves codex layout)', fs.readFileSync(autoCodexSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
+ok('auto-detect codex: did not install the Claude layout (no commands/trailhead)', !fs.existsSync(path.join(autoCodexDir, 'commands', 'trailhead')));
+ok('auto-detect codex: did not install the Claude layout (no settings.json)', !fs.existsSync(path.join(autoCodexDir, 'settings.json')));
 
 // Only a fake `claude` on $PATH: the installer must pick claude on its own.
 const autoClaudeDir = mktmp();
 runInstaller([`--dir=${autoClaudeDir}`], { env: { PATH: fakeBinDir(['claude']) } });
-ok('auto-detect claude: skills/trailhead/SKILL.md exists', fs.existsSync(path.join(autoClaudeDir, 'skills', 'trailhead', 'SKILL.md')));
+const autoClaudeSkillPath = path.join(autoClaudeDir, 'skills', 'trailhead', 'SKILL.md');
+ok('auto-detect claude: skills/trailhead/SKILL.md exists', fs.existsSync(autoClaudeSkillPath));
+ok('auto-detect claude: commands/trailhead/work.md exists (proves claude layout)', fs.existsSync(path.join(autoClaudeDir, 'commands', 'trailhead', 'work.md')));
+ok('auto-detect claude: SKILL.md does not start with adapter header', !fs.readFileSync(autoClaudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
 // --- auto-detect: ambiguous + non-interactive -> claude fallback --------------
 // No CLI on $PATH and non-interactive (piped stdio): must fall back to claude.
 const fallbackDir = mktmp();
 runInstaller([`--dir=${fallbackDir}`], { env: { PATH: fakeBinDir([]) } });
-ok('ambiguous fallback: installs the Claude layout', fs.existsSync(path.join(fallbackDir, 'skills', 'trailhead', 'SKILL.md')));
+const fallbackSkillPath = path.join(fallbackDir, 'skills', 'trailhead', 'SKILL.md');
+ok('ambiguous fallback: installs the Claude layout', fs.existsSync(fallbackSkillPath));
+ok('ambiguous fallback: settings.json exists (proves claude layout)', fs.existsSync(path.join(fallbackDir, 'settings.json')));
+ok('ambiguous fallback: SKILL.md does not start with adapter header', !fs.readFileSync(fallbackSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
 // --- both --codex and --claude -> hard error ----------------------------------
 let bothRejected = false;
@@ -121,7 +141,10 @@ ok('conflicting --codex --claude is rejected', bothRejected);
 // here $PATH has only claude, so a stray --host=codex still yields claude.
 const legacyDir = mktmp();
 runInstaller([`--host=codex`, `--dir=${legacyDir}`], { env: { PATH: fakeBinDir(['claude']) } });
-ok('legacy --host=codex is ignored (auto-detect wins)', fs.existsSync(path.join(legacyDir, 'skills', 'trailhead', 'SKILL.md')));
+const legacySkillPath = path.join(legacyDir, 'skills', 'trailhead', 'SKILL.md');
+ok('legacy --host=codex is ignored (auto-detect wins)', fs.existsSync(legacySkillPath));
+ok('legacy --host=codex is ignored: settings.json exists (proves claude layout)', fs.existsSync(path.join(legacyDir, 'settings.json')));
+ok('legacy --host=codex is ignored: SKILL.md does not start with adapter header', !fs.readFileSync(legacySkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
