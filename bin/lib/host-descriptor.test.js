@@ -12,6 +12,9 @@ const {
   degradations,
   modelsCollapseNotice,
   updateNotice,
+  codexVersionGate,
+  parseVersion,
+  CODEX_MIN_VERSION,
   detectHost,
 } = require('./host-descriptor.js');
 
@@ -128,5 +131,17 @@ ok('detectHost: no signals falls back to claude', detectHost({ env: {} }) === 'c
 ok('detectHost: never throws, degrades to claude', detectHost({
   env: new Proxy({}, { get() { throw new Error('boom'); } }),
 }) === 'claude');
+
+// --- codexVersionGate (install-time floor, #27/#28) ---
+ok('CODEX_MIN_VERSION is 0.145.0', CODEX_MIN_VERSION === '0.145.0');
+ok('parseVersion extracts a dotted triple', (() => { const v = parseVersion('codex-cli 0.149.0-alpha'); return v[0] === 0 && v[1] === 149 && v[2] === 0; })());
+ok('parseVersion returns null when absent', parseVersion('no version here') === null);
+ok('codexVersionGate at the floor proceeds', codexVersionGate('0.145.0').ok === true && codexVersionGate('codex-cli 0.145.0').proceed === true);
+ok('codexVersionGate above the floor proceeds cleanly', (() => { const g = codexVersionGate('0.149.0'); return g.ok === true && g.proceed === true && g.undetermined === false; })());
+ok('codexVersionGate below the floor (patch) refuses', (() => { const g = codexVersionGate('0.144.1'); return g.ok === false && g.proceed === false && /below/.test(g.message); })());
+ok('codexVersionGate well below the floor (minor) refuses', codexVersionGate('0.120.0').proceed === false);
+ok('codexVersionGate unparseable is undetermined but proceeds (fail-open)', (() => { const g = codexVersionGate('weird output'); return g.proceed === true && g.undetermined === true && typeof g.message === 'string'; })());
+ok('codexVersionGate null (codex absent) proceeds with a warning', (() => { const g = codexVersionGate(null); return g.proceed === true && g.undetermined === true && typeof g.message === 'string'; })());
+ok('codexVersionGate honours an explicit higher floor', codexVersionGate('0.150.0', '0.200.0').proceed === false);
 
 console.log(`✓ host-descriptor: ${passed} assertions passed`);

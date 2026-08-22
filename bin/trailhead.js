@@ -20,8 +20,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { spawnSync } = require('child_process');
 
-const { getHost, configDirFor } = require('./lib/host-descriptor.js');
+const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
 const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
@@ -221,7 +222,29 @@ function copySkillConverted(srcDir, destDir, isRoot) {
   }
 }
 
+// Best-effort `codex --version` probe for the install-time floor gate. Returns
+// the raw version string, or null when codex is not on PATH / errors out.
+function detectCodexVersion() {
+  try {
+    const r = spawnSync('codex', ['--version'], { encoding: 'utf8', timeout: 5000 });
+    if (r.error || r.status !== 0) return null;
+    return String(r.stdout || r.stderr || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function installCodex(configDir, { useSymlink }) {
+  // Floor gate (decision #27): refuse to project onto a Codex below the
+  // multi_agent floor; warn (but proceed) when the version can't be read.
+  const gate = codexVersionGate(detectCodexVersion());
+  if (!gate.proceed) {
+    console.error(`✗ ${gate.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (gate.undetermined) console.warn(`⚠ ${gate.message}`);
+
   const L = codexLayout(configDir);
 
   if (useSymlink) {

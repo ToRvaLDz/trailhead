@@ -31,6 +31,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// The Codex support floor (decision #27): multi_agent (the binding constraint)
+// is stable at 0.145.0, so trailhead's single codex descriptor (subagentToolkit
+// 'full') is only projected onto a Codex at or above this version.
+const CODEX_MIN_VERSION = '0.145.0';
+
 // --- Axis 1: the 3 closed vocabularies (decision #17) ---------------------
 // Each axis is a closed set of values a host can take. Closed on purpose:
 // a new value here is a design decision (a new ticket), not a typo away.
@@ -249,6 +254,53 @@ function updateNotice(host, cache) {
   return `Heads up: trailhead${ver} is available${from}. Run /trailhead:update to install it.`;
 }
 
+// --- Codex version floor gate (decision #27) --------------------------------
+// The install-time enforcement of CODEX_MIN_VERSION. Pure and never-throwing:
+// the installer runs `codex --version` and hands the raw output here; this
+// decides whether to project. Below the floor the multi_agent tools the
+// adapter's §D relies on are not stable, so the installer refuses (fail below
+// floor). An undeterminable version (codex absent, or unparseable output)
+// fails OPEN with a warning: a gate can't prove a violation it can't read, and
+// a false block would wrongly stop a valid install.
+
+// Extract a dotted-numeric [major, minor, patch] from any version string
+// ("codex-cli 0.149.0", "0.145.0-alpha.1", "0.149.0"), or null when absent.
+function parseVersion(str) {
+  const m = String(str == null ? '' : str).match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+// -1 / 0 / 1 comparison of two [maj,min,patch] triples.
+function compareVersion(a, b) {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+// Verdict the installer acts on. Given the raw `codex --version` output (or
+// null/'' when the probe failed) and the floor, returns { ok, proceed,
+// undetermined, version, floor, message }. Never throws.
+//   at/above floor      -> { ok:true,  proceed:true,  undetermined:false, message:null }
+//   parseable & below   -> { ok:false, proceed:false, undetermined:false, message:<refuse> }
+//   unparseable/absent   -> { ok:true,  proceed:true,  undetermined:true,  message:<warn> }
+function codexVersionGate(versionOutput, floor = CODEX_MIN_VERSION) {
+  const got = parseVersion(versionOutput);
+  if (!got) {
+    return {
+      ok: true, proceed: true, undetermined: true, version: null, floor,
+      message: `Could not determine the Codex version (\`codex --version\` unavailable or unrecognised). trailhead needs Codex >= ${floor} for its multi_agent fan-out; proceeding, but the subagent features will not work on an older Codex.`,
+    };
+  }
+  if (compareVersion(got, parseVersion(floor)) < 0) {
+    return {
+      ok: false, proceed: false, undetermined: false, version: got.join('.'), floor,
+      message: `Codex ${got.join('.')} is below trailhead's floor of ${floor}: its multi_agent subagent tools are not stable, so trailhead will not install. Upgrade Codex to >= ${floor} and re-run.`,
+    };
+  }
+  return { ok: true, proceed: true, undetermined: false, version: got.join('.'), floor, message: null };
+}
+
 // --- Runtime host detection --------------------------------------------------
 // Mirrors GSD's host-runtime-detection.cjs in shape: a short signal ladder,
 // wrapped so it NEVER throws. This is what lets the engine's inline rules
@@ -314,7 +366,10 @@ module.exports = {
   degradations,
   modelsCollapseNotice,
   updateNotice,
+  codexVersionGate,
+  parseVersion,
   detectHost,
+  CODEX_MIN_VERSION,
   CODEX_SESSION_ENV_SIGNALS,
   CODEX_HOME_ENV,
   CODEX_CONFIG_MARKER,
