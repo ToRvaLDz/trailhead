@@ -19,9 +19,14 @@ const THROTTLE_MS = 6 * 60 * 60 * 1000; // ricontrolla al massimo ogni 6h
 function configDir() {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 }
-function cacheFile() {
+// La cache è per-host: Claude e Codex possono essere installati per lo stesso
+// utente a versioni diverse, quindi non devono condividere throttle e verdetto
+// (altrimenti entro le 6h un host emetterebbe la versione dell'altro). Claude
+// mantiene il file storico (la statusline lo legge lì); Codex ha il suo.
+function cacheFile(host) {
   const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
-  return path.join(base, 'trailhead', 'update-check.json');
+  const name = host === 'codex' ? 'update-check-codex.json' : 'update-check.json';
+  return path.join(base, 'trailhead', name);
 }
 function readJSON(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
@@ -101,9 +106,9 @@ function latestGitHub() {
 }
 
 function main() {
-  const out = cacheFile();
   const info = detect();
   if (!SEMVER.test(clean(info.version))) return; // versione installata sconosciuta: non azzardare
+  const out = cacheFile(info.host); // cache per-host: Codex non eredita il verdetto di Claude
 
   // throttle: se la cache è fresca (<6h) riusa quel verdetto senza richiamare la rete
   let prev = null;
