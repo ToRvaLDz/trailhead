@@ -7,10 +7,12 @@
 //
 // Since #25, BOTH codex and claude installs produce <dir>/skills/trailhead/
 // SKILL.md, so that path alone no longer tells them apart. Distinguish by:
-// codex has NO commands/ dir, NO settings.json, NO hooks/, and its SKILL.md
-// STARTS WITH <codex_skill_adapter> plus a skills/trailhead/agents/openai.yaml;
-// claude HAS commands/trailhead/, settings.json, hooks/, and its SKILL.md
-// does NOT start with the adapter header.
+// codex has NO commands/ dir and NO settings.json (still Claude-only), but
+// (since #29) DOES have hooks.json + skills/trailhead/hooks/ + config.toml,
+// and its SKILL.md STARTS WITH <codex_skill_adapter> plus a
+// skills/trailhead/agents/openai.yaml; claude HAS commands/trailhead/,
+// settings.json, hooks/, and its SKILL.md does NOT start with the adapter
+// header.
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -80,10 +82,33 @@ ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
 ok('codex: no legacy prompts/trailhead.md file', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
 
+// --- codex hooks (#29) --------------------------------------------------------
+const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
+ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
+const codexHooksJson = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
+const codexHooksJsonStr = JSON.stringify(codexHooksJson);
+ok('codex: hooks.json registers commit-guard under PreToolUse', codexHooksJsonStr.includes('trailhead-commit-guard.js') &&
+  (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-commit-guard.js'))));
+ok('codex: hooks.json registers secret-guard under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-secret-guard.js'))));
+ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
+ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
+
+ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
+
+const codexConfigTomlPath = path.join(codexDir, 'config.toml');
+ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
+ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('hooks = true'));
+
 // --- codex uninstall (same tmp) ----------------------------------------------
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
 ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead')));
 ok('codex uninstall: legacy trailhead engine dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
+ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
+  const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
+  const str = JSON.stringify(h);
+  return !str.includes('trailhead-commit-guard.js') && !str.includes('trailhead-secret-guard.js') &&
+    !str.includes('trailhead-issue-injection-scanner.js') && !str.includes('trailhead-check-update.js');
+})());
 
 // --- claude regression --------------------------------------------------------
 const claudeDir = mktmp();

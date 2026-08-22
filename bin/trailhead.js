@@ -23,7 +23,7 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -275,11 +275,39 @@ function installCodex(configDir, { useSymlink }) {
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) fs.writeFileSync(L.versionFile, pkgVersion + '\n');
 
+  // Hooks: copy the 4 guard scripts into the skill dir and register them in
+  // ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
+  ensure(L.hooksScriptsDir);
+  for (const f of HOOK_FILES) {
+    const dest = path.join(L.hooksScriptsDir, f);
+    fs.copyFileSync(path.join(SRC, 'hooks', f), dest);
+    fs.chmodSync(dest, 0o755);
+  }
+  const h = readJSON(L.hooksJson);
+  for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
+  writeJSON(L.hooksJson, h);
+
+  // Feature flag: Codex gates the hook bus behind features.hooks = true.
+  let current = '';
+  try { current = fs.readFileSync(L.configToml, 'utf8'); } catch { current = ''; }
+  const updatedToml = enableCodexHooksFeature(current);
+  let featureManual = false;
+  if (updatedToml && typeof updatedToml === 'string') {
+    ensure(path.dirname(L.configToml));
+    fs.writeFileSync(L.configToml, updatedToml);
+  } else if (updatedToml && updatedToml.unsafe) {
+    featureManual = true;
+  }
+
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
-  console.log('  no hooks (Codex has no hook bus)');
+  console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
   console.log('\nRestart or reload Codex to pick up the skill, then run $trailhead to start.');
+  console.log('Note: Codex will ask you to trust trailhead\'s hooks on next start (feature `features.hooks`).');
+  if (featureManual) {
+    console.log(`  ⚠ could not edit ${L.configToml} automatically — add \`features.hooks = true\` under [features] by hand to enable the hooks.`);
+  }
 }
 
 function uninstallCodex(configDir) {
@@ -291,6 +319,18 @@ function uninstallCodex(configDir) {
     if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
   }
   rmrf(L.legacyEngineDir);
+  // Strip trailhead's entries from hooks.json, but only if it already exists
+  // (uninstall must never create it). Leave features.hooks in config.toml
+  // untouched: the user may rely on it for other hooks, mirroring how
+  // uninstallClaude leaves settings.json flags alone.
+  if (fs.existsSync(L.hooksJson)) {
+    const h = readJSON(L.hooksJson);
+    stripHook(h, 'PreToolUse', 'trailhead-commit-guard.js');
+    stripHook(h, 'PreToolUse', 'trailhead-secret-guard.js');
+    stripHook(h, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
+    stripHook(h, 'SessionStart', 'trailhead-check-update.js');
+    writeJSON(L.hooksJson, h);
+  }
   console.log(`trailhead uninstalled from ${configDir}`);
 }
 
