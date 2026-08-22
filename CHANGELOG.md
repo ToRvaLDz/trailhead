@@ -12,6 +12,9 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 - **The statusline's ticket line now shows for `quick` and resumed sessions too.** The `.trailhead/session-ticket` marker (what the statusline's second line reads) was only guaranteed by `work`. `quick` wrote it only under `isolation: worktree`/`clone`, so a `quick` task under `isolation: none` (the default — one checkout, working on `main`) left no marker and no `trailhead/t<n>` branch, so the statusline had nothing to show. And a resume after a released pause never re-wrote the marker it had removed. Both now write the marker in every isolation mode, matching `work`.
 - **A new whiteboard ticket now refreshes the dashboard.** Creating a whiteboard ticket (`/trailhead:quick "<text>"` or a capture routed to the whiteboard) — and resolving one — is now a **structural event** that rewrites the pinned `trailhead:dashboard`, so loose work shows up in its whiteboard section and count without waiting for a manual `/trailhead:dashboard`. Map tickets are unchanged (their native sub-issue progress bars already track them); the whiteboard has no such bar, so the dashboard is the only place its tickets show. Freshness rule, the dashboard/whiteboard/quick sections, and the capture reference all updated.
 
+### Docs
+- **Italian README.** Added `README.it.md`, a full Italian translation, reachable via an `English · Italiano` language switcher at the top of both READMEs. English stays the default.
+
 ## 0.3.0 (2026-08-21)
 
 ### Added
