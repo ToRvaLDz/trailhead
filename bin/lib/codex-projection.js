@@ -28,6 +28,11 @@ function codexLayout(codexHome) {
     referencesDir: path.join(skillDir, 'references'),
     agentsDir: path.join(skillDir, 'agents'),
     agentsYaml: path.join(skillDir, 'agents', 'openai.yaml'),
+    // The REAL Codex custom-agent dir, rooted at the codex HOME (distinct
+    // from the skill-local agentsDir/agentsYaml above, which hold the
+    // openai.yaml UI metadata). This is where trailhead-<technique>.toml
+    // model pins land so Codex's native multi_agent_v2 registry finds them.
+    codexAgentsDir: path.join(codexHome, 'agents'),
     templatesDir: path.join(skillDir, 'templates'),
     versionFile: path.join(skillDir, 'VERSION'),
     hooksScriptsDir: path.join(skillDir, 'hooks'),
@@ -116,6 +121,97 @@ policy:
 `;
 }
 
+// --- CODEX_AGENT_TECHNIQUES ------------------------------------------------
+// Metadata for the 5 trailhead activities that can get a per-technique Codex
+// custom-agent TOML: a short UI description and the developer_instructions
+// that steer that subagent on Codex, pointing back at the projected skill.
+const CODEX_AGENT_TECHNIQUES = Object.freeze({
+  plan: Object.freeze({
+    description: "trailhead planning subagent: produces a build ticket's PLAN (steps, seams, files, verification)",
+    developerInstructions: "You are trailhead's planning subagent on Codex. Produce the PLAN for a trailhead build ticket: the steps, the seams, the files touched, and the verification criteria, applying TDD per the ticket's config. Follow the Plan step and the referenced technique in the trailhead skill at ~/.codex/skills/trailhead. Return the plan; do not implement.",
+  }),
+  execute: Object.freeze({
+    description: 'trailhead execute subagent: implements a PLAN with atomic commits',
+    developerInstructions: "You are trailhead's execute subagent on Codex. Implement the approved PLAN for a trailhead build ticket with atomic conventional commits, each carrying a Refs: #<n> trailer for the ticket, following the repo's conventions. Follow the Execute step in the trailhead skill at ~/.codex/skills/trailhead.",
+  }),
+  research: Object.freeze({
+    description: 'trailhead research subagent: gathers a decision-ready fact from primary sources',
+    developerInstructions: "You are trailhead's research subagent on Codex. Gather the decision-ready fact a ticket waits on from primary sources, per the Research technique in the trailhead skill at ~/.codex/skills/trailhead. Record findings with citations; change no product code beyond the research artifact.",
+  }),
+  review: Object.freeze({
+    description: "trailhead code-review subagent: adversarially reviews a ticket's diff",
+    developerInstructions: "You are trailhead's code-review subagent on Codex. Review the ticket's diff adversarially on the trailhead Code review technique's axes, verifying each finding before reporting, per the trailhead skill at ~/.codex/skills/trailhead. Do not defer to a convention or a settled-decision memory.",
+  }),
+  debug: Object.freeze({
+    description: "trailhead debug subagent: finds a defect's root cause by the scientific method",
+    developerInstructions: "You are trailhead's debug subagent on Codex. Find the root cause of the ticket's defect by the scientific method (reproduce, localise, falsifiable hypotheses, confirm, verify), per the Debug technique in the trailhead skill at ~/.codex/skills/trailhead.",
+  }),
+});
+
+// --- codexAgentToml ---------------------------------------------------------
+// Render one Codex custom-agent TOML. model_reasoning_effort is emitted only
+// when effort is a non-empty string. developer_instructions is a TOML
+// multi-line literal block ('''...'''); a stray ''' inside the text (none of
+// ours has one, but be safe) is neutralised so it can't close the block early.
+function codexAgentToml({ name, description, developerInstructions, model, effort }) {
+  const safeInstructions = String(developerInstructions).split("'''").join("''");
+  const lines = [
+    `name = "${name}"`,
+    `description = "${description}"`,
+    `model = "${model}"`,
+  ];
+  if (typeof effort === 'string' && effort.trim() !== '') {
+    lines.push(`model_reasoning_effort = "${effort}"`);
+  }
+  lines.push(`developer_instructions = '''\n${safeInstructions}\n'''`);
+  return lines.join('\n') + '\n';
+}
+
+// --- codexAgentTomlPlan ------------------------------------------------------
+// Given the resolved models.codex config (a plain object like
+// { plan: "gpt-5.6-terra", execute: { model: "gpt-5.6-sol", effort: "high" } },
+// or null/undefined/{}), return the set of trailhead-<technique>.toml writes
+// the installer should make. Skips unknown keys and empty values. Iterates
+// CODEX_AGENT_TECHNIQUES in declaration order (not the config's key order) so
+// the write order is deterministic regardless of how the config was authored.
+function codexAgentTomlPlan(codexHome, codexModels) {
+  const models = codexModels && typeof codexModels === 'object' ? codexModels : {};
+  const dir = codexLayout(codexHome).codexAgentsDir;
+  const writes = [];
+
+  for (const technique of Object.keys(CODEX_AGENT_TECHNIQUES)) {
+    const raw = models[technique];
+    if (raw == null) continue;
+
+    let model = null;
+    let effort = null;
+    if (typeof raw === 'string') {
+      if (raw.trim() !== '') model = raw;
+    } else if (typeof raw === 'object') {
+      const m = typeof raw.model === 'string' ? raw.model : '';
+      if (m.trim() !== '') {
+        model = m;
+        effort = typeof raw.effort === 'string' ? raw.effort : null;
+      }
+    }
+    if (!model) continue;
+
+    const meta = CODEX_AGENT_TECHNIQUES[technique];
+    const name = `trailhead-${technique}`;
+    const filePath = path.join(dir, `${name}.toml`);
+    const content = codexAgentToml({
+      name,
+      description: meta.description,
+      developerInstructions: meta.developerInstructions,
+      model,
+      effort,
+    });
+    writes.push({ technique, name, path: filePath, content });
+  }
+
+  return { writes };
+}
+
 // --- codexHookEntries -----------------------------------------------------
 // The four guardrail hooks trailhead registers on Codex, as {event, matcher,
 // command} records. Commands run the copied guard scripts under hooksScriptsDir
@@ -133,19 +229,23 @@ function codexHookEntries(hooksScriptsDir) {
   ];
 }
 
-// --- enableCodexHooksFeature ----------------------------------------------
-// Codex gates the hook bus behind `features.hooks = true` in config.toml. Given
-// the current config.toml text (or '' when absent), return the updated text that
-// enables it, or `null` when it is already enabled, or `{ unsafe: true }` when the
-// file can't be edited safely (the caller then prints a manual instruction rather
-// than risk corrupting the user's config). Conservative and idempotent: it only
-// appends a fresh table, inserts the single key into an existing [features]
-// table, or flips an explicit `hooks = false`; anything ambiguous is left alone.
-function enableCodexHooksFeature(tomlText) {
+// --- enableCodexFeatureFlag -------------------------------------------------
+// Codex gates a lifecycle feature behind `features.<flag> = true` in
+// config.toml. Given the current config.toml text (or '' when absent) and the
+// flag name, return the updated text that enables it, or `null` when it is
+// already enabled, or `{ unsafe: true }` when the file can't be edited safely
+// (the caller then prints a manual instruction rather than risk corrupting the
+// user's config). Conservative and idempotent: it only appends a fresh table,
+// inserts the single key into an existing [features] table, or flips an
+// explicit `<flag> = false`; anything ambiguous is left alone.
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function enableCodexFeatureFlag(tomlText, flag) {
   const text = typeof tomlText === 'string' ? tomlText : '';
-  // Dotted top-level form: features.hooks = <x>
-  if (/^\s*features\.hooks\s*=\s*true\s*(#.*)?$/m.test(text)) return null;
-  if (/^\s*features\.hooks\s*=/m.test(text)) return { unsafe: true }; // set to something we won't touch
+  const flagRe = esc(flag);
+  // Dotted top-level form: features.<flag> = <x>
+  if (new RegExp(`^\\s*features\\.${flagRe}\\s*=\\s*true\\s*(#.*)?$`, 'm').test(text)) return null;
+  if (new RegExp(`^\\s*features\\.${flagRe}\\s*=`, 'm').test(text)) return { unsafe: true }; // set to something we won't touch
   const featHeader = /^[ \t]*\[features\][ \t]*(#.*)?$/m;
   const m = featHeader.exec(text);
   if (m) {
@@ -154,18 +254,31 @@ function enableCodexHooksFeature(tomlText) {
     const nextRel = rest.search(/^[ \t]*\[[^\]]+\][ \t]*(#.*)?$/m);
     const bodyEnd = nextRel === -1 ? text.length : bodyStart + nextRel;
     const body = text.slice(bodyStart, bodyEnd);
-    if (/^\s*hooks\s*=\s*true\s*(#.*)?$/m.test(body)) return null;
-    if (/^\s*hooks\s*=\s*false\s*(#.*)?$/m.test(body)) {
-      const newBody = body.replace(/^([ \t]*hooks[ \t]*=[ \t]*)false([ \t]*(#.*)?)$/m, '$1true$2');
+    if (new RegExp(`^\\s*${flagRe}\\s*=\\s*true\\s*(#.*)?$`, 'm').test(body)) return null;
+    if (new RegExp(`^\\s*${flagRe}\\s*=\\s*false\\s*(#.*)?$`, 'm').test(body)) {
+      const newBody = body.replace(new RegExp(`^([ \\t]*${flagRe}[ \\t]*=[ \\t]*)false([ \\t]*(#.*)?)$`, 'm'), '$1true$2');
       return text.slice(0, bodyStart) + newBody + text.slice(bodyEnd);
     }
-    if (/^\s*hooks\s*=/m.test(body)) return { unsafe: true };
-    return text.slice(0, bodyStart) + '\nhooks = true' + text.slice(bodyStart);
+    if (new RegExp(`^\\s*${flagRe}\\s*=`, 'm').test(body)) return { unsafe: true };
+    return text.slice(0, bodyStart) + `\n${flag} = true` + text.slice(bodyStart);
   }
   // No [features] table at all: append one.
   const prefix = text.length === 0 ? '' : (text.endsWith('\n') ? '' : '\n');
   const gap = text.length === 0 ? '' : '\n';
-  return text + prefix + gap + '[features]\nhooks = true\n';
+  return text + prefix + gap + `[features]\n${flag} = true\n`;
+}
+
+// --- enableCodexHooksFeature ----------------------------------------------
+// Codex gates the hook bus behind `features.hooks = true` in config.toml.
+function enableCodexHooksFeature(tomlText) {
+  return enableCodexFeatureFlag(tomlText, 'hooks');
+}
+
+// --- enableCodexMultiAgentV2Feature -----------------------------------------
+// Codex gates per-subagent model pinning (the agents/*.toml registry) behind
+// `features.multi_agent_v2 = true` in config.toml.
+function enableCodexMultiAgentV2Feature(tomlText) {
+  return enableCodexFeatureFlag(tomlText, 'multi_agent_v2');
 }
 
 module.exports = {
@@ -173,6 +286,10 @@ module.exports = {
   convertToCodex,
   codexSkillAdapterHeader,
   codexAgentsYaml,
+  codexAgentToml,
+  codexAgentTomlPlan,
   codexHookEntries,
+  enableCodexFeatureFlag,
   enableCodexHooksFeature,
+  enableCodexMultiAgentV2Feature,
 };

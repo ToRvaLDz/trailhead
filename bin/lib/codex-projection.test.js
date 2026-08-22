@@ -7,8 +7,11 @@ const {
   convertToCodex,
   codexSkillAdapterHeader,
   codexAgentsYaml,
+  codexAgentToml,
+  codexAgentTomlPlan,
   codexHookEntries,
   enableCodexHooksFeature,
+  enableCodexMultiAgentV2Feature,
 } = require('./codex-projection.js');
 
 let passed = 0;
@@ -52,6 +55,7 @@ ok('codexLayout agentsYaml', layout.agentsYaml === '/c/skills/trailhead/agents/o
 ok('codexLayout hooksScriptsDir', layout.hooksScriptsDir === '/c/skills/trailhead/hooks');
 ok('codexLayout hooksJson', layout.hooksJson === '/c/hooks.json');
 ok('codexLayout configToml', layout.configToml === '/c/config.toml');
+ok('codexLayout codexAgentsDir', layout.codexAgentsDir === '/c/agents');
 
 // --- codexSkillAdapterHeader ---
 const header = codexSkillAdapterHeader();
@@ -97,6 +101,73 @@ ok('enableCodexHooksFeature: appends [features] table when none exists', (() => 
   return typeof out === 'string' && out.includes('[other]') && out.includes('[features]') && out.includes('hooks = true');
 })());
 ok('enableCodexHooksFeature: dotted top-level form already true -> null', enableCodexHooksFeature('features.hooks = true\n') === null);
+
+// --- codexAgentToml ---
+ok('codexAgentToml with effort includes model + model_reasoning_effort + developer_instructions block', (() => {
+  const out = codexAgentToml({
+    name: 'trailhead-execute',
+    description: 'desc',
+    developerInstructions: 'do the thing',
+    model: 'gpt-5.6-sol',
+    effort: 'high',
+  });
+  return out.includes('name = "trailhead-execute"') &&
+    out.includes('model = "gpt-5.6-sol"') &&
+    out.includes('model_reasoning_effort = "high"') &&
+    out.includes("developer_instructions = '''") &&
+    out.includes('do the thing');
+})());
+ok('codexAgentToml without effort omits model_reasoning_effort', (() => {
+  const out = codexAgentToml({
+    name: 'trailhead-plan',
+    description: 'desc',
+    developerInstructions: 'plan the thing',
+    model: 'gpt-5.6-terra',
+    effort: null,
+  });
+  return out.includes('model = "gpt-5.6-terra"') && !out.includes('model_reasoning_effort');
+})());
+
+// --- codexAgentTomlPlan ---
+ok('codexAgentTomlPlan: string value produces one write with the right path/name/model', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: 'gpt-5.6-terra' });
+  return plan.writes.length === 1 &&
+    plan.writes[0].path === '/c/agents/trailhead-execute.toml' &&
+    plan.writes[0].name === 'trailhead-execute' &&
+    plan.writes[0].content.includes('model = "gpt-5.6-terra"');
+})());
+ok('codexAgentTomlPlan: object value includes model + effort', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: { model: 'gpt-5.6-sol', effort: 'high' } });
+  const c = plan.writes[0].content;
+  return c.includes('model = "gpt-5.6-sol"') && c.includes('model_reasoning_effort = "high"');
+})());
+ok('codexAgentTomlPlan: empty object -> no writes', codexAgentTomlPlan('/c', {}).writes.length === 0);
+ok('codexAgentTomlPlan: null -> no writes', codexAgentTomlPlan('/c', null).writes.length === 0);
+ok('codexAgentTomlPlan: unknown key skipped', codexAgentTomlPlan('/c', { bogus: 'x' }).writes.length === 0);
+ok('codexAgentTomlPlan: object value with no model is skipped', codexAgentTomlPlan('/c', { execute: { effort: 'high' } }).writes.length === 0);
+
+// --- enableCodexMultiAgentV2Feature ---
+ok('enableCodexMultiAgentV2Feature: dotted form already true -> null',
+  enableCodexMultiAgentV2Feature('features.multi_agent_v2 = true\n') === null);
+ok('enableCodexMultiAgentV2Feature: inserts into existing [features] table', (() => {
+  const out = enableCodexMultiAgentV2Feature('[features]\nfoo = 1\n');
+  return typeof out === 'string' && out.includes('multi_agent_v2 = true') && (out.match(/\[features\]/g) || []).length === 1;
+})());
+ok('enableCodexMultiAgentV2Feature: appends a table when none exists', (() => {
+  const out = enableCodexMultiAgentV2Feature('[other]\nk = 1\n');
+  return typeof out === 'string' && out.includes('[other]') && out.includes('[features]') && out.includes('multi_agent_v2 = true');
+})());
+ok('enableCodexMultiAgentV2Feature: foreign explicit value is unsafe',
+  (() => {
+    const out = enableCodexMultiAgentV2Feature('features.multi_agent_v2 = "x"\n');
+    return out && out.unsafe === true;
+  })());
+
+// --- enableCodexHooksFeature regression (still works after generalisation) ---
+ok('enableCodexHooksFeature regression: still yields hooks = true', (() => {
+  const out = enableCodexHooksFeature('[features]\nfoo = 1\n');
+  return typeof out === 'string' && out.includes('hooks = true');
+})());
 
 // --- codexAgentsYaml ---
 const agentsYaml = codexAgentsYaml();
