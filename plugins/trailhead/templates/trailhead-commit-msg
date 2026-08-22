@@ -1,0 +1,57 @@
+#!/usr/bin/env node
+'use strict';
+// trailhead commit-msg hook (git). Host-independent guardrail: installed into
+// .git/hooks/commit-msg at repo first-use so trailhead's commit discipline is
+// enforced on EVERY `git commit`, whatever agent host drives it (Codex has no
+// hook bus; this git hook is how the commit-guard survives there). Decision #16.
+//
+// Self-contained by design: detached from the trailhead install, it inlines the
+// same two rules as plugins/trailhead/hooks/lib/commit-message-check.js. That
+// lib's test drives this hook end-to-end so the two copies cannot drift.
+//
+// git passes the commit-message file path as argv[2]. On a violation: print the
+// reason to stderr and exit 1 (git aborts the commit). Otherwise exit 0.
+// Crash-safe: any unexpected error exits 0 (never wedge a commit).
+
+const fs = require('fs');
+
+const TYPES = 'feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert';
+const CONVENTIONAL = new RegExp(`^(${TYPES})(\\([^)]+\\))?!?:\\s.+`);
+const CO_AUTHORED = /co-authored-by\s*:/i;
+const SCISSORS = '# ------------------------ >8';
+
+function messageRegion(raw) {
+  const text = String(raw == null ? '' : raw);
+  const i = text.indexOf(SCISSORS);
+  return i === -1 ? text : text.slice(0, i);
+}
+function subjectOf(raw) {
+  for (const line of messageRegion(raw).split('\n')) {
+    if (line.trim() === '' || line.startsWith('#')) continue;
+    return line.trim();
+  }
+  return '';
+}
+
+try {
+  const file = process.argv[2];
+  const raw = file ? fs.readFileSync(file, 'utf8') : '';
+  const region = messageRegion(raw);
+
+  if (CO_AUTHORED.test(region)) {
+    process.stderr.write('trailhead: do not add a Co-Authored-By trailer to commits. Remove it and commit again.\n');
+    process.exit(1);
+  }
+  const subject = subjectOf(raw);
+  if (subject && !CONVENTIONAL.test(subject)) {
+    process.stderr.write(`trailhead: commit subject must be Conventional Commits: <type>(<scope>)?: <subject>. Valid types: ${TYPES.replace(/\|/g, ', ')}.\n`);
+    process.exit(1);
+  }
+  if (subject.length > 72) {
+    process.stderr.write('trailhead: commit subject must be 72 characters or less.\n');
+    process.exit(1);
+  }
+} catch {
+  process.exit(0); // never wedge a commit on an unexpected error
+}
+process.exit(0);

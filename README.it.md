@@ -18,7 +18,7 @@ Due approcci al lavoro di progetto guidato dagli agenti risolvono ciascuno una m
 
 Lavorando su entrambi, uno schema continuava a ripresentarsi: **usa una mappa e un onboarding in stile Wayfinder per decidere la forma del lavoro, poi un motore in stile GSD per costruire ogni pezzo, senza mai lasciare l'issue tracker.** `trailhead` è quello schema trasformato in un'unica skill, una sua interpretazione autonoma di entrambe le idee anziché un wrapper attorno all'una o all'altra.
 
-> **trailhead è self-contained.** Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; i suoi subagent (research, codebase-map, review) usano il tool `Agent` integrato di Claude Code. L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: quando abilitata, la modalità mockup di `claude.ai/design` invia a un progetto design-system tramite DesignSync (l'MCP `claude_design` più la skill `/design-sync`). Se questa non è disponibile, ripiega silenziosamente sui mockup su disco locale.
+> **trailhead è self-contained.** Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; i suoi subagent (research, codebase-map, review) usano i subagent nativi dell'host (il tool `Agent` integrato di Claude Code, oppure il toolkit `multi_agent` di Codex). L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: quando abilitata, la modalità mockup di `claude.ai/design` invia a un progetto design-system tramite DesignSync (l'MCP `claude_design` più la skill `/design-sync`). Se questa non è disponibile, ripiega silenziosamente sui mockup su disco locale.
 
 Le scelte di design che ne derivano:
 
@@ -40,7 +40,7 @@ Le scelte di design che ne derivano:
 
 ## 📦 Install
 
-> **Solo Claude Code, per ora.** trailhead si installa come skill Claude Code + comandi `/trailhead:*` + hook. È costruito per estendersi in futuro ad altre AI CLI (l'installer usa già un adapter per-agente), ma oggi Claude Code è l'unico host supportato.
+> **Gira su Claude Code e Codex CLI.** trailhead è scritto una volta sola; l'installer proietta artefatti nativi per l'host. Su **Claude Code**: una skill + comandi `/trailhead:*` + hook. Su **Codex CLI**: una skill nativa invocata `$trailhead`, una skill `$trailhead-<verb>` per ogni verbo per la discoverability, e le guardrail come hook nativi di Codex. Scegli l'host con `--claude` / `--codex`, o lascia che l'installer lo rilevi da solo. Altri host possono seguire (l'installer usa un descrittore per-host).
 
 **Prerequisiti:** una [`gh` CLI](https://cli.github.com) autenticata (il tracker è GitHub Issues) e un repo GitHub in cui lavorare. Il percorso npm richiede anche Node 18+.
 
@@ -53,15 +53,21 @@ Aggiorna con `/plugin update trailhead`; rimuovi con `/plugin uninstall trailhea
 
 ### Oppure via npm (installa nella config dir del tuo agente)
 ```
-npx @marcomigozzi/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
-npx @marcomigozzi/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
-npx @marcomigozzi/trailhead --uninstall  # remove everything it added
-npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
+npx @marcomigozzi/trailhead              # rileva l'host (default ~/.claude)
+npx @marcomigozzi/trailhead --claude     # Claude Code (~/.claude o $CLAUDE_CONFIG_DIR)
+npx @marcomigozzi/trailhead --codex      # Codex CLI ($CODEX_HOME o ~/.codex)
+npx @marcomigozzi/trailhead --symlink    # dev install (Claude; symlink al checkout, le modifiche sono live)
+npx @marcomigozzi/trailhead --uninstall  # rimuove tutto ciò che ha aggiunto (abbinalo a --claude / --codex)
+npx @marcomigozzi/trailhead --dir=<path> # punta a una config dir specifica
 ```
-Copia la skill (+ le sue `references/`), i comandi `/trailhead:*`, gli hook (in `hooks/`, registrati in `settings.json`) incluso un **update check** al SessionStart, e i template di label-guard + statusline, in modo idempotente. Ri-esegui `npx @marcomigozzi/trailhead` per aggiornare, oppure esegui **`/trailhead:update`** da dentro l'agente: rileva come trailhead è stato installato e installa la versione più recente dove è sicuro farlo (un `git pull` per un dev-symlink, una ri-esecuzione `npx` per npm, o `/plugin update` per il plugin). Quando esiste una versione più recente, la statusline mostra un flag `⬆ trailhead <version>`.
+Su **Claude Code** copia la skill (+ le sue `references/`), i comandi `/trailhead:*`, gli hook (in `hooks/`, registrati in `settings.json`) incluso un **update check** al SessionStart, e i template di label-guard + statusline, in modo idempotente.
+
+Su **Codex CLI** (`--codex`) proietta una skill nativa Codex invocata come **`$trailhead`** (`$trailhead work`, `$trailhead new "idea"`, …), una skill sottile **`$trailhead-<verb>`** per ogni verbo per la discoverability, le quattro guardrail come **hook** nativi di Codex (`~/.codex/hooks.json`, abilitando `features.hooks`), e i pin di modello per-tecnica da **`models.codex.*`** in `~/.codex/agents/`. Serve Codex **0.145.0+** (l'installer fa un gate su `codex --version`). La modalità mockup `claude.ai/design` non è disponibile su Codex, quindi lì i mockup UI ripiegano sul disco locale.
+
+Ri-esegui l'install per aggiornare, oppure esegui **`/trailhead:update`** (Claude) / **`$trailhead update`** (Codex) da dentro l'agente: rileva come trailhead è stato installato e installa la versione più recente dove è sicuro farlo (un `git pull` per un dev-symlink, una ri-esecuzione `npx` per npm, o `/plugin update` per il plugin). Quando esiste una versione più recente, la statusline mostra un flag `⬆ trailhead <version>` (Claude).
 
 ### Dopo l'installazione
-Riavvia o ricarica il tuo agente così i comandi si registrano, poi esegui **`/trailhead`** per iniziare (smart entry), o `/trailhead:new "<idea>"` per tracciare una mappa. Nota: una volta installato, l'**hook di commit guard gira a ogni `git commit`** (imponendo i Conventional Commits e bloccando `Co-Authored-By`); disabilita gli hook del plugin nelle impostazioni se non lo vuoi. In ogni caso trailhead è self-contained: nessun'altra skill o plugin è richiesta, niente preflight, niente version drift.
+Riavvia o ricarica il tuo agente così i comandi si registrano, poi esegui **`/trailhead`** per iniziare (smart entry), o `/trailhead:new "<idea>"` per tracciare una mappa. **Su Codex** la superficie è `$trailhead`: esegui **`$trailhead`** per lo smart entry, `$trailhead new "<idea>"` per tracciare, o una skill per-verbo `$trailhead-<verb>`. Nota: una volta installato, l'**hook di commit guard gira a ogni `git commit`** (imponendo i Conventional Commits e bloccando `Co-Authored-By`); disabilita gli hook del plugin nelle impostazioni se non lo vuoi. In ogni caso trailhead è self-contained: nessun'altra skill o plugin è richiesta, niente preflight, niente version drift.
 
 ---
 

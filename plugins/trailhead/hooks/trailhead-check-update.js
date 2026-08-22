@@ -19,9 +19,14 @@ const THROTTLE_MS = 6 * 60 * 60 * 1000; // ricontrolla al massimo ogni 6h
 function configDir() {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 }
-function cacheFile() {
+// La cache è per-host: Claude e Codex possono essere installati per lo stesso
+// utente a versioni diverse, quindi non devono condividere throttle e verdetto
+// (altrimenti entro le 6h un host emetterebbe la versione dell'altro). Claude
+// mantiene il file storico (la statusline lo legge lì); Codex ha il suo.
+function cacheFile(host) {
   const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
-  return path.join(base, 'trailhead', 'update-check.json');
+  const name = host === 'codex' ? 'update-check-codex.json' : 'update-check.json';
+  return path.join(base, 'trailhead', name);
 }
 function readJSON(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
@@ -46,6 +51,15 @@ function cmp(a, b) {
 
 // --- rileva canale + versione installata ---
 function detect() {
+  // 0) codex: lo script vive sotto <codexHome>/skills/trailhead/hooks/, un
+  // percorso robusto e indipendente dall'env (non serve CODEX_HOME).
+  const onCodex = /[\\/]skills[\\/]trailhead[\\/]hooks$/.test(__dirname);
+  if (onCodex) {
+    const ver = (readFileSafe(path.join(__dirname, '..', 'VERSION')) || '').trim();
+    if (SEMVER.test(clean(ver))) {
+      return { channel: 'codex', version: clean(ver), where: path.join(__dirname, '..'), host: 'codex' };
+    }
+  }
   const cfg = configDir();
   // 1) plugin: elencato in installed_plugins.json
   const ip = readJSON(path.join(cfg, 'plugins', 'installed_plugins.json'));
@@ -92,32 +106,48 @@ function latestGitHub() {
 }
 
 function main() {
-  const out = cacheFile();
-  // throttle: se la cache è fresca (<6h) non richiamare la rete
-  try {
-    const prev = readJSON(out);
-    if (prev && prev.checkedAt && Date.now() - prev.checkedAt < THROTTLE_MS) return;
-  } catch { /* ignore */ }
-
   const info = detect();
   if (!SEMVER.test(clean(info.version))) return; // versione installata sconosciuta: non azzardare
+  const out = cacheFile(info.host); // cache per-host: Codex non eredita il verdetto di Claude
 
-  const latest = info.channel === 'npm' ? latestNpm() : latestGitHub();
-  if (!SEMVER.test(clean(latest))) return; // rete/fonte non disponibile: lascia la cache com'è
+  // throttle: se la cache è fresca (<6h) riusa quel verdetto senza richiamare la rete
+  let prev = null;
+  try { prev = readJSON(out); } catch { prev = null; }
 
-  const result = {
-    channel: info.channel,
-    installed: clean(info.version),
-    latest: clean(latest),
-    updateAvailable: cmp(latest, info.version) > 0,
-    where: info.where || '',
-    checkedAt: Date.now(),
-  };
-  try {
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out + '.tmp', JSON.stringify(result));
-    fs.renameSync(out + '.tmp', out);
-  } catch { /* ignore */ }
+  let verdict;
+  if (prev && prev.checkedAt && Date.now() - prev.checkedAt < THROTTLE_MS) {
+    verdict = prev;
+  } else {
+    const latest = (info.channel === 'npm' || info.channel === 'codex') ? latestNpm() : latestGitHub();
+    if (!SEMVER.test(clean(latest))) return; // rete/fonte non disponibile: lascia la cache com'è
+
+    verdict = {
+      channel: info.channel,
+      installed: clean(info.version),
+      latest: clean(latest),
+      updateAvailable: cmp(latest, info.version) > 0,
+      where: info.where || '',
+      checkedAt: Date.now(),
+    };
+    try {
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out + '.tmp', JSON.stringify(verdict));
+      fs.renameSync(out + '.tmp', out);
+    } catch { /* ignore */ }
+  }
+
+  // Codex non ha una statusline: l'hook stesso deve segnalare l'update
+  // disponibile via additionalContext, su OGNI sessione (non solo quando la
+  // finestra di throttle si riapre). Su Claude (info.host è undefined) non
+  // scrive mai su stdout: comportamento invariato.
+  if (info.host === 'codex' && verdict && verdict.updateAvailable === true && SEMVER.test(clean(verdict.latest))) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'SessionStart',
+        additionalContext: `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`,
+      },
+    }));
+  }
 }
 
 // esegui in background: non blocca l'avvio della sessione.

@@ -3,3 +3,4 @@ node_modules/
 *.log
 .trailhead/session-ticket
 .trailhead/active-map
+.trailhead/models-collapse-notice

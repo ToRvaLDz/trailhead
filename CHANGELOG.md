@@ -2,7 +2,12 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 0.4.0 (2026-08-22)
+
+### Added
+- **Multi-host support: trailhead runs on Codex CLI from a single source.** The engine (`SKILL.md` + `references/` + everything on the Issues) is still authored once; the installer now projects host-native artifacts for the chosen host. `bin/trailhead.js --codex` (or `--claude`, or auto-detected) installs trailhead into Codex's config dir as a **native Codex skill** (`$CODEX_HOME/skills/trailhead/`, invoked `$trailhead`), alongside per-verb `/trailhead-<verb>` discoverability shims that thinly delegate to it. The four guardrails (commit, secret, injection, check-update) are registered as **native Codex hooks** in `hooks.json` (with `features.hooks` enabled), and the git `commit-msg` hook stays as host-independent defence in depth.
+- **Host descriptor + graceful degradation.** A formal host descriptor (`bin/lib/host-descriptor.js`) drives the projection over three closed-vocabulary capability axes (`commandSurface`, `subagentToolkit`, `hookBus`) plus a degradation ladder, so a missing host primitive degrades rather than blocks. A hard `codex --version` floor gate (`>= 0.145.0`, fail-closed below, fail-open when unreadable) refuses to project onto an under-capable Codex. Runtime host detection never throws.
+- **Per-technique subagent model pins on Codex (`models.codex.*`).** A parallel `models.codex.{plan,execute,research,review,debug}` namespace (OpenAI model ids, independent of the Claude `models.*`) is projected into `~/.codex/agents/trailhead-*.toml` and dispatched by `agent_type` under `multi_agent_v2`, degrading to the single session model when only base `multi_agent` is present. The Claude `models.*` keys still collapse on Codex (its subagent registry is OpenAI-only); a one-time notice points a Codex user toward `models.codex.*`. The Claude Code install path is unchanged.
 
 ### Changed / Fixed
 - **Title icons for the pinned repo anchors.** The three permanent pinned issues now carry a title prefix like the map's 🗺, so they're distinct at a glance in the pinned list and in search: **codebase 🧱, conventions 📜, dashboard 📊**.

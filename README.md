@@ -18,7 +18,7 @@ Two approaches to agent-driven project work each nail one half of the problem:
 
 Working across both, one pattern kept recurring: **use a Wayfinder-style map and onboarding to decide the shape of the work, then a GSD-style engine to build each piece, without ever leaving the issue tracker.** `trailhead` is that pattern made into a single skill, its own self-contained take on both ideas rather than a wrapper around either.
 
-> **trailhead is self-contained.** Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill (grilling, TDD, systematic debugging, codebase mapping, code review) is **built in here as an inline protocol**. trailhead's core invokes no other skill; its subagents (research, codebase-map, review) use Claude Code's built-in `Agent` tool. The only thing to install is trailhead itself. There is one opt-in exception: when enabled, `claude.ai/design` mockup mode pushes to a design-system project via DesignSync (the `claude_design` MCP plus the `/design-sync` skill). If that isn't available, it silently falls back to local-disk mockups.
+> **trailhead is self-contained.** Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill (grilling, TDD, systematic debugging, codebase mapping, code review) is **built in here as an inline protocol**. trailhead's core invokes no other skill; its subagents (research, codebase-map, review) use the host's native subagents (Claude Code's built-in `Agent` tool, or Codex's `multi_agent` toolkit). The only thing to install is trailhead itself. There is one opt-in exception: when enabled, `claude.ai/design` mockup mode pushes to a design-system project via DesignSync (the `claude_design` MCP plus the `/design-sync` skill). If that isn't available, it silently falls back to local-disk mockups.
 
 The design choices that fall out of it:
 
@@ -40,7 +40,7 @@ The design choices that fall out of it:
 
 ## 📦 Install
 
-> **Claude Code only, for now.** trailhead installs as a Claude Code skill + `/trailhead:*` commands + hooks. It's built to grow to other AI CLIs later (the installer already uses a per-agent adapter), but today Claude Code is the only supported host.
+> **Runs on Claude Code and Codex CLI.** trailhead is authored once; the installer projects host-native artifacts. On **Claude Code**: a skill + `/trailhead:*` commands + hooks. On **Codex CLI**: a native skill invoked `$trailhead`, one `$trailhead-<verb>` skill per verb for discoverability, and the guardrails as native Codex hooks. Choose the host with `--claude` / `--codex`, or let the installer auto-detect. More hosts can follow (the installer uses a per-host descriptor).
 
 **Prerequisites:** an authenticated [`gh` CLI](https://cli.github.com) (the tracker is GitHub Issues) and a GitHub repo to work in. The npm path also needs Node 18+.
 
@@ -53,15 +53,21 @@ Update with `/plugin update trailhead`; remove with `/plugin uninstall trailhead
 
 ### Or via npm (installs into your agent's config dir)
 ```
-npx @marcomigozzi/trailhead              # install into ~/.claude (or $CLAUDE_CONFIG_DIR)
-npx @marcomigozzi/trailhead --symlink    # dev install (symlink to the checkout, edits go live)
-npx @marcomigozzi/trailhead --uninstall  # remove everything it added
+npx @marcomigozzi/trailhead              # auto-detect the host (defaults to ~/.claude)
+npx @marcomigozzi/trailhead --claude     # Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
+npx @marcomigozzi/trailhead --codex      # Codex CLI ($CODEX_HOME or ~/.codex)
+npx @marcomigozzi/trailhead --symlink    # dev install (Claude; symlink to the checkout, edits go live)
+npx @marcomigozzi/trailhead --uninstall  # remove everything it added (pair with --claude / --codex)
 npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
 ```
-It copies the skill (+ its `references/`), the `/trailhead:*` commands, the hooks (into `hooks/`, registered in `settings.json`) including a SessionStart **update check**, and the label-guard + statusline templates, idempotently. Re-run `npx @marcomigozzi/trailhead` to update, or run **`/trailhead:update`** from inside the agent: it detects how trailhead was installed and installs the newer version where that is safe (a `git pull` for a dev-symlink, an `npx` re-run for npm, or `/plugin update` for the plugin). When a newer version exists, the statusline shows a `⬆ trailhead <version>` flag.
+On **Claude Code** it copies the skill (+ its `references/`), the `/trailhead:*` commands, the hooks (into `hooks/`, registered in `settings.json`) including a SessionStart **update check**, and the label-guard + statusline templates, idempotently.
+
+On **Codex CLI** (`--codex`) it projects a native Codex skill invoked as **`$trailhead`** (`$trailhead work`, `$trailhead new "idea"`, …), one thin **`$trailhead-<verb>`** skill per verb for discoverability, the four guardrails as native Codex **hooks** (`~/.codex/hooks.json`, enabling `features.hooks`), and per-technique subagent model pins from **`models.codex.*`** into `~/.codex/agents/`. Codex **0.145.0+** is required (the installer gates on `codex --version`). The `claude.ai/design` mockup mode isn't available on Codex, so UI mockups fall back to local disk there.
+
+Re-run the install to update, or run **`/trailhead:update`** (Claude) / **`$trailhead update`** (Codex) from inside the agent: it detects how trailhead was installed and installs the newer version where that is safe (a `git pull` for a dev-symlink, an `npx` re-run for npm, or `/plugin update` for the plugin). When a newer version exists, the statusline shows a `⬆ trailhead <version>` flag (Claude).
 
 ### After installing
-Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry), or `/trailhead:new "<idea>"` to chart a map. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained: no other skill or plugin is required, no preflight, no version drift.
+Restart or reload your agent so the commands register, then run **`/trailhead`** to start (smart entry), or `/trailhead:new "<idea>"` to chart a map. **On Codex** the surface is `$trailhead` instead: run **`$trailhead`** for smart entry, `$trailhead new "<idea>"` to chart, or a per-verb `$trailhead-<verb>` skill. Note: once installed, the **commit guard hook runs on every `git commit`** (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained: no other skill or plugin is required, no preflight, no version drift.
 
 ---
 
