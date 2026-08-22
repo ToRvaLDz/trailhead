@@ -38,7 +38,8 @@ const AXES = Object.freeze({
   // How a host surfaces trailhead's commands to the user.
   //   'slash-file'    Claude: namespaced slash-command files under commands/trailhead/*.md
   //   'hyphen-prompt' Codex:  flat, hyphenated prompt files (trailhead-work.md, etc.)
-  commandSurface: Object.freeze(['slash-file', 'hyphen-prompt']),
+  //   'skill'         Codex:  one native skill folder skills/trailhead/, invoked `$trailhead <verb>`
+  commandSurface: Object.freeze(['slash-file', 'hyphen-prompt', 'skill']),
   // Whether the host has a dedicated subagent/Task-fanout toolkit.
   //   'full' Claude: the Agent tool, real subagent fan-out
   //   'none' Codex:  no such toolkit; everything the engine needs runs inline
@@ -82,13 +83,14 @@ const HOSTS = Object.freeze({
     configDirEnv: 'CODEX_HOME',
     configDirDefault: '.codex',
     axes: Object.freeze({
-      commandSurface: 'hyphen-prompt',
+      commandSurface: 'skill',
       subagentToolkit: 'none',
       hookBus: 'none',
     }),
+    // A single native Codex skill folder, invoked `$trailhead <verb>`.
     commands: Object.freeze({
-      layout: 'flat-hyphen-prompts',
-      ext: '.md',
+      layout: 'native-skill',
+      dir: 'skills/trailhead',
     }),
     // Also explicit, also independent from the axis: today's codex support
     // (approach A) runs everything inline under 'none', no agents.toml is

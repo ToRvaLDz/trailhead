@@ -21,8 +21,9 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 // --- AXES ---
 ok('AXES is frozen', Object.isFrozen(AXES));
 ok('AXES.commandSurface is frozen and correct', Object.isFrozen(AXES.commandSurface) &&
-  AXES.commandSurface.length === 2 &&
-  AXES.commandSurface.includes('slash-file') && AXES.commandSurface.includes('hyphen-prompt'));
+  AXES.commandSurface.length === 3 &&
+  AXES.commandSurface.includes('slash-file') && AXES.commandSurface.includes('hyphen-prompt') &&
+  AXES.commandSurface.includes('skill'));
 ok('AXES.subagentToolkit is frozen and correct', Object.isFrozen(AXES.subagentToolkit) &&
   AXES.subagentToolkit.length === 2 &&
   AXES.subagentToolkit.includes('full') && AXES.subagentToolkit.includes('none'));
@@ -35,7 +36,7 @@ const claude = getHost('claude');
 const codex = getHost('codex');
 ok('getHost(claude) has correct axes', claude.axes.commandSurface === 'slash-file' &&
   claude.axes.subagentToolkit === 'full' && claude.axes.hookBus === 'host');
-ok('getHost(codex) has correct axes', codex.axes.commandSurface === 'hyphen-prompt' &&
+ok('getHost(codex) has correct axes', codex.axes.commandSurface === 'skill' &&
   codex.axes.subagentToolkit === 'none' && codex.axes.hookBus === 'none');
 assert.throws(() => getHost('gemini'), /gemini/i, 'getHost(gemini) throws naming the unknown host');
 ok('getHost(gemini) throws', (() => {
