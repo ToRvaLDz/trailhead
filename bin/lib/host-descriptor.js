@@ -195,7 +195,7 @@ function degradations(host) {
   if (!descriptor.honorsModelKeys) {
     entries.push({
       from: 'per-activity model split (models.*)',
-      to: 'collapses to a single session model',
+      to: 'collapses to a single session model (recover the split with models.codex.*)',
     });
   }
 

@@ -86,6 +86,8 @@ ok('degradations(codex) no longer lists subagent fan-out (it has multi_agent)',
   !degradations('codex').some((d) => /fan-out/.test(d.from)));
 ok('degradations(codex) still lists the per-activity model split collapse',
   degradations('codex').some((d) => /model split/.test(d.from)));
+ok('degradations(codex) model-split entry points at models.codex.* recovery',
+  degradations('codex').some((d) => /model split/.test(d.from) && /models\.codex/.test(d.to)));
 ok('degradations(codex) no longer lists lifecycle hooks (it has a native hook bus)',
   !degradations('codex').some((d) => /lifecycle hooks/.test(d.from)));
 
