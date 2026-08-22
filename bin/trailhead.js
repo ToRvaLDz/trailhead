@@ -23,7 +23,7 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexPromptShimPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexVerbSkillPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -336,21 +336,15 @@ function installCodex(configDir, { useSymlink }) {
     console.log('Note: symlink install is unavailable for Codex (artifacts are generated, not copied verbatim); installing copies instead.');
   }
 
-  // Migration: sweep the pre-#25 layout (prompts/trailhead*.md + the trailhead/ engine dir).
+  // Migration: sweep the pre-#25 layout AND the #42 prompt shims that never
+  // surfaced as Codex slash commands (#46): prompts/trailhead*.md + the
+  // trailhead/ engine dir. Removing them on every (re)install cleans up an
+  // upgrade from the shim layout.
   rmrf(path.join(L.promptsDir, 'trailhead.md'));
   for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
     if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
   }
   rmrf(L.legacyEngineDir);
-
-  // Per-verb discoverability shims (#41): one thin trailhead-<verb>.md per
-  // command + a bare trailhead.md smart-entry prompt, written AFTER the sweep so
-  // they land clean (not deleted by their own migration step). Verbs + their
-  // frontmatter come from the canonical commands/*.md, so the two surfaces never
-  // drift. Thin delegators only; SKILL.md stays the single source of truth.
-  ensure(L.promptsDir);
-  const shimPlan = codexPromptShimPlan(configDir, readCommandVerbs());
-  for (const w of shimPlan.writes) fs.writeFileSync(w.path, w.content);
 
   // Engine: clean skill dir, then project with conversion.
   rmrf(L.skillDir);
@@ -365,6 +359,20 @@ function installCodex(configDir, { useSymlink }) {
   // agents/openai.yaml: UI metadata + explicit-only invocation (no auto-trigger).
   ensure(L.agentsDir);
   fs.writeFileSync(L.agentsYaml, codexAgentsYaml());
+
+  // Per-verb discoverability (#46): one thin Codex skill per verb
+  // (skills/trailhead-<verb>/, invocable as $trailhead-<verb>), each delegating
+  // to $trailhead <verb>. Codex custom prompts (~/.codex/prompts/) never surface
+  // as slash commands, so per-verb skills carry the surface, exactly as GSD does.
+  // Sweep stale trailhead-* verb skills first (a removed verb, or an upgrade from
+  // the old prompt-shim layout), never the main skills/trailhead. Verbs come from
+  // the canonical commands/*.md so the surfaces never drift.
+  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f));
+  }
+  const verbSkillPlan = codexVerbSkillPlan(configDir, readCommandVerbs());
+  for (const d of verbSkillPlan.dirs) ensure(path.join(d, 'agents'));
+  for (const w of verbSkillPlan.writes) fs.writeFileSync(w.path, w.content);
 
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) fs.writeFileSync(L.versionFile, pkgVersion + '\n');
@@ -423,7 +431,7 @@ function installCodex(configDir, { useSymlink }) {
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
-  console.log(`  prompts   → ${L.promptsDir}/  (${shimPlan.writes.length} discoverability shims: trailhead + trailhead-<verb>)`);
+  console.log(`  verb skills → ${L.skillsRoot}/trailhead-<verb>/  (${verbSkillPlan.dirs.length} discoverability skills: invoke $trailhead-<verb>)`);
   console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
   if (plan.writes.length > 0) {
     console.log(`  agents    → ${L.codexAgentsDir}/  (${plan.writes.length} model pin(s): ${plan.writes.map((w) => w.name + '.toml').join(', ')})`);
@@ -447,8 +455,12 @@ function installCodex(configDir, { useSymlink }) {
 function uninstallCodex(configDir) {
   const L = codexLayout(configDir);
   rmrf(L.skillDir);
-  // sweep the #41 discoverability shims (trailhead.md + trailhead-<verb>.md),
-  // as well as any pre-#25 layout in the same dir
+  // sweep the per-verb discoverability skills (skills/trailhead-<verb>/, #46),
+  // never the main skills/trailhead (already removed above; does not match).
+  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f));
+  }
+  // sweep any pre-#25 layout AND the #42 prompt shims from prompts/
   rmrf(path.join(L.promptsDir, 'trailhead.md'));
   for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
     if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));

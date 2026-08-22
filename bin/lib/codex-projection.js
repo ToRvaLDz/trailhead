@@ -88,7 +88,7 @@ function codexSkillAdapterHeader() {
 This trailhead engine is running on **Codex CLI**, not Claude Code. The installer projected it here; apply these host mappings as you follow the engine below.
 
 ## A. Commands
-trailhead is a native Codex skill. Invoke it as \`$trailhead <verb>\` (e.g. \`$trailhead work\`, \`$trailhead new "idea"\`); bare \`$trailhead\` is smart entry. Never \`/trailhead:<verb>\` (that is the Claude Code surface). Whatever you type after the verb is the arguments.
+trailhead is a native Codex skill. Invoke it as \`$trailhead <verb>\` (e.g. \`$trailhead work\`, \`$trailhead new "idea"\`); bare \`$trailhead\` is smart entry. Never \`/trailhead:<verb>\` (that is the Claude Code surface). Whatever you type after the verb is the arguments. For discoverability the installer also projects one thin skill per verb (\`$trailhead-work\`, \`$trailhead-bug\`, …) that just delegates to \`$trailhead <verb>\`, so the verbs surface in the \`$\`-menu; \`$trailhead <verb>\` stays the canonical form and this SKILL.md the single source of truth. (Codex custom prompts under \`~/.codex/prompts/\` are deliberately NOT used: they do not surface as slash commands.)
 
 ## B. This IS the skill
 Codex loaded this SKILL.md because you invoked \`$trailhead\`; there is no separate Skill tool to call. When the engine says to load a \`references/*.md\` file, Read it from this skill directory (\`~/.codex/skills/trailhead/\`).
@@ -236,55 +236,78 @@ function codexAgentTomlPlan(codexHome, codexModels) {
 // --- CODEX_SMART_ENTRY -----------------------------------------------------
 // Discoverability metadata for the bare `/trailhead` smart-entry prompt (the
 // one shim with no corresponding commands/*.md file).
-const CODEX_SMART_ENTRY = Object.freeze({
-  description: 'Smart entry: detect the trailhead state and take the next action',
-  argumentHint: '"[verb] [args]"',
-});
-
-// --- codexPromptShimContent ------------------------------------------------
-// One thin Codex custom-prompt shim: a small frontmatter (description + optional
-// argument-hint, reused from the verb's commands/*.md file for faithful
-// /-menu discoverability) over a single delegating line to `$trailhead <verb>`.
-// `verb` null/'' -> the bare smart-entry prompt. No engine logic lives here;
-// SKILL.md stays the single source of truth.
-function codexPromptShimContent({ verb, description, argumentHint } = {}) {
-  const isBare = verb == null || String(verb).trim() === '';
-  const fm = [];
-  if (description) fm.push(`description: ${description}`);
-  if (argumentHint) fm.push(`argument-hint: ${argumentHint}`);
-  const frontmatter = fm.length ? `---\n${fm.join('\n')}\n---\n\n` : '';
-  const body = isBare
-    ? "Invoke trailhead's smart entry on Codex: run `$trailhead $ARGUMENTS` and follow the skill's instructions. The `$trailhead` skill is the single source of truth; do not re-implement its behaviour here."
-    : `Invoke trailhead's **${String(verb).trim()}** action on Codex: run \`$trailhead ${String(verb).trim()} $ARGUMENTS\` and follow the skill's instructions. The \`$trailhead\` skill is the single source of truth; do not re-implement its behaviour here.`;
-  return frontmatter + body + '\n';
+// --- yamlQuote -------------------------------------------------------------
+// Double-quote a scalar for a YAML frontmatter value, escaping the two chars
+// that matter inside a double-quoted YAML string (backslash and double-quote).
+function yamlQuote(s) {
+  return `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-// --- codexPromptShimPlan ---------------------------------------------------
-// Given the resolved verb list (each { verb, description?, argumentHint? }, or a
-// bare string verb; normally read from plugins/trailhead/commands/*.md by the
-// installer), return the prompt-file writes: always the bare trailhead.md
-// smart-entry prompt, plus one trailhead-<verb>.md per verb. Skips empty/invalid
-// verbs. Mirrors codexAgentTomlPlan's shape.
-function codexPromptShimPlan(codexHome, verbs) {
-  const dir = codexLayout(codexHome).promptsDir;
+// --- codexVerbSkillContent -------------------------------------------------
+// One thin per-verb Codex SKILL.md: frontmatter (name + description, the two
+// fields Codex registers a skill from, so they sit at byte 0) over a single
+// delegating instruction to `$trailhead <verb>`. This is the GSD approach
+// (each command projected as its own skill), because ~/.codex/prompts/ shims
+// do not surface as slash commands on Codex (#46). No engine logic lives here;
+// the canonical `$trailhead` skill stays the single source of truth.
+function codexVerbSkillContent({ verb, description } = {}) {
+  const v = String(verb == null ? '' : verb).trim();
+  const desc = (description && String(description).trim())
+    || `trailhead ${v}`;
+  const fm = `---\nname: trailhead-${v}\ndescription: ${yamlQuote(desc)}\n---\n\n`;
+  const body = `This is a thin discoverability entry for trailhead's **${v}** action on Codex. Run \`$trailhead ${v}\`, passing along whatever arguments you were given, and follow the \`$trailhead\` skill's instructions. The \`$trailhead\` skill is the single source of truth; do not re-implement its behaviour here.\n`;
+  return fm + body;
+}
+
+// --- codexVerbSkillAgentsYaml ----------------------------------------------
+// The per-verb skill's openai.yaml: UI metadata plus explicit-only invocation,
+// so the 20-odd verb skills are invocable as `$trailhead-<verb>` but never
+// auto-loaded into an unrelated turn's context (which would bloat it).
+function codexVerbSkillAgentsYaml({ verb, description } = {}) {
+  const v = String(verb == null ? '' : verb).trim();
+  const desc = (description && String(description).trim()) || `trailhead ${v}`;
+  const short = desc.length > 180 ? `${desc.slice(0, 177)}...` : desc;
+  return `interface:
+  display_name: ${yamlQuote(`Trailhead: ${v}`)}
+  short_description: ${yamlQuote(short)}
+  default_prompt: ${yamlQuote(`Run $trailhead-${v}`)}
+policy:
+  allow_implicit_invocation: false
+`;
+}
+
+// --- codexVerbSkillPlan ----------------------------------------------------
+// Given the resolved verb list (each { verb, description? }, or a bare string
+// verb; normally read from plugins/trailhead/commands/*.md by the installer),
+// return the per-verb skill writes: for each verb a skills/trailhead-<verb>/
+// dir with SKILL.md + agents/openai.yaml. No bare-smart-entry skill is emitted:
+// the canonical `$trailhead` skill already IS smart entry. Skips empty/invalid
+// verbs. Mirrors codexAgentTomlPlan's shape. `dirs` lists every skill dir it
+// writes into, for the installer's ensure()/sweep.
+function codexVerbSkillPlan(codexHome, verbs) {
+  const skillsRoot = codexLayout(codexHome).skillsRoot;
   const list = Array.isArray(verbs) ? verbs : [];
-  const writes = [{
-    verb: null,
-    path: path.join(dir, 'trailhead.md'),
-    content: codexPromptShimContent({ verb: null, ...CODEX_SMART_ENTRY }),
-  }];
+  const writes = [];
+  const dirs = [];
   for (const entry of list) {
     const v = entry && typeof entry === 'object' ? entry.verb : entry;
     if (v == null || String(v).trim() === '') continue;
     const verb = String(v).trim();
-    const meta = entry && typeof entry === 'object' ? entry : {};
+    const description = entry && typeof entry === 'object' ? entry.description : undefined;
+    const skillDir = path.join(skillsRoot, `trailhead-${verb}`);
+    dirs.push(skillDir);
     writes.push({
       verb,
-      path: path.join(dir, `trailhead-${verb}.md`),
-      content: codexPromptShimContent({ verb, description: meta.description, argumentHint: meta.argumentHint }),
+      path: path.join(skillDir, 'SKILL.md'),
+      content: codexVerbSkillContent({ verb, description }),
+    });
+    writes.push({
+      verb,
+      path: path.join(skillDir, 'agents', 'openai.yaml'),
+      content: codexVerbSkillAgentsYaml({ verb, description }),
     });
   }
-  return { writes };
+  return { writes, dirs };
 }
 
 // --- codexHookEntries -----------------------------------------------------
@@ -364,8 +387,9 @@ module.exports = {
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
-  codexPromptShimContent,
-  codexPromptShimPlan,
+  codexVerbSkillContent,
+  codexVerbSkillAgentsYaml,
+  codexVerbSkillPlan,
   codexHookEntries,
   enableCodexFeatureFlag,
   enableCodexHooksFeature,

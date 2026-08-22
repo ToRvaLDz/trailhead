@@ -87,12 +87,15 @@ ok('codex: commit-msg template is verbatim (not converted)',
 
 ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
-// #41: per-verb discoverability shims now live alongside the $trailhead skill.
-ok('codex: bare prompts/trailhead.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
-ok('codex: per-verb prompts/trailhead-work.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
-ok('codex: per-verb prompts/trailhead-bug.md shim exists', fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-bug.md')));
-ok('codex: trailhead-work.md delegates to $trailhead work', fs.readFileSync(path.join(codexDir, 'prompts', 'trailhead-work.md'), 'utf8').includes('$trailhead work $ARGUMENTS'));
-ok('codex: bare trailhead.md is the smart-entry delegator', fs.readFileSync(path.join(codexDir, 'prompts', 'trailhead.md'), 'utf8').includes('$trailhead $ARGUMENTS'));
+// #46: per-verb discoverability now projects one Codex SKILL per verb
+// (skills/trailhead-<verb>/), invocable as $trailhead-<verb>. The old
+// ~/.codex/prompts/ shims never surfaced as slash commands on Codex.
+ok('codex: per-verb skills/trailhead-work/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md')));
+ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md')));
+ok('codex: trailhead-work SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-work\n'));
+ok('codex: trailhead-work skill delegates to $trailhead work', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').includes('$trailhead work'));
+ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
+ok('codex: no ~/.codex/prompts shims left (old mechanism dropped)', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')) && !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
 
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
@@ -125,12 +128,22 @@ ok('codex: no trailhead-*.toml under agents/ when models.codex.* is unset',
   !fs.existsSync(path.join(codexDir, 'agents')) ||
   !fs.readdirSync(path.join(codexDir, 'agents')).some((f) => /^trailhead-.*\.toml$/.test(f)));
 
+// --- codex migration (#46): install over old prompt shims sweeps them --------
+const migCodexDir = mktmp();
+fs.mkdirSync(path.join(migCodexDir, 'prompts'), { recursive: true });
+fs.writeFileSync(path.join(migCodexDir, 'prompts', 'trailhead.md'), 'stale bare shim\n');
+fs.writeFileSync(path.join(migCodexDir, 'prompts', 'trailhead-work.md'), 'stale verb shim\n');
+runInstaller([`--codex`, `--dir=${migCodexDir}`]);
+ok('codex migration: stale prompts/trailhead.md swept on install', !fs.existsSync(path.join(migCodexDir, 'prompts', 'trailhead.md')));
+ok('codex migration: stale prompts/trailhead-work.md swept on install', !fs.existsSync(path.join(migCodexDir, 'prompts', 'trailhead-work.md')));
+ok('codex migration: per-verb skill projected in its place', fs.existsSync(path.join(migCodexDir, 'skills', 'trailhead-work', 'SKILL.md')));
+
 // --- codex uninstall (same tmp) ----------------------------------------------
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
 ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead')));
 ok('codex uninstall: legacy trailhead engine dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
-ok('codex uninstall: bare prompts/trailhead.md shim gone', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')));
-ok('codex uninstall: per-verb prompts/trailhead-work.md shim gone', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
+ok('codex uninstall: per-verb skills/trailhead-work gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work')));
+ok('codex uninstall: per-verb skills/trailhead-bug gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug')));
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);

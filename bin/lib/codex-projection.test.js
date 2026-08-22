@@ -10,8 +10,9 @@ const {
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
-  codexPromptShimContent,
-  codexPromptShimPlan,
+  codexVerbSkillContent,
+  codexVerbSkillAgentsYaml,
+  codexVerbSkillPlan,
   codexHookEntries,
   enableCodexHooksFeature,
   enableCodexMultiAgentV2Feature,
@@ -83,40 +84,48 @@ ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
 
-// --- codexPromptShimContent (#41) ---
-ok('codexPromptShimContent: verb shim delegates to $trailhead <verb> $ARGUMENTS', (() => {
-  const out = codexPromptShimContent({ verb: 'work', description: 'Work the next frontier ticket', argumentHint: '"[ticket]"' });
-  return out.includes('$trailhead work $ARGUMENTS') && out.includes('description: Work the next frontier ticket') && out.includes('argument-hint: "[ticket]"');
+// --- codexVerbSkillContent (#46) ---
+ok('codexVerbSkillContent: SKILL.md frontmatter is at byte 0 with name+description', (() => {
+  const out = codexVerbSkillContent({ verb: 'work', description: 'Work the next frontier ticket' });
+  return out.startsWith('---\nname: trailhead-work\n') && out.includes('description: "Work the next frontier ticket"');
 })());
-ok('codexPromptShimContent: bare shim is smart entry ($trailhead $ARGUMENTS)', (() => {
-  const out = codexPromptShimContent({ verb: null });
-  return out.includes('$trailhead $ARGUMENTS') && !out.includes('$trailhead null');
+ok('codexVerbSkillContent: body delegates to $trailhead <verb>', (() => {
+  const out = codexVerbSkillContent({ verb: 'work', description: 'x' });
+  return out.includes('`$trailhead work`') && out.includes('single source of truth');
 })());
-ok('codexPromptShimContent: omits argument-hint when absent', (() => {
-  const out = codexPromptShimContent({ verb: 'update', description: 'Check for a newer trailhead' });
-  return out.includes('description: Check for a newer trailhead') && !out.includes('argument-hint');
+ok('codexVerbSkillContent: falls back to a description when none given', (() => {
+  const out = codexVerbSkillContent({ verb: 'update' });
+  return out.includes('description: "trailhead update"');
 })());
-ok('codexPromptShimContent: delegates, does not re-implement engine logic', codexPromptShimContent({ verb: 'work' }).includes('single source of truth'));
+ok('codexVerbSkillContent: YAML-quotes a description with a colon/quote', (() => {
+  const out = codexVerbSkillContent({ verb: 'bug', description: 'Capture a bug: "regression"' });
+  return out.includes('description: "Capture a bug: \\"regression\\""');
+})());
 
-// --- codexPromptShimPlan (#41) ---
-ok('codexPromptShimPlan: always emits the bare trailhead.md', (() => {
-  const plan = codexPromptShimPlan('/c', [{ verb: 'work' }]);
-  return plan.writes.some((w) => w.path === '/c/prompts/trailhead.md' && w.verb === null);
+// --- codexVerbSkillAgentsYaml (#46) ---
+ok('codexVerbSkillAgentsYaml: explicit-only invocation, no auto-trigger', (() => {
+  const out = codexVerbSkillAgentsYaml({ verb: 'work', description: 'x' });
+  return out.includes('allow_implicit_invocation: false') && out.includes('display_name: "Trailhead: work"');
 })());
-ok('codexPromptShimPlan: one trailhead-<verb>.md per verb', (() => {
-  const plan = codexPromptShimPlan('/c', [{ verb: 'work' }, { verb: 'bug' }]);
-  return plan.writes.length === 3 &&
-    plan.writes.some((w) => w.path === '/c/prompts/trailhead-work.md') &&
-    plan.writes.some((w) => w.path === '/c/prompts/trailhead-bug.md');
-})());
-ok('codexPromptShimPlan: accepts a bare-string verb and skips empty/invalid', (() => {
-  const plan = codexPromptShimPlan('/c', [{ verb: '' }, { verb: null }, 'work']);
-  return plan.writes.length === 2 && plan.writes.some((w) => w.path === '/c/prompts/trailhead-work.md');
-})());
-ok('codexPromptShimPlan: null verbs yields only the bare shim', codexPromptShimPlan('/c', null).writes.length === 1 && codexPromptShimPlan('/c').writes.length === 1);
 
-// --- codexLayout rename (#41) ---
-ok('codexLayout promptsDir', codexLayout('/c').promptsDir === '/c/prompts');
+// --- codexVerbSkillPlan (#46) ---
+ok('codexVerbSkillPlan: one skills/trailhead-<verb>/ dir per verb (SKILL.md + openai.yaml)', (() => {
+  const plan = codexVerbSkillPlan('/c', [{ verb: 'work' }, { verb: 'bug' }]);
+  return plan.dirs.length === 2 &&
+    plan.dirs.includes('/c/skills/trailhead-work') &&
+    plan.writes.some((w) => w.path === '/c/skills/trailhead-work/SKILL.md') &&
+    plan.writes.some((w) => w.path === '/c/skills/trailhead-work/agents/openai.yaml') &&
+    plan.writes.some((w) => w.path === '/c/skills/trailhead-bug/SKILL.md');
+})());
+ok('codexVerbSkillPlan: never emits a bare trailhead skill ($trailhead already is smart entry)', (() => {
+  const plan = codexVerbSkillPlan('/c', [{ verb: 'work' }]);
+  return !plan.dirs.includes('/c/skills/trailhead') && !plan.writes.some((w) => w.path === '/c/skills/trailhead/SKILL.md');
+})());
+ok('codexVerbSkillPlan: accepts a bare-string verb and skips empty/invalid', (() => {
+  const plan = codexVerbSkillPlan('/c', [{ verb: '' }, { verb: null }, 'work']);
+  return plan.dirs.length === 1 && plan.dirs[0] === '/c/skills/trailhead-work';
+})());
+ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', null).dirs.length === 0 && codexVerbSkillPlan('/c').dirs.length === 0);
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
