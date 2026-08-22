@@ -54,6 +54,10 @@ ok('codexSkillAdapterHeader has adapter tag', header.includes('<codex_skill_adap
 ok('codexSkillAdapterHeader mentions request_user_input', header.includes('request_user_input'));
 ok('codexSkillAdapterHeader mentions $trailhead <verb> form', header.includes('$trailhead <verb>'));
 ok('codexSkillAdapterHeader does not mention the legacy hyphen form', !header.includes('/trailhead-<verb>'));
+ok('codexSkillAdapterHeader §D describes native multi_agent spawning',
+  header.includes('spawn_agent') && header.includes('multi_agent'));
+ok('codexSkillAdapterHeader §D says subagents inherit the one session model',
+  header.includes('inherit the one session model'));
 
 // --- codexAgentsYaml ---
 const agentsYaml = codexAgentsYaml();

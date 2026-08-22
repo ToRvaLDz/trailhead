@@ -86,8 +86,10 @@ Codex loaded this SKILL.md because you invoked \`$trailhead\`; there is no separ
 ## C. AskUserQuestion -> request_user_input
 Where the engine uses \`AskUserQuestion\`, use Codex's \`request_user_input\`: map \`header\`->\`header\`, \`question\`->\`question\`, each option \`{label, description}\`; generate an \`id\` from the header (lowercase, spaces->underscores). Codex has no \`multiSelect\`: present sequential single-selects, or a numbered freeform list and ask for comma-separated numbers. If \`request_user_input\` is unavailable, present the choices as a plain-text numbered list and STOP for the user's reply; do not silently pick a default and proceed.
 
-## D. No subagents (inline sequential)
-Codex has no subagent/Task fan-out toolkit. Every step the engine delegates to a subagent (research, codebase-map, review, plan, execute) runs **inline and sequentially** in this one session. Every \`config.models.*\` key collapses to the single session model; no \`agents/*.toml\` exists, so there is nothing to strip.
+## D. Subagents (native multi_agent)
+Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_input\`, \`wait_agent\`, \`resume_agent\`, \`close_agent\`), stable and on by default on supported Codex (the installer gates on the floor that guarantees them). Where the engine delegates to a subagent (research, codebase-map, review, plan, execute, debug), spawn a real Codex subagent with these tools and the technique's own protocol (each technique carries its full protocol in-prompt, so no specialised agent is needed; pass the ticket's \`Scope:\` when relevant). The Claude-only Explore-vs-general-purpose split does not apply: Codex has one subagent kind. A subagent runs as a FRESH session that receives a task prompt, not this conversation; run independent ones in parallel (e.g. the codebase-map readers) and \`wait_agent\` on them.
+
+\`config.models.*\` still cannot take effect here: those are Claude model ids and Codex's subagent model registry is OpenAI-only, so subagents inherit the one session model regardless. The one-time models-collapse notice still applies. No \`agents/*.toml\` is projected: base multi_agent needs no manifest, and per-subagent model pinning (which would need OpenAI ids + \`multi_agent_v2\`) is deferred.
 
 ## E. Handoff
 The engine's \`/clear\` is Codex's \`/new\` (start a fresh session). Command references in a handoff use the skill form (\`$trailhead work <n>\`).
