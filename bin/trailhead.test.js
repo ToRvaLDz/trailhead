@@ -36,7 +36,8 @@ function mktmp() {
 // $PATH to exercise the auto-detect branch without losing the node binary.
 function runInstaller(extraArgs, opts = {}) {
   const env = opts.env ? { ...process.env, ...opts.env } : process.env;
-  return execFileSync(process.execPath, [installerPath, ...extraArgs], { cwd: repoRoot, stdio: 'pipe', env });
+  const cwd = opts.cwd || repoRoot;
+  return execFileSync(process.execPath, [installerPath, ...extraArgs], { cwd, stdio: 'pipe', env });
 }
 
 // A dir holding an executable stub for each named host CLI, so detectInstalledHosts
@@ -98,6 +99,14 @@ ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSy
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
 ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('hooks = true'));
+ok('codex: config.toml enables multi_agent_v2 feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
+
+// --- codex agent TOML projection (#38) -----------------------------------------
+// repoRoot's own .trailhead/config.json has no models.codex.*, so a plain
+// install (cwd: repoRoot, no models.codex anywhere) projects no agent TOMLs.
+ok('codex: no trailhead-*.toml under agents/ when models.codex.* is unset',
+  !fs.existsSync(path.join(codexDir, 'agents')) ||
+  !fs.readdirSync(path.join(codexDir, 'agents')).some((f) => /^trailhead-.*\.toml$/.test(f)));
 
 // --- codex uninstall (same tmp) ----------------------------------------------
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
@@ -170,6 +179,29 @@ const legacySkillPath = path.join(legacyDir, 'skills', 'trailhead', 'SKILL.md');
 ok('legacy --host=codex is ignored (auto-detect wins)', fs.existsSync(legacySkillPath));
 ok('legacy --host=codex is ignored: settings.json exists (proves claude layout)', fs.existsSync(path.join(legacyDir, 'settings.json')));
 ok('legacy --host=codex is ignored: SKILL.md does not start with adapter header', !fs.readFileSync(legacySkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
+
+// --- codex agent TOML projection: a real models.codex.* pin (#38) --------------
+// A temp "project" dir with .trailhead/config.json setting models.codex.execute;
+// running the installer with that dir as cwd (and a separate codex-home tmp dir
+// as --dir=) must project trailhead-execute.toml under <codexHome>/agents/.
+const projectDir = mktmp();
+fs.mkdirSync(path.join(projectDir, '.trailhead'), { recursive: true });
+fs.writeFileSync(
+  path.join(projectDir, '.trailhead', 'config.json'),
+  JSON.stringify({ models: { codex: { execute: 'gpt-5.6-terra' } } }, null, 2) + '\n'
+);
+const pinCodexHomeDir = mktmp();
+runInstaller([`--codex`, `--dir=${pinCodexHomeDir}`], { cwd: projectDir });
+
+const pinnedTomlPath = path.join(pinCodexHomeDir, 'agents', 'trailhead-execute.toml');
+ok('codex: models.codex.execute projects trailhead-execute.toml', fs.existsSync(pinnedTomlPath));
+const pinnedTomlContent = fs.existsSync(pinnedTomlPath) ? fs.readFileSync(pinnedTomlPath, 'utf8') : '';
+ok('codex: trailhead-execute.toml has the pinned model', pinnedTomlContent.includes('model = "gpt-5.6-terra"'));
+ok('codex: trailhead-execute.toml has the right name', pinnedTomlContent.includes('name = "trailhead-execute"'));
+
+// Uninstall must sweep the projected TOML too, without a --dir= cwd dependency.
+runInstaller([`--codex`, `--dir=${pinCodexHomeDir}`, '--uninstall']);
+ok('codex uninstall: trailhead-execute.toml is gone', !fs.existsSync(pinnedTomlPath));
 
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {

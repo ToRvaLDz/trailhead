@@ -23,7 +23,7 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -37,6 +37,36 @@ const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
 const ensure = (p) => fs.mkdirSync(p, { recursive: true });
 const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; } };
 const writeJSON = (p, o) => { ensure(path.dirname(p)); fs.writeFileSync(p, JSON.stringify(o, null, 2) + '\n'); };
+
+// --- readCodexModels ---------------------------------------------------------
+// Resolve the merged models.codex.* config for the Codex agent-TOML projection:
+// the project-local .trailhead/config.json (found by walking up from cwd, capped
+// at 8 levels) overlaid on the Codex-side global at <codexHome>/trailhead/config.json,
+// project winning per key. Never throws: any missing/malformed file just
+// contributes nothing.
+function findProjectConfig(startDir) {
+  let dir = startDir;
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, '.trailhead', 'config.json');
+    if (fs.existsSync(candidate)) return readJSON(candidate);
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return {};
+}
+
+function readCodexModels(codexHome) {
+  try {
+    const projectCfg = findProjectConfig(process.cwd()) || {};
+    const globalCfg = readJSON(path.join(codexHome, 'trailhead', 'config.json')) || {};
+    const globalCodex = globalCfg.models && typeof globalCfg.models === 'object' && typeof globalCfg.models.codex === 'object' && globalCfg.models.codex ? globalCfg.models.codex : {};
+    const projectCodex = projectCfg.models && typeof projectCfg.models === 'object' && typeof projectCfg.models.codex === 'object' && projectCfg.models.codex ? projectCfg.models.codex : {};
+    return { ...globalCodex, ...projectCodex };
+  } catch {
+    return {};
+  }
+}
 
 // --- host resolution -------------------------------------------------------
 // Explicit --codex / --claude win outright. With neither, the host is
@@ -192,12 +222,15 @@ function installClaude(configDir, { useSymlink }) {
 
 // --- Codex adapter -----------------------------------------------------------
 // Codex has a native subagent toolkit (the multi_agent tools, on by default at
-// the floor) but no hook bus (see host-descriptor.js degradations()). trailhead
-// installs as one native Codex skill under skills/trailhead/: the engine text is
-// projected with convertToCodex + codexSkillAdapterHeader, and agents/openai.yaml
-// (codexAgentsYaml) registers it for explicit-only `$trailhead <verb>` invocation.
-// No agents/*.toml subagent manifest (emitsAgentToml is false: base multi_agent
-// needs none, and subagents inherit the session model) and no hooks/settings.json.
+// the floor). trailhead installs as one native Codex skill under
+// skills/trailhead/: the engine text is projected with convertToCodex +
+// codexSkillAdapterHeader, and agents/openai.yaml (codexAgentsYaml) registers
+// it for explicit-only `$trailhead <verb>` invocation.
+// Base multi_agent fan-out needs no manifest, but when models.codex.* is set
+// per technique, the installer projects those pins into per-technique
+// trailhead-<technique>.toml files under the real ~/.codex/agents/ dir
+// (codexAgentTomlPlan) and enables features.multi_agent_v2 so Codex honours
+// them; with no models.codex.* set, subagents still inherit the session model.
 
 // Recursively copy plugins/trailhead/skills/trailhead into destDir, applying
 // convertToCodex to every .md file (and prepending the adapter header to the
@@ -295,14 +328,44 @@ function installCodex(configDir, { useSymlink }) {
   if (updatedToml && typeof updatedToml === 'string') {
     ensure(path.dirname(L.configToml));
     fs.writeFileSync(L.configToml, updatedToml);
+    current = updatedToml;
   } else if (updatedToml && updatedToml.unsafe) {
     featureManual = true;
+  }
+
+  // Per-technique model pins: project models.codex.* (merged project + global
+  // config) into trailhead-<technique>.toml under the real ~/.codex/agents/
+  // dir. Sweep only trailhead's own files first, so a stale pin from a prior
+  // install (or a removed technique) never lingers, without touching the
+  // user's other custom-agent TOMLs.
+  const codexModels = readCodexModels(configDir);
+  ensure(L.codexAgentsDir);
+  for (const f of fs.readdirSync(L.codexAgentsDir)) {
+    if (/^trailhead-.*\.toml$/.test(f)) rmrf(path.join(L.codexAgentsDir, f));
+  }
+  const plan = codexAgentTomlPlan(configDir, codexModels);
+  for (const w of plan.writes) fs.writeFileSync(w.path, w.content);
+
+  // Feature flag: Codex gates per-subagent model pinning behind
+  // features.multi_agent_v2 = true.
+  const updatedTomlV2 = enableCodexMultiAgentV2Feature(current);
+  let featureManualV2 = false;
+  if (updatedTomlV2 && typeof updatedTomlV2 === 'string') {
+    ensure(path.dirname(L.configToml));
+    fs.writeFileSync(L.configToml, updatedTomlV2);
+  } else if (updatedTomlV2 && updatedTomlV2.unsafe) {
+    featureManualV2 = true;
   }
 
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
   console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
+  if (plan.writes.length > 0) {
+    console.log(`  agents    → ${L.codexAgentsDir}/  (${plan.writes.length} model pin(s): ${plan.writes.map((w) => w.name + '.toml').join(', ')})`);
+  } else {
+    console.log('  agents    → no models.codex.* set, subagents inherit the session model');
+  }
   console.log('\nRestart or reload Codex to pick up the skill, then run $trailhead to start.');
   // The trust prompt only fires once the feature flag is on. When we could not
   // edit config.toml, the hooks stay inert until the user sets it by hand, so
@@ -311,6 +374,9 @@ function installCodex(configDir, { useSymlink }) {
     console.log(`  ⚠ could not edit ${L.configToml} automatically — add \`features.hooks = true\` under [features] by hand, then Codex will ask you to trust trailhead's hooks on next start.`);
   } else {
     console.log('Note: Codex will ask you to trust trailhead\'s hooks on next start (feature `features.hooks`).');
+  }
+  if (featureManualV2) {
+    console.log(`  ⚠ could not edit ${L.configToml} automatically, add \`features.multi_agent_v2 = true\` under [features] by hand to let Codex honour the projected model pins.`);
   }
 }
 
@@ -323,10 +389,18 @@ function uninstallCodex(configDir) {
     if (f.startsWith('trailhead-')) rmrf(path.join(L.legacyPromptsDir, f));
   }
   rmrf(L.legacyEngineDir);
+  // Sweep trailhead's own per-technique model-pin TOMLs, never the user's
+  // other custom-agent TOMLs in the same dir.
+  if (fs.existsSync(L.codexAgentsDir)) {
+    for (const f of fs.readdirSync(L.codexAgentsDir)) {
+      if (/^trailhead-.*\.toml$/.test(f)) rmrf(path.join(L.codexAgentsDir, f));
+    }
+  }
   // Strip trailhead's entries from hooks.json, but only if it already exists
-  // (uninstall must never create it). Leave features.hooks in config.toml
-  // untouched: the user may rely on it for other hooks, mirroring how
-  // uninstallClaude leaves settings.json flags alone.
+  // (uninstall must never create it). Leave features.hooks and
+  // features.multi_agent_v2 in config.toml untouched: the user may rely on
+  // them for other hooks/agents, mirroring how uninstallClaude leaves
+  // settings.json flags alone.
   if (fs.existsSync(L.hooksJson)) {
     const h = readJSON(L.hooksJson);
     stripHook(h, 'PreToolUse', 'trailhead-commit-guard.js');
