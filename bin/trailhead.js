@@ -23,7 +23,7 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, codexSkillAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -246,7 +246,9 @@ function copySkillConverted(srcDir, destDir, isRoot) {
       const raw = fs.readFileSync(srcPath, 'utf8');
       let converted = convertToCodex(raw);
       if (isRoot && entry.name === 'SKILL.md') {
-        converted = codexSkillAdapterHeader() + '\n\n' + converted;
+        // Inject the adapter header AFTER the YAML frontmatter so the
+        // frontmatter stays at the top and Codex registers the skill (#40).
+        converted = injectCodexAdapterHeader(converted);
       }
       fs.writeFileSync(destPath, converted);
     } else {

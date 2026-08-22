@@ -109,6 +109,23 @@ Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not
 </codex_skill_adapter>`;
 }
 
+// --- injectCodexAdapterHeader --------------------------------------------
+// Insert the adapter header into an already-converted SKILL.md so it sits
+// AFTER the YAML frontmatter, never above it. Codex registers a skill from the
+// frontmatter (`name:` / `description:`) only when it is the very first bytes
+// of SKILL.md; a header prepended above `---` pushes the frontmatter off the
+// top and the skill never registers (#40). Splits the leading `---...---`
+// block off and reassembles frontmatter + header + body. With no frontmatter
+// present, falls back to a plain prepend (nothing to protect).
+function injectCodexAdapterHeader(converted) {
+  const header = codexSkillAdapterHeader();
+  const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/.exec(converted);
+  if (!m) return header + '\n\n' + converted;
+  const frontmatter = m[0];
+  const body = converted.slice(frontmatter.length);
+  return frontmatter.replace(/\s+$/, '') + '\n\n' + header + '\n\n' + body.replace(/^\s+/, '');
+}
+
 // --- codexAgentsYaml -------------------------------------------------------
 // UI metadata for the native-skill surface: display name, short description,
 // a default prompt shown before invocation, and explicit-only invocation
@@ -287,6 +304,7 @@ module.exports = {
   codexLayout,
   convertToCodex,
   codexSkillAdapterHeader,
+  injectCodexAdapterHeader,
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,

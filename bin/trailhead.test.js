@@ -59,7 +59,13 @@ runInstaller([`--codex`, `--dir=${codexDir}`]);
 const skillMainPath = path.join(codexDir, 'skills', 'trailhead', 'SKILL.md');
 ok('codex: SKILL.md exists', fs.existsSync(skillMainPath));
 const skillMainContent = fs.readFileSync(skillMainPath, 'utf8');
-ok('codex: SKILL.md starts with adapter header', skillMainContent.startsWith('<codex_skill_adapter>'));
+// #40: the YAML frontmatter must stay at the very top (Codex only registers a
+// skill when `name:`/`description:` are the first bytes); the adapter header is
+// injected AFTER the frontmatter, not above it.
+ok('codex: SKILL.md starts with the YAML frontmatter', skillMainContent.startsWith('---\n'));
+ok('codex: SKILL.md frontmatter precedes the adapter header',
+  skillMainContent.indexOf('name: trailhead') < skillMainContent.indexOf('<codex_skill_adapter>'));
+ok('codex: SKILL.md still carries the adapter header', skillMainContent.includes('<codex_skill_adapter>'));
 // The adapter header itself (mandated EXACT text) intentionally contrasts the
 // $trailhead form with the old slash-namespace form ("Never /trailhead:<verb>"),
 // so it legitimately contains that substring once. Scope the check to the
@@ -144,7 +150,7 @@ const autoCodexDir = mktmp();
 runInstaller([`--dir=${autoCodexDir}`], { env: { PATH: fakeBinDir(['codex']) } });
 const autoCodexSkillPath = path.join(autoCodexDir, 'skills', 'trailhead', 'SKILL.md');
 ok('auto-detect codex: skills/trailhead/SKILL.md exists', fs.existsSync(autoCodexSkillPath));
-ok('auto-detect codex: SKILL.md starts with adapter header (proves codex layout)', fs.readFileSync(autoCodexSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
+ok('auto-detect codex: SKILL.md carries the adapter header (proves codex layout)', fs.readFileSync(autoCodexSkillPath, 'utf8').includes('<codex_skill_adapter>'));
 ok('auto-detect codex: did not install the Claude layout (no commands/trailhead)', !fs.existsSync(path.join(autoCodexDir, 'commands', 'trailhead')));
 ok('auto-detect codex: did not install the Claude layout (no settings.json)', !fs.existsSync(path.join(autoCodexDir, 'settings.json')));
 

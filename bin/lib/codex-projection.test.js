@@ -6,6 +6,7 @@ const {
   codexLayout,
   convertToCodex,
   codexSkillAdapterHeader,
+  injectCodexAdapterHeader,
   codexAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
@@ -177,6 +178,23 @@ ok('enableCodexMultiAgentV2Feature: foreign explicit value is unsafe',
 ok('enableCodexHooksFeature regression: still yields hooks = true', (() => {
   const out = enableCodexHooksFeature('[features]\nfoo = 1\n');
   return typeof out === 'string' && out.includes('hooks = true');
+})());
+
+// --- injectCodexAdapterHeader (frontmatter stays at the top: #40) ---
+// A realistic converted SKILL.md: YAML frontmatter first, then body.
+const skillMain = '---\nname: trailhead\ndescription: "chart & work a map"\nargument-hint: "[work] [ticket]"\n---\n\nA loose idea has arrived.\n';
+const injected = injectCodexAdapterHeader(skillMain);
+ok('injectCodexAdapterHeader keeps the projected SKILL.md starting with ---', injected.startsWith('---\n'));
+ok('injectCodexAdapterHeader keeps the frontmatter before the adapter header',
+  injected.indexOf('name: trailhead') < injected.indexOf('<codex_skill_adapter>'));
+ok('injectCodexAdapterHeader still injects the adapter header', injected.includes('<codex_skill_adapter>'));
+ok('injectCodexAdapterHeader preserves the body', injected.includes('A loose idea has arrived.'));
+ok('injectCodexAdapterHeader places the header after the closing --- of the frontmatter',
+  injected.indexOf('<codex_skill_adapter>') > injected.indexOf('\n---\n'));
+// Fallback: no frontmatter -> header still prepended (nothing to protect).
+ok('injectCodexAdapterHeader falls back to prepend when there is no frontmatter', (() => {
+  const out = injectCodexAdapterHeader('just a body, no frontmatter\n');
+  return out.startsWith('<codex_skill_adapter>') && out.includes('just a body');
 })());
 
 // --- codexAgentsYaml ---
