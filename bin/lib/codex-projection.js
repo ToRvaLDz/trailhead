@@ -48,9 +48,13 @@ function convertToCodex(md) {
   // 1. Command surface: /trailhead:<verb> -> $trailhead <verb>; bare
   // /trailhead -> $trailhead. Slash-anchored so bare labels like
   // `trailhead:build` (no leading slash) survive. The colon rule MUST run
-  // before the bare rule.
+  // before the bare rule. The bare rule uses a negative lookahead, NOT \b:
+  // \b treats the boundary before `/` and `-` as a word edge, so `\b` would
+  // wrongly eat `/trailhead` inside PATH segments (`skills/trailhead/...`,
+  // `templates/trailhead-commit-msg`). Excluding `/`, `-`, `:` and word
+  // chars converts only the standalone `/trailhead` command, never a path.
   out = out.replace(/\/trailhead:/g, '$trailhead ');
-  out = out.replace(/\/trailhead\b/g, '$trailhead');
+  out = out.replace(/\/trailhead(?![\w:/-])/g, '$trailhead');
 
   // 2. Claude's /clear -> Codex's /new.
   out = out.replace(/\/clear\b/g, '/new');

@@ -19,6 +19,12 @@ ok('convertToCodex rewrites bare /trailhead to $trailhead', (() => {
   return out.includes('$trailhead') && !out.includes('/trailhead ');
 })());
 ok('convertToCodex leaves bare labels untouched', convertToCodex('label trailhead:build stays').includes('trailhead:build'));
+// Regression: the bare-command rule must NOT eat `/trailhead` inside a path
+// segment (a \b boundary before `/` or `-` used to corrupt these).
+ok('convertToCodex preserves a /trailhead/ path segment',
+  convertToCodex('read ~/.codex/skills/trailhead/references/foo.md').includes('/skills/trailhead/references/'));
+ok('convertToCodex preserves a /trailhead- filename',
+  convertToCodex('copy templates/trailhead-commit-msg here').includes('templates/trailhead-commit-msg'));
 
 // --- convertToCodex: /clear -> /new ---
 ok('convertToCodex rewrites /clear to /new', (() => {
