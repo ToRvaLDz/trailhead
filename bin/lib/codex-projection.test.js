@@ -67,6 +67,12 @@ ok('codexSkillAdapterHeader §D describes native multi_agent spawning',
   header.includes('spawn_agent') && header.includes('multi_agent'));
 ok('codexSkillAdapterHeader §D says subagents inherit the one session model',
   header.includes('inherit the one session model'));
+ok('codexSkillAdapterHeader §D dispatches by agent_type under multi_agent_v2',
+  header.includes('agent_type') && header.includes('multi_agent_v2'));
+ok('codexSkillAdapterHeader §D detects the registry by spawn_agent schema introspection',
+  header.includes('spawn_agent') && header.includes('schema'));
+ok('codexSkillAdapterHeader §D no longer calls per-subagent model pinning deferred',
+  !header.includes('deferred'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
 
