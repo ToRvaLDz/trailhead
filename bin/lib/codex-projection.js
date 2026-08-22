@@ -30,6 +30,9 @@ function codexLayout(codexHome) {
     agentsYaml: path.join(skillDir, 'agents', 'openai.yaml'),
     templatesDir: path.join(skillDir, 'templates'),
     versionFile: path.join(skillDir, 'VERSION'),
+    hooksScriptsDir: path.join(skillDir, 'hooks'),
+    hooksJson: path.join(codexHome, 'hooks.json'),
+    configToml: path.join(codexHome, 'config.toml'),
     // pre-#25 layout, swept on install/uninstall for clean migration
     legacyPromptsDir: path.join(codexHome, 'prompts'),
     legacyEngineDir: path.join(codexHome, 'trailhead'),
@@ -94,8 +97,8 @@ Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_inp
 ## E. Handoff
 The engine's \`/clear\` is Codex's \`/new\` (start a fresh session). Command references in a handoff use the skill form (\`$trailhead work <n>\`).
 
-## F. No lifecycle hooks
-Codex has no hook bus. The commit-guard, secret-guard, injection-scanner, and check-update do NOT run as hooks here. Their protections apply as inline engine prose, plus a git \`commit-msg\` hook the engine installs at repo first-use (per the conventions/decision on lost guardrails).
+## F. Lifecycle hooks (native Codex hooks)
+Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not degraded prose. The installer registers them in \`~/.codex/hooks.json\`: commit-guard and secret-guard as \`PreToolUse\` (matcher \`Bash\`) hooks that can veto the command before it runs, the injection-scanner as a \`PostToolUse\` (matcher \`Bash\`) advisory, and check-update as a \`SessionStart\` hook. They use the same wire format they use on Claude Code (JSON on stdin, a \`decision\`/\`permissionDecision\` verdict on stdout), which Codex accepts. The host-independent git \`commit-msg\` hook is still installed at repo first-use as well (defence in depth), exactly as on Claude. Codex gates hooks behind \`features.hooks = true\` and reviews them for trust on first start: the installer enables the flag, and Codex will ask you to trust trailhead's hooks the next time it starts.
 </codex_skill_adapter>`;
 }
 
@@ -113,9 +116,63 @@ policy:
 `;
 }
 
+// --- codexHookEntries -----------------------------------------------------
+// The four guardrail hooks trailhead registers on Codex, as {event, matcher,
+// command} records. Commands run the copied guard scripts under hooksScriptsDir
+// via node, matching Claude's `node "<path>"` form. PreToolUse guards (commit +
+// secret) can veto; the injection-scanner is a PostToolUse advisory; check-update
+// runs at SessionStart. Reused by the installer, which merges them into
+// ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
+function codexHookEntries(hooksScriptsDir) {
+  const cmd = (name) => `node "${path.join(hooksScriptsDir, name)}"`;
+  return [
+    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-commit-guard.js') },
+    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-secret-guard.js') },
+    { event: 'PostToolUse', matcher: 'Bash', command: cmd('trailhead-issue-injection-scanner.js') },
+    { event: 'SessionStart', matcher: '', command: cmd('trailhead-check-update.js') },
+  ];
+}
+
+// --- enableCodexHooksFeature ----------------------------------------------
+// Codex gates the hook bus behind `features.hooks = true` in config.toml. Given
+// the current config.toml text (or '' when absent), return the updated text that
+// enables it, or `null` when it is already enabled, or `{ unsafe: true }` when the
+// file can't be edited safely (the caller then prints a manual instruction rather
+// than risk corrupting the user's config). Conservative and idempotent: it only
+// appends a fresh table, inserts the single key into an existing [features]
+// table, or flips an explicit `hooks = false`; anything ambiguous is left alone.
+function enableCodexHooksFeature(tomlText) {
+  const text = typeof tomlText === 'string' ? tomlText : '';
+  // Dotted top-level form: features.hooks = <x>
+  if (/^\s*features\.hooks\s*=\s*true\s*(#.*)?$/m.test(text)) return null;
+  if (/^\s*features\.hooks\s*=/m.test(text)) return { unsafe: true }; // set to something we won't touch
+  const featHeader = /^[ \t]*\[features\][ \t]*(#.*)?$/m;
+  const m = featHeader.exec(text);
+  if (m) {
+    const bodyStart = m.index + m[0].length;
+    const rest = text.slice(bodyStart);
+    const nextRel = rest.search(/^[ \t]*\[[^\]]+\][ \t]*(#.*)?$/m);
+    const bodyEnd = nextRel === -1 ? text.length : bodyStart + nextRel;
+    const body = text.slice(bodyStart, bodyEnd);
+    if (/^\s*hooks\s*=\s*true\s*(#.*)?$/m.test(body)) return null;
+    if (/^\s*hooks\s*=\s*false\s*(#.*)?$/m.test(body)) {
+      const newBody = body.replace(/^([ \t]*hooks[ \t]*=[ \t]*)false([ \t]*(#.*)?)$/m, '$1true$2');
+      return text.slice(0, bodyStart) + newBody + text.slice(bodyEnd);
+    }
+    if (/^\s*hooks\s*=/m.test(body)) return { unsafe: true };
+    return text.slice(0, bodyStart) + '\nhooks = true' + text.slice(bodyStart);
+  }
+  // No [features] table at all: append one.
+  const prefix = text.length === 0 ? '' : (text.endsWith('\n') ? '' : '\n');
+  const gap = text.length === 0 ? '' : '\n';
+  return text + prefix + gap + '[features]\nhooks = true\n';
+}
+
 module.exports = {
   codexLayout,
   convertToCodex,
   codexSkillAdapterHeader,
   codexAgentsYaml,
+  codexHookEntries,
+  enableCodexHooksFeature,
 };
