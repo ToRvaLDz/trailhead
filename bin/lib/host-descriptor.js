@@ -213,26 +213,48 @@ function degradations(host) {
 // The one-time notice the engine surfaces at session start when models.* is
 // configured on a host that cannot honour it (honorsModelKeys === false): its
 // subagents run on the host's own model, so the per-activity split collapses to
-// the single session model (see degradations()). Keyed on honorsModelKeys, NOT
-// on subagentToolkit: a host can have fan-out yet still be unable to run a
+// the single session model (see degradations()), UNLESS the host has a parallel
+// native namespace configured. On Codex that namespace is models.codex.* (OpenAI
+// model ids): once any models.codex.* key is set, the notice stays silent (the
+// user has already opted into the honoured namespace there) and only reworded
+// to point at models.codex.* while a stray Claude-id models.* key is set and
+// models.codex.* is still empty. Keyed on honorsModelKeys, NOT on
+// subagentToolkit: a host can have fan-out yet still be unable to run a
 // subagent on a Claude models.* id (Codex). Pure: returns the notice string, or
-// null when there is nothing to say (the host honours the keys, or no models.*
-// is set). The caller owns the "one-time" bookkeeping (a marker file) and how
-// the string is shown, so this stays pure and trivially testable.
+// null when there is nothing to say (the host honours the keys, no models.* is
+// set, or models.codex.* is already set). The caller owns the "one-time"
+// bookkeeping (a marker file) and how the string is shown, so this stays pure
+// and trivially testable.
 function modelsCollapseNotice(host, config) {
   const descriptor = resolveHost(host);
   if (descriptor.honorsModelKeys) return null;
   const models = config && typeof config === 'object' ? config.models : null;
   if (!models || typeof models !== 'object') return null;
+
+  const codexModels = models.codex && typeof models.codex === 'object' ? models.codex : null;
+  const codexSet = codexModels
+    ? Object.keys(codexModels).filter(
+        (k) => codexModels[k] != null && String(codexModels[k]).trim() !== ''
+      )
+    : [];
+  if (codexSet.length > 0) return null;
+
+  // Exclude the literal 'codex' key: models.codex is a nested object, and
+  // String({}).trim() is the non-empty "[object Object]", so without this
+  // exclusion a lone models.codex.* namespace (with no Claude ids set) would
+  // mis-count as a set Claude key and mis-fire the notice below.
   const set = Object.keys(models).filter(
-    (k) => models[k] != null && String(models[k]).trim() !== ''
+    (k) => k !== 'codex' && models[k] != null && String(models[k]).trim() !== ''
   );
   if (set.length === 0) return null;
+
   return (
     `Heads up: trailhead is running on ${descriptor.label}, whose subagents ` +
-    `run on its own model, so your models.* setting (${set.join(', ')}) cannot ` +
-    `take effect here: every activity's subagent inherits the one session model. ` +
-    `The keys stay in .trailhead/config.json and apply again on Claude Code.`
+    `run on its own OpenAI models. Your models.* setting (${set.join(', ')}) is a ` +
+    `Claude model id and cannot take effect here: every activity's subagent still ` +
+    `inherits the one session model. Set models.codex.* (OpenAI model ids) instead ` +
+    `to get the per-activity split on ${descriptor.label}. The models.* keys stay ` +
+    `in .trailhead/config.json and apply again on Claude Code.`
   );
 }
 

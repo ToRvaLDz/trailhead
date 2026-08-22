@@ -106,6 +106,18 @@ ok('modelsCollapseNotice(codex, undefined config) is null',
   modelsCollapseNotice('codex') === null);
 ok('modelsCollapseNotice(claude, models set) is null (Claude honours the keys)',
   modelsCollapseNotice('claude', { models: { plan: 'claude-opus-5' } }) === null);
+ok('modelsCollapseNotice(codex, only Claude models.* set) mentions models.codex', (() => {
+  const msg = modelsCollapseNotice('codex', { models: { plan: 'x', execute: 'y' } });
+  return typeof msg === 'string' && msg.includes('models.codex');
+})());
+ok('modelsCollapseNotice is null once models.codex.* is set even if Claude models.* also set',
+  modelsCollapseNotice('codex', { models: { plan: 'claude-opus-5', codex: { plan: 'gpt-5.6-sol' } } }) === null);
+ok('modelsCollapseNotice: lone codex namespace, no Claude id, is null (k !== "codex" guard)',
+  modelsCollapseNotice('codex', { models: { codex: { execute: 'gpt-5.6-terra' } } }) === null);
+ok('modelsCollapseNotice: codex namespace with only empty/nullish values does not silence a real Claude-id notice', (() => {
+  const msg = modelsCollapseNotice('codex', { models: { plan: 'claude-opus-5', codex: { plan: '' } } });
+  return typeof msg === 'string' && msg.includes('plan');
+})());
 
 // --- updateNotice ---
 // Both hosts now have a hook bus (hookBus !== 'none'), so updateNotice never
