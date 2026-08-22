@@ -4,7 +4,7 @@
 
 **Avvia e conduci grandi progetti come una mappa di ticket su GitHub Issues, risolvendone uno alla volta finché la via verso la destination non è chiara.**
 
-`trailhead` è una skill orchestratrice per [Claude Code](https://docs.claude.com/en/docs/claude-code). Dà a un'idea grande e nebbiosa un punto da cui partire (un *trailhead*) e un modo disciplinato per portarla fino a un risultato funzionante, con l'intero piano che vive sul tuo issue tracker invece che in file locali sparsi.
+`trailhead` è una skill orchestratrice per coding agent, che gira su [Claude Code](https://docs.claude.com/en/docs/claude-code) e [Codex CLI](https://developers.openai.com/codex/cli) da un'unica sorgente. Dà a un'idea grande e nebbiosa un punto da cui partire (un *trailhead*) e un modo disciplinato per portarla fino a un risultato funzionante, con l'intero piano che vive sul tuo issue tracker invece che in file locali sparsi.
 
 ---
 
