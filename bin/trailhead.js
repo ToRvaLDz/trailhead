@@ -304,9 +304,13 @@ function installCodex(configDir, { useSymlink }) {
   console.log(`  templates → ${L.templatesDir}/`);
   console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
   console.log('\nRestart or reload Codex to pick up the skill, then run $trailhead to start.');
-  console.log('Note: Codex will ask you to trust trailhead\'s hooks on next start (feature `features.hooks`).');
+  // The trust prompt only fires once the feature flag is on. When we could not
+  // edit config.toml, the hooks stay inert until the user sets it by hand, so
+  // don't reassure them about a trust review that won't happen yet.
   if (featureManual) {
-    console.log(`  ⚠ could not edit ${L.configToml} automatically — add \`features.hooks = true\` under [features] by hand to enable the hooks.`);
+    console.log(`  ⚠ could not edit ${L.configToml} automatically — add \`features.hooks = true\` under [features] by hand, then Codex will ask you to trust trailhead's hooks on next start.`);
+  } else {
+    console.log('Note: Codex will ask you to trust trailhead\'s hooks on next start (feature `features.hooks`).');
   }
 }
 
