@@ -1,6 +1,6 @@
 <div align="center">
 
-# trailhead
+# Trailhead
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
