@@ -190,11 +190,12 @@ function installClaude(configDir, { useSymlink }) {
 }
 
 // --- Codex adapter -----------------------------------------------------------
-// Codex has no Skill tool, no subagent toolkit, and no hook bus (see
-// host-descriptor.js degradations()). The engine text itself is projected
-// with convertToCodex + codexSkillAdapterHeader; the commands become flat
-// hyphenated prompt files via codexPromptFor. No agents/ dir (emitsAgentToml
-// is false for codex) and no hooks/settings.json touched.
+// Codex has no subagent toolkit and no hook bus (see host-descriptor.js
+// degradations()). trailhead installs as one native Codex skill under
+// skills/trailhead/: the engine text is projected with convertToCodex +
+// codexSkillAdapterHeader, and agents/openai.yaml (codexAgentsYaml) registers
+// it for explicit-only `$trailhead <verb>` invocation. No agents/*.toml
+// subagent manifest (emitsAgentToml is false for codex) and no hooks/settings.json.
 
 // Recursively copy plugins/trailhead/skills/trailhead into destDir, applying
 // convertToCodex to every .md file (and prepending the adapter header to the
