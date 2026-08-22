@@ -62,7 +62,7 @@ ok('HOSTS is frozen', Object.isFrozen(HOSTS));
 
 // --- emitsAgentToml ---
 ok('emitsAgentToml(claude) === false', emitsAgentToml('claude') === false);
-ok('emitsAgentToml(codex) === false', emitsAgentToml('codex') === false);
+ok('emitsAgentToml(codex) === true', emitsAgentToml('codex') === true);
 
 // --- honorsModelKeys ---
 ok('claude honours models.* keys', claude.honorsModelKeys === true);

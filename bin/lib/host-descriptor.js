@@ -104,11 +104,11 @@ const HOSTS = Object.freeze({
       dir: 'skills/trailhead',
     }),
     // Also explicit, also independent from the axis: Codex's native multi_agent
-    // tools are on by default and need NO manifest, so even with subagentToolkit
-    // 'full' no agents.toml is emitted. A future upgrade that pins a per-subagent
-    // OpenAI model (agents/*.toml + multi_agent_v2) would flip this to true
-    // without changing subagentToolkit's vocabulary.
-    emitsAgentToml: false,
+    // tools are on by default and need NO manifest for base fan-out, but when
+    // models.codex.* is set per technique, the installer projects those pins
+    // into per-technique agents/*.toml files under ~/.codex/agents/ and turns
+    // on features.multi_agent_v2 so Codex honours them.
+    emitsAgentToml: true,
     // Whether Codex can run a subagent on a trailhead `models.*` value: NO. Its
     // subagent model registry is OpenAI-only, so a Claude id (e.g. claude-sonnet-5)
     // cannot run; subagents inherit the one session model. Hence models.* still
