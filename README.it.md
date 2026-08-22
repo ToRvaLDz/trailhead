@@ -4,7 +4,7 @@
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
-[![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![tracker](https://img.shields.io/badge/tracker-GitHub%20Issues-6f42c1?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-20%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-4%20hook-e8710a?style=flat-square)
+[![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-20%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-4%20hook-e8710a?style=flat-square)
 
 </div>
 
