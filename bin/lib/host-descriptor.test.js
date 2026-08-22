@@ -37,7 +37,7 @@ const codex = getHost('codex');
 ok('getHost(claude) has correct axes', claude.axes.commandSurface === 'slash-file' &&
   claude.axes.subagentToolkit === 'full' && claude.axes.hookBus === 'host');
 ok('getHost(codex) has correct axes', codex.axes.commandSurface === 'skill' &&
-  codex.axes.subagentToolkit === 'none' && codex.axes.hookBus === 'none');
+  codex.axes.subagentToolkit === 'full' && codex.axes.hookBus === 'none');
 assert.throws(() => getHost('gemini'), /gemini/i, 'getHost(gemini) throws naming the unknown host');
 ok('getHost(gemini) throws', (() => {
   try { getHost('gemini'); return false; } catch { return true; }
@@ -60,6 +60,10 @@ ok('HOSTS is frozen', Object.isFrozen(HOSTS));
 ok('emitsAgentToml(claude) === false', emitsAgentToml('claude') === false);
 ok('emitsAgentToml(codex) === false', emitsAgentToml('codex') === false);
 
+// --- honorsModelKeys ---
+ok('claude honours models.* keys', claude.honorsModelKeys === true);
+ok('codex does NOT honour models.* keys (OpenAI-only subagent registry)', codex.honorsModelKeys === false);
+
 // --- hyphenateCommand ---
 ok('hyphenateCommand strips leading slash and replaces colon', hyphenateCommand('/trailhead:work') === 'trailhead-work');
 ok('hyphenateCommand handles no leading slash', hyphenateCommand('trailhead:work') === 'trailhead-work');
@@ -74,6 +78,10 @@ ok('configDirFor(codex) falls back to homedir default', configDirFor('codex', { 
 // --- degradations ---
 ok('degradations(claude) is empty', Array.isArray(degradations('claude')) && degradations('claude').length === 0);
 ok('degradations(codex) is non-empty', Array.isArray(degradations('codex')) && degradations('codex').length > 0);
+ok('degradations(codex) no longer lists subagent fan-out (it has multi_agent)',
+  !degradations('codex').some((d) => /fan-out/.test(d.from)));
+ok('degradations(codex) still lists the per-activity model split collapse',
+  degradations('codex').some((d) => /model split/.test(d.from)));
 
 // --- modelsCollapseNotice ---
 ok('modelsCollapseNotice(claude, models set) is null (has toolkit)',
@@ -90,6 +98,8 @@ ok('modelsCollapseNotice(codex, models set) names the set keys', (() => {
 })());
 ok('modelsCollapseNotice(codex, undefined config) is null',
   modelsCollapseNotice('codex') === null);
+ok('modelsCollapseNotice(claude, models set) is null (Claude honours the keys)',
+  modelsCollapseNotice('claude', { models: { plan: 'claude-opus-5' } }) === null);
 
 // --- updateNotice ---
 ok('updateNotice(codex, update available) is a non-null string naming the version', (() => {

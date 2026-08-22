@@ -41,8 +41,9 @@ const AXES = Object.freeze({
   //   'skill'         Codex:  one native skill folder skills/trailhead/, invoked `$trailhead <verb>`
   commandSurface: Object.freeze(['slash-file', 'hyphen-prompt', 'skill']),
   // Whether the host has a dedicated subagent/Task-fanout toolkit.
-  //   'full' Claude: the Agent tool, real subagent fan-out
-  //   'none' Codex:  no such toolkit; everything the engine needs runs inline
+  //   'full' Claude: the Agent tool; Codex: the native multi_agent tools
+  //          (spawn_agent/..., on by default at the supported floor)
+  //   'none' a host with no such toolkit; everything the engine needs runs inline
   subagentToolkit: Object.freeze(['full', 'none']),
   // Whether the host has a lifecycle hook bus (PreToolUse/PostToolUse/Stop/...).
   //   'host' Claude: native hooks
@@ -76,6 +77,11 @@ const HOSTS = Object.freeze({
     // "full toolkit" and "emits an agents.toml" are independent facts. Claude
     // uses its native Agent tool and has no reason to emit one.
     emitsAgentToml: false,
+    // Whether this host can run a subagent on a trailhead `models.*` value (a
+    // Claude model id). Claude Code's subagents do, so the per-activity model
+    // split takes effect here. Like emitsAgentToml, an explicit data flag, not
+    // derived from an axis.
+    honorsModelKeys: true,
     hooks: Object.freeze({ bus: 'host' }),
   }),
   codex: Object.freeze({
@@ -84,7 +90,7 @@ const HOSTS = Object.freeze({
     configDirDefault: '.codex',
     axes: Object.freeze({
       commandSurface: 'skill',
-      subagentToolkit: 'none',
+      subagentToolkit: 'full',
       hookBus: 'none',
     }),
     // A single native Codex skill folder, invoked `$trailhead <verb>`.
@@ -92,12 +98,17 @@ const HOSTS = Object.freeze({
       layout: 'native-skill',
       dir: 'skills/trailhead',
     }),
-    // Also explicit, also independent from the axis: today's codex support
-    // (approach A) runs everything inline under 'none', no agents.toml is
-    // emitted. A future approach-B codex integration (spawning real Codex
-    // sub-sessions as pseudo-subagents via an agents.toml manifest) would
-    // flip this to true without changing subagentToolkit's vocabulary.
+    // Also explicit, also independent from the axis: Codex's native multi_agent
+    // tools are on by default and need NO manifest, so even with subagentToolkit
+    // 'full' no agents.toml is emitted. A future upgrade that pins a per-subagent
+    // OpenAI model (agents/*.toml + multi_agent_v2) would flip this to true
+    // without changing subagentToolkit's vocabulary.
     emitsAgentToml: false,
+    // Whether Codex can run a subagent on a trailhead `models.*` value: NO. Its
+    // subagent model registry is OpenAI-only, so a Claude id (e.g. claude-sonnet-5)
+    // cannot run; subagents inherit the one session model. Hence models.* still
+    // collapses here even though fan-out is available.
+    honorsModelKeys: false,
     // No hook bus: guardrails (secret-guard, commit-guard, etc.) degrade
     // per decision #16, see degradations() below.
     hooks: Object.freeze({ bus: 'none' }),
@@ -169,6 +180,12 @@ function degradations(host) {
       from: 'subagent fan-out (research, codebase-map, review, plan, execute)',
       to: 'inline sequential execution in the main session',
     });
+  }
+
+  // Independent of fan-out: a host whose subagents can't run a trailhead
+  // models.* value (a Claude id) loses the per-activity model split even when
+  // fan-out itself is available (e.g. Codex, OpenAI-only subagent registry).
+  if (!descriptor.honorsModelKeys) {
     entries.push({
       from: 'per-activity model split (models.*)',
       to: 'collapses to a single session model',
@@ -187,15 +204,17 @@ function degradations(host) {
 
 // --- Helper: modelsCollapseNotice --------------------------------------------
 // The one-time notice the engine surfaces at session start when models.* is
-// configured on a subagent-less host, where it cannot take effect: every
-// activity collapses to the single session model (see degradations()). Pure:
-// returns the notice string, or null when there is nothing to say (the host
-// has a subagent toolkit, or no models.* is set). The caller owns the
-// "one-time" bookkeeping (a marker file) and how the string is shown, so this
-// stays pure and trivially testable, mirroring detectHost/degradations.
+// configured on a host that cannot honour it (honorsModelKeys === false): its
+// subagents run on the host's own model, so the per-activity split collapses to
+// the single session model (see degradations()). Keyed on honorsModelKeys, NOT
+// on subagentToolkit: a host can have fan-out yet still be unable to run a
+// subagent on a Claude models.* id (Codex). Pure: returns the notice string, or
+// null when there is nothing to say (the host honours the keys, or no models.*
+// is set). The caller owns the "one-time" bookkeeping (a marker file) and how
+// the string is shown, so this stays pure and trivially testable.
 function modelsCollapseNotice(host, config) {
   const descriptor = resolveHost(host);
-  if (descriptor.axes.subagentToolkit !== 'none') return null;
+  if (descriptor.honorsModelKeys) return null;
   const models = config && typeof config === 'object' ? config.models : null;
   if (!models || typeof models !== 'object') return null;
   const set = Object.keys(models).filter(
@@ -203,9 +222,9 @@ function modelsCollapseNotice(host, config) {
   );
   if (set.length === 0) return null;
   return (
-    `Heads up: trailhead is running on ${descriptor.label}, which has no ` +
-    `subagent fan-out, so your models.* setting (${set.join(', ')}) cannot ` +
-    `take effect here. Every activity runs inline on the one session model. ` +
+    `Heads up: trailhead is running on ${descriptor.label}, whose subagents ` +
+    `run on its own model, so your models.* setting (${set.join(', ')}) cannot ` +
+    `take effect here: every activity's subagent inherits the one session model. ` +
     `The keys stay in .trailhead/config.json and apply again on Claude Code.`
   );
 }
