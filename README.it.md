@@ -1,6 +1,6 @@
 # trailhead
 
-[English](README.md) · **Italiano**
+🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
 **Avvia e conduci grandi progetti come una mappa di ticket su GitHub Issues, risolvendone uno alla volta finché la via verso la destination non è chiara.**
 
