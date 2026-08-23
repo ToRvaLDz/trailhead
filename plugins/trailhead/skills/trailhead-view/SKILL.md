@@ -27,13 +27,13 @@ The **first word** of the arguments is the verb; the rest is an optional map sel
 - **`dashboard`** to the **Render the dashboard** engine below.
 - **`whiteboard`** to the **Render the whiteboard** engine below.
 
-The cross-cluster situational references these renders call still live in the `trailhead-monolith` skill during the migration ([map #53](https://github.com/ToRvaLDz/trailhead/issues/53)); this cluster names each by its `../trailhead-monolith/references/...` path where it needs one (the gh cookbook for the dashboard commands, the out-of-scope rules). The multi-cluster model, the frontier-order and blocked-by-drift rules, and the handoff are already in `_shared/`. As the split completes, the remaining monolith references move to `_shared/`.
+The cross-cluster situational references these renders call live in `_shared/`; this cluster names each by its `../_shared/...` path where it needs one (the gh cookbook for the dashboard commands, the out-of-scope rules). The multi-cluster model, the frontier-order and blocked-by-drift rules, and the handoff are also in `_shared/`.
 
 ## Render the map: `map [map]`
 
 A single `trailhead:map` issue is the canonical artifact: an **index**, not a store, listing the decisions made and pointing at the tickets that hold their detail. A decision lives in exactly one place (its ticket); the map gists it and links.
 
-**`map`** renders it at low resolution as a read-only view (it changes nothing on the map itself, except the user-confirmed close in the exhaustion check below), the map body plus the live ticket state, by name. **Pick which map** if the repo has several open: use the one the user named (`map <n>` shows that one and makes it active), else the active map (`.trailhead/active-map`); with no active map and more than one open, list them and ask which. See **Multiple maps on one repo** in `../_shared/substrate.md`.
+**`map`** renders it at low resolution as a read-only view (it changes nothing on the map itself, except the user-confirmed close in the exhaustion check below), the map body plus the live ticket state, by name. **Pick which map** if the repo has several open: use the one the user named (`map <n>` shows that one and makes it active), else the active map (`.trailhead/active-map`); with no active map and more than one open, list them and ask which. See **Multiple maps on one repo** in `../_shared/multi-map.md`.
 
 Render, by name:
 - **Destination**: the one-line where-we're-headed.
@@ -42,11 +42,11 @@ Render, by name:
 - **Blocked**: with what each waits on; flag any **blocked-by drift** (prose `## Blocked by` differs from the native dependency, see **Blocked-by reconciliation** in `../_shared/substrate.md`) as an advisory line.
 - **Decisions so far**: the index of what's settled.
 - **Not yet specified** + **parked fog**: the coarse fog, and a count/link of open `trailhead:fog` issues.
-- **Out of scope**: what's been ruled out; **flag as an advisory** any line that's actually **deferred** rather than truly beyond the destination (the tells: a gate/trigger, a this-only qualifier, a feature wanted later, or the gate of a live `trailhead:seed`; see `../trailhead-monolith/references/out-of-scope.md`), unless it's already parked (`→ future map` with dependent seeds on a live trigger, in which case say nothing). **Name any un-parked ones and suggest `/trailhead:inbox` to re-route them** (seed/idea/todo).
+- **Out of scope**: what's been ruled out; **flag as an advisory** any line that's actually **deferred** rather than truly beyond the destination (the tells: a gate/trigger, a this-only qualifier, a feature wanted later, or the gate of a live `trailhead:seed`; see `../_shared/out-of-scope.md`), unless it's already parked (`→ future map` with dependent seeds on a live trigger, in which case say nothing). **Name any un-parked ones and suggest `/trailhead:inbox` to re-route them** (seed/idea/todo).
 - **Inbox**: a count of untriaged inbound issues, as a nudge.
 - **Exhaustion check**: if the map is exhausted (no open tickets and no fog left: the destination is reached), **say so and ask whether to close the map issue**, the same ask as the work handoff: on a yes, `gh issue close` it and refresh the dashboard so it drops off; on a no, leave it open. Maps aren't pinned, so there's no pin to free either way. Never close unprompted. Route any un-parked deferred *Out of scope* line first (above) so nothing wanted-later is lost. This user-confirmed close is the only change `map` makes to the map, and only on an explicit yes (the dashboard self-heal below touches only the pinned index, never the map).
 
-**Dashboard self-heal.** Before rendering, ensure the repo's pinned `trailhead:dashboard` index exists and is pinned: create + pin it only if missing, re-pin it if the pin was dropped, and otherwise do nothing (never rewrite its body on a render). This is the same self-heal the **Render the dashboard** engine documents below; the exact gh commands are in `../trailhead-monolith/references/substrate-commands.md`.
+**Dashboard self-heal.** Before rendering, ensure the repo's pinned `trailhead:dashboard` index exists and is pinned: create + pin it only if missing, re-pin it if the pin was dropped, and otherwise do nothing (never rewrite its body on a render). This is the same self-heal the **Render the dashboard** engine documents below; the exact gh commands are in `../_shared/substrate-commands.md`.
 
 The map body it renders (the sections are matched by their **text**; the emoji are cosmetic anchors):
 
@@ -79,7 +79,7 @@ It holds:
 - the **whiteboard** as its own section (frontier / in-progress / blocked, or a link to the `whiteboard` view);
 - dynamic **counts**: untriaged inbox size, whiteboard frontier size.
 
-**`dashboard`** regenerates the pinned issue body from the live tracker and shows it, both the render and the on-demand refresh, consistent with `map` and `whiteboard`. It creates and pins the issue if the repo doesn't have one yet (ensuring the `trailhead:dashboard` label first, idempotently). The exact gh commands (find, pin/re-pin/unpin, self-heal, body generation with the count queries) are in `../trailhead-monolith/references/substrate-commands.md`.
+**`dashboard`** regenerates the pinned issue body from the live tracker and shows it, both the render and the on-demand refresh, consistent with `map` and `whiteboard`. It creates and pins the issue if the repo doesn't have one yet (ensuring the `trailhead:dashboard` label first, idempotently). The exact gh commands (find, pin/re-pin/unpin, self-heal, body generation with the count queries) are in `../_shared/substrate-commands.md`.
 
 **Freshness: structural events + on demand.** The pinned issue is rewritten when the surface changes **structurally** and **on demand** via `dashboard`. The structural events are: a map is **charted** or **exhausted** (a map appears or disappears), and a **whiteboard ticket is born or resolved**. It is **not** rewritten on every *map* ticket resolve: that would churn a pinned issue (and its notifications) constantly, and each map's native sub-issue progress bar already tracks its per-ticket progress. **The whiteboard has no such native progress bar** (its tickets are sub-issues of nothing), so the dashboard's whiteboard section and count are the only place whiteboard state shows: a whiteboard ticket appearing or being resolved *is* a structural change to the indexed surface, and refreshes the dashboard. Links + counts stay good enough refreshed at these events and on demand.
 
@@ -92,7 +92,7 @@ It holds:
 
 ## Render the whiteboard: `whiteboard`
 
-Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both. Loose tickets are created there by a capture routed to the whiteboard or born there by `quick`, and worked with `quick <n>` or `work <n>` (the capture and work clusters own those paths; during the migration they live in `trailhead-monolith` / `trailhead-work`). This engine only **renders** the whiteboard.
+Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both. Loose tickets are created there by a capture routed to the whiteboard or born there by `quick`, and worked with `quick <n>` or `work <n>` (the capture and work clusters own those paths). This engine only **renders** the whiteboard.
 
 It has its **own frontier**, off every map's (see **Map frontier vs whiteboard frontier** in `../_shared/substrate.md`):
 ```bash

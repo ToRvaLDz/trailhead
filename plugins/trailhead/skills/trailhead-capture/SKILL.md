@@ -25,4 +25,4 @@ The **first word** of the arguments is the verb (`bug`, `todo`, `idea`, `seed`, 
 
 - **`bug`** / **`todo`** / **`idea`** / **`seed`** / **`note`** to **`references/capture.md`**: the full per-verb protocol and the note/idea/seed/todo spectrum. Read that file and follow it.
 
-The cross-cluster situational references and technique bodies these captures call still live in the `trailhead-monolith` skill during the migration ([map #53](https://github.com/ToRvaLDz/trailhead/issues/53)); this cluster names each by its `../trailhead-monolith/references/...` path where it needs one. As the split completes, the multi-cluster ones move to `_shared/`.
+The cross-cluster situational references and technique bodies these captures call live in `_shared/`; this cluster names each by its `../_shared/...` path where it needs one.

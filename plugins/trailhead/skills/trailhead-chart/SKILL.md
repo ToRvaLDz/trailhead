@@ -28,7 +28,7 @@ The **first word** of the arguments is the verb; the rest is the text (a loose i
 - **`inbox [issue]`** to **`references/inbox.md`**: the triage protocol. Read that file.
 - **`grill [topic|ticket]`** to the **Standalone grill** engine below.
 
-The cross-cluster situational references and the technique bodies these engines call still live in the `trailhead-monolith` skill during the migration ([map #53](https://github.com/ToRvaLDz/trailhead/issues/53)); this cluster names each by its `../trailhead-monolith/references/...` path where it needs one (the gh cookbook, the out-of-scope rules, teamwork, the techniques). As the split completes, the multi-cluster ones move to `_shared/`.
+The cross-cluster situational references and the technique bodies these engines call live in `_shared/`; this cluster names each by its `../_shared/...` path where it needs one (the gh cookbook, the out-of-scope rules, teamwork, the techniques).
 
 ## Chart a new map / adopt a project: `new`, `adopt`
 
@@ -36,7 +36,7 @@ Read **`references/charting.md`** and follow it. It holds both protocols: **Mode
 
 ## Open a ticket on the fly: `ticket <type> <title>`
 
-Open ticket(s) of the map on the fly, for any of the six types (`decision`, `research`, `prototype`, `build`, `bug`, `task`), the escape hatch the capture verbs do not cover. **Adding a ticket is a micro-charting act, so diverge briefly first, do not blind-commit to a single piece:** run a short breadth-first pass around the request: is this really *one* session-sized ticket, or a small **cluster** (a `decision` that needs a `research` before it, a UI `build` that needs a `prototype`, obvious siblings)? Does it imply a blocker? Surface the neighbours, *then* create the ticket(s): each gets `trailhead:ticket` plus its `trailhead:<type>`, its map's `trailhead:map-<n>` label and native sub-issue edge, a `Parent:` line, and a `## Question`; put each on the frontier, or wire `## Blocked by` plus `trailhead:blocked` (the three-move blocker wiring and the child-to-map link are in `../_shared/substrate.md`; the exact gh commands are in `../trailhead-monolith/references/substrate-commands.md`). This is a framing brainstorm (is this the right work?), distinct from the `decision` engine's option brainstorm (which choice?). If `<type>` is missing or invalid, ask which of the six. *(The zero-friction captures, `bug` / `todo` / `idea` / `seed` / `note`, deliberately skip this diverge-first pass; they are one action, one confirmation, and are served by the capture cluster.)*
+Open ticket(s) of the map on the fly, for any of the six types (`decision`, `research`, `prototype`, `build`, `bug`, `task`), the escape hatch the capture verbs do not cover. **Adding a ticket is a micro-charting act, so diverge briefly first, do not blind-commit to a single piece:** run a short breadth-first pass around the request: is this really *one* session-sized ticket, or a small **cluster** (a `decision` that needs a `research` before it, a UI `build` that needs a `prototype`, obvious siblings)? Does it imply a blocker? Surface the neighbours, *then* create the ticket(s): each gets `trailhead:ticket` plus its `trailhead:<type>`, its map's `trailhead:map-<n>` label and native sub-issue edge, a `Parent:` line, and a `## Question`; put each on the frontier, or wire `## Blocked by` plus `trailhead:blocked` (the three-move blocker wiring and the child-to-map link are in `../_shared/substrate.md`; the exact gh commands are in `../_shared/substrate-commands.md`). This is a framing brainstorm (is this the right work?), distinct from the `decision` engine's option brainstorm (which choice?). If `<type>` is missing or invalid, ask which of the six. *(The zero-friction captures, `bug` / `todo` / `idea` / `seed` / `note`, deliberately skip this diverge-first pass; they are one action, one confirmation, and are served by the capture cluster.)*
 
 ## Triage the inbox: `inbox [issue]`
 
@@ -44,7 +44,7 @@ Read **`references/inbox.md`** and follow it. It triages issues opened by others
 
 ## Standalone grill: `grill [topic|ticket]`
 
-Run a standalone **Grilling** (plus **Domain vocabulary**) session on a decision or topic, or on a named ticket, without committing to the full work cycle. Read the two techniques and follow them: `../trailhead-monolith/references/techniques/grilling.md` and `../trailhead-monolith/references/techniques/domain-vocabulary.md` (these are multi-cluster techniques; they stay in the monolith during the migration and move to `_shared/` at the cutover). Record the outcome where it belongs: a ticket's resolution, the map's `Decisions so far`, or a fresh `decision` ticket.
+Run a standalone **Grilling** (plus **Domain vocabulary**) session on a decision or topic, or on a named ticket, without committing to the full work cycle. Read the two techniques and follow them: `../_shared/techniques/grilling.md` and `../_shared/techniques/domain-vocabulary.md` (these are multi-cluster techniques, so their bodies live in `_shared/`). Record the outcome where it belongs: a ticket's resolution, the map's `Decisions so far`, or a fresh `decision` ticket.
 
 ## First-time config offer (end of chart / adopt)
 
