@@ -23,10 +23,25 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
-const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexVerbSkillPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
+const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexClusterAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexVerbSkillPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
+
+// Enumerate the engine skill dirs shipped under plugins/trailhead/skills: the
+// dispatcher, the cluster skills, and the shared core. A subdir qualifies when
+// it is `_shared` (the shared core, no SKILL.md) or contains a SKILL.md, so a
+// stray empty dir is skipped and a new cluster is picked up automatically.
+function engineSkillDirs() {
+  const skillsRoot = path.join(SRC, 'skills');
+  if (!fs.existsSync(skillsRoot)) return [];
+  return fs.readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((name) => name === '_shared' || fs.existsSync(path.join(skillsRoot, name, 'SKILL.md')))
+    .sort();
+}
+
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const useSymlink = has('--symlink');
@@ -138,7 +153,6 @@ async function resolveHostName() {
 // --- Claude adapter (unchanged behaviour) -----------------------------------
 function claudePaths(configDir) {
   return {
-    skill: path.join(configDir, 'skills', 'trailhead'),
     commands: path.join(configDir, 'commands', 'trailhead'),
     hooksDir: path.join(configDir, 'hooks'),
     templates: path.join(configDir, 'trailhead', 'templates'),
@@ -195,7 +209,8 @@ function stripHook(s, event, substr) {
 
 function uninstallClaude(configDir) {
   const P = claudePaths(configDir);
-  [P.skill, P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
+  for (const name of engineSkillDirs()) rmrf(path.join(configDir, 'skills', name));
+  [P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
   // Remove only trailhead's own lib files by name: the hooks/lib dir is shared
   // with other plugins, so never rmrf the whole dir.
@@ -213,7 +228,13 @@ function installClaude(configDir, { useSymlink }) {
   const P = claudePaths(configDir);
   const hookCmd = (name) => `node "${path.join(P.hooksDir, name)}"`;
 
-  place(path.join(SRC, 'skills', 'trailhead'), P.skill, useSymlink);
+  // Place each engine skill dir as a sibling under configDir/skills so the
+  // ../_shared/ and ../trailhead-<cluster>/ relative refs resolve. The skills
+  // dir is shared with other plugins: place by name, never touch the whole dir.
+  const skillDirs = engineSkillDirs();
+  for (const name of skillDirs) {
+    place(path.join(SRC, 'skills', name), path.join(configDir, 'skills', name), useSymlink);
+  }
   place(path.join(SRC, 'commands'), P.commands, useSymlink);
   place(path.join(SRC, 'templates'), P.templates, useSymlink);
   copyHookScripts(P.hooksDir);
@@ -234,7 +255,7 @@ function installClaude(configDir, { useSymlink }) {
   writeJSON(P.settings, s);
 
   console.log(`✓ trailhead installed for Claude Code → ${configDir}`);
-  console.log(`  skill     → ${P.skill}${useSymlink ? '  (symlink)' : ''}`);
+  console.log(`  skills    → ${path.join(configDir, 'skills')}/  (${skillDirs.join(', ')})${useSymlink ? '  (symlink)' : ''}`);
   console.log(`  commands  → ${P.commands}  (/trailhead:*)`);
   console.log(`  hooks     → ${P.hooksDir}/  (${added ? 'registered' : 'already present'} in settings.json)`);
   console.log(`  templates → ${P.templates}`);
@@ -346,10 +367,21 @@ function installCodex(configDir, { useSymlink }) {
   }
   rmrf(L.legacyEngineDir);
 
-  // Engine: clean skill dir, then project with conversion.
-  rmrf(L.skillDir);
-  ensure(L.skillDir);
-  copySkillConverted(path.join(SRC, 'skills', 'trailhead'), L.skillDir, true);
+  // Sweep the whole engine + any prior per-verb skills, then project fresh.
+  rmrf(L.skillDir);                                   // skills/trailhead (dispatcher)
+  rmrf(path.join(L.skillsRoot, '_shared'));           // shared core
+  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f)); // clusters + old verb skills
+  }
+
+  // Project each engine skill dir (dispatcher + 5 clusters + _shared) as a
+  // sibling under skills/, converting text and injecting the adapter header into
+  // each top-level SKILL.md. The ../_shared/ relative refs survive conversion and
+  // resolve as siblings (decision #54). _shared has no SKILL.md, so no header.
+  const engineDirs = engineSkillDirs();
+  for (const name of engineDirs) {
+    copySkillConverted(path.join(SRC, 'skills', name), path.join(L.skillsRoot, name), true);
+  }
 
   // Templates (verbatim, never converted), bundled inside the skill dir so
   // ${CLAUDE_PLUGIN_ROOT}/templates resolves to ~/.codex/skills/trailhead/templates.
@@ -359,18 +391,25 @@ function installCodex(configDir, { useSymlink }) {
   // agents/openai.yaml: UI metadata + explicit-only invocation (no auto-trigger).
   ensure(L.agentsDir);
   fs.writeFileSync(L.agentsYaml, codexAgentsYaml());
+  // Each cluster skill also gets explicit-only UI metadata (never auto-invoked).
+  for (const name of engineDirs) {
+    if (name === 'trailhead' || name === '_shared') continue;
+    const dir = path.join(L.skillsRoot, name, 'agents');
+    ensure(dir);
+    fs.writeFileSync(path.join(dir, 'openai.yaml'), codexClusterAgentsYaml(name));
+  }
 
   // Per-verb discoverability (#46): one thin Codex skill per verb
   // (skills/trailhead-<verb>/, invocable as $trailhead-<verb>), each delegating
   // to $trailhead <verb>. Codex custom prompts (~/.codex/prompts/) never surface
   // as slash commands, so per-verb skills carry the surface, exactly as GSD does.
-  // Sweep stale trailhead-* verb skills first (a removed verb, or an upgrade from
-  // the old prompt-shim layout), never the main skills/trailhead. Verbs come from
-  // the canonical commands/*.md so the surfaces never drift.
-  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f));
-  }
-  const verbSkillPlan = codexVerbSkillPlan(configDir, readCommandVerbs());
+  // Verbs come from the canonical commands/*.md so the surfaces never drift.
+  // Skip any verb whose skill dir would collide with a projected cluster skill
+  // (e.g. verb `work` vs the trailhead-work cluster): the cluster skill is its
+  // own $trailhead-<name> entry. Compute the skip-set from the projected dirs.
+  const clusterDirNames = new Set(engineDirs);
+  const verbList = readCommandVerbs().filter((c) => !clusterDirNames.has(`trailhead-${c.verb}`));
+  const verbSkillPlan = codexVerbSkillPlan(configDir, verbList);
   for (const d of verbSkillPlan.dirs) ensure(path.join(d, 'agents'));
   for (const w of verbSkillPlan.writes) fs.writeFileSync(w.path, w.content);
 
@@ -455,6 +494,7 @@ function installCodex(configDir, { useSymlink }) {
 function uninstallCodex(configDir) {
   const L = codexLayout(configDir);
   rmrf(L.skillDir);
+  rmrf(path.join(L.skillsRoot, '_shared'));
   // sweep the per-verb discoverability skills (skills/trailhead-<verb>/, #46),
   // never the main skills/trailhead (already removed above; does not match).
   for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
