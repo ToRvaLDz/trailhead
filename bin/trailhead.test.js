@@ -74,7 +74,7 @@ ok('codex: SKILL.md still carries the adapter header', skillMainContent.includes
 const engineBody = skillMainContent.slice(skillMainContent.indexOf('</codex_skill_adapter>'));
 ok('codex: SKILL.md engine body has no /trailhead: substring', !engineBody.includes('/trailhead:'));
 
-ok('codex: references/techniques/grilling.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'references', 'techniques', 'grilling.md')));
+ok('codex: _shared/techniques/grilling.md exists', fs.existsSync(path.join(codexDir, 'skills', '_shared', 'techniques', 'grilling.md')));
 
 const agentsYamlPath = path.join(codexDir, 'skills', 'trailhead', 'agents', 'openai.yaml');
 ok('codex: agents/openai.yaml exists', fs.existsSync(agentsYamlPath));
@@ -90,12 +90,28 @@ ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.
 // #46: per-verb discoverability now projects one Codex SKILL per verb
 // (skills/trailhead-<verb>/), invocable as $trailhead-<verb>. The old
 // ~/.codex/prompts/ shims never surfaced as slash commands on Codex.
-ok('codex: per-verb skills/trailhead-work/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md')));
+// #46 per-verb discoverability skills. `work` collides with the work CLUSTER
+// dir, so its discoverability is the cluster itself; use a non-colliding verb.
 ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md')));
-ok('codex: trailhead-work SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-work\n'));
-ok('codex: trailhead-work skill delegates to $trailhead work', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').includes('$trailhead work'));
-ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
+ok('codex: trailhead-bug SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-bug\n'));
+ok('codex: trailhead-bug skill delegates to $trailhead bug', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').includes('$trailhead bug'));
+ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
+// The trailhead-work dir is the WORK CLUSTER skill (not a thin verb delegator).
+ok('codex: trailhead-work is the cluster skill (frontmatter name at byte 0)', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-work\n'));
+ok('codex: trailhead-work cluster carries the adapter header', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').includes('<codex_skill_adapter>'));
+ok('codex: NO thin trailhead-work verb-delegator (cluster occupies the name)', !fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').includes('This is a thin discoverability entry'));
 ok('codex: no ~/.codex/prompts shims left (old mechanism dropped)', !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead.md')) && !fs.existsSync(path.join(codexDir, 'prompts', 'trailhead-work.md')));
+
+// The split ships all sibling engine skills so the ../_shared/ relative refs resolve.
+ok('codex: _shared/ projected', fs.existsSync(path.join(codexDir, 'skills', '_shared', 'substrate.md')));
+for (const cl of ['trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`codex: cluster ${cl} SKILL.md projected`, fs.existsSync(path.join(codexDir, 'skills', cl, 'SKILL.md')));
+  ok(`codex: cluster ${cl} carries the adapter header`, fs.readFileSync(path.join(codexDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('<codex_skill_adapter>'));
+  ok(`codex: cluster ${cl} frontmatter precedes the adapter header`, (() => { const c = fs.readFileSync(path.join(codexDir, 'skills', cl, 'SKILL.md'), 'utf8'); return c.startsWith('---\n') && c.indexOf('name:') < c.indexOf('<codex_skill_adapter>'); })());
+  ok(`codex: cluster ${cl} agents/openai.yaml explicit-only`, fs.readFileSync(path.join(codexDir, 'skills', cl, 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
+}
+// A cluster's ../_shared/ reference target actually resolves as a sibling.
+ok('codex: trailhead-work/../_shared/substrate.md resolves', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work', '..', '_shared', 'substrate.md')));
 
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
@@ -144,6 +160,8 @@ ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 
 ok('codex uninstall: legacy trailhead engine dir gone', !fs.existsSync(path.join(codexDir, 'trailhead')));
 ok('codex uninstall: per-verb skills/trailhead-work gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work')));
 ok('codex uninstall: per-verb skills/trailhead-bug gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug')));
+ok('codex uninstall: _shared gone', !fs.existsSync(path.join(codexDir, 'skills', '_shared')));
+ok('codex uninstall: cluster trailhead-view gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-view')));
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);
@@ -157,6 +175,12 @@ runInstaller([`--claude`, `--dir=${claudeDir}`]);
 
 const claudeSkillPath = path.join(claudeDir, 'skills', 'trailhead', 'SKILL.md');
 ok('claude: skills/trailhead/SKILL.md exists', fs.existsSync(claudeSkillPath));
+// The split ships all sibling engine skills on Claude too.
+ok('claude: skills/_shared/substrate.md exists', fs.existsSync(path.join(claudeDir, 'skills', '_shared', 'substrate.md')));
+for (const cl of ['trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`claude: skills/${cl}/SKILL.md exists`, fs.existsSync(path.join(claudeDir, 'skills', cl, 'SKILL.md')));
+}
+ok('claude: cluster ../_shared/ reference resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'substrate.md')));
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
@@ -187,6 +211,14 @@ fs.writeFileSync(coTenantLib, '// not trailhead\n');
 runInstaller([`--claude`, `--dir=${coTenantDir}`, '--uninstall']);
 ok('claude uninstall: trailhead lib removed', !fs.existsSync(path.join(coTenantDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude uninstall: co-tenant lib preserved (no recursive wipe)', fs.existsSync(coTenantLib));
+
+// Uninstall removes every split skill (dispatcher + clusters + _shared) by name.
+const splitDir = mktmp();
+runInstaller([`--claude`, `--dir=${splitDir}`]);
+runInstaller([`--claude`, `--dir=${splitDir}`, '--uninstall']);
+for (const nm of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage', '_shared']) {
+  ok(`claude uninstall: skills/${nm} removed`, !fs.existsSync(path.join(splitDir, 'skills', nm)));
+}
 
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
