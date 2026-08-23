@@ -1,6 +1,6 @@
 # Substrate: `gh` command cookbook + first-use repo setup
 
-The single command reference for every `gh` mechanic the GitHub Issues substrate uses. Cluster skills link here and never re-describe any of it. The conceptual model (Element table, State labels, Frontier definition, reconciliation) stays in `../../_shared/substrate.md` (and its SKILL.md mirror). Read this file at work time (creating tickets, wiring blockers, querying the frontier, refreshing the dashboard) and at chart/adopt (first-use setup).
+The single command reference for every `gh` mechanic the GitHub Issues substrate uses. Cluster skills link here and never re-describe any of it. The conceptual model (Element table, State labels, Frontier definition, reconciliation) stays in `substrate.md` (and its SKILL.md mirror). Read this file at work time (creating tickets, wiring blockers, querying the frontier, refreshing the dashboard) and at chart/adopt (first-use setup).
 
 ## Base commands
 ```bash
