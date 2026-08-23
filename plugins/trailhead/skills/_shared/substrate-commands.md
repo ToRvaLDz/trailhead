@@ -138,7 +138,7 @@ These renders create and pin only when missing; they never rewrite the body.
 
 Count queries, `--json ... --jq 'length'` style:
 ```bash
-# untriaged inbox size: open issues carrying no trailhead:* label (section A of references/inbox.md), counted
+# untriaged inbox size: open issues carrying no trailhead:* label (section A of ../trailhead-chart/references/inbox.md), counted
 gh issue list --state open --json number,labels \
   --jq '[.[] | select([.labels[].name] | any(startswith("trailhead:")) | not)] | length'
 # whiteboard frontier size: the whiteboard frontier query above, counted
@@ -149,5 +149,5 @@ gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state 
 
 ## First-use repo setup (do ALL THREE, every chart or adopt, never skip any)
 1. Create any missing labels with `gh label create` (all eighteen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:dashboard`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`, `trailhead:whiteboard`).
-2. **Check the label guard is installed**: `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it: **read `references/teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. This is part of standing up trailhead in a repo, not an optional extra: *check every time*, so a repo can never end up with the labels but no guard.
-3. **Install the commit-msg git hook**: check for `.git/hooks/commit-msg`; if absent, install the shipped host-independent hook so trailhead's commit discipline (Conventional Commits subject, no `Co-Authored-By`) runs on **every** `git commit` regardless of host (the Claude-Code `PreToolUse` guard stays too, defence in depth): **read `references/teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. Like the label guard, *check every time*; unlike it, `.git/hooks/` is per-clone local state (untracked), so it is installed, never committed.
+2. **Check the label guard is installed**: `gh api repos/{owner}/{repo}/contents/.github/workflows/trailhead-label-guard.yml`; if it's absent (404), install it: **read `teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. This is part of standing up trailhead in a repo, not an optional extra: *check every time*, so a repo can never end up with the labels but no guard.
+3. **Install the commit-msg git hook**: check for `.git/hooks/commit-msg`; if absent, install the shipped host-independent hook so trailhead's commit discipline (Conventional Commits subject, no `Co-Authored-By`) runs on **every** `git commit` regardless of host (the Claude-Code `PreToolUse` guard stays too, defence in depth): **read `teamwork.md` (Trust & provenance → Repo-side enforcement) for the exact steps**. Like the label guard, *check every time*; unlike it, `.git/hooks/` is per-clone local state (untracked), so it is installed, never committed.
