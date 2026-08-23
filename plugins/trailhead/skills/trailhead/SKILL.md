@@ -10,12 +10,12 @@ argument-hint: "[new|adopt|work|quick|whiteboard|ticket|inbox|map|dashboard|conf
 
 Before doing anything, read the shared core (paths relative to this file):
 
-1. `../_shared/principles.md` — refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
-2. `../_shared/ticket-language.md` — write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
-3. `../_shared/substrate.md` — the GitHub-Issues model: labels, the frontier query, the map / ticket / dashboard / whiteboard anatomy, and the base-command cookbook pointer.
-4. `../_shared/session-handoff.md` — how every resolution closes (`/clear` first, then the next command).
-5. `../_shared/configuration.md` — the three config layers and the load contract.
-6. `../_shared/techniques.md` — the technique index and the subagent-type rule.
+1. `../_shared/principles.md`: refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
+2. `../_shared/ticket-language.md`: write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
+3. `../_shared/substrate.md`: the GitHub-Issues model: labels, the frontier query, the map / ticket / dashboard / whiteboard anatomy, and the base-command cookbook pointer.
+4. `../_shared/session-handoff.md`: how every resolution closes (`/clear` first, then the next command).
+5. `../_shared/configuration.md`: the three config layers and the load contract.
+6. `../_shared/techniques.md`: the technique index and the subagent-type rule.
 
 Load the **effective config** (per `../_shared/configuration.md`) at session start, from the map's project root (`.trailhead/config.json` plus the global file), before any isolation workspace is set up.
 
