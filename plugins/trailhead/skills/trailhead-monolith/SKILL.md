@@ -1,6 +1,6 @@
 ---
-name: trailhead
-description: "Start and drive a large project (more than one agent session can hold) as a map of decision tickets on GitHub Issues, resolving one at a time until the way to the destination is clear. Self-contained: map-based onboarding and a discuss→plan→execute→verify engine with atomic commits, with everything (map, discussion, plan, verification) living on the Issues. No dependencies beyond an authenticated gh CLI. Invoke only when the user explicitly runs `/trailhead` (or a `/trailhead:<verb>` command) or asks to chart, adopt, or work a trailhead map, and do not auto-invoke for generic planning, project, or task-tracking requests."
+name: trailhead-monolith
+description: "Internal engine holding the trailhead verb bodies (the discuss→plan→execute→verify cycle, captures, and the map/whiteboard/dashboard views) during the skill-split migration (map #53). Not a user-facing entry point: it is reached only through the `/trailhead:<verb>` command wrappers and the `trailhead` dispatcher's routing, never invoked on its own. Do not auto-invoke; for a trailhead action the user runs `/trailhead` or `/trailhead:<verb>`."
 argument-hint: "[new|adopt|work|quick|whiteboard|ticket|inbox|map|config|grill|split|pause|resume|bug|todo|idea|seed|note] [text | ticket]"
 ---
 

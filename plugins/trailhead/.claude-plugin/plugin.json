@@ -17,7 +17,7 @@
     "capture"
   ],
   "skills": [
-    "./skills/trailhead"
+    "./skills/trailhead-monolith"
   ],
   "hooks": "./hooks/hooks.json"
 }
