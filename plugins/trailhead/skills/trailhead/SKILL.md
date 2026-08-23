@@ -6,7 +6,7 @@ argument-hint: "[new|adopt|work|quick|whiteboard|ticket|inbox|map|config|grill|s
 
 A loose idea has arrived, too big for one session: the way from here to the **destination** isn't visible yet. `trailhead` is where the trail begins. It charts the way as a **shared map on GitHub Issues**, then works its **tickets**, one at a time, until the road is clear and the destination reached.
 
-The method fuses two halves; `trailhead`'s core invokes no other skill and depends on nothing but an authenticated `gh` CLI (the one opt-in exception: `claude.ai/design` mockup mode uses **DesignSync** (the `claude_design` MCP + `/design-sync` skill) to push to a design-system project, and falls back to disk if it's unavailable):
+The method fuses two halves; `trailhead`'s core invokes no other skill and depends on nothing but an authenticated `gh` CLI (the one opt-in exception: `claude.ai/design` mockup mode uses Anthropic's **official Claude Design MCP** to create/edit the mockup on claude.ai/design, on a canvas project by default or, for a shared component library, a design-system project via **DesignSync** (the `claude_design` MCP + `/design-sync` skill), and falls back to disk if it's unavailable):
 - **The map.** Question-driven onboarding, the destination named first, the frontier, the fog of war, reference *by name*, one ticket per session.
 - **The engine.** Zero-friction capture and the `discuss → plan → execute → verify` cycle with atomic commits that resolves each build ticket *inside* the map.
 
