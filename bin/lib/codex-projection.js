@@ -90,8 +90,8 @@ This trailhead engine is running on **Codex CLI**, not Claude Code. The installe
 ## A. Commands
 trailhead is a native Codex skill. Invoke it as \`$trailhead <verb>\` (e.g. \`$trailhead work\`, \`$trailhead new "idea"\`); bare \`$trailhead\` is smart entry. Never \`/trailhead:<verb>\` (that is the Claude Code surface). Whatever you type after the verb is the arguments. For discoverability the installer also projects one thin skill per verb (\`$trailhead-work\`, \`$trailhead-bug\`, …) that just delegates to \`$trailhead <verb>\`, so the verbs surface in the \`$\`-menu; \`$trailhead <verb>\` stays the canonical form and this SKILL.md the single source of truth. (Codex custom prompts under \`~/.codex/prompts/\` are deliberately NOT used: they do not surface as slash commands.)
 
-## B. This IS the skill
-Codex loaded this SKILL.md because you invoked \`$trailhead\`; there is no separate Skill tool to call. When the engine says to load a \`references/*.md\` file, Read it from this skill directory (\`~/.codex/skills/trailhead/\`).
+## B. This IS the skill; the engine is split across sibling skill dirs
+Codex loaded this SKILL.md because you invoked \`$trailhead\` (or a \`$trailhead-<verb>\` / \`$trailhead-<cluster>\` entry); there is no separate Skill tool to call. The engine is split across sibling skill dirs under \`~/.codex/skills/\`: the dispatcher (\`trailhead/\`), five cluster skills (\`trailhead-chart/\`, \`trailhead-work/\`, \`trailhead-view/\`, \`trailhead-capture/\`, \`trailhead-manage/\`), and the shared core (\`_shared/\`, no SKILL.md). Read every referenced file **relative to the SKILL.md you are currently in**: a \`references/*.md\` from this skill's own dir, and the shared core (\`../_shared/*.md\`, or \`../../_shared/*.md\` from a \`references/\` file) from the sibling \`_shared/\` dir. Where the dispatcher's routing says "call the Skill tool with skill name \`trailhead-<cluster>\` and arguments \`<verb> <rest>\`", there is no Skill tool on Codex: **Read \`../trailhead-<cluster>/SKILL.md\` (the sibling dir) and follow it**, treating \`<verb> <rest>\` as its arguments.
 
 ## C. AskUserQuestion -> request_user_input
 Where the engine uses \`AskUserQuestion\`, use Codex's \`request_user_input\`: map \`header\`->\`header\`, \`question\`->\`question\`, each option \`{label, description}\`; generate an \`id\` from the header (lowercase, spaces->underscores). Codex has no \`multiSelect\`: present sequential single-selects, or a numbered freeform list and ask for comma-separated numbers. If \`request_user_input\` is unavailable, present the choices as a plain-text numbered list and STOP for the user's reply; do not silently pick a default and proceed.
@@ -140,6 +140,21 @@ function codexAgentsYaml() {
   display_name: "Trailhead"
   short_description: "Chart & work a project as decision tickets"
   default_prompt: "Use $trailhead to chart a new map, or $trailhead work to take the next ticket."
+policy:
+  allow_implicit_invocation: false
+`;
+}
+
+// --- codexClusterAgentsYaml ------------------------------------------------
+// UI metadata for a projected cluster skill (trailhead-chart, trailhead-work,
+// ...): a display name + explicit-only invocation, so a cluster never
+// auto-loads into an unrelated turn. Mirrors codexAgentsYaml's shape.
+function codexClusterAgentsYaml(cluster) {
+  const short = String(cluster).replace(/^trailhead-/, '');
+  return `interface:
+  display_name: ${yamlQuote(`Trailhead: ${short}`)}
+  short_description: ${yamlQuote(`trailhead ${short} cluster`)}
+  default_prompt: ${yamlQuote(`Run $${cluster}`)}
 policy:
   allow_implicit_invocation: false
 `;
@@ -388,6 +403,7 @@ module.exports = {
   codexSkillAdapterHeader,
   injectCodexAdapterHeader,
   codexAgentsYaml,
+  codexClusterAgentsYaml,
   codexAgentToml,
   codexAgentTomlPlan,
   codexVerbSkillContent,
