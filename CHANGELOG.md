@@ -2,6 +2,11 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Changed / Fixed
+- **`claude.ai/design` mockup mode broadened to the full Claude Design canvas.** The claude.ai/design path is Anthropic's **official Claude Design MCP** (`claude mcp add --scope user --transport http claude-design https://api.anthropic.com/v1/design/mcp`, auth `/design-login`), not a third-party dependency; the DesignSync `/design-sync` path trailhead already used is its design-system slice. Mockup mode is no longer limited to design-system projects: a new `design.surface` (**`canvas`** default | `design-system`) picks the surface. `canvas` uses the full MCP for a regular design (canvas) project, the natural home for a one-off screen to react to (editable on the canvas, exportable as a live prototype); `design-system` keeps the DesignSync path for a shared component library. Fallback chain: full MCP -> DesignSync design-system -> disk (disk on Codex, unchanged). **Back-compat:** a cached `design.project` with `design.surface` unset infers `design-system`, so existing projects keep their behaviour with no migration. `SKILL.md`, Prototype and configuration references, the guided setup menu, and both READMEs updated.
+
 ## 0.4.0 (2026-08-22)
 
 ### Added
