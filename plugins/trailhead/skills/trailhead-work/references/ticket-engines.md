@@ -1,0 +1,52 @@
+# Ticket types and their engine
+
+The per-type engines the `work` verb dispatches to (Mode 2 step 3, in `../SKILL.md`). The `build`/`bug` engine is this cluster's single-cluster reference; `decision`/`research`/`prototype`/`task` round out the six types. `quick` (the off-map, no-split variant) lives inline in `../SKILL.md`.
+
+Every ticket is **HITL** (human in the loop, speaking for themselves) or **AFK** (driven by the agent alone). A HITL ticket resolves only through the live exchange: the agent never stands in for the human's side.
+
+Technique names below (**Grilling**, **Domain vocabulary**, **Prototype**, **Research**, **TDD**, **Code review**, **Acceptance testing**, **Debug**) are indexed in `../../_shared/techniques.md`; their full protocols stay in the monolith during the migration, read from `../../trailhead-monolith/references/techniques/<name>.md` (they move to `_shared/` at the cutover).
+
+## `decision`: HITL, *default for decision tickets*
+Close a choice, but widen before you narrow:
+
+1. **Diverge (only if the option space isn't already clear).** Mapping the frontier usually framed the options already; skip straight to grilling when it did. When it didn't (the ticket names a question but the candidate answers aren't laid out) open the space *first*: brainstorm the plausible options, name each concretely, and post them as an `OPTIONS` comment. Divergence has no judgement yet: surface possibilities, don't rank them. If a missing **fact** is what's blocking clarity, spin a `research` ticket and block on it; if the question is "how could it look/behave", spin a `prototype`. Don't grill a space you haven't opened.
+2. **Converge.** Run the **Grilling** + **Domain vocabulary** techniques over the options to pick one. Record the decision and the why.
+
+The two phases are distinct on purpose: divergence generates, grilling chooses. Never let the agent invent the options *and* pick for the human: the choice stays theirs.
+
+## `research`: AFK
+Reading docs, third-party APIs, or local resources to surface a fact a decision waits on. Resolved by the **Research** technique. The only type that runs in parallel and more than one per session.
+
+## `prototype`: HITL
+Raise the fidelity of the discussion with a rough, concrete artifact to react to: the **Prototype** technique. Link the prototype as an asset.
+
+## `build`: the engine inside the map
+The ticket that *builds*. Lean cycle, all in **ticket comments**:
+
+1. **Discuss**: **never auto-grill.** Start from Plan. If reading the ticket surfaces blocking ambiguity, **stop and ask the user** whether they want a **Grilling** round: don't launch it on your own initiative. Only on their assent run the short round and post a `DISCUSS` comment with the closed choices. The user may also ask for it themselves at any time.
+2. **Plan**: a `PLAN` comment: the steps, the seams, the files touched, the verification criteria. Apply **TDD** per `config.tdd` (`seams`/`on`/`off`). Produce this plan via a *planner subagent* on `config.models.plan` (spawn it as the built-in **`Explore`** agent, read-only; inline when the model is unset or equals the session model; Execute then runs as its own subagent, see below). If `config.plan_review` is on, run **Cross-AI plan review** before Execute: send the plan to external AI CLIs and converge on their concerns. Now that the files/seam are known, run the **undeclared-coupling check** (`../../trailhead-monolith/references/teamwork.md`) against in-progress tickets.
+3. **Execute**: **if this ticket changes user-facing UI (a new screen, a redesign, a changed layout), run the Prototype technique FIRST, before any real UI code**: surface a mockup to react to, routed by `config.design` (disk / claude.ai/design / stitch) and gated by `config.design.approval` (`explicit` waits for a go-ahead, `auto` proceeds after surfacing). For a redesign or new screen the default is to offer mockups; don't jump straight to code on a UI ticket. Then implement with **atomic commits** (conventional commits, each with a `Refs: #<n>` trailer for this ticket, see **Principles** in `../../_shared/principles.md`), following the repo's `trailhead:conventions` `git:`, straight to `main` by default, or a feature branch + PR when `git: pr`. **Under `isolation: worktree`, do the work in this ticket's `git worktree`** (`trailhead/t<n>` branch), integrating to the trunk at Resolve (see `../../trailhead-monolith/references/teamwork.md`). One commit = one verifiable step. Run this via an **executor subagent on `config.models.execute`** (spawn it as the built-in **`general-purpose`** agent, which can Edit/Write/commit; inline when the model is unset or equals the session model); the commits land on `main`, visible. New scope surfacing mid-execute is captured/split, not worked here.
+4. **Verify**: a `VERIFY` comment: run the tests / the plan's criterion; then the **Code review** technique (its subagent reviews *adversarially*: it doesn't defer to a `CLAUDE.md` convention or a "settled decision" memory); then **Acceptance testing** if the change is user-facing (browser-drive it, or **walk the user through a guided UAT conversationally, one step at a time**, never a checklist dumped in a comment). Report the outcome honestly (if a test fails, say so).
+5. **Resolve**: a resolution comment with what was done → `gh issue close` → update `Decisions so far` on the map. **If this change materially altered the codebase** (a new module/layer, dependency, seam, or build/test command), **patch the affected facet of the `trailhead:codebase` issue** (see **Codebase** in `../../_shared/substrate.md`) in place (a line or two, not a re-map). Then close the session with the **Session handoff** ritual (`../../_shared/session-handoff.md`): `/clear` + next command.
+
+New scope that surfaces mid-build (while planning, executing, or testing) → **capture or split, never expand this ticket in flight** (see **Scope that surfaces while working a ticket**, served by the capture cluster / the monolith during the migration).
+
+## `bug`: the fix with diagnosis first
+A defect to correct. Unlike `build`, you don't start from implementation: first you **understand**.
+
+**New bug ticket vs reopen: decide first.** A bug in the work of an already-closed ticket almost always means a **new** `bug` ticket, *not* reopening the old one, because `Decisions so far` is append-only history: that ticket really did deliver, and the defect surfaced later is a new event. The one exception is a **premature close**: a ticket closed before its Verify ever passed, i.e. it never actually delivered. The discriminator is sharp: **did that ticket genuinely pass Verify?**
+- **Yes** → new bug ticket carrying `Regression of: <closed ticket name+link>` in its body. Leave the original closed. Open it with `/trailhead:bug --of <ticket> <text>` (served by the capture cluster), which fills the pointer for you.
+- **No** (closed by mistake, never delivered) → this isn't a new bug, it's a bad close: `gh issue reopen <n>` and finish it.
+
+Then run the cycle, all in ticket comments:
+
+1. **Repro**: a `REPRO` comment: how to reproduce, expected vs observed behaviour.
+2. **Diagnose**: run the **Debug** technique. A `DIAGNOSIS` comment with the root cause.
+3. **Fix**: implement the correction with **atomic commits** (each with a `Refs: #<n>` trailer for this ticket, see **Principles** in `../../_shared/principles.md`; per the repo's `trailhead:conventions` `git:`, `main` by default, else a branch + PR; in this ticket's `git worktree` under `isolation: worktree`), via an **executor subagent on `config.models.execute`** (the built-in **`general-purpose`** agent; inline when unset/same as session). Where sensible, a test that fails before and passes after (**TDD**).
+4. **Verify**: a `VERIFY` comment: the repro now passes, no regressions; **Code review** on the fix; **Acceptance testing** if the bug was user-facing (browser-drive the fixed flow, or **walk the user through a guided UAT conversationally, step by step**, not a checklist to self-serve).
+5. **Resolve**: a resolution comment (cause + fix) → `gh issue close` → update `Decisions so far`. **If the fix materially altered the codebase**, patch the affected facet of the `trailhead:codebase` issue (see **Codebase** in `../../_shared/substrate.md`) in place (a line or two). Then close the session with the **Session handoff** ritual (`../../_shared/session-handoff.md`): `/clear` + next command.
+
+A **blocking** bug that halts other work is worked immediately; an isolated one is a normal frontier ticket. New scope surfacing while fixing → capture or split, never expand this ticket in flight (see **Scope that surfaces while working a ticket**).
+
+## `task`: HITL or AFK
+Manual work that must happen before a *decision* can be made: signing up for a service to judge its API, provisioning access, moving data to see its shape. The agent drives it alone where it can (AFK); otherwise it hands the human a precise checklist (HITL). Resolved when the work is done; the answer records what was done and the resulting facts (where credentials live, new URLs, row counts) later tickets depend on.
