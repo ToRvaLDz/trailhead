@@ -154,6 +154,18 @@ ok('codex migration: stale prompts/trailhead.md swept on install', !fs.existsSyn
 ok('codex migration: stale prompts/trailhead-work.md swept on install', !fs.existsSync(path.join(migCodexDir, 'prompts', 'trailhead-work.md')));
 ok('codex migration: per-verb skill projected in its place', fs.existsSync(path.join(migCodexDir, 'skills', 'trailhead-work', 'SKILL.md')));
 
+// codex migration: a stale trailhead-owned skill dir (pre-split monolith /
+// removed cluster) is swept on reinstall; a co-tenant skill is preserved.
+const migCodexSkillDir = mktmp();
+runInstaller([`--codex`, `--dir=${migCodexSkillDir}`]);
+fs.mkdirSync(path.join(migCodexSkillDir, 'skills', 'trailhead-monolith'), { recursive: true });
+fs.writeFileSync(path.join(migCodexSkillDir, 'skills', 'trailhead-monolith', 'SKILL.md'), 'stale\n');
+fs.mkdirSync(path.join(migCodexSkillDir, 'skills', 'other-plugin'), { recursive: true });
+fs.writeFileSync(path.join(migCodexSkillDir, 'skills', 'other-plugin', 'SKILL.md'), 'co-tenant\n');
+runInstaller([`--codex`, `--dir=${migCodexSkillDir}`]);
+ok('codex migration: stale trailhead-monolith skill dir swept on reinstall', !fs.existsSync(path.join(migCodexSkillDir, 'skills', 'trailhead-monolith')));
+ok('codex migration: co-tenant skill preserved', fs.existsSync(path.join(migCodexSkillDir, 'skills', 'other-plugin')));
+
 // --- codex uninstall (same tmp) ----------------------------------------------
 runInstaller([`--codex`, `--dir=${codexDir}`, '--uninstall']);
 ok('codex uninstall: skills/trailhead gone', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead')));
@@ -199,6 +211,35 @@ ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
   return !out.includes('MODULE_NOT_FOUND') && !out.includes('Cannot find module');
 })());
 ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
+
+// --- claude migration: reinstall over an old layout sweeps stale skill dirs ---
+// An old install may carry a pre-split monolith (skills/trailhead-monolith) or a
+// removed cluster (skills/trailhead-legacy) the current install no longer ships.
+// Reinstalling must sweep every stale trailhead-owned skill dir, while leaving a
+// co-tenant plugin's own skill (skills/other-plugin) untouched.
+const migClaudeDir = mktmp();
+runInstaller([`--claude`, `--dir=${migClaudeDir}`]);
+fs.mkdirSync(path.join(migClaudeDir, 'skills', 'trailhead-monolith'), { recursive: true });
+fs.writeFileSync(path.join(migClaudeDir, 'skills', 'trailhead-monolith', 'SKILL.md'), 'stale monolith\n');
+fs.mkdirSync(path.join(migClaudeDir, 'skills', 'trailhead-legacy'), { recursive: true });
+fs.writeFileSync(path.join(migClaudeDir, 'skills', 'trailhead-legacy', 'SKILL.md'), 'stale cluster\n');
+fs.mkdirSync(path.join(migClaudeDir, 'skills', 'other-plugin'), { recursive: true });
+fs.writeFileSync(path.join(migClaudeDir, 'skills', 'other-plugin', 'SKILL.md'), 'co-tenant\n');
+runInstaller([`--claude`, `--dir=${migClaudeDir}`]);
+ok('claude migration: stale trailhead-monolith swept on reinstall', !fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead-monolith')));
+ok('claude migration: stale trailhead-legacy cluster swept on reinstall', !fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead-legacy')));
+ok('claude migration: co-tenant skill preserved (only trailhead names swept)', fs.existsSync(path.join(migClaudeDir, 'skills', 'other-plugin')));
+ok('claude migration: current dispatcher present after reinstall', fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead', 'SKILL.md')));
+ok('claude migration: current cluster present after reinstall', fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead-work', 'SKILL.md')));
+
+// Uninstall also sweeps a stale trailhead-owned dir the current package no
+// longer ships (monolith), not just the current engineSkillDirs() set.
+const uninstMigDir = mktmp();
+runInstaller([`--claude`, `--dir=${uninstMigDir}`]);
+fs.mkdirSync(path.join(uninstMigDir, 'skills', 'trailhead-monolith'), { recursive: true });
+fs.writeFileSync(path.join(uninstMigDir, 'skills', 'trailhead-monolith', 'SKILL.md'), 'stale\n');
+runInstaller([`--claude`, `--dir=${uninstMigDir}`, '--uninstall']);
+ok('claude uninstall: stale trailhead-monolith swept too', !fs.existsSync(path.join(uninstMigDir, 'skills', 'trailhead-monolith')));
 
 // --- claude uninstall: remove trailhead's lib, keep a co-tenant's -------------
 // The Claude hooks/lib dir is shared with other plugins. Drop a fake co-tenant
