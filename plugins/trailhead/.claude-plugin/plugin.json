@@ -19,6 +19,7 @@
   "skills": [
     "./skills/trailhead",
     "./skills/trailhead-chart",
+    "./skills/trailhead-work",
     "./skills/trailhead-monolith"
   ],
   "hooks": "./hooks/hooks.json"
