@@ -1,6 +1,6 @@
 ## Session handoff
 
-Resolving a ticket **ends the session**: one ticket per session is a hard rule (see [Principles](#principles)). So every resolution closes the same way. After the resolution comment + `gh issue close` + the `Decisions so far` update, **remove the session-ticket marker** (`.trailhead/session-ticket` at the working root, if you wrote one, see Mode 2), then **always** sign off with, in order:
+Resolving a ticket **ends the session**: one ticket per session is a hard rule (see [Principles](principles.md)). So every resolution closes the same way. After the resolution comment + `gh issue close` + the `Decisions so far` update, **remove the session-ticket marker** (`.trailhead/session-ticket` at the working root, if you wrote one, see Mode 2), then **always** sign off with, in order:
 
 1. **A one-line confirmation** the ticket is resolved, by name (not a bare `#number`).
 2. **The next step: a scannable block, `/clear` FIRST, always.** Never bury it in prose, and **never point at the next ticket without leading with `/clear`**. State the `/clear` **every time** (not only when context is heavy): it must come *before* the next command, so the next ticket starts on clean context. Render it as a short labelled list in the user's conversation language, along these lines:
