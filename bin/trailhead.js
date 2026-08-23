@@ -443,7 +443,7 @@ function installCodex(configDir, { useSymlink }) {
   // edit config.toml, the hooks stay inert until the user sets it by hand, so
   // don't reassure them about a trust review that won't happen yet.
   if (featureManual) {
-    console.log(`  ⚠ could not edit ${L.configToml} automatically — add \`features.hooks = true\` under [features] by hand, then Codex will ask you to trust trailhead's hooks on next start.`);
+    console.log(`  ⚠ could not edit ${L.configToml} automatically; add \`features.hooks = true\` under [features] by hand, then Codex will ask you to trust trailhead's hooks on next start.`);
   } else {
     console.log('Note: Codex will ask you to trust trailhead\'s hooks on next start (feature `features.hooks`).');
   }

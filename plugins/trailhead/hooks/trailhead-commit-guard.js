@@ -56,7 +56,7 @@ process.stdin.on('end', () => {
 
     const msg = extractMessage(cmd);
     if (msg) {
-      // stripComments:false — this is the literal `-m` value, where git keeps
+      // stripComments:false, this is the literal `-m` value, where git keeps
       // `#` lines as message text (cleanup=whitespace), so a `#…` first line is
       // a real subject to validate, not a comment to skip.
       const verdict = checkCommitMessage(msg, { stripComments: false });

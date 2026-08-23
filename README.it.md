@@ -240,7 +240,7 @@ Due regole pratiche: i build ticket **non fanno mai auto-grill**: su un'ambiguit
 Tutto ciò di cui la mappa ha bisogno è espresso come label GitHub, così lo stato è interrogabile nella UI del tracker:
 
 - **Strutturali:** `trailhead:map`, `trailhead:ticket`
-- **Anchor con scope di repo (uno ciascuno per repo, pinnati):** `trailhead:codebase` 🧱 (la codebase map distillata), `trailhead:conventions` 📜 (il modo di lavorare), `trailhead:dashboard` 📊 (l'indice pinnato di mappe + whiteboard + conteggi) — ogni titolo porta la sua icona (come il 🗺 della mappa) così gli anchor pinnati si distinguono a colpo d'occhio
+- **Anchor con scope di repo (uno ciascuno per repo, pinnati):** `trailhead:codebase` 🧱 (la codebase map distillata), `trailhead:conventions` 📜 (il modo di lavorare), `trailhead:dashboard` 📊 (l'indice pinnato di mappe + whiteboard + conteggi); ogni titolo porta la sua icona (come il 🗺 della mappa) così gli anchor pinnati si distinguono a colpo d'occhio
 - **Type (una per ticket):** 🧭 `trailhead:decision` · 🔬 `research` · 🎨 `prototype` · 🔨 `build` · 🐛 `bug` · 🔧 `task`
 - **State:** `trailhead:blocked` (ha un blocker aperto) · `seed` (parcheggiato su un trigger) · `out-of-scope` (chiuso, oltre la destination) · `superseded` (chiuso, splittato in figli)
 - **Container:** `trailhead:whiteboard` (un ticket sciolto, senza mappa, fuori dalla frontier di ogni mappa, sulla frontier propria della whiteboard)
