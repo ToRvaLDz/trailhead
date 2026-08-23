@@ -42,6 +42,22 @@ function engineSkillDirs() {
     .sort();
 }
 
+// Sweep every trailhead-owned skill dir under a skills root, by name: the
+// dispatcher (`trailhead`), the shared core (`_shared`), and every
+// `trailhead-<cluster|verb>` sibling. Clears a prior layout's stale dirs (an
+// old monolith fallback, a removed cluster, a renamed verb skill) the current
+// install no longer ships, so a re-install or /trailhead:update never leaves a
+// dangling skill. The skills root is shared with other plugins, so only
+// trailhead's own names are touched, never the whole dir.
+function sweepTrailheadSkills(skillsRoot) {
+  rmrf(path.join(skillsRoot, 'trailhead'));
+  rmrf(path.join(skillsRoot, '_shared'));
+  if (!fs.existsSync(skillsRoot)) return;
+  for (const f of fs.readdirSync(skillsRoot)) {
+    if (f.startsWith('trailhead-')) rmrf(path.join(skillsRoot, f));
+  }
+}
+
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const useSymlink = has('--symlink');
@@ -209,7 +225,9 @@ function stripHook(s, event, substr) {
 
 function uninstallClaude(configDir) {
   const P = claudePaths(configDir);
-  for (const name of engineSkillDirs()) rmrf(path.join(configDir, 'skills', name));
+  // Sweep every trailhead-owned skill dir (current set + any stale dir a prior
+  // layout left that this package no longer ships), never the shared dir itself.
+  sweepTrailheadSkills(path.join(configDir, 'skills'));
   [P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
   // Remove only trailhead's own lib files by name: the hooks/lib dir is shared
@@ -231,7 +249,12 @@ function installClaude(configDir, { useSymlink }) {
   // Place each engine skill dir as a sibling under configDir/skills so the
   // ../_shared/ and ../trailhead-<cluster>/ relative refs resolve. The skills
   // dir is shared with other plugins: place by name, never touch the whole dir.
+  // Migration: sweep any stale trailhead-owned skill dirs from a prior layout
+  // (an old monolith, a removed cluster) before laying the current set down, so
+  // an update over an old install leaves no dangling skill. The skills dir is
+  // shared with other plugins: place by name, never touch the whole dir.
   const skillDirs = engineSkillDirs();
+  sweepTrailheadSkills(path.join(configDir, 'skills'));
   for (const name of skillDirs) {
     place(path.join(SRC, 'skills', name), path.join(configDir, 'skills', name), useSymlink);
   }
@@ -368,11 +391,7 @@ function installCodex(configDir, { useSymlink }) {
   rmrf(L.legacyEngineDir);
 
   // Sweep the whole engine + any prior per-verb skills, then project fresh.
-  rmrf(L.skillDir);                                   // skills/trailhead (dispatcher)
-  rmrf(path.join(L.skillsRoot, '_shared'));           // shared core
-  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f)); // clusters + old verb skills
-  }
+  sweepTrailheadSkills(L.skillsRoot);
 
   // Project each engine skill dir (dispatcher + 5 clusters + _shared) as a
   // sibling under skills/, converting text and injecting the adapter header into
@@ -493,13 +512,8 @@ function installCodex(configDir, { useSymlink }) {
 
 function uninstallCodex(configDir) {
   const L = codexLayout(configDir);
-  rmrf(L.skillDir);
-  rmrf(path.join(L.skillsRoot, '_shared'));
-  // sweep the per-verb discoverability skills (skills/trailhead-<verb>/, #46),
-  // never the main skills/trailhead (already removed above; does not match).
-  for (const f of (fs.existsSync(L.skillsRoot) ? fs.readdirSync(L.skillsRoot) : [])) {
-    if (f.startsWith('trailhead-')) rmrf(path.join(L.skillsRoot, f));
-  }
+  // Sweep the dispatcher, _shared, the clusters, and the per-verb skills.
+  sweepTrailheadSkills(L.skillsRoot);
   // sweep any pre-#25 layout AND the #42 prompt shims from prompts/
   rmrf(path.join(L.promptsDir, 'trailhead.md'));
   for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
