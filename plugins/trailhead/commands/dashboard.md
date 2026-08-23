@@ -3,4 +3,4 @@ description: "Show the repo dashboard: the pinned index of every open map, the w
 argument-hint: ""
 ---
 
-Invoke the `trailhead` skill for the **dashboard** action: call the Skill tool with skill name `trailhead-monolith` and arguments `dashboard $ARGUMENTS`, then carry out the skill's instructions for that verb (regenerate the pinned `trailhead:dashboard` index issue from the live tracker, creating and pinning it if missing, and show it). Do not re-implement the behaviour here. The skill is the single source of truth.
+Invoke the `trailhead` skill for the **dashboard** action: call the Skill tool with skill name `trailhead-view` and arguments `dashboard $ARGUMENTS`, then carry out the skill's instructions for that verb (regenerate the pinned `trailhead:dashboard` index issue from the live tracker, creating and pinning it if missing, and show it). Do not re-implement the behaviour here. The skill is the single source of truth.
