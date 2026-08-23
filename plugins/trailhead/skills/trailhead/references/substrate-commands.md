@@ -1,4 +1,4 @@
-# Substrate: base `gh` commands + first-use repo setup
+# Substrate: `gh` command cookbook + first-use repo setup
 
 The single command reference for every `gh` mechanic the GitHub Issues substrate uses. Cluster skills link here and never re-describe any of it. The conceptual model (Element table, State labels, Frontier definition, reconciliation) stays in `../../_shared/substrate.md` (and its SKILL.md mirror). Read this file at work time (creating tickets, wiring blockers, querying the frontier, refreshing the dashboard) and at chart/adopt (first-use setup).
 
@@ -89,7 +89,7 @@ The dashboard is a single per-repo issue labelled `trailhead:dashboard`: the pin
 
 **Ensure the label** (idempotent, safe to run every time):
 ```bash
-gh label create trailhead:dashboard --color <hex> --description "Pinned index of the trailhead surface" 2>/dev/null || true
+gh label create trailhead:dashboard --color 5319E7 --description "Pinned index of the trailhead surface" 2>/dev/null || true
 ```
 The whiteboard label needs the same idempotent ensure, since it is reachable outside chart/adopt (a whiteboard-routed capture, or `quick` creating a ticket):
 ```bash
