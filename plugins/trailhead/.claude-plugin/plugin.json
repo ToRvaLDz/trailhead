@@ -22,6 +22,7 @@
     "./skills/trailhead-work",
     "./skills/trailhead-view",
     "./skills/trailhead-capture",
+    "./skills/trailhead-manage",
     "./skills/trailhead-monolith"
   ],
   "hooks": "./hooks/hooks.json"
