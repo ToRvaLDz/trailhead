@@ -295,8 +295,8 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 |---|---|---|
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
 | `models.{plan,execute,research,review,debug}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
-| `design` | **`disk`** \| `claude.ai/design` | dove vanno i mockup UI: HTML usa-e-getta locale, o claude.ai/design via l'MCP ufficiale Claude Design di Anthropic |
-| `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
+| `design` | **`disk`** \| `claude.ai/design` \| `stitch` | dove vanno i mockup UI: HTML usa-e-getta locale, claude.ai/design via l'MCP ufficiale Claude Design di Anthropic, o Google Stitch (cross-host, via l'MCP Stitch) |
+| `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design` o `stitch`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
 | `tdd` | **`seams`** \| `on` \| `off` | come il motore `build` testa |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify, o ti accompagna in una UAT conversazionale (passo-passo in chat, non una checklist da fare da solo) |

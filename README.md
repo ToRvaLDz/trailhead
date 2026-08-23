@@ -295,8 +295,8 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead **writes** its GitHub prose & commit descriptions in, decoupled from the language it converses in |
 | `models.{plan,execute,research,review,debug}` | a full **versioned** model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
-| `design` | **`disk`** \| `claude.ai/design` | where UI mockups go: local throwaway HTML, or claude.ai/design via Anthropic's official Claude Design MCP |
-| `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
+| `design` | **`disk`** \| `claude.ai/design` \| `stitch` | where UI mockups go: local throwaway HTML, claude.ai/design via Anthropic's official Claude Design MCP, or Google Stitch (cross-host, via the Stitch MCP) |
+| `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design` or `stitch`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or walk you through a conversational UAT (step by step in chat, not a checklist to self-serve) |
