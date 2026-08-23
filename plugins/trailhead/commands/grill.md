@@ -3,4 +3,4 @@ description: Run a standalone grilling session on a decision or topic
 argument-hint: "[topic|ticket]"
 ---
 
-Invoke the `trailhead` skill for the **grill** action: call the Skill tool with skill name `trailhead-monolith` and arguments `grill $ARGUMENTS`, then **read the skill's `references/techniques/grilling.md` (and `references/techniques/domain-vocabulary.md`) and follow them**: they hold the full protocol for this action. Do not re-implement the behaviour here. The skill is the single source of truth.
+Invoke the `trailhead` skill for the **grill** action: call the Skill tool with skill name `trailhead-chart` and arguments `grill $ARGUMENTS`, then carry out the skill's instructions for that verb (they run the Grilling and Domain vocabulary techniques). Do not re-implement the behaviour here. The skill is the single source of truth.
