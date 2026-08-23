@@ -1,0 +1,28 @@
+---
+name: trailhead-capture
+description: "trailhead capture cluster: the zero-friction captures that record work without breaking flow. Capture a bug ticket (bug), a small build ticket you will do now (todo), a fog idea (idea), a trigger-gated seed (seed), a verbatim note (note). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers and the bare `/trailhead` dispatcher. Not auto-invoked: it runs only when one of these verbs is dispatched."
+argument-hint: "[bug|todo|idea|seed|note] [--of <ticket>] <text>"
+---
+
+`trailhead-capture` is the **capture cluster** of the trailhead skill: the zero-friction captures that record work without breaking flow. `bug` captures a bug ticket; `todo` captures a small build ticket you will do now; `idea` captures a fog idea; `seed` captures a trigger-gated seed; `note` captures a verbatim note. Everything lives on the GitHub Issues; the repo holds code only.
+
+## Load first, in order
+
+Before doing anything, read the shared core (paths relative to this file):
+
+1. `../_shared/principles.md`: refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
+2. `../_shared/ticket-language.md`: write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
+3. `../_shared/substrate.md`: the GitHub-Issues model: labels, the frontier query, the map / ticket / dashboard / whiteboard anatomy, and the base-command cookbook pointer.
+4. `../_shared/session-handoff.md`: how every resolution closes (`/clear` first, then the next command).
+5. `../_shared/configuration.md`: the three config layers and the load contract.
+6. `../_shared/techniques.md`: the technique index and the subagent-type rule.
+
+Load the **effective config** (per `../_shared/configuration.md`) at session start, from the map's project root (`.trailhead/config.json` plus the global file). A capture writes at most one issue; no isolation workspace is set up.
+
+## Routing: verb to engine
+
+The **first word** of the arguments is the verb (`bug`, `todo`, `idea`, `seed`, or `note`); the rest is the text (or `--of <ticket> <text>` for `bug`).
+
+- **`bug`** / **`todo`** / **`idea`** / **`seed`** / **`note`** to **`references/capture.md`**: the full per-verb protocol and the note/idea/seed/todo spectrum. Read that file and follow it.
+
+The cross-cluster situational references and technique bodies these captures call still live in the `trailhead-monolith` skill during the migration ([map #53](https://github.com/ToRvaLDz/trailhead/issues/53)); this cluster names each by its `../trailhead-monolith/references/...` path where it needs one. As the split completes, the multi-cluster ones move to `_shared/`.
