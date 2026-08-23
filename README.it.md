@@ -24,7 +24,7 @@ Due approcci al lavoro di progetto guidato dagli agenti risolvono ciascuno una m
 
 Lavorando su entrambi, uno schema continuava a ripresentarsi: **usa una mappa e un onboarding in stile Wayfinder per decidere la forma del lavoro, poi un motore in stile GSD per costruire ogni pezzo, senza mai lasciare l'issue tracker.** `trailhead` è quello schema trasformato in un'unica skill, una sua interpretazione autonoma di entrambe le idee anziché un wrapper attorno all'una o all'altra.
 
-> **trailhead è self-contained.** Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; i suoi subagent (research, codebase-map, review) usano i subagent nativi dell'host (il tool `Agent` integrato di Claude Code, oppure il toolkit `multi_agent` di Codex). L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: quando abilitata, la modalità mockup di `claude.ai/design` invia a un progetto design-system tramite DesignSync (l'MCP `claude_design` più la skill `/design-sync`). Se questa non è disponibile, ripiega silenziosamente sui mockup su disco locale.
+> **trailhead è self-contained.** Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; i suoi subagent (research, codebase-map, review) usano i subagent nativi dell'host (il tool `Agent` integrato di Claude Code, oppure il toolkit `multi_agent` di Codex). L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: quando abilitata, la modalità mockup di `claude.ai/design` crea il mockup su claude.ai/design via l'MCP ufficiale Claude Design di Anthropic, su un progetto canvas per default o, per una libreria di componenti condivisa, un progetto design-system tramite DesignSync (l'MCP `claude_design` più la skill `/design-sync`). Se questa non è disponibile, ripiega silenziosamente sui mockup su disco locale.
 
 Le scelte di design che ne derivano:
 
@@ -295,7 +295,8 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 |---|---|---|
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
 | `models.{plan,execute,research,review,debug}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
-| `design` | **`disk`** \| `claude.ai/design` | dove vanno i mockup UI: HTML usa-e-getta locale, o un progetto design-system su claude.ai/design via DesignSync |
+| `design` | **`disk`** \| `claude.ai/design` | dove vanno i mockup UI: HTML usa-e-getta locale, o claude.ai/design via l'MCP ufficiale Claude Design di Anthropic |
+| `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
 | `tdd` | **`seams`** \| `on` \| `off` | come il motore `build` testa |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify, o ti accompagna in una UAT conversazionale (passo-passo in chat, non una checklist da fare da solo) |
@@ -318,17 +319,14 @@ Esempio di file di config (la stessa forma funziona per il `.trailhead/config.js
 { "ticket": { "language": "en" }, "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
-**Design mockups.** `design: disk` (il default) deposita un mockup HTML statico usa-e-getta accanto al codice e lo collega dal ticket. `design: claude.ai/design` invece invia il mockup a un **progetto design-system** su claude.ai/design via **DesignSync** (la skill `/design-sync` più l'MCP `claude_design`), dove lo affini visivamente.
+**Design mockups.** `design: disk` (il default) deposita un mockup HTML statico usa-e-getta accanto al codice e lo collega dal ticket. `design: claude.ai/design` invece crea il mockup su claude.ai/design via l'**MCP ufficiale Claude Design** di Anthropic (`claude mcp add --scope user --transport http claude-design https://api.anthropic.com/v1/design/mcp`, accedi con `/design-login`), dove lo affini visivamente. `design.surface` sceglie quale superficie:
 
-Alla prima schermata UI, trailhead chiede quale design system usare. Puoi:
+- **`canvas`** (default): un progetto design (canvas) normale, la casa naturale per una schermata singola a cui reagire, modificabile sulla canvas ed esportabile come prototipo live.
+- **`design-system`**: un progetto design-system guidato da **DesignSync** (la skill `/design-sync` più l'MCP `claude_design`), per una libreria di componenti condivisa tenuta in sync.
 
-- **scegliere tra i tuoi 10 più recenti**,
-- **incollare un URL `claude.ai/design/p/<id>`**, oppure
-- **crearne uno nuovo** (ti chiede il nome).
+Alla prima schermata UI, trailhead chiede a quale progetto agganciarsi: **sceglierne uno esistente**, **incollare un URL `claude.ai/design/p/<id>`**, oppure **crearne uno nuovo** (ti chiede il nome). Fa il caching dell'id scelto in `design.project`; ogni schermata viene aggiunta lì, e la sua URL è collegata dal ticket. Una volta che approvi, trailhead **ri-fetcha** il design corrente (nel caso tu l'abbia modificato live) prima di scrivere qualsiasi codice UI.
 
-Fa il caching dell'id scelto in `design.project`. Ogni schermata viene inviata lì, e la sua URL è collegata dal ticket. Una volta che approvi, trailhead **ri-fetcha** il design corrente (nel caso tu l'abbia modificato live) prima di scrivere qualsiasi codice UI.
-
-DesignSync guida solo i progetti design-system, non quelli normali; per un progetto normale posizioni il mockup a mano. `design.approval` decide se il build attende il tuo esplicito via libera (`explicit`), o procede subito dopo aver mostrato il mockup (`auto`).
+Se l'MCP Claude Design completo non è connesso, `canvas` ripiega sul percorso design-system o sul disco locale; su Codex (nessun MCP Claude Design) è sempre disco locale. `design.approval` decide se il build attende il tuo esplicito via libera (`explicit`), o procede subito dopo aver mostrato il mockup (`auto`).
 
 ---
 
