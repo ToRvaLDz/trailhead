@@ -303,6 +303,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `testing.webapp` / `testing.url` | bool / URL | è browser-drivabile, e dove |
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |
+| `code_review.rounds` | integer (**`2`**) | numero massimo di round fix-and-re-review in Code review prima del checkpoint HITL di confine |
 
 **Models.** Ogni chiave esegue la sua attività come **subagent** sul modello che nomini, così l'intera suddivisione per-attività si applica dentro una singola sessione di lavoro, qualunque modello quella sessione esegua:
 

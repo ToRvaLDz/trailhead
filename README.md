@@ -303,6 +303,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
+| `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
 
 **Models.** Each key runs its activity as a **subagent** on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
 

@@ -15,6 +15,7 @@ Effective config = built-in defaults ← global `~/.claude/trailhead/config.json
 | `testing.webapp` / `testing.url` | bool / url | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list (`gemini,codex`) | send `build` PLANs to external AI CLIs for review (**Cross-AI plan review**) |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
+| `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in **Code review** before the boundary HITL checkpoint |
 
 **Models.** Each key targets a specific activity, so you can send the heavy reasoning to a strong model and the cheap legwork to a fast one:
 - `plan` / `execute`: the `build`/`bug` engine's **Plan** and **Execute** steps (see below).
@@ -46,6 +47,8 @@ If a value is unset, inherit the session model (never hard-fail on an unknown id
 **design.approval.** `explicit` (default) = a UI mockup must be **explicitly approved by the user** before the `build` engine writes any real UI code; surface the mockup and wait for a clear go-ahead. `auto` = surface the mockup and proceed without blocking on a confirmation (the user can still object). The Prototype technique honours this.
 
 **plan_review.** `off` (default) = build PLANs are not externally reviewed; `on` = review with every external AI CLI detected on the PATH; a comma list (`gemini,codex`) = only those. Needs the named CLIs installed; if none are available it's skipped, never failed. The `build` engine's Plan step runs **Cross-AI plan review** when this is on.
+
+**code_review.rounds.** Integer, default 2. The max fix-and-re-review rounds the **Code review** technique spends chasing **Critical** (blocking) findings during the `build`/`bug` Verify step. When the budget is exhausted with Critical findings still open, the technique never resolves or continues silently: it surfaces an explicit HITL checkpoint (run another 2 rounds vs proceed with the blockers recorded). Mirrors `plan_review.rounds`.
 
 Example `config.json` (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 ```json
