@@ -87,6 +87,10 @@ ok('codexSkillAdapterHeader §D offers a background-job fallback for a stalling 
   header.includes('background job'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
+ok('codexSkillAdapterHeader §H maps plan-review external-CLI Bash timeout/background onto Codex shell',
+  header.includes('## H.') && header.includes('Cross-AI plan review') && header.includes('run_in_background') && header.includes('shell/exec'));
+ok('codexSkillAdapterHeader §H distinguishes the external-CLI shell path from the §D subagent path',
+  header.includes('external-CLI') && header.includes('not a spawned Codex subagent'));
 
 // --- codexVerbSkillContent (#46) ---
 ok('codexVerbSkillContent: SKILL.md frontmatter is at byte 0 with name+description', (() => {
