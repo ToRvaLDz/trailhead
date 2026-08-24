@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 
 const HOOK = path.join(__dirname, 'trailhead-secret-guard.js');
-const { scan, ghIssueWrite } = require('./trailhead-secret-guard.js');
+const { scan, ghIssueWrite, bodyFileText } = require('./trailhead-secret-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -52,6 +52,36 @@ fs.writeFileSync(leaky, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
 const b3 = runHook(`gh issue comment 5 --body-file ${leaky}`);
 ok('blocks a secret inside --body-file (exit 2)', b3.code === 2 && /AWS access key/.test(b3.out));
 fs.unlinkSync(leaky);
+
+// --- unit: bodyFileText() path extraction ---
+// A bare path abutting a shell metacharacter in a compound command must NOT
+// swallow the metacharacter into the filename (regression: `.md;` -> ENOENT).
+{
+  const leak = path.join(os.tmpdir(), `sg-meta-${process.pid}.md`);
+  fs.writeFileSync(leak, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  ok('bare path stops at a trailing ; (compound command)',
+    /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`gh issue edit 5 --body-file ${leak}; echo done`)));
+  ok('bare path stops at a trailing ) ',
+    /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`(gh issue edit 5 --body-file ${leak})`)));
+  ok('bare path still works with a following && and space',
+    /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`gh issue edit 5 --body-file ${leak} && echo ok`)));
+  // A quoted path keeps metacharacters verbatim (only the closing quote delimits).
+  const quoted = path.join(os.tmpdir(), `sg;meta-${process.pid}.md`);
+  fs.writeFileSync(quoted, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  ok('quoted path keeps an inner ; in the filename',
+    /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`gh issue edit 5 --body-file "${quoted}"`)));
+  fs.unlinkSync(leak);
+  fs.unlinkSync(quoted);
+}
+
+// End-to-end: the compound-command shape that produced the spurious advisory
+// must now scan and BLOCK the real secret in the body.
+const leaky2 = path.join(os.tmpdir(), `sg-leaky2-${process.pid}.md`);
+fs.writeFileSync(leaky2, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+const b4 = runHook(`gh issue edit 5 --body-file ${leaky2}; echo done`);
+ok('blocks a secret in --body-file even in a compound command (exit 2)',
+  b4.code === 2 && /AWS access key/.test(b4.out));
+fs.unlinkSync(leaky2);
 
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');

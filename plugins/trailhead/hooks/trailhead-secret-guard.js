@@ -53,10 +53,16 @@ function ghIssueWrite(cmd) {
 }
 
 // For gh issue/pr, the body may live in a --body-file <path>; read it too.
+// The path is quoted ("..."/'...') or bare. A bare path stops at whitespace AND
+// at shell metacharacters (; | & ( ) < > `): in a compound command like
+// `gh ... --body-file /tmp/x.md; echo done` the `;` abuts the path with no
+// space, so a naive [^\s]+ would swallow it into the filename and the read would
+// ENOENT, turning a clean write into a spurious could-not-scan (and, worse, a
+// real body left unscanned). Quoted paths keep those characters verbatim.
 function bodyFileText(cmd) {
-  const m = cmd.match(/(?:--body-file|(?<![-\w])-F)(?:=|\s+)(["']?)([^\s"']+)\1/);
+  const m = cmd.match(/(?:--body-file|(?<![-\w])-F)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s"';|&()<>`]+))/);
   if (!m) return '';
-  const path = m[2];
+  const path = m[1] || m[2] || m[3];
   if (path === '-' || path.startsWith('<')) return ''; // stdin/heredoc already in the command string
   return fs.readFileSync(path, 'utf8').slice(0, 1_000_000);
 }
