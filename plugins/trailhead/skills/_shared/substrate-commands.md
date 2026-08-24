@@ -132,7 +132,7 @@ gh api graphql -f query='mutation($id:ID!){ pinIssue(input:{issueId:$id}){ issue
 These renders create and pin only when missing; they never rewrite the body.
 
 **Body generation.** The body holds:
-- a link to every open `trailhead:map`, found with `gh issue list --label trailhead:map --state open`. The dashboard only links; GitHub renders each map's sub-issue progress bar natively, so the dashboard does not recompute per-ticket progress itself;
+- a link to every open `trailhead:map`, found with `gh issue list --label trailhead:map --state open`. The dashboard only links; GitHub renders each map's sub-issue progress bar natively, so the dashboard does not recompute per-ticket progress itself. **Per open map, additionally run one cheap `0 open scoped issues?` count** (below): a map with zero open scoped issues is **exhausted but still open** (its destination is reached, yet the map issue was never closed), so flag it in the Maps section as `exhausted · closeable`. This is one count query per map, never a per-ticket recompute, so it stays within the dashboard-only-links spirit. The flag is a signal, not an action: the `/trailhead:dashboard` render offers to close such a map, never auto-closes it (the never-close-unprompted rule holds);
 - the whiteboard as a section, or a link to the `/trailhead:whiteboard` view;
 - dynamic counts: untriaged inbox size and whiteboard frontier size.
 
@@ -143,6 +143,8 @@ gh issue list --state open --json number,labels \
   --jq '[.[] | select([.labels[].name] | any(startswith("trailhead:")) | not)] | length'
 # whiteboard frontier size: the whiteboard frontier query above, counted
 gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified" --json number --jq 'length'
+# per-map exhaustion: open issues scoped to map <n>; count == 0 means exhausted-but-open, flag it closeable
+gh issue list --label "trailhead:map-<n>" --state open --json number --jq 'length'
 ```
 
 **When to refresh the body.** On structural events: a map is charted or exhausted (a map appears or disappears), a whiteboard ticket is born or resolved. And on demand via `/trailhead:dashboard`. NOT on every map-ticket resolve: that churns a pinned issue's notifications, and the native progress bar already tracks map-ticket progress on its own. The whiteboard has no native progress bar, so its ticket birth/close does refresh the dashboard.
