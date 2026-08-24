@@ -81,6 +81,10 @@ ok('codexSkillAdapterHeader §D pins the exact agent_type dispatch call shape',
   header.includes('spawn_agent(agent_type="trailhead-<technique>"'));
 ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
   header.includes('base multi_agent v1') && header.includes('inherit the one session model'));
+ok('codexSkillAdapterHeader §D warns against a single blocking wait_agent with a poll loop',
+  header.includes('bounded wait') && header.includes('poll'));
+ok('codexSkillAdapterHeader §D offers a background-job fallback for a stalling review',
+  header.includes('background job'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
 
