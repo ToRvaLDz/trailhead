@@ -95,6 +95,8 @@ ok('codexSkillAdapterHeader §H distinguishes the external-CLI shell path from t
   header.includes('external-CLI') && header.includes('not a spawned Codex subagent'));
 ok('codexSkillAdapterHeader §H makes backgrounding reviewers the default',
   header.includes('the default is to background the reviewers'));
+ok('codexSkillAdapterHeader §H closes reviewer stdin to avoid the EOF hang',
+  header.includes('/dev/null') && header.toLowerCase().includes('stdin'));
 
 // --- codexVerbSkillContent (#46) ---
 ok('codexVerbSkillContent: SKILL.md frontmatter is at byte 0 with name+description', (() => {
