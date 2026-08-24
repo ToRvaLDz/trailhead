@@ -387,7 +387,7 @@ function installCodex(configDir, { useSymlink }) {
   const L = codexLayout(configDir);
 
   if (useSymlink) {
-    console.log('Note: symlink install is unavailable for Codex (artifacts are generated, not copied verbatim); installing copies instead.');
+    console.log('Note: on Codex, --symlink links the verbatim artifacts (hooks, templates) into the package source for live edits; the skill files are text-converted at install, so they are written (projected), not linked.');
   }
 
   // Migration: sweep the pre-#25 layout AND the #42 prompt shims that never
@@ -414,8 +414,7 @@ function installCodex(configDir, { useSymlink }) {
 
   // Templates (verbatim, never converted), bundled inside the skill dir so
   // ${CLAUDE_PLUGIN_ROOT}/templates resolves to ~/.codex/skills/trailhead/templates.
-  ensure(L.templatesDir);
-  fs.cpSync(path.join(SRC, 'templates'), L.templatesDir, { recursive: true });
+  place(path.join(SRC, 'templates'), L.templatesDir, useSymlink);
 
   // agents/openai.yaml: UI metadata + explicit-only invocation (no auto-trigger).
   ensure(L.agentsDir);
@@ -447,7 +446,7 @@ function installCodex(configDir, { useSymlink }) {
 
   // Hooks: copy the 4 guard scripts into the skill dir and register them in
   // ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
-  copyHookScripts(L.hooksScriptsDir);
+  copyHookScripts(L.hooksScriptsDir, { useSymlink });
   const h = readJSON(L.hooksJson);
   for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
   writeJSON(L.hooksJson, h);

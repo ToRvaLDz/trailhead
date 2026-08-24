@@ -137,6 +137,30 @@ ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPa
 ok('codex: config.toml does NOT enable multi_agent_v2 when no models.codex.* pins are projected',
   !fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
 
+// --- codex --symlink: link verbatim artifacts (hooks + templates), keep skills projected ---
+const codexSymDir = mktmp();
+runInstaller([`--codex`, `--symlink`, `--dir=${codexSymDir}`]);
+ok('codex symlink: skills/trailhead/hooks/trailhead-secret-guard.js is a symlink',
+  fs.lstatSync(path.join(codexSymDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+ok('codex symlink: skills/trailhead/hooks/lib/commit-message-check.js is a symlink',
+  fs.lstatSync(path.join(codexSymDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')).isSymbolicLink());
+ok('codex symlink: skills/trailhead/templates is a symlink',
+  fs.lstatSync(path.join(codexSymDir, 'skills', 'trailhead', 'templates')).isSymbolicLink());
+ok('codex symlink: a hook symlink resolves into the package source',
+  fs.realpathSync(path.join(codexSymDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')) ===
+  fs.realpathSync(path.join(repoRoot, 'plugins', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
+ok('codex symlink: converted SKILL.md stays a regular file (projected, not linked)',
+  !fs.lstatSync(path.join(codexSymDir, 'skills', 'trailhead', 'SKILL.md')).isSymbolicLink());
+// Reinstall over the existing symlink install must not throw (EEXIST guard).
+runInstaller([`--codex`, `--symlink`, `--dir=${codexSymDir}`]);
+ok('codex symlink: reinstall over existing symlinks succeeds',
+  fs.lstatSync(path.join(codexSymDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+// Default (copy) codex install keeps hooks/templates as real files, not symlinks.
+ok('codex copy: hooks are regular files (not symlinks)',
+  !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+ok('codex copy: templates is a regular dir (not a symlink)',
+  !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'templates')).isSymbolicLink());
+
 // --- codex agent TOML projection (#38) -----------------------------------------
 // repoRoot's own .trailhead/config.json has no models.codex.*, so a plain
 // install (cwd: repoRoot, no models.codex anywhere) projects no agent TOMLs.
