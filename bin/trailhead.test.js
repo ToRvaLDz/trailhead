@@ -212,6 +212,34 @@ ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
 })());
 ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
+// --- claude --symlink: dev install links hooks live too (not just skills/commands) ---
+const symDir = mktmp();
+runInstaller([`--claude`, `--symlink`, `--dir=${symDir}`]);
+ok('claude symlink: skills/trailhead is a symlink',
+  fs.lstatSync(path.join(symDir, 'skills', 'trailhead')).isSymbolicLink());
+ok('claude symlink: hooks/trailhead-secret-guard.js is a symlink',
+  fs.lstatSync(path.join(symDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+ok('claude symlink: hooks/lib/commit-message-check.js is a symlink',
+  fs.lstatSync(path.join(symDir, 'hooks', 'lib', 'commit-message-check.js')).isSymbolicLink());
+ok('claude symlink: hook symlink resolves into the package source',
+  fs.realpathSync(path.join(symDir, 'hooks', 'trailhead-secret-guard.js')) ===
+  fs.realpathSync(path.join(repoRoot, 'plugins', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
+ok('claude symlink: a symlinked commit-guard still loads its lib (no MODULE_NOT_FOUND)', (() => {
+  let out = '';
+  try {
+    out = String(execFileSync(process.execPath, [path.join(symDir, 'hooks', 'trailhead-commit-guard.js')],
+      { input: '{"tool_name":"Bash","tool_input":{"command":"echo hi"}}', stdio: 'pipe' }));
+  } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  return !out.includes('MODULE_NOT_FOUND') && !out.includes('Cannot find module');
+})());
+// Reinstalling over an existing symlink install must not throw (EEXIST guard).
+runInstaller([`--claude`, `--symlink`, `--dir=${symDir}`]);
+ok('claude symlink: reinstall over existing symlinks succeeds',
+  fs.lstatSync(path.join(symDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+// Default (copy) install keeps hooks as real files, not symlinks.
+ok('claude copy: hooks/trailhead-secret-guard.js is a regular file (not a symlink)',
+  !fs.lstatSync(path.join(claudeDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+
 // --- claude migration: reinstall over an old layout sweeps stale skill dirs ---
 // An old install may carry a pre-split monolith (skills/trailhead-monolith) or a
 // removed cluster (skills/trailhead-legacy) the current install no longer ships.

@@ -185,18 +185,28 @@ const HOOK_LIB_FILES = ['commit-message-check.js'];
 // Copy the hook scripts and their runtime libs into a destination hooks dir
 // (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
 // install paths so the lib copy can never drift from the script copy again.
-function copyHookScripts(destHooksDir) {
+// Place the allow-listed hook scripts into destHooksDir. Normal install copies
+// (+chmod so the exec bit is set regardless of the source mode); a --symlink dev
+// install links each file per-file into the package source so hook edits are
+// live too, matching skills/commands. Never symlink the whole hooks/ dir: it is
+// shared with other plugins, so only the curated allowlist is touched. rmrf the
+// dest first so a reinstall over an existing file or symlink never hits EEXIST.
+function copyHookScripts(destHooksDir, { useSymlink = false } = {}) {
   ensure(destHooksDir);
-  for (const f of HOOK_FILES) {
-    fs.copyFileSync(path.join(SRC, 'hooks', f), path.join(destHooksDir, f));
-    fs.chmodSync(path.join(destHooksDir, f), 0o755);
-  }
+  const put = (src, dest) => {
+    rmrf(dest);
+    if (useSymlink) {
+      fs.symlinkSync(src, dest, 'file');
+    } else {
+      fs.copyFileSync(src, dest);
+      fs.chmodSync(dest, 0o755);
+    }
+  };
+  for (const f of HOOK_FILES) put(path.join(SRC, 'hooks', f), path.join(destHooksDir, f));
   if (HOOK_LIB_FILES.length) {
     const libDest = path.join(destHooksDir, 'lib');
     ensure(libDest);
-    for (const f of HOOK_LIB_FILES) {
-      fs.copyFileSync(path.join(SRC, 'hooks', 'lib', f), path.join(libDest, f));
-    }
+    for (const f of HOOK_LIB_FILES) put(path.join(SRC, 'hooks', 'lib', f), path.join(libDest, f));
   }
 }
 
@@ -260,7 +270,7 @@ function installClaude(configDir, { useSymlink }) {
   }
   place(path.join(SRC, 'commands'), P.commands, useSymlink);
   place(path.join(SRC, 'templates'), P.templates, useSymlink);
-  copyHookScripts(P.hooksDir);
+  copyHookScripts(P.hooksDir, { useSymlink });
   // version marker: serve al check-update hook per la versione installata (canale npm)
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) {
