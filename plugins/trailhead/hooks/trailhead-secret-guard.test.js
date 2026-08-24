@@ -36,7 +36,13 @@ ok('scan passes clean prose', scan('tutto ok, 368 test verdi') === null);
 ok('detects gh issue comment', ghIssueWrite('gh issue comment 5 --body "x"') === 'issue');
 ok('detects gh pr create', ghIssueWrite('gh pr create --body "x"') === 'pr');
 ok('detects gh api body=', ghIssueWrite('gh api repos/o/r/issues/5/comments -f body=x') === 'api');
+ok('detects gh -R o/r issue comment (global flag before subcommand)',
+  ghIssueWrite('gh -R owner/repo issue comment 5 --body x') === 'issue');
+ok('detects gh --repo=o/r pr create (attached global flag)',
+  ghIssueWrite('gh --repo=owner/repo pr create --body x') === 'pr');
 ok('ignores gh issue view (read)', ghIssueWrite('gh issue view 5 --json body') === null);
+ok('ignores gh -R o/r issue view (read, even with global flag)',
+  ghIssueWrite('gh -R owner/repo issue view 5 --json body') === null);
 ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx') === null);
 
 // --- end-to-end: block ---
@@ -82,6 +88,10 @@ const b4 = runHook(`gh issue edit 5 --body-file ${leaky2}; echo done`);
 ok('blocks a secret in --body-file even in a compound command (exit 2)',
   b4.code === 2 && /AWS access key/.test(b4.out));
 fs.unlinkSync(leaky2);
+
+// A global flag before the subcommand must not let a secret slip past unscanned.
+const b5 = runHook('gh -R owner/repo issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
+ok('blocks an inline secret behind gh -R (exit 2)', b5.code === 2 && /"decision":"block"/.test(b5.out));
 
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');

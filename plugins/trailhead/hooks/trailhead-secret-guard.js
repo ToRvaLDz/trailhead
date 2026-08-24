@@ -43,8 +43,17 @@ function ghIssueWrite(cmd) {
   let i = 0;
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
   if (i >= toks.length || !/(^|\/)gh$/.test(toks[i])) return null;         // the gh binary
-  const sub = toks[i + 1];
-  const verb = toks[i + 2];
+  i++;
+  // Skip gh global flags before the subcommand, notably `-R`/`--repo <value>`
+  // (its separate-token value must be consumed too), so `gh -R o/r issue
+  // comment …` is still recognised as a write and gets scanned. Without this a
+  // secret could slip past simply by naming the repo up front.
+  while (i < toks.length && toks[i].startsWith('-')) {
+    if (/^(-R|--repo)$/.test(toks[i]) && !toks[i].includes('=')) i++;
+    i++;
+  }
+  const sub = toks[i];
+  const verb = toks[i + 1];
   if ((sub === 'issue' || sub === 'pr') && ['create', 'comment', 'edit', 'review'].includes(verb)) {
     return sub;
   }
