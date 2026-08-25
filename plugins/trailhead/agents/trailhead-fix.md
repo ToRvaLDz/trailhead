@@ -1,5 +1,6 @@
 ---
 name: trailhead-fix
+color: green
 description: "trailhead fix subagent: implements a bug fix with atomic commits (each carrying a Refs: #<n> trailer)."
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

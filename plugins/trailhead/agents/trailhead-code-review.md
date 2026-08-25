@@ -1,5 +1,6 @@
 ---
 name: trailhead-code-review
+color: purple
 description: "trailhead code-review subagent: adversarially reviews a ticket's diff and reports; never edits or commits."
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

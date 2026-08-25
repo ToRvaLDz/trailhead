@@ -1,5 +1,6 @@
 ---
 name: trailhead-debug
+color: red
 description: "trailhead debug subagent: finds a defect's root cause by the scientific method."
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

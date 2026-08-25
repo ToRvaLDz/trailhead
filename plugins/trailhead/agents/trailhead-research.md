@@ -1,5 +1,6 @@
 ---
 name: trailhead-research
+color: cyan
 description: "trailhead research subagent: gathers a decision-ready fact from primary sources."
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

@@ -1,5 +1,6 @@
 ---
 name: trailhead-codebase-map
+color: yellow
 description: "trailhead codebase-map reader subagent: maps one non-overlapping facet of the repo. Read-only."
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

@@ -1,5 +1,6 @@
 ---
 name: trailhead-plan
+color: blue
 description: "trailhead planning subagent: produces a build ticket's PLAN (steps, seams, files touched, verification criteria). Read-only, never implements."
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---

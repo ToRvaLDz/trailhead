@@ -1,5 +1,6 @@
 ---
 name: trailhead-executor
+color: orange
 description: "trailhead execute subagent: implements an approved PLAN with atomic conventional commits (each carrying a Refs: #<n> trailer)."
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---
