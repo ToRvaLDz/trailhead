@@ -175,7 +175,7 @@ function claudePaths(configDir) {
     settings: path.join(configDir, 'settings.json'),
   };
 }
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-check-update.js'];
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-check-update.js'];
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
 // require('./lib/commit-message-check.js')). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must not
@@ -246,6 +246,7 @@ function uninstallClaude(configDir) {
   const s = readJSON(P.settings);
   stripHook(s, 'PreToolUse', 'trailhead-commit-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
+  stripHook(s, 'PreToolUse', 'trailhead-install-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
   stripHook(s, 'SessionStart', 'trailhead-check-update.js');
   writeJSON(P.settings, s);
@@ -282,6 +283,7 @@ function installClaude(configDir, { useSymlink }) {
   const added = [
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
+    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-install-guard.js')),
     addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
     addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
   ].some(Boolean);
@@ -583,6 +585,7 @@ function uninstallCodex(configDir) {
     const h = readJSON(L.hooksJson);
     stripHook(h, 'PreToolUse', 'trailhead-commit-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-secret-guard.js');
+    stripHook(h, 'PreToolUse', 'trailhead-install-guard.js');
     stripHook(h, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
     stripHook(h, 'SessionStart', 'trailhead-check-update.js');
     writeJSON(L.hooksJson, h);
