@@ -1,7 +1,7 @@
 # Debug (scientific method)
 A bug is a science problem: observe, hypothesize, test, confirm, verify. Never patch on a hunch: an unconfirmed fix is a guess that recurs. Treat the issue as persistent debug state: log every hypothesis, test, and eliminated cause as comments, so a context reset never restarts the investigation.
 
-When run as a subagent, spawn it as the built-in **`general-purpose`** agent (it adds instrumentation and regression tests, so it needs Write); **never** a specialised debugger agent that another installed tool registered.
+When run as a subagent, dispatch the **`trailhead-debug`** agent (full tools: it adds instrumentation and regression tests, so it needs Write), passing `config.models.debug` as the model override; **never** an external-plugin debugger agent that another installed tool registered.
 
 **Redact as you go.** These notes are posted on public Issues. When you show a command, output, or artifact, replace every secret with `<REDACTED>` and run loops against env vars, never inlined credentials; quote only the signal-carrying lines, not whole dumps. If a redacted artifact isn't enough to move forward, say so and ask the user; never paste the raw one to compensate.
 

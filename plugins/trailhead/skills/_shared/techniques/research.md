@@ -1,5 +1,5 @@
 # Research
-Spawn a focused subagent (AFK, parallelisable) with exactly ONE clear question: sharp enough that the answer is a decision, not a survey. Vague scope breeds rabbit holes; a narrow question is its own leash. Spawn it as the built-in **`general-purpose`** agent (it writes findings to a throwaway `research/<name>` branch, so it needs Write); **never** a specialised researcher agent that another installed tool registered.
+Spawn a focused subagent (AFK, parallelisable) with exactly ONE clear question: sharp enough that the answer is a decision, not a survey. Vague scope breeds rabbit holes; a narrow question is its own leash. Dispatch the **`trailhead-research`** agent (full tools: it writes findings to a throwaway `research/<name>` branch, so it needs Write), passing `config.models.research` as the model override; **never** an external-plugin researcher agent that another installed tool registered.
 
 - **Treat your own prior knowledge as hypothesis, not fact**: training is stale. "As of my training" is a warning flag, not a citation.
 - **Chase primary, high-trust sources**: official docs, source code, specs, first-party APIs; never a secondary write-up. Follow every claim back to the source that owns it; resolve *current* docs rather than reciting from memory.

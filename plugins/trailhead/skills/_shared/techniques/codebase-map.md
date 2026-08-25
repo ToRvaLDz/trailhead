@@ -1,5 +1,5 @@
 # Codebase map (fan-out)
-One-time at project adoption. Fan out 5 read-only reader subagents in parallel (single message), each owning ONE non-overlapping facet; no facet reads another's territory. Spawn each reader as the built-in **`Explore`** agent (read-only by construction); **never** a specialised mapper agent that another installed tool registered.
+One-time at project adoption. Fan out 5 read-only reader subagents in parallel (single message), each owning ONE non-overlapping facet; no facet reads another's territory. Dispatch each reader as the **`trailhead-codebase-map`** agent (read-only by construction); **never** an external-plugin mapper agent that another installed tool registered.
 - **Architecture**: pattern, layers, data flow, entry points, module seams; where the deep modules live.
 - **Stack & dependencies**: languages, runtime, frameworks, manifests, build/config, external integrations (DBs, APIs, auth, webhooks).
 - **Decisions already embodied / conventions**: style, naming, error handling, the repo's documented standards; patterns a new change must match.
