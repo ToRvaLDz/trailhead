@@ -1,5 +1,7 @@
 <div align="center">
 
+![trailhead](assets/social-preview.png)
+
 # Trailhead
 
 🇬🇧 **English** · 🇮🇹 [Italiano](README.it.md)
