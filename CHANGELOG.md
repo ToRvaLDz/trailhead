@@ -2,6 +2,22 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.5.1 (2026-08-25)
+
+### Added
+- **trailhead ships its own per-technique engine agents.** Seven thin `trailhead-*` agents (plan, executor, research, code-review, debug, fix, codebase-map) are authored once as committed `agents/*.md` and projected to Codex as `~/.codex/agents/trailhead-*.toml` under `multi_agent_v2`. Every engine technique now dispatches to its own agent (honouring `config.models.<key>`), never a host built-in or external-plugin agent. "Self-contained" is redefined as zero *external-plugin* dependencies. On Claude the install now registers these agents into `<configDir>/agents/`, so the per-technique model split actually takes effect on the skills/npm channel (previously the agents were absent there and every technique silently ran inline on the session model).
+- **Verify-before-install gate (slopsquatting barrier).** A `PreToolUse(Bash)` hook (`trailhead-install-guard.js`, registered on both hosts) blocks a named public-registry install (npm / PyPI / crates.io / Go / RubyGems) until the package is vetted (typosquat similarity, age, downloads, repo metadata), then proceeds when the exact command is re-run prefixed with `TRAILHEAD_VERIFIED_INSTALL=1`; the Execute/Fix engine prose carries the same block-and-ask.
+- **High / Balanced / Low model-tier profiles in the guided setup**, seeding all five model keys ("smart at every level": research never the strongest tier, execute and debug never the fastest). **Balanced is the default profile** (a project with no config resolves its five keys as Balanced; the strong Opus tier defaults to `claude-opus-4-8`, with `claude-opus-5` still offered). Picking a profile is terminal; a new **Manual** path asks per-key. Codex uses the parallel `models.codex.*` namespace.
+- **Post-update integrity check in `/trailhead:update`.** After an update lands it verifies the version actually settled and the engine surface is present (agents / skills / commands / hooks), surfacing any problem and offering an installer re-run, never fixing silently.
+- Engine guardrails: a machine-checkable `status:` tag leading every Code review VERIFY, a post-commit self-check at Resolve, a pre-fix diagnosis checkpoint in the bug engine, and a stop-at-sufficiency / no-re-read guard in the plan and research techniques.
+
+### Changed / Fixed
+- **Plan review reviewer selection.** Exclude the host's own CLI (a plan reviewed by the same session model is not cross-AI: drop `codex` on Codex, `claude` on Claude Code), add `claude` to the roster, and enumerate the full roster in the guided-setup probe so it can no longer be silently shortened.
+- **Prototype never shortcuts a hosted design mode to disk.** When `config.design` is `claude.ai/design` or `stitch`, the mockup is built there (reusing a cached `design.project`); a local disk mockup while a hosted mode is configured is a defect, not a convenient default.
+- **Cluster skills hidden from the `/` slash menu** (`user-invocable: false`) so they stop duplicating the `/trailhead:<verb>` commands on claude.ai; the dispatcher and the commands are unaffected (the engine still invokes each cluster via the Skill tool).
+- **Version sources aligned.** `plugin.json` and `marketplace.json` lagged `package.json`, leaving the update check permanently at `updateAvailable: true`; all three now move together.
+- Inbox triage sections are named for what they hold instead of `A`/`B`/`C`. The install-guard scans every shell segment. A social-preview card is added as the README hero.
+
 ## 0.5.0 (2026-08-24)
 
 ### Added
