@@ -79,6 +79,12 @@ for (const cmd of neg) {
 // `-r`'s value must not be read as a package even with a trailing name absent.
 ok('consumes -r value, no phantom name', detectInstall('pip install -r requirements.txt') === null);
 
+// Compound commands: an install in any segment is caught, not just the first.
+ok('detects install after && chain', (() => { const d = detectInstall('cd app && npm install lodash'); return d && d.packages.includes('lodash'); })());
+ok('detects install after ; chain', (() => { const d = detectInstall('echo hi; pip install requests'); return d && d.packages.includes('requests'); })());
+ok('detects install in a piped tail', (() => { const d = detectInstall('true | cargo add serde'); return d && d.packages.includes('serde'); })());
+ok('compound with no install stays null', detectInstall('cd app && npm run build && ls') === null);
+
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));
 ok('no sentinel', !isVerified('npm install lodash'));

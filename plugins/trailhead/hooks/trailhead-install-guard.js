@@ -70,9 +70,9 @@ function bareName(t) {
   return n;
 }
 
-// Detect a public-registry install that NAMES at least one package.
-// Returns { ecosystem, packages: [names] } or null.
-function detectInstall(cmd) {
+// Detect a public-registry install that NAMES at least one package, in a single
+// shell segment. Returns { ecosystem, packages: [names] } or null.
+function detectSegment(cmd) {
   const toks = String(cmd).trim().split(/\s+/).filter(Boolean);
   let i = 0;
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
@@ -114,6 +114,18 @@ function detectInstall(cmd) {
   }
   if (packages.length === 0) return null; // lockfile/manifest install: nothing typed
   return { ecosystem, packages };
+}
+
+// Agents chain commands (`cd app && npm install foo`), so check every shell
+// segment, not just the first. Split on the common separators (&& || ; | and
+// newlines); a registry name never contains one, so a stray split is harmless.
+// Returns the first segment's hit, or null.
+function detectInstall(cmd) {
+  for (const seg of String(cmd).split(/&&|\|\||;|\n|\|/)) {
+    const hit = detectSegment(seg);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 // The agent's "I have vetted these" acknowledgement.
