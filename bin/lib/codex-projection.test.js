@@ -214,6 +214,19 @@ ok('codexAgentToml with no model emits a pin-less TOML (no model line, no effort
     out.includes('fix the thing');
 })());
 
+ok('codexAgentToml escapes a " and \\ in name/description so the TOML stays valid', (() => {
+  const out = codexAgentToml({
+    name: 'trailhead-plan',
+    description: 'has a "quote" and a back\\slash',
+    developerInstructions: 'body',
+    model: null,
+    effort: null,
+  });
+  // The emitted basic string must carry escaped forms, never a raw " that
+  // would prematurely close the TOML string.
+  return out.includes('description = "has a \\"quote\\" and a back\\\\slash"');
+})());
+
 // --- codexAgentTomlPlan ---
 // 7-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
 // sources: 5 keyed techniques (plan/execute/research/review/debug, whose
@@ -264,6 +277,30 @@ ok('codexAgentTomlPlan: object model value on the execute key carries model + mo
   const plan = codexAgentTomlPlan('/c', { execute: { model: 'gpt-5.6-sol', effort: 'high' } }, STUB_AGENT_DEFS);
   const execute = plan.writes.find((w) => w.name === 'trailhead-execute');
   return execute.content.includes('model = "gpt-5.6-sol"') && execute.content.includes('model_reasoning_effort = "high"');
+})());
+
+ok('codexAgentTomlPlan: a keyed key whose object value has no model stays pin-less', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: { effort: 'high' } }, STUB_AGENT_DEFS);
+  const execute = plan.writes.find((w) => w.name === 'trailhead-execute');
+  return plan.writes.length === 7 && !/^model = /m.test(execute.content) && !execute.content.includes('model_reasoning_effort');
+})());
+
+ok('codexAgentTomlPlan: description is routed through convertToCodex (host paths rewritten)', (() => {
+  const defs = [{ name: 'trailhead-plan', description: 'see ~/.claude/skills', tools: 'Read', body: 'b' }];
+  const plan = codexAgentTomlPlan('/c', {}, defs);
+  return plan.writes[0].content.includes('description = "see ~/.codex/skills"');
+})());
+
+ok('codexAgentTomlPlan: a missing description renders as an empty string, not "undefined"', (() => {
+  const defs = [{ name: 'trailhead-plan', tools: 'Read', body: 'b' }];
+  const plan = codexAgentTomlPlan('/c', {}, defs);
+  return plan.writes[0].content.includes('description = ""') && !plan.writes[0].content.includes('description = "undefined"');
+})());
+
+ok('codexAgentTomlPlan: empty/undefined agentDefs -> no writes (installer then leaves multi_agent_v2 off)', (() => {
+  return codexAgentTomlPlan('/c', {}, []).writes.length === 0 &&
+    codexAgentTomlPlan('/c', {}).writes.length === 0 &&
+    codexAgentTomlPlan('/c', {}, null).writes.length === 0;
 })());
 
 // --- enableCodexMultiAgentV2Feature ---

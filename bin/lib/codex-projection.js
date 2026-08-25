@@ -192,17 +192,28 @@ const MODEL_KEYS = new Set(['plan', 'execute', 'research', 'review', 'debug']);
 // model_reasoning_effort is emitted only when effort is a non-empty string.
 // developer_instructions is a TOML multi-line literal block ('''...'''); a
 // stray ''' inside the text (none of ours has one, but be safe) is
-// neutralised so it can't close the block early.
+// neutralised so it can't close the block early. The basic-string fields
+// (name/description/model/effort) are escaped so a stray " or \ in a source
+// value (description comes from the agent .md frontmatter) can't break the TOML.
+function tomlBasicString(s) {
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 function codexAgentToml({ name, description, developerInstructions, model, effort }) {
   const safeInstructions = String(developerInstructions).split("'''").join("''");
   const lines = [
-    `name = "${name}"`,
-    `description = "${description}"`,
+    `name = "${tomlBasicString(name)}"`,
+    `description = "${tomlBasicString(description)}"`,
   ];
   if (typeof model === 'string' && model.trim() !== '') {
-    lines.push(`model = "${model}"`);
+    lines.push(`model = "${tomlBasicString(model)}"`);
     if (typeof effort === 'string' && effort.trim() !== '') {
-      lines.push(`model_reasoning_effort = "${effort}"`);
+      lines.push(`model_reasoning_effort = "${tomlBasicString(effort)}"`);
     }
   }
   lines.push(`developer_instructions = '''\n${safeInstructions}\n'''`);
@@ -252,7 +263,9 @@ function codexAgentTomlPlan(codexHome, codexModels, agentDefs) {
 
     const content = codexAgentToml({
       name,
-      description: def.description,
+      // Route the description through convertToCodex too (like the body), and
+      // default a missing frontmatter description to '' rather than "undefined".
+      description: convertToCodex(String(def.description || '')),
       developerInstructions,
       model,
       effort,

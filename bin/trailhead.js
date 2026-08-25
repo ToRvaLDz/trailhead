@@ -515,12 +515,13 @@ function installCodex(configDir, { useSymlink }) {
   for (const w of plan.writes) fs.writeFileSync(w.path, w.content);
 
   // Feature flag: Codex gates per-subagent model pinning behind
-  // features.multi_agent_v2 = true. All 7 agent TOMLs are always projected
-  // (pinned or pin-less), so v2 is now enabled on every Codex install,
-  // unconditionally: the adapter's §D runtime detection always expects a
-  // trailhead agent_type registry to be present, pins or not.
+  // features.multi_agent_v2 = true. All 7 agent TOMLs are normally projected
+  // (pinned or pin-less), so v2 is enabled on every healthy Codex install: the
+  // adapter's §D runtime detection expects a trailhead agent_type registry,
+  // pins or not. Still guarded on writes so a degenerate case (no agent .md
+  // found, zero writes) never flips the flag on with an empty registry.
   let featureManualV2 = false;
-  {
+  if (plan.writes.length > 0) {
     const updatedTomlV2 = enableCodexMultiAgentV2Feature(current);
     if (updatedTomlV2 && typeof updatedTomlV2 === 'string') {
       ensure(path.dirname(L.configToml));
