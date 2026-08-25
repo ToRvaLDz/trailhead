@@ -1,5 +1,6 @@
 ---
 name: trailhead-capture
+user-invocable: false
 description: "trailhead capture cluster: the zero-friction captures that record work without breaking flow. Capture a bug ticket (bug), a small build ticket you will do now (todo), a fog idea (idea), a trigger-gated seed (seed), a verbatim note (note). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers and the bare `/trailhead` dispatcher. Not auto-invoked: it runs only when one of these verbs is dispatched."
 argument-hint: "[bug|todo|idea|seed|note] [--of <ticket>] <text>"
 ---

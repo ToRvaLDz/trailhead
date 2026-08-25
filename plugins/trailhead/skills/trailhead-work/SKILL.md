@@ -1,5 +1,6 @@
 ---
 name: trailhead-work
+user-invocable: false
 description: "trailhead work cluster: the verbs that resolve tickets on the map and manage a ticket's lifecycle. Work the next frontier ticket or the one you name (work), work one ticket whole off the map without splitting (quick), checkpoint the ticket in play (pause), resume it from its checkpoint (resume), and split an oversized ticket into children (split). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers. Not auto-invoked: it runs only when one of these verbs is dispatched."
 argument-hint: "[work|quick|pause|resume|split] [ticket | \"text\" | note]"
 ---

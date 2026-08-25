@@ -1,5 +1,6 @@
 ---
 name: trailhead-view
+user-invocable: false
 description: "trailhead view cluster: the read-only renders of the trailhead surface. Show the low-res map: destination, decisions, frontier, fog (map); regenerate and show the pinned per-repo dashboard indexing every open map plus the whiteboard (dashboard); show the whiteboard of loose map-less tickets (whiteboard). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers. Not auto-invoked: it runs only when one of these verbs is dispatched."
 argument-hint: "[map|dashboard|whiteboard] [map]"
 ---

@@ -1,5 +1,6 @@
 ---
 name: trailhead-manage
+user-invocable: false
 description: "trailhead manage cluster: the admin verbs that keep a trailhead install healthy. Show the effective config or change it through a guided menu (config); check for a newer trailhead and install it where that is safe (update). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers and the bare `/trailhead` dispatcher. Not auto-invoked: it runs only when one of these verbs is dispatched."
 argument-hint: "[config|update] [get|set …]"
 ---

@@ -1,5 +1,6 @@
 ---
 name: trailhead-chart
+user-invocable: false
 description: "trailhead chart cluster: the verbs that give a map its start or bring outside work into it. Chart a new map from a loose idea (new), adopt an existing codebase into a map (adopt), open a ticket of any type on the fly (ticket), triage issues opened by others into the map (inbox), and run a standalone grilling session (grill). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers and the bare `/trailhead` dispatcher. Not auto-invoked: it runs only when one of these verbs is dispatched."
 argument-hint: "[new|adopt|ticket|inbox|grill] [idea | <type> <title> | issue | topic]"
 ---
