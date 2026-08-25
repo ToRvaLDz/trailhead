@@ -253,6 +253,20 @@ ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
 })());
 ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
+// --- claude: engine agents registered as user subagents -----------------------
+// Without these under <configDir>/agents/, every technique dispatch fails and
+// falls back to running inline on the session model, so the per-technique
+// config.models.* split silently never applies.
+const claudeAgentsDir = path.join(claudeDir, 'agents');
+const expectedAgents = ['trailhead-plan', 'trailhead-executor', 'trailhead-research', 'trailhead-code-review', 'trailhead-debug', 'trailhead-fix', 'trailhead-codebase-map'];
+for (const a of expectedAgents) {
+  ok(`claude: agents/${a}.md placed`, fs.existsSync(path.join(claudeAgentsDir, `${a}.md`)));
+}
+ok('claude: agent file registers its subagent name in frontmatter',
+  fs.readFileSync(path.join(claudeAgentsDir, 'trailhead-executor.md'), 'utf8').startsWith('---\nname: trailhead-executor\n'));
+ok('claude: agents are real files on a copy install (not symlinks)',
+  !fs.lstatSync(path.join(claudeAgentsDir, 'trailhead-plan.md')).isSymbolicLink());
+
 // --- claude --symlink: dev install links hooks live too (not just skills/commands) ---
 const symDir = mktmp();
 runInstaller([`--claude`, `--symlink`, `--dir=${symDir}`]);
@@ -277,6 +291,11 @@ ok('claude symlink: a symlinked commit-guard still loads its lib (no MODULE_NOT_
 runInstaller([`--claude`, `--symlink`, `--dir=${symDir}`]);
 ok('claude symlink: reinstall over existing symlinks succeeds',
   fs.lstatSync(path.join(symDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+ok('claude symlink: agents/trailhead-plan.md is a symlink',
+  fs.lstatSync(path.join(symDir, 'agents', 'trailhead-plan.md')).isSymbolicLink());
+ok('claude symlink: agent symlink resolves into the package source',
+  fs.realpathSync(path.join(symDir, 'agents', 'trailhead-plan.md')) ===
+  fs.realpathSync(path.join(repoRoot, 'plugins', 'trailhead', 'agents', 'trailhead-plan.md')));
 // Default (copy) install keeps hooks as real files, not symlinks.
 ok('claude copy: hooks/trailhead-secret-guard.js is a regular file (not a symlink)',
   !fs.lstatSync(path.join(claudeDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
@@ -300,6 +319,14 @@ ok('claude migration: stale trailhead-legacy cluster swept on reinstall', !fs.ex
 ok('claude migration: co-tenant skill preserved (only trailhead names swept)', fs.existsSync(path.join(migClaudeDir, 'skills', 'other-plugin')));
 ok('claude migration: current dispatcher present after reinstall', fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead', 'SKILL.md')));
 ok('claude migration: current cluster present after reinstall', fs.existsSync(path.join(migClaudeDir, 'skills', 'trailhead-work', 'SKILL.md')));
+// The agents dir gets the same name-only sweep on reinstall: a stale trailhead
+// agent (renamed/removed) is swept, a co-tenant agent left alone.
+fs.writeFileSync(path.join(migClaudeDir, 'agents', 'trailhead-oldagent.md'), '---\nname: trailhead-oldagent\n---\n');
+fs.writeFileSync(path.join(migClaudeDir, 'agents', 'other-plugin-agent.md'), '---\nname: other-plugin-agent\n---\n');
+runInstaller([`--claude`, `--dir=${migClaudeDir}`]);
+ok('claude migration: stale trailhead-oldagent.md swept on reinstall', !fs.existsSync(path.join(migClaudeDir, 'agents', 'trailhead-oldagent.md')));
+ok('claude migration: co-tenant agent preserved on reinstall', fs.existsSync(path.join(migClaudeDir, 'agents', 'other-plugin-agent.md')));
+ok('claude migration: engine agents present after reinstall', fs.existsSync(path.join(migClaudeDir, 'agents', 'trailhead-executor.md')));
 
 // Uninstall also sweeps a stale trailhead-owned dir the current package no
 // longer ships (monolith), not just the current engineSkillDirs() set.
@@ -321,6 +348,17 @@ fs.writeFileSync(coTenantLib, '// not trailhead\n');
 runInstaller([`--claude`, `--dir=${coTenantDir}`, '--uninstall']);
 ok('claude uninstall: trailhead lib removed', !fs.existsSync(path.join(coTenantDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude uninstall: co-tenant lib preserved (no recursive wipe)', fs.existsSync(coTenantLib));
+
+// The agents dir is shared too: a co-tenant's own agent survives uninstall,
+// while trailhead's are removed by name.
+const coTenantAgentDir = mktmp();
+runInstaller([`--claude`, `--dir=${coTenantAgentDir}`]);
+const foreignAgent = path.join(coTenantAgentDir, 'agents', 'other-plugin-agent.md');
+fs.writeFileSync(foreignAgent, '---\nname: other-plugin-agent\n---\n');
+ok('claude: engine agent present before uninstall', fs.existsSync(path.join(coTenantAgentDir, 'agents', 'trailhead-plan.md')));
+runInstaller([`--claude`, `--dir=${coTenantAgentDir}`, '--uninstall']);
+ok('claude uninstall: trailhead agents removed by name', !fs.existsSync(path.join(coTenantAgentDir, 'agents', 'trailhead-plan.md')));
+ok('claude uninstall: co-tenant agent preserved (no recursive wipe)', fs.existsSync(foreignAgent));
 
 // Uninstall removes every split skill (dispatcher + clusters + _shared) by name.
 const splitDir = mktmp();

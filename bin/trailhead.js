@@ -172,6 +172,7 @@ function claudePaths(configDir) {
     commands: path.join(configDir, 'commands', 'trailhead'),
     hooksDir: path.join(configDir, 'hooks'),
     templates: path.join(configDir, 'trailhead', 'templates'),
+    agents: path.join(configDir, 'agents'),
     settings: path.join(configDir, 'settings.json'),
   };
 }
@@ -217,6 +218,43 @@ function place(src, dest, symlink) {
   else fs.cpSync(src, dest, { recursive: true });
 }
 
+// The committed engine agents (plugins/trailhead/agents/trailhead-*.md). On a
+// Claude install they must register as user subagent types under
+// <configDir>/agents/, so the engine can dispatch each technique to its
+// trailhead-<technique> agent and honour config.models.<key>; without them
+// every technique falls back to running inline on the session model (the
+// per-technique model split silently never applies). The agents dir is shared
+// with the user's own agents and other plugins, so touch trailhead's own files
+// by name only, never the whole dir (mirrors the skills/hooks discipline).
+function agentFileNames() {
+  const dir = path.join(SRC, 'agents');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => f.startsWith('trailhead-') && f.endsWith('.md'));
+}
+function sweepTrailheadAgents(agentsDir) {
+  if (!fs.existsSync(agentsDir)) return;
+  for (const f of fs.readdirSync(agentsDir)) {
+    if (f.startsWith('trailhead-') && f.endsWith('.md')) rmrf(path.join(agentsDir, f));
+  }
+}
+// Place the engine agents into destAgentsDir by name (copy, or per-file symlink
+// under a --symlink dev install so agent edits are live). Returns the names
+// placed. rmrf each dest first so a reinstall over a file or symlink never
+// hits EEXIST.
+function copyAgentFiles(destAgentsDir, { useSymlink = false } = {}) {
+  const names = agentFileNames();
+  if (!names.length) return names;
+  ensure(destAgentsDir);
+  for (const f of names) {
+    const src = path.join(SRC, 'agents', f);
+    const dest = path.join(destAgentsDir, f);
+    rmrf(dest);
+    if (useSymlink) fs.symlinkSync(src, dest, 'file');
+    else fs.copyFileSync(src, dest);
+  }
+  return names;
+}
+
 function addHook(s, event, matcher, command) {
   s.hooks = s.hooks || {};
   s.hooks[event] = s.hooks[event] || [];
@@ -239,6 +277,9 @@ function uninstallClaude(configDir) {
   // layout left that this package no longer ships), never the shared dir itself.
   sweepTrailheadSkills(path.join(configDir, 'skills'));
   [P.commands, path.join(configDir, 'trailhead')].forEach(rmrf);
+  // Remove trailhead's own agents by name; the agents dir is shared, so never
+  // rmrf the whole dir (same discipline as skills/hooks).
+  sweepTrailheadAgents(P.agents);
   HOOK_FILES.forEach((f) => rmrf(path.join(P.hooksDir, f)));
   // Remove only trailhead's own lib files by name: the hooks/lib dir is shared
   // with other plugins, so never rmrf the whole dir.
@@ -272,6 +313,14 @@ function installClaude(configDir, { useSymlink }) {
   place(path.join(SRC, 'commands'), P.commands, useSymlink);
   place(path.join(SRC, 'templates'), P.templates, useSymlink);
   copyHookScripts(P.hooksDir, { useSymlink });
+  // Register the engine agents as Claude subagents: sweep any stale
+  // trailhead-*.md first (a removed/renamed agent), then place the current set
+  // by name. This is what makes config.models.<key> take effect on the
+  // skills/npm channel; without it every technique runs inline (see
+  // agentFileNames above). The agents dir is shared, so only our names are
+  // touched.
+  sweepTrailheadAgents(P.agents);
+  const agentFiles = copyAgentFiles(P.agents, { useSymlink });
   // version marker: serve al check-update hook per la versione installata (canale npm)
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) {
@@ -292,6 +341,7 @@ function installClaude(configDir, { useSymlink }) {
   console.log(`✓ trailhead installed for Claude Code → ${configDir}`);
   console.log(`  skills    → ${path.join(configDir, 'skills')}/  (${skillDirs.join(', ')})${useSymlink ? '  (symlink)' : ''}`);
   console.log(`  commands  → ${P.commands}  (/trailhead:*)`);
+  console.log(`  agents    → ${P.agents}/  (${agentFiles.length} agent(s): trailhead-*)${useSymlink ? '  (symlink)' : ''}`);
   console.log(`  hooks     → ${P.hooksDir}/  (${added ? 'registered' : 'already present'} in settings.json)`);
   console.log(`  templates → ${P.templates}`);
   console.log('\nRestart or reload your agent to pick up the commands, then run /trailhead to start.');
