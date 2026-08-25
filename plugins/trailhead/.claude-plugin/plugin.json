@@ -1,6 +1,6 @@
 {
   "name": "trailhead",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time. Map-based onboarding + a discuss→plan→execute→verify engine with atomic commits, all on the Issues. Ships as a dispatcher plus cohesion-clustered skills over a shared core; depends on nothing beyond an authenticated gh CLI.",
   "author": {
     "name": "Marco Migozzi",
