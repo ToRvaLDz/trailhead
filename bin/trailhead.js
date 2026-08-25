@@ -497,9 +497,13 @@ function installCodex(configDir, { useSymlink }) {
     featureManual = true;
   }
 
-  // Per-technique model pins: project models.codex.* (merged project + global
-  // config) into trailhead-<technique>.toml under the real ~/.codex/agents/
-  // dir. Sweep only trailhead's own files first, so a stale pin from a prior
+  // Per-technique agent registry: project ALL 7 committed agents
+  // (readAgentDefs, sourced from plugins/trailhead/agents/*.md) as
+  // trailhead-<technique>.toml under the real ~/.codex/agents/ dir, uniformly.
+  // A keyed technique (plan/execute/research/review/debug) carries its
+  // models.codex.<key> pin (merged project + global config) when set, else is
+  // pin-less; the 2 keyless agents (fix, codebase-map) are always pin-less.
+  // Sweep only trailhead's own files first, so a stale pin from a prior
   // install (or a removed technique) never lingers, without touching the
   // user's other custom-agent TOMLs.
   const codexModels = readCodexModels(configDir);
@@ -507,18 +511,16 @@ function installCodex(configDir, { useSymlink }) {
   for (const f of fs.readdirSync(L.codexAgentsDir)) {
     if (/^trailhead-.*\.toml$/.test(f)) rmrf(path.join(L.codexAgentsDir, f));
   }
-  const plan = codexAgentTomlPlan(configDir, codexModels);
+  const plan = codexAgentTomlPlan(configDir, codexModels, readAgentDefs());
   for (const w of plan.writes) fs.writeFileSync(w.path, w.content);
 
   // Feature flag: Codex gates per-subagent model pinning behind
-  // features.multi_agent_v2 = true. Enable it ONLY when we actually projected
-  // pins: with no models.codex.* set, base multi_agent already fans out and the
-  // adapter's §D runtime detection expects no trailhead agent_type registry, so
-  // leaving v2 off keeps that contract sound. (A reinstall that drops all pins
-  // sweeps the TOMLs above but leaves any prior v2 flag in place; harmless, as
-  // no trailhead-* agents remain for the runtime to dispatch to.)
+  // features.multi_agent_v2 = true. All 7 agent TOMLs are always projected
+  // (pinned or pin-less), so v2 is now enabled on every Codex install,
+  // unconditionally: the adapter's §D runtime detection always expects a
+  // trailhead agent_type registry to be present, pins or not.
   let featureManualV2 = false;
-  if (plan.writes.length > 0) {
+  {
     const updatedTomlV2 = enableCodexMultiAgentV2Feature(current);
     if (updatedTomlV2 && typeof updatedTomlV2 === 'string') {
       ensure(path.dirname(L.configToml));
@@ -533,10 +535,12 @@ function installCodex(configDir, { useSymlink }) {
   console.log(`  templates → ${L.templatesDir}/`);
   console.log(`  verb skills → ${L.skillsRoot}/trailhead-<verb>/  (${verbSkillPlan.dirs.length} discoverability skills: invoke $trailhead-<verb>)`);
   console.log(`  hooks     → ${L.hooksScriptsDir}/  (registered in hooks.json)`);
-  if (plan.writes.length > 0) {
-    console.log(`  agents    → ${L.codexAgentsDir}/  (${plan.writes.length} model pin(s): ${plan.writes.map((w) => w.name + '.toml').join(', ')})`);
-  } else {
-    console.log('  agents    → no models.codex.* set, subagents inherit the session model');
+  {
+    const pinned = plan.writes.filter((w) => w.content.includes('\nmodel = '));
+    const pinsNote = pinned.length > 0
+      ? `${pinned.length} pinned: ${pinned.map((w) => w.name + '.toml').join(', ')}`
+      : 'no models.codex.* set, all pin-less (session model)';
+    console.log(`  agents    → ${L.codexAgentsDir}/  (${plan.writes.length} agent(s) projected; ${pinsNote})`);
   }
   console.log('\nRestart or reload Codex to pick up the skill, then run $trailhead to start.');
   // The trust prompt only fires once the feature flag is on. When we could not

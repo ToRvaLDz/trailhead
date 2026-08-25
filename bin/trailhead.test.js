@@ -131,11 +131,19 @@ ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-gua
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
 ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('hooks = true'));
-// v2 is gated on projected pins: this install (repoRoot, no models.codex.*)
-// projects none, so multi_agent_v2 stays OFF (base multi_agent still fans out;
-// adapter §D expects no trailhead agent_type registry in the no-pins case).
-ok('codex: config.toml does NOT enable multi_agent_v2 when no models.codex.* pins are projected',
-  !fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
+// All 7 agents are always projected uniformly (pinned or pin-less), so
+// multi_agent_v2 is ON even with no models.codex.* set (this install,
+// repoRoot, sets none): the adapter §D registry is always present.
+ok('codex: config.toml enables multi_agent_v2 even with no models.codex.* pins projected',
+  fs.readFileSync(codexConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
+
+const codexAgentsDirPath = path.join(codexDir, 'agents');
+const noPinFixTomlPath = path.join(codexAgentsDirPath, 'trailhead-fix.toml');
+const noPinMapTomlPath = path.join(codexAgentsDirPath, 'trailhead-codebase-map.toml');
+ok('codex: trailhead-fix.toml is projected with no models.codex.* set', fs.existsSync(noPinFixTomlPath));
+ok('codex: trailhead-codebase-map.toml is projected with no models.codex.* set', fs.existsSync(noPinMapTomlPath));
+ok('codex: trailhead-fix.toml is pin-less (no model = line) with no models.codex.* set',
+  fs.existsSync(noPinFixTomlPath) && !/^model = /m.test(fs.readFileSync(noPinFixTomlPath, 'utf8')));
 
 // --- codex --symlink: link verbatim artifacts (hooks + templates), keep skills projected ---
 const codexSymDir = mktmp();
@@ -161,12 +169,21 @@ ok('codex copy: hooks are regular files (not symlinks)',
 ok('codex copy: templates is a regular dir (not a symlink)',
   !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'templates')).isSymbolicLink());
 
-// --- codex agent TOML projection (#38) -----------------------------------------
+// --- codex agent TOML projection (#38, #88) -------------------------------------
 // repoRoot's own .trailhead/config.json has no models.codex.*, so a plain
-// install (cwd: repoRoot, no models.codex anywhere) projects no agent TOMLs.
-ok('codex: no trailhead-*.toml under agents/ when models.codex.* is unset',
-  !fs.existsSync(path.join(codexDir, 'agents')) ||
-  !fs.readdirSync(path.join(codexDir, 'agents')).some((f) => /^trailhead-.*\.toml$/.test(f)));
+// install (cwd: repoRoot, no models.codex anywhere) still projects all 7
+// agents pin-less (uniform projection, #88), never zero.
+ok('codex: all 7 trailhead-*.toml exist under agents/ even with models.codex.* unset', (() => {
+  const dir = path.join(codexDir, 'agents');
+  if (!fs.existsSync(dir)) return false;
+  const tomls = fs.readdirSync(dir).filter((f) => /^trailhead-.*\.toml$/.test(f));
+  return tomls.length === 7;
+})());
+ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (() => {
+  const dir = path.join(codexDir, 'agents');
+  const tomls = fs.readdirSync(dir).filter((f) => /^trailhead-.*\.toml$/.test(f));
+  return tomls.every((f) => !/^model = /m.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+})());
 
 // --- codex migration (#46): install over old prompt shims sweeps them --------
 const migCodexDir = mktmp();

@@ -198,24 +198,73 @@ ok('codexAgentToml without effort omits model_reasoning_effort', (() => {
   });
   return out.includes('model = "gpt-5.6-terra"') && !out.includes('model_reasoning_effort');
 })());
+ok('codexAgentToml with no model emits a pin-less TOML (no model line, no effort line, keeps the rest)', (() => {
+  const out = codexAgentToml({
+    name: 'trailhead-fix',
+    description: 'desc',
+    developerInstructions: 'fix the thing',
+    model: null,
+    effort: null,
+  });
+  return out.includes('name = "trailhead-fix"') &&
+    out.includes('description = "desc"') &&
+    !/^model = /m.test(out) &&
+    !out.includes('model_reasoning_effort') &&
+    out.includes("developer_instructions = '''") &&
+    out.includes('fix the thing');
+})());
 
 // --- codexAgentTomlPlan ---
-ok('codexAgentTomlPlan: string value produces one write with the right path/name/model', (() => {
-  const plan = codexAgentTomlPlan('/c', { execute: 'gpt-5.6-terra' });
-  return plan.writes.length === 1 &&
-    plan.writes[0].path === '/c/agents/trailhead-execute.toml' &&
-    plan.writes[0].name === 'trailhead-execute' &&
-    plan.writes[0].content.includes('model = "gpt-5.6-terra"');
+// 7-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
+// sources: 5 keyed techniques (plan/execute/research/review/debug, whose
+// filenames derive from trailhead-executor -> execute and
+// trailhead-code-review -> review) + 2 always-keyless agents.
+const STUB_AGENT_DEFS = [
+  { name: 'trailhead-plan', description: 'plan desc', tools: 'Read', body: 'Plan body.' },
+  { name: 'trailhead-executor', description: 'execute desc', tools: 'Read, Write', body: 'Execute body.' },
+  { name: 'trailhead-research', description: 'research desc', tools: 'Read', body: 'Research body.' },
+  { name: 'trailhead-code-review', description: 'review desc', tools: 'Read', body: 'Review body.' },
+  { name: 'trailhead-debug', description: 'debug desc', tools: 'Read', body: 'Debug body.' },
+  { name: 'trailhead-fix', description: 'fix desc', tools: 'Read, Write', body: 'Fix body.' },
+  { name: 'trailhead-codebase-map', description: 'map desc', tools: 'Read', body: 'Map body.' },
+];
+
+ok('codexAgentTomlPlan: 7 agentDefs -> 7 writes with only the pinned key carrying a model', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
+  if (plan.writes.length !== 7) return false;
+  const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
+  const execute = byName['trailhead-execute'];
+  if (!execute || execute.path !== '/c/agents/trailhead-execute.toml') return false;
+  if (!execute.content.includes('model = "gpt-5.6-terra"')) return false;
+  const others = plan.writes.filter((w) => w.name !== 'trailhead-execute');
+  return others.length === 6 && others.every((w) => !/^model = /m.test(w.content));
 })());
-ok('codexAgentTomlPlan: object value includes model + effort', (() => {
-  const plan = codexAgentTomlPlan('/c', { execute: { model: 'gpt-5.6-sol', effort: 'high' } });
-  const c = plan.writes[0].content;
-  return c.includes('model = "gpt-5.6-sol"') && c.includes('model_reasoning_effort = "high"');
+
+ok('codexAgentTomlPlan: keyless trailhead-fix / trailhead-codebase-map are always pin-less', (() => {
+  const plan = codexAgentTomlPlan('/c', { fix: 'gpt-5.6-terra', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
+  const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
+  const fix = byName['trailhead-fix'];
+  const map = byName['trailhead-codebase-map'];
+  return fix && map &&
+    fix.path === '/c/agents/trailhead-fix.toml' && !/^model = /m.test(fix.content) &&
+    map.path === '/c/agents/trailhead-codebase-map.toml' && !/^model = /m.test(map.content);
 })());
-ok('codexAgentTomlPlan: empty object -> no writes', codexAgentTomlPlan('/c', {}).writes.length === 0);
-ok('codexAgentTomlPlan: null -> no writes', codexAgentTomlPlan('/c', null).writes.length === 0);
-ok('codexAgentTomlPlan: unknown key skipped', codexAgentTomlPlan('/c', { bogus: 'x' }).writes.length === 0);
-ok('codexAgentTomlPlan: object value with no model is skipped', codexAgentTomlPlan('/c', { execute: { effort: 'high' } }).writes.length === 0);
+
+ok('codexAgentTomlPlan: empty models object -> 7 pin-less writes (not zero)', (() => {
+  const plan = codexAgentTomlPlan('/c', {}, STUB_AGENT_DEFS);
+  return plan.writes.length === 7 && plan.writes.every((w) => !/^model = /m.test(w.content));
+})());
+
+ok('codexAgentTomlPlan: null models -> 7 pin-less writes (not zero)', (() => {
+  const plan = codexAgentTomlPlan('/c', null, STUB_AGENT_DEFS);
+  return plan.writes.length === 7 && plan.writes.every((w) => !/^model = /m.test(w.content));
+})());
+
+ok('codexAgentTomlPlan: object model value on the execute key carries model + model_reasoning_effort', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: { model: 'gpt-5.6-sol', effort: 'high' } }, STUB_AGENT_DEFS);
+  const execute = plan.writes.find((w) => w.name === 'trailhead-execute');
+  return execute.content.includes('model = "gpt-5.6-sol"') && execute.content.includes('model_reasoning_effort = "high"');
+})());
 
 // --- enableCodexMultiAgentV2Feature ---
 ok('enableCodexMultiAgentV2Feature: dotted form already true -> null',

@@ -101,7 +101,7 @@ Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_inp
 
 **Never surrender the session to one open-ended \`wait_agent\`; poll instead.** \`wait_agent\` blocks until the subagent returns, so a single unconditional \`wait_agent\` on a long or stalling subagent freezes the whole session with nothing to check: this is the review / plan-review hang. Collect every delegated subagent through a **bounded wait in a poll loop**, not one open-ended blocking call. Give \`wait_agent\` a short timeout (30 to 60s); on each timeout, report a one-line "still running" progress note and loop again, so the session stays responsive and can be checked or interrupted between polls. The two **review** steps, **Code review** and **Cross-AI plan review**, always run this way: backgrounding and polling them (never a blind \`wait_agent\`) is the engine's hard cross-host default, not merely the case where it matters most. They are also the longest quiet activities in the cycle (a full-diff adversarial review, or an external CLI) and the ones most often seen to hang. If your Codex build's \`wait_agent\` exposes no timeout, poll the agent's status/output at intervals instead of blocking, or run the review as a **background job** and check back on it at intervals; the rule is the same either way. When several subagents run in parallel, poll them as a set, a bounded wait cycling across the outstanding handles, reporting which are still running.
 
-**Per-technique model pins (\`agent_type\` dispatch).** When \`models.codex.*\` is set, the installer projects one \`~/.codex/agents/trailhead-<technique>.toml\` per key (that technique's OpenAI model, plus its reasoning effort) and enables \`features.multi_agent_v2\`, so Codex exposes a per-technique agent registry. Detect that registry at runtime by introspecting the visible \`spawn_agent\` tool schema (GSD-style, never a config read): if its parameters expose an \`agent_type\` field, \`multi_agent_v2\` is live, so spawn each delegated activity as \`spawn_agent(agent_type="trailhead-<technique>", reasoning_effort=…)\` (\`trailhead-plan\` for the Plan step, \`trailhead-execute\` for Execute, likewise research/review/debug), which routes it onto its pinned model. If the \`spawn_agent\` schema exposes NO \`agent_type\` field (only base multi_agent v1 is present, or no \`models.codex.*\` pin was projected), spawn with base \`spawn_agent\` and the subagents inherit the one session model. Trust the tool surface you actually see and degrade gracefully: \`multi_agent_v2\` is still under development upstream, so v1 stays a supported runtime.
+**Per-technique agent registry (\`agent_type\` dispatch).** The installer always projects all 7 committed trailhead agents as \`~/.codex/agents/trailhead-<technique>.toml\` (one per technique) and enables \`features.multi_agent_v2\`, so Codex always exposes a per-technique agent registry. A TOML whose technique has a \`models.codex.<key>\` pin set carries that OpenAI model (plus its reasoning effort); every other TOML — an unpinned keyed technique, or one of the 2 keyless agents — is pin-less and its subagent inherits the session model. Detect the registry at runtime by introspecting the visible \`spawn_agent\` tool schema (GSD-style, never a config read): if its parameters expose an \`agent_type\` field, spawn each delegated activity as \`spawn_agent(agent_type="trailhead-<technique>", reasoning_effort=…)\` (\`trailhead-plan\` for the Plan step, \`trailhead-execute\` for Execute, likewise research/review/debug, plus the 2 keyless \`trailhead-fix\` and \`trailhead-codebase-map\` for the Fix and Codebase-map steps), which routes it onto that technique's pinned model when one is set, or the session model otherwise. If the \`spawn_agent\` schema exposes NO \`agent_type\` field at all (a Codex build with only base multi_agent v1), spawn with base \`spawn_agent\` and the subagents inherit the one session model. Trust the tool surface you actually see and degrade gracefully: \`multi_agent_v2\` is still under development upstream, so v1 stays a supported runtime.
 
 \`config.models.*\` (Claude model ids) still cannot take effect here regardless: Codex's subagent model registry is OpenAI-only, so a Claude id cannot run and those keys collapse to the session model. The honoured namespace on Codex is \`models.codex.*\` (above); the one-time models-collapse notice still applies while a stray \`models.*\` is set and \`models.codex.*\` is empty.
 
@@ -165,47 +165,45 @@ policy:
 `;
 }
 
-// --- CODEX_AGENT_TECHNIQUES ------------------------------------------------
-// Metadata for the 5 trailhead activities that can get a per-technique Codex
-// custom-agent TOML: a short UI description and the developer_instructions
-// that steer that subagent on Codex, pointing back at the projected skill.
-const CODEX_AGENT_TECHNIQUES = Object.freeze({
-  plan: Object.freeze({
-    description: "trailhead planning subagent: produces a build ticket's PLAN (steps, seams, files, verification)",
-    developerInstructions: "You are trailhead's planning subagent on Codex. Produce the PLAN for a trailhead build ticket: the steps, the seams, the files touched, and the verification criteria, applying TDD per the ticket's config. Follow the Plan step and the referenced technique in the trailhead skill at ~/.codex/skills/trailhead. Return the plan; do not implement.",
-  }),
-  execute: Object.freeze({
-    description: 'trailhead execute subagent: implements a PLAN with atomic commits',
-    developerInstructions: "You are trailhead's execute subagent on Codex. Implement the approved PLAN for a trailhead build ticket with atomic conventional commits, each carrying a Refs: #<n> trailer for the ticket, following the repo's conventions. Follow the Execute step in the trailhead skill at ~/.codex/skills/trailhead.",
-  }),
-  research: Object.freeze({
-    description: 'trailhead research subagent: gathers a decision-ready fact from primary sources',
-    developerInstructions: "You are trailhead's research subagent on Codex. Gather the decision-ready fact a ticket waits on from primary sources, per the Research technique in the trailhead skill at ~/.codex/skills/trailhead. Record findings with citations; change no product code beyond the research artifact.",
-  }),
-  review: Object.freeze({
-    description: "trailhead code-review subagent: adversarially reviews a ticket's diff",
-    developerInstructions: "You are trailhead's code-review subagent on Codex. Review the ticket's diff adversarially on the trailhead Code review technique's axes, verifying each finding before reporting, per the trailhead skill at ~/.codex/skills/trailhead. Do not defer to a convention or a settled-decision memory.",
-  }),
-  debug: Object.freeze({
-    description: "trailhead debug subagent: finds a defect's root cause by the scientific method",
-    developerInstructions: "You are trailhead's debug subagent on Codex. Find the root cause of the ticket's defect by the scientific method (reproduce, localise, falsifiable hypotheses, confirm, verify), per the Debug technique in the trailhead skill at ~/.codex/skills/trailhead.",
-  }),
+// --- CODEX_AGENT_NAME_ALIASES / codexTechniqueKey ---------------------------
+// The 7 committed agent sources (plugins/trailhead/agents/trailhead-*.md) are
+// keyed by their trailhead-<name>.md filename stem. Two of those stems don't
+// match the models.codex.<key> pin namespace, so alias them; every other
+// agent's key is just its name with the trailhead- prefix stripped.
+const CODEX_AGENT_NAME_ALIASES = Object.freeze({
+  'trailhead-executor': 'execute',
+  'trailhead-code-review': 'review',
 });
 
+function codexTechniqueKey(name) {
+  return CODEX_AGENT_NAME_ALIASES[name] || String(name).replace(/^trailhead-/, '');
+}
+
+// --- MODEL_KEYS --------------------------------------------------------------
+// The 5 pinnable technique keys, mirroring the models.codex.* namespace. The
+// other 2 committed agents (fix, codebase-map) have no pin key and are always
+// projected pin-less (session model).
+const MODEL_KEYS = new Set(['plan', 'execute', 'research', 'review', 'debug']);
+
 // --- codexAgentToml ---------------------------------------------------------
-// Render one Codex custom-agent TOML. model_reasoning_effort is emitted only
-// when effort is a non-empty string. developer_instructions is a TOML
-// multi-line literal block ('''...'''); a stray ''' inside the text (none of
-// ours has one, but be safe) is neutralised so it can't close the block early.
+// Render one Codex custom-agent TOML. When `model` is empty/absent, the TOML
+// is pin-less: no `model =` line (and so no model_reasoning_effort either),
+// so the subagent inherits the session model. When `model` is present,
+// model_reasoning_effort is emitted only when effort is a non-empty string.
+// developer_instructions is a TOML multi-line literal block ('''...'''); a
+// stray ''' inside the text (none of ours has one, but be safe) is
+// neutralised so it can't close the block early.
 function codexAgentToml({ name, description, developerInstructions, model, effort }) {
   const safeInstructions = String(developerInstructions).split("'''").join("''");
   const lines = [
     `name = "${name}"`,
     `description = "${description}"`,
-    `model = "${model}"`,
   ];
-  if (typeof effort === 'string' && effort.trim() !== '') {
-    lines.push(`model_reasoning_effort = "${effort}"`);
+  if (typeof model === 'string' && model.trim() !== '') {
+    lines.push(`model = "${model}"`);
+    if (typeof effort === 'string' && effort.trim() !== '') {
+      lines.push(`model_reasoning_effort = "${effort}"`);
+    }
   }
   lines.push(`developer_instructions = '''\n${safeInstructions}\n'''`);
   return lines.join('\n') + '\n';
@@ -214,43 +212,52 @@ function codexAgentToml({ name, description, developerInstructions, model, effor
 // --- codexAgentTomlPlan ------------------------------------------------------
 // Given the resolved models.codex config (a plain object like
 // { plan: "gpt-5.6-terra", execute: { model: "gpt-5.6-sol", effort: "high" } },
-// or null/undefined/{}), return the set of trailhead-<technique>.toml writes
-// the installer should make. Skips unknown keys and empty values. Iterates
-// CODEX_AGENT_TECHNIQUES in declaration order (not the config's key order) so
-// the write order is deterministic regardless of how the config was authored.
-function codexAgentTomlPlan(codexHome, codexModels) {
+// or null/undefined/{}) and `agentDefs` (the array from the installer's
+// readAgentDefs(): every committed plugins/trailhead/agents/trailhead-*.md,
+// each { name, description, tools, body }), return the set of
+// trailhead-<technique>.toml writes the installer should make: ONE per agent,
+// uniformly (all 7 project, always). A keyed agent (plan/execute/research/
+// review/debug) carries its models.codex.<key> pin when set, else is
+// pin-less; the 2 keyless agents (fix, codebase-map) are always pin-less.
+// Iterates agentDefs in the given order (readAgentDefs sorts by name) so the
+// write order is deterministic.
+function codexAgentTomlPlan(codexHome, codexModels, agentDefs) {
   const models = codexModels && typeof codexModels === 'object' ? codexModels : {};
   const dir = codexLayout(codexHome).codexAgentsDir;
+  const defs = Array.isArray(agentDefs) ? agentDefs : [];
   const writes = [];
 
-  for (const technique of Object.keys(CODEX_AGENT_TECHNIQUES)) {
-    const raw = models[technique];
-    if (raw == null) continue;
+  for (const def of defs) {
+    const key = codexTechniqueKey(def.name);
+    const name = `trailhead-${key}`;
+    const filePath = path.join(dir, `${name}.toml`);
 
     let model = null;
     let effort = null;
-    if (typeof raw === 'string') {
-      if (raw.trim() !== '') model = raw;
-    } else if (typeof raw === 'object') {
-      const m = typeof raw.model === 'string' ? raw.model : '';
-      if (m.trim() !== '') {
-        model = m;
-        effort = typeof raw.effort === 'string' ? raw.effort : null;
+    if (MODEL_KEYS.has(key) && models[key] != null) {
+      const raw = models[key];
+      if (typeof raw === 'string') {
+        if (raw.trim() !== '') model = raw;
+      } else if (typeof raw === 'object') {
+        const m = typeof raw.model === 'string' ? raw.model : '';
+        if (m.trim() !== '') {
+          model = m;
+          effort = typeof raw.effort === 'string' ? raw.effort : null;
+        }
       }
     }
-    if (!model) continue;
 
-    const meta = CODEX_AGENT_TECHNIQUES[technique];
-    const name = `trailhead-${technique}`;
-    const filePath = path.join(dir, `${name}.toml`);
+    const lead = 'You are running on Codex CLI; the trailhead skill lives at ~/.codex/skills/trailhead.\n\n';
+    const developerInstructions = lead + convertToCodex(String(def.body || '')).trim();
+
     const content = codexAgentToml({
       name,
-      description: meta.description,
-      developerInstructions: meta.developerInstructions,
+      description: def.description,
+      developerInstructions,
       model,
       effort,
     });
-    writes.push({ technique, name, path: filePath, content });
+    writes.push({ technique: key, name, path: filePath, content });
   }
 
   return { writes };
