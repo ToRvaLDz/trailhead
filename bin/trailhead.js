@@ -349,6 +349,39 @@ function readCommandVerbs() {
     .sort((a, b) => a.verb.localeCompare(b.verb));
 }
 
+// Unquote a YAML double-quoted scalar (unlike commands/*.md, the agent .md
+// frontmatter wraps `description:` in double quotes). Leaves a plain/
+// unquoted scalar untouched, so this is safe to apply unconditionally.
+function unquoteYamlScalar(v) {
+  if (typeof v !== 'string' || v.length < 2 || v[0] !== '"' || v[v.length - 1] !== '"') return v;
+  return v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+}
+
+// Read the 7 committed agent sources from plugins/trailhead/agents/*.md: each
+// file's basename is the agent's name; frontmatter description/tools ride
+// along, and `body` is the markdown after the closing frontmatter `---`.
+// Single-sources the Codex agent-TOML projection so it never drifts from the
+// committed agent prose. Mirrors readCommandVerbs's shape. Pure fs; kept out
+// of codex-projection.js, which must stay fs-free.
+function readAgentDefs() {
+  const dir = path.join(SRC, 'agents');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.startsWith('trailhead-') && f.endsWith('.md'))
+    .map((f) => {
+      const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+      const fm = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/.exec(raw);
+      const body = fm ? raw.slice(fm[0].length) : raw;
+      return {
+        name: f.slice(0, -3),
+        description: unquoteYamlScalar(fmValue(raw, 'description')),
+        tools: fmValue(raw, 'tools'),
+        body,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Extract one frontmatter scalar's raw value verbatim (an already-valid YAML
 // scalar re-serialises unchanged). Looks only inside the leading ---...--- block.
 // Returns undefined when the key is absent or its value is empty.
