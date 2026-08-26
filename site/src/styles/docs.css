@@ -1,0 +1,181 @@
+/* Themes the Starlight /docs/ section to match the landing brand, dark-only.
+   Loaded via `customCss` in astro.config.mjs, so every rule here is scoped to
+   the docs build (the landing page never imports this file).
+
+   Strategy: (1) map the brand tokens onto Starlight's own `--sl-color-*`
+   custom properties so most of Starlight's stock component CSS (which is
+   authored against those variables) picks up the brand palette for free, and
+   (2) add a handful of direct overrides for treatments the mockup asks for
+   that Starlight doesn't expose as a variable (active sidebar link border,
+   aside background, pager card background, link underline style, etc).
+
+   These rules are intentionally NOT wrapped in `@layer`: Starlight's own
+   component styles all live inside named `@layer starlight.*` blocks, and
+   per the CSS cascade-layers spec, unlayered declarations always win over
+   layered ones regardless of selector specificity. That means every rule
+   below reliably overrides the matching Starlight default without needing
+   `!important` or specificity games. */
+@import './brand-tokens.css';
+
+:root,
+:root[data-theme='light'],
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Base surfaces */
+  --sl-color-bg: var(--bg);
+  --sl-color-bg-nav: rgba(12, 18, 16, 0.72);
+  --sl-color-bg-sidebar: var(--bg-2);
+  --sl-color-bg-inline-code: rgba(255, 255, 255, 0.055);
+
+  /* Grayscale ramp: every component that reads a raw --sl-color-gray-N (or
+     -black/-white) directly, rather than through a semantic alias below,
+     still lands on the brand palette. */
+  --sl-color-black: var(--bg);
+  --sl-color-white: var(--fg);
+  --sl-color-gray-1: var(--fg);
+  --sl-color-gray-2: var(--fg-muted);
+  --sl-color-gray-3: var(--fg-muted);
+  --sl-color-gray-4: var(--fg-dim);
+  --sl-color-gray-5: var(--border);
+  --sl-color-gray-6: var(--border-soft);
+  --sl-color-gray-7: var(--bg-2);
+
+  /* Text + accent */
+  --sl-color-text: #d7d9d2;
+  --sl-color-text-accent: var(--accent-2);
+  --sl-color-accent: var(--accent);
+  --sl-color-accent-high: var(--accent-2);
+  --sl-color-accent-low: rgba(232, 97, 60, 0.14);
+
+  /* Hairlines */
+  --sl-color-hairline: var(--border-soft);
+  --sl-color-hairline-light: var(--border-soft);
+  --sl-color-hairline-shade: var(--border-soft);
+
+  /* Asides */
+  --sl-color-asides-border: rgba(232, 97, 60, 0.28);
+  --sl-color-asides-text-accent: var(--accent-2);
+
+  /* Type */
+  --sl-font: var(--sans);
+  --sl-font-mono: var(--mono);
+}
+
+/* Subtle brand glow behind the prose, faint enough to stay comfortable for
+   long-form reading. */
+body {
+  background-image:
+    radial-gradient(900px 500px at 88% -8%, rgba(232, 97, 60, 0.06), transparent 60%),
+    radial-gradient(800px 500px at 5% 8%, rgba(60, 122, 90, 0.06), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ---- header ---- */
+.header {
+  background: var(--sl-color-bg-nav);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* ---- search box ---- */
+button[data-open-modal] {
+  color: var(--fg-dim);
+}
+@media (min-width: 50rem) {
+  button[data-open-modal] {
+    border-color: var(--border);
+    background-color: rgba(255, 255, 255, 0.02);
+    color: var(--fg-muted);
+  }
+  button[data-open-modal]:hover {
+    border-color: var(--accent);
+    color: var(--fg);
+  }
+}
+button > kbd {
+  background-color: var(--panel);
+  border: 1px solid var(--border-soft);
+  color: var(--fg-dim);
+}
+
+/* ---- sidebar ---- */
+#starlight__sidebar .group-label {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+#starlight__sidebar a {
+  color: var(--fg-muted);
+}
+#starlight__sidebar a:hover,
+#starlight__sidebar a:focus {
+  color: var(--fg);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+#starlight__sidebar a[aria-current='page'],
+#starlight__sidebar a[aria-current='page']:hover,
+#starlight__sidebar a[aria-current='page']:focus {
+  color: var(--fg);
+  background-color: rgba(232, 97, 60, 0.08);
+  border-inline-start: 2px solid var(--accent);
+  font-weight: 600;
+}
+
+/* ---- content: headings, prose, links, inline code ---- */
+.sl-markdown-content h1 {
+  font-weight: 800;
+}
+.sl-markdown-content h2 {
+  font-weight: 750;
+}
+.sl-anchor-link {
+  color: var(--accent-2);
+}
+.sl-markdown-content strong {
+  color: var(--fg);
+}
+.sl-markdown-content a:not(:where(.not-content *)) {
+  text-decoration: underline;
+  text-decoration-color: rgba(243, 132, 79, 0.35);
+  text-underline-offset: 3px;
+}
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+.sl-markdown-content code:not(:where(.not-content *)) {
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--fg);
+}
+
+/* ---- asides: brand accent for every variant (note/tip/caution/danger) ---- */
+.starlight-aside {
+  background-color: rgba(232, 97, 60, 0.06);
+  border-inline-start-color: rgba(232, 97, 60, 0.28);
+  color: #d7d9d2;
+}
+.starlight-aside__title {
+  color: var(--accent-2);
+}
+
+/* ---- table of contents ("On this page") ---- */
+.right-sidebar-panel a {
+  color: var(--fg-muted);
+}
+
+/* ---- pager (prev/next) cards ---- */
+.pagination-links a {
+  background-color: var(--panel);
+  border-color: var(--border-soft);
+  border-radius: var(--radius);
+}
+.pagination-links a:hover {
+  border-color: var(--accent);
+}
+.pagination-links .link-title {
+  color: var(--fg);
+}
