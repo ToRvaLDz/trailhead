@@ -75,6 +75,13 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'trailhead',
+      // Outbound links in the docs header: Starlight renders the `social`
+      // option as icons next to the search box. Mirrors the landing nav's
+      // GitHub + npm links (the wordmark already links back to the landing).
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/ToRvaLDz/trailhead' },
+        { icon: 'npm', label: 'npm', href: 'https://www.npmjs.com/package/@marcomigozzi/trailhead' },
+      ],
       // English served unprefixed at `/docs/`; a future locale would be
       // prefixed (e.g. `/it/docs/`) while `root` stays unprefixed.
       defaultLocale: 'root',
