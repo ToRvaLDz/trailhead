@@ -1,0 +1,32 @@
+---
+// Overrides Starlight's <PageTitle>: renders the per-page decorative
+// map-card hero (#112) above the real `<h1 id="_top">`, then the stock
+// title unchanged. `Astro.locals.starlightRoute.id` was verified empirically
+// via a full `astro build` (see cards.ts) — the /docs/ index route's id is
+// the bare "docs", every other page is "docs/<slug>". Pages with no matching
+// card (only possible for a future/system route; all 10 real docs pages are
+// registered) fall through to rendering just the stock title, so this is a
+// safe no-op there.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import MapCard from './MapCard.astro';
+import { cards } from './cards';
+
+const { id } = Astro.locals.starlightRoute;
+const card = cards[id];
+---
+
+{
+  card && (
+    <div class="docs-hero-slot" aria-hidden="true">
+      <MapCard card={card} />
+    </div>
+  )
+}
+<Default />
+
+<style>
+  .docs-hero-slot {
+    max-width: 500px;
+    margin: 16px 0 22px;
+  }
+</style>

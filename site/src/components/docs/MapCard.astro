@@ -1,0 +1,429 @@
+---
+// Presentational map-card hero for a single /docs page (#112). Reproduces
+// the landing's signature "map-card" motif (see
+// src/components/landing/Hero.astro + src/styles/landing.css), topic-fitted
+// per page, pixel/markup-faithful to the approved mockup
+// (docs-illustrations.html). Purely decorative: the wrapper carries
+// `aria-hidden="true"` plus the `data-docs-hero` / `data-illustration` seam
+// attributes asserted by scripts/check-routes.mjs.
+//
+// Brand surface colors (panel/border/fg/accent/green) come from the shared
+// `var(--brand-token)`s (already loaded globally for /docs/ via
+// src/styles/docs.css -> brand-tokens.css). The per-tag accent colors below
+// are literal hex values, matching landing.css exactly — they are
+// intentionally NOT tokenized (the landing motif never tokenized them
+// either), per the ticket's fidelity requirement.
+import type { Card, CardRow, CardTag } from './cards';
+
+interface Props {
+  card: Card;
+}
+
+const { card } = Astro.props;
+
+const tagLabel = (tag: CardTag) => tag.label;
+
+const rowClass = (row: CardRow) => {
+  const classes = ['row'];
+  if (row.kind === 'fog') classes.push('fog');
+  else if (row.kind === 'dest') classes.push('dest');
+  else {
+    if (row.active) classes.push('active');
+    if (row.done) classes.push('done');
+    if (row.struck) classes.push('struck');
+  }
+  return classes.join(' ');
+};
+
+const barStyle =
+  card.barVariant === 'success'
+    ? `width:${card.barPercent}%;background:linear-gradient(90deg,var(--green),var(--green-bright))`
+    : card.barVariant === 'warning'
+      ? `width:${card.barPercent}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))`
+      : `width:${card.barPercent}%`;
+---
+
+<div
+  class:list={['mapcard', { dashed: card.dashed }]}
+  data-docs-hero="true"
+  data-illustration={card.key}
+  aria-hidden="true"
+>
+  <div class="mapcard-head">
+    <div class="mapcard-title">
+      {
+        card.shield ? (
+          <span class="shield">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </span>
+        ) : (
+          <span class="diamond">&#9670;</span>
+        )
+      }
+      {' '}{card.title}
+    </div>
+    <div class="mapcard-count">
+      {card.countBold && <b>{card.countBold}</b>}{card.count}
+    </div>
+  </div>
+
+  <div class="bar"><span style={barStyle} /></div>
+
+  {
+    card.rows?.map((row) => (
+      <div class={rowClass(row)}>
+        {row.leadingTag && <span class={`tag ${row.leadingTag.variant}`}>{tagLabel(row.leadingTag)}</span>}
+        <span class="title">{row.title}</span>
+        {row.trailingTag && <span class={`tag ${row.trailingTag.variant}`}>{tagLabel(row.trailingTag)}</span>}
+        {row.check && <span class="check">&#10003;</span>}
+        {row.flag && <span class="flag">&#9873;</span>}
+        {row.avatar && <span class={`avatar av-${row.avatar.key}`}>{row.avatar.initials}</span>}
+      </div>
+    ))
+  }
+
+  {
+    card.stages?.map((stage) => (
+      <div class={`stage ${stage.state === 'done' ? 'done' : stage.state === 'on' ? 'on' : 'wait'}`}>
+        <span class="dot" />
+        <span class="name">{stage.name}</span>
+        <span class="mark">{stage.mark}</span>
+      </div>
+    ))
+  }
+
+  {
+    card.chips && (
+      <div class="chips">
+        {card.chips.map((chip) =>
+          chip.prefix ? (
+            <span class="chip">
+              {chip.prefix}
+              <span class="k">{chip.key}</span>
+            </span>
+          ) : (
+            <span class="chip">
+              <span class="k">{chip.key}</span>: <span class="v">{chip.value}</span>
+            </span>
+          )
+        )}
+      </div>
+    )
+  }
+
+  {
+    card.foot && (
+      <div class="mapcard-foot">
+        {card.foot.stackAvatars && (
+          <div class="stack">
+            {card.foot.stackAvatars.map((avatar) => (
+              <span class={`avatar av-${avatar.key}`}>{avatar.initials}</span>
+            ))}
+          </div>
+        )}
+        <span>{card.foot.caption}</span>
+      </div>
+    )
+  }
+</div>
+
+<style>
+  .mapcard {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 24px 60px -38px rgba(0, 0, 0, 0.8);
+  }
+  .mapcard.dashed {
+    border-style: dashed;
+    border-color: #33443c;
+  }
+  .mapcard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .mapcard-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15.5px;
+    color: var(--fg);
+  }
+  .mapcard-title .diamond {
+    color: var(--accent);
+  }
+  .mapcard-title .shield {
+    color: var(--accent-2);
+    display: inline-flex;
+  }
+  .mapcard-count {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .mapcard-count b {
+    color: var(--fg);
+  }
+  .bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    margin: 13px 0 15px;
+    overflow: hidden;
+  }
+  .bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--green), var(--accent));
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 11px;
+    border: 1px solid var(--border-soft);
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.015);
+  }
+  .row:last-child {
+    margin-bottom: 0;
+  }
+  .row.active {
+    border-color: rgba(232, 97, 60, 0.55);
+    background: rgba(232, 97, 60, 0.05);
+  }
+  .row .title {
+    font-weight: 600;
+    font-size: 13.5px;
+    flex: 1;
+    min-width: 0;
+    color: var(--fg);
+  }
+  .row.done .title {
+    color: var(--fg-dim);
+    text-decoration: line-through;
+  }
+  .row .check {
+    color: var(--green-bright);
+    font-size: 14px;
+  }
+  .row.fog {
+    border-style: dashed;
+    opacity: 0.6;
+  }
+  .row.fog .title {
+    color: var(--fg-dim);
+    filter: blur(0.4px);
+  }
+  .row.struck .title {
+    color: var(--fg-dim);
+    text-decoration: line-through;
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .tag.build {
+    background: rgba(59, 110, 245, 0.16);
+    color: #7fa2ff;
+  }
+  .tag.bug {
+    background: rgba(232, 97, 60, 0.16);
+    color: #f39274;
+  }
+  .tag.decision {
+    background: rgba(124, 92, 255, 0.16);
+    color: #b3a1ff;
+  }
+  .tag.research {
+    background: rgba(79, 174, 124, 0.16);
+    color: #64c79a;
+  }
+  .tag.prototype {
+    background: rgba(229, 178, 60, 0.16);
+    color: #e5b23c;
+  }
+  .tag.task {
+    background: rgba(159, 176, 166, 0.16);
+    color: #b6c4bb;
+  }
+  .tag.todo {
+    background: rgba(59, 110, 245, 0.16);
+    color: #7fa2ff;
+  }
+  .tag.idea {
+    background: rgba(229, 178, 60, 0.16);
+    color: #e5b23c;
+  }
+  .tag.seed {
+    background: rgba(79, 174, 124, 0.18);
+    color: var(--green-bright);
+  }
+  .tag.frontier {
+    border: 1px solid rgba(232, 97, 60, 0.5);
+    color: var(--accent-2);
+    padding: 2px 8px;
+  }
+  .tag.guard {
+    border: 1px solid rgba(243, 132, 79, 0.4);
+    color: var(--accent-2);
+    padding: 2px 8px;
+  }
+
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    color: #0c1210;
+    font-family: var(--mono);
+    flex: none;
+  }
+  .av-mm {
+    background: #e5b23c;
+  }
+  .av-al {
+    background: #4fae7c;
+  }
+  .av-rs {
+    background: #6f8fe0;
+  }
+  .mapcard-foot {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 12px;
+    color: var(--fg-muted);
+    font-size: 12.5px;
+  }
+  .stack {
+    display: flex;
+  }
+  .stack .avatar {
+    margin-left: -6px;
+    border: 2px solid var(--panel);
+  }
+  .stack .avatar:first-child {
+    margin-left: 0;
+  }
+
+  /* stage rows (workflow card) */
+  .stage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 11px;
+    border: 1px solid var(--border-soft);
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.015);
+    font-size: 13.5px;
+  }
+  .stage:last-child {
+    margin-bottom: 0;
+  }
+  .stage .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .stage.on {
+    border-color: rgba(232, 97, 60, 0.55);
+    background: rgba(232, 97, 60, 0.05);
+  }
+  .stage.on .dot {
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(232, 97, 60, 0.18);
+  }
+  .stage.done .dot {
+    background: var(--green-bright);
+  }
+  .stage.done .name {
+    color: var(--fg-dim);
+  }
+  .stage.wait .dot {
+    background: transparent;
+    border: 1.5px solid var(--border);
+  }
+  .stage.wait .name {
+    color: var(--fg-dim);
+  }
+  .stage .name {
+    font-weight: 600;
+    flex: 1;
+    color: var(--fg);
+  }
+  .stage .mark {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .stage.done .mark {
+    color: var(--green-bright);
+  }
+
+  /* mono chips (commands / configuration) */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .chip {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 7px 11px;
+    border-radius: 9px;
+    border: 1px solid var(--border-soft);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--fg);
+  }
+  .chip .k {
+    color: var(--accent-2);
+  }
+  .chip .v {
+    color: var(--green-bright);
+  }
+
+  /* destination marker row */
+  .row.dest {
+    border-color: rgba(243, 132, 79, 0.35);
+    background: rgba(232, 97, 60, 0.04);
+  }
+  .row.dest .flag {
+    color: var(--accent-2);
+  }
+  .row.dest .title {
+    color: var(--fg);
+  }
+</style>
