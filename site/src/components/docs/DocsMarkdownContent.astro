@@ -2,13 +2,13 @@
 // Overrides Starlight's <MarkdownContent>: reproduces the stock component
 // (a `.sl-markdown-content` wrapper around `<slot />`) but injects the
 // per-page decorative map-card hero (#112) as the FIRST child, before the
-// slot, so it floats and the markdown prose (starting with the opening
-// paragraph, right after the real `<h1 id="_top">` rendered by the stock
-// PageTitle) wraps around it. `Astro.locals.starlightRoute.id` was verified
-// empirically via a full `astro build` (see cards.ts) — the /docs/ index
-// route's id is the bare "docs", every other page is "docs/<slug>". Pages
-// with no matching card (only possible for a future/system route; all 10
-// real docs pages are registered) fall through to rendering just the stock
+// slot, so it renders as a full-width banner directly below the real
+// `<h1 id="_top">` (rendered by the stock PageTitle) and above the body,
+// spanning the text column width. `Astro.locals.starlightRoute.id` was
+// verified empirically via a full `astro build` (see cards.ts) — the /docs/
+// index route's id is the bare "docs", every other page is "docs/<slug>".
+// Pages with no matching card (only possible for a future/system route; all
+// 10 real docs pages are registered) fall through to rendering just the stock
 // wrapper, so this is a safe no-op there.
 import '@astrojs/starlight/style/markdown.css';
 import MapCard from './MapCard.astro';
@@ -21,7 +21,7 @@ const card = cards[id];
 <div class="sl-markdown-content">
   {
     card && (
-      <div class="docs-hero-float">
+      <div class="docs-hero">
         <MapCard card={card} />
       </div>
     )
@@ -30,18 +30,9 @@ const card = cards[id];
 </div>
 
 <style>
-  .docs-hero-float {
-    float: right;
-    width: 380px;
-    margin: 0.25rem 0 1rem 1.75rem;
-  }
-
-  @media (max-width: 50rem) {
-    .docs-hero-float {
-      float: none;
-      width: auto;
-      max-width: 520px;
-      margin-inline: 0;
-    }
+  /* Full-width banner below the page title, spanning the text column. */
+  .docs-hero {
+    width: 100%;
+    margin: 0.25rem 0 1.75rem;
   }
 </style>
