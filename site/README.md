@@ -25,8 +25,11 @@ npm install     # install dependencies
 npm run dev     # local dev server
 npm run build   # static build -> dist/
 npm run preview # preview the built output
-npm run check   # assert the build output routes are correct
+npm run check   # build, then assert the output routes are correct
+npm run check:routes # assert routes against the current dist/ (no rebuild)
 ```
+
+`npm run check` builds first, so it never passes against a stale `dist/`.
 
 ## Status
 

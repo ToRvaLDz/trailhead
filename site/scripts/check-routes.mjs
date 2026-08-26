@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 // Seam test for the site scaffold: asserts the static build produced the
-// expected routes, and guards against the Starlight i18n `locales: { en }`
-// misconfiguration that would prefix routes as /en/... instead of serving
-// English unprefixed at / and /docs/.
+// expected routes (landing at /, docs at /docs/...). Run it via `npm run
+// check`, which builds first so the assertions never pass against a stale
+// dist/; `npm run check:routes` runs the bare assertion against the current
+// dist/.
+//
+// The `dist/en` negative assertion guards one specific regression: `en`
+// becoming a NON-default (prefixed) locale, which would re-introduce /en/...
+// routes. Note Starlight leaves the *default* locale unprefixed whatever it is
+// named, so the benign `locales: { en }`-as-default substitution stays at
+// /docs/ (and a mismatched defaultLocale hard-fails the build instead); this
+// check catches the prefixed-locale case, not that substitution.
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
