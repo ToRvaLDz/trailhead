@@ -1,14 +1,14 @@
 // Data registry for the per-page docs hero map-cards (#112).
 //
 // Keyed by the VERIFIED Astro.locals.starlightRoute.id for each page (see
-// DocsPageTitle.astro), empirically confirmed via a full `astro build`:
+// DocsMarkdownContent.astro), empirically confirmed via a full `astro build`:
 // the /docs/ index route's id is the bare "docs" (no trailing slash / index
 // segment), every other page is "docs/<slug>".
 //
 // Content is copied verbatim from the approved mockup
 // (docs-illustrations.html)'s 10 gallery cards.
 
-export type RowKind = 'tag' | 'dest' | 'fog' | 'plain';
+export type RowKind = 'tag' | 'dest' | 'fog';
 
 export interface CardTag {
   variant:
@@ -55,7 +55,6 @@ export interface CardChip {
   prefix?: string;
   key?: string;
   value?: string;
-  /** Fully custom chip markup fallback (key: value pairs use `key`/`value`). */
 }
 
 export interface Card {

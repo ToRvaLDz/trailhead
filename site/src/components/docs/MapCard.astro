@@ -3,9 +3,10 @@
 // the landing's signature "map-card" motif (see
 // src/components/landing/Hero.astro + src/styles/landing.css), topic-fitted
 // per page, pixel/markup-faithful to the approved mockup
-// (docs-illustrations.html). Purely decorative: the wrapper carries
-// `aria-hidden="true"` plus the `data-docs-hero` / `data-illustration` seam
-// attributes asserted by scripts/check-routes.mjs.
+// (docs-illustrations.html). Purely decorative: the root element self-hides
+// via `aria-hidden="true"` (do not also add that attribute to any wrapper
+// of this component), and carries the `data-docs-hero` / `data-illustration`
+// seam attributes asserted by scripts/check-routes.mjs.
 //
 // Brand surface colors (panel/border/fg/accent/green) come from the shared
 // `var(--brand-token)`s (already loaded globally for /docs/ via

@@ -137,6 +137,14 @@ button > kbd {
 .sl-markdown-content strong {
   color: var(--fg);
 }
+/* Justify body copy with hyphenation (#112) so the opening prose wraps
+   around the floated hero with a clean edge against the card. Starlight
+   emits <html lang="en">, which is what enables `hyphens: auto` here. */
+.sl-markdown-content p {
+  text-align: justify;
+  hyphens: auto;
+  text-wrap: pretty;
+}
 .sl-markdown-content a:not(:where(.not-content *)) {
   text-decoration: underline;
   text-decoration-color: rgba(243, 132, 79, 0.35);
