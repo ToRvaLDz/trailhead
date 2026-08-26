@@ -4,10 +4,10 @@
 
 For a static Astro project with a custom landing at `/` and Starlight docs at `/docs` on Cloudflare Pages:
 - **Project structure**: Single Astro project with `src/pages/index.astro` (landing) and `src/content/docs/` (Starlight)
-- **Critical design choice**: Starlight's default configuration creates URL routes directly from content structure. Mounting docs at `/docs` path requires either mounting the entire site at `/docs` (Astro's `base` config) or using Starlight's i18n/locale routing as a workaround
-- **Recommended approach**: Colocate landing and docs in one project; use directory structure `src/content/docs/` which creates URLs like `/introduction`, `/guide/` etc., with a custom index at `/` via `src/pages/index.astro`
-- **Cloudflare Pages**: Build command `npm run build`, output `dist`, Node ≥22.12.0, frame set via dashboard
-- **Confidence**: HIGH for build config and coexistence pattern (official docs + deployment guide); MEDIUM for `/docs` mounting (requires architectural choice, not a single official recommendation)
+- **Critical design choice**: Starlight derives doc URLs from file paths inside the `src/content/docs/` content collection. To serve docs under `/docs/` while keeping `/` for a custom landing, **nest all doc content in a `docs/` subdirectory** of the collection (`src/content/docs/docs/…`). This is the officially documented subpath pattern; Starlight has no native `base`/`routePrefix` option.
+- **Recommended approach**: One project. Custom landing at `src/pages/index.astro` → `/`; Starlight content under `src/content/docs/docs/` → `/docs/…`. Sidebar `autogenerate: { directory: 'docs' }` builds the docs nav automatically.
+- **Cloudflare Pages**: Build command `npm run build`, output `dist`, Node ≥22.12.0, framework preset Astro.
+- **Confidence**: HIGH across the board, including `/docs` mounting (the nesting pattern is documented in Starlight's Pages guide and works with static output on Cloudflare Pages).
 
 ---
 
@@ -25,7 +25,7 @@ You can coexist a custom landing page and Starlight documentation in a single As
 
 **Source**: [Starlight Manual Setup Guide](https://starlight.astro.build/manual-setup/) confirms that Starlight can be integrated into an existing Astro project alongside custom pages. [Astro Project Structure](https://docs.astro.build/en/basics/project-structure/) documents that `src/pages/` is the only reserved directory, allowing Starlight to use `src/content/docs/` without conflict.
 
-### File Organization Example
+### File Organization Example (landing at `/`, docs at `/docs/`)
 
 ```
 src/
@@ -33,68 +33,63 @@ src/
 │   └── index.astro                    # Custom landing at /
 ├── content/
 │   └── docs/
-│       ├── index.md                   # Docs homepage at /docs/ (with proper config)
-│       ├── installation.md            # At /docs/installation or /installation depending on config
-│       ├── guides/
-│       │   └── routing.md             # At /docs/guides/routing or /guides/routing
-│       └── reference/
-│           └── config.md              # At /docs/reference/config or /reference/config
+│       └── docs/                       # nest all Starlight content one level down
+│           ├── index.md               # → /docs/
+│           ├── installation.md        # → /docs/installation
+│           ├── guides/
+│           │   └── routing.md         # → /docs/guides/routing
+│           └── reference/
+│               └── config.md          # → /docs/reference/config
+├── content.config.ts                   # docs collection schema (docsSchema())
 ├── components/
 ├── layouts/
 └── styles/
 ```
 
-### The `/docs` Path Challenge
+### The `/docs` Path: the supported way
 
-**Critical finding**: Starlight uses file-based routing from `src/content/docs/` content collection. By default, a file at `src/content/docs/introduction.md` creates a route at `/introduction`, NOT `/docs/introduction`. This is the core architectural constraint.
+**Key fact**: Starlight uses file-based routing from the `src/content/docs/` content collection. A file's URL is derived from its **path inside** that collection: `src/content/docs/introduction.md` → `/introduction`. So to put every doc under `/docs/`, **nest the whole docs tree one level deeper**, in `src/content/docs/docs/`: `src/content/docs/docs/index.md` → `/docs/`, `src/content/docs/docs/installation.md` → `/docs/installation`, and so on. The root `/` stays free for a custom `src/pages/index.astro`.
 
-**Three approaches to serve Starlight at `/docs` path:**
+This is not a hack: Starlight's own Pages guide documents adding all pages at a subpath by placing the content inside a subdirectory of `src/content/docs/`. `src/pages/` and the Starlight content collection coexist (only `src/pages/` is Astro-reserved), so the custom landing and the docs live in one project.
 
-#### Option A: Mount Entire Site at `/docs` (Not recommended for this use case)
-Set Astro's `base` config:
 ```javascript
 // astro.config.mjs
-export default defineConfig({
-  base: '/docs',
-  integrations: [starlight({ title: 'Docs' })],
-});
-```
-**Problem**: This moves BOTH the landing page and docs to `/docs/`, so landing becomes `/docs/` instead of `/`.
-**Source**: [Astro Configuration Reference - base](https://docs.astro.build/en/reference/configuration-reference/) documents that `base` "allows you to deploy to a sub-directory by specifying a path prefix" and affects the entire site.
+import { defineConfig } from 'astro/config';
+import starlight from '@astrojs/starlight';
 
-#### Option B: Use Locale/i18n Routing (Workaround)
-Starlight supports locale-based URL prefixes via `locales` configuration:
-```javascript
-// astro.config.mjs
 export default defineConfig({
+  output: 'static',                       // static build for Cloudflare Pages
   integrations: [
     starlight({
-      title: 'Docs',
-      locales: {
-        root: {
-          label: 'Docs',
-          lang: 'en',
-        },
-      },
+      title: 'trailhead',
+      sidebar: [
+        // autogenerate reads from src/content/docs/docs/
+        { label: 'Docs', autogenerate: { directory: 'docs' } },
+      ],
     }),
   ],
 });
 ```
-**How it works**: Configure `root` locale and place docs in `src/content/docs/` root. This keeps docs at `/` and landing in `src/pages/index.astro`.
-**Problem**: Not a primary use case; i18n routing is designed for language support, not site sections.
-**Source**: [Starlight Internationalization Guide](https://starlight.astro.build/guides/i18n/) explains locale routing structure.
 
-#### Option C: Separate Projects or Reverse Proxy (Alternative architecture)
-- Deploy landing as a static site on Cloudflare Pages at `trailhead.marcomigozzi.it/`
-- Deploy Starlight separately on another Pages project and map `/docs/` via Cloudflare Workers reverse proxy
-**Complexity**: Requires two repositories or shared publishing pipeline.
+```typescript
+// src/content.config.ts
+import { defineCollection } from 'astro:content';
+import { docsSchema } from '@astrojs/starlight/schema';
 
-#### **Recommended**: Option A (site-wide `base: '/docs'`)
-If the business goal is to eventually move the entire site to a `/docs` path (e.g., trailhead.marcomigozzi.it**/docs**/), use Astro's `base: '/docs'` and adjust the landing page URL expectation. This is the cleanest from Starlight's perspective, as it respects the framework's routing model.
+export const collections = {
+  docs: defineCollection({ schema: docsSchema() }),
+};
+```
 
-**If landing must stay at `/`**: Accept that Starlight docs will be at root URLs (e.g., `/introduction`, `/guides/routing`) and use a custom header or navigation to establish a conceptual "/docs section" for UX.
+**Why this over the alternatives:**
+- **Astro site-wide `base: '/docs'`** moves the *entire* site (landing included) under `/docs/`, so the landing is no longer at `/`. Wrong for this use case.
+- **Starlight has no native `base`/`routePrefix` config option.** A prefix option is an open feature request ([discussion #966](https://github.com/withastro/starlight/discussions/966)), not shipped. The nested-subdirectory layout is the officially documented workaround.
 
-**Confidence**: MEDIUM - Coexistence is documented; mounting at a specific path is an architectural choice not explicitly recommended in official docs.
+**Sidebar & links**: `autogenerate: { directory: 'docs' }` turns the nested folders into sidebar groups automatically; internal links and slugs derive from the file paths, so they already carry the `/docs/` prefix. One gotcha: do not also create a page at `/docs/` from `src/pages/` (e.g. `src/pages/docs.astro`), or it collides with the collection route.
+
+**Sources**: [Starlight Pages Guide](https://starlight.astro.build/guides/pages/) (subpath via subdirectory; coexistence with `src/pages/`), [Starlight Sidebar Guide](https://starlight.astro.build/guides/sidebar/) (`autogenerate` groups), [Starlight Configuration Reference](https://starlight.astro.build/reference/configuration/) (no native base/prefix option), [Starlight discussion #966](https://github.com/withastro/starlight/discussions/966) (prefix is an unshipped request).
+
+**Confidence**: HIGH - the nesting pattern is documented in Starlight's Pages guide, the absence of a native prefix option is verified against the full config reference, and static output is supported on Cloudflare Pages.
 
 ---
 
@@ -273,15 +268,15 @@ If you want to stay flexible, you can also:
 
 ## Implementation Checklist for trailhead.marcomigozzi.it
 
-- [ ] **Project structure**: Create landing at `src/pages/index.astro`, Starlight docs at `src/content/docs/`
-- [ ] **Astro config**: Add Starlight integration; decide on `base` path (recommend `/docs` if site will live at `/docs`, or omit if landing stays at `/`)
+- [ ] **Project structure**: Landing at `src/pages/index.astro`; nest all Starlight content under `src/content/docs/docs/` so it serves at `/docs/…`
+- [ ] **Astro config**: Add Starlight integration with `output: 'static'` and `sidebar: [{ autogenerate: { directory: 'docs' } }]`; define the `docs` collection with `docsSchema()` in `src/content.config.ts`
 - [ ] **Build locally**: Run `npm run build` and verify `dist/` output
 - [ ] **Cloudflare Pages**: Connect GitHub repo, set framework to Astro, confirm `npm run build` → `dist`
 - [ ] **Production branch**: Set to `main`; enable automatic deployments
 - [ ] **Custom domain**: Add `trailhead.marcomigozzi.it` via Pages dashboard → Custom domains
 - [ ] **DNS (if needed)**: Verify CNAME record `trailhead` → `trailhead.pages.dev` in Cloudflare zone
 - [ ] **Preview deployments**: Confirm PR preview URLs work (should be automatic)
-- [ ] **Test**: Visit `https://trailhead.marcomigozzi.it/`, verify landing page; check `/introduction`, `/guides/` for docs
+- [ ] **Test**: Visit `https://trailhead.marcomigozzi.it/`, verify landing page; check `/docs/`, `/docs/guides/…` for docs
 - [ ] **Node version pinning** (optional): Add `node_version = "22.12.0"` to `wrangler.toml` or set `NODE_VERSION` env var in Cloudflare dashboard
 
 ---
@@ -290,7 +285,7 @@ If you want to stay flexible, you can also:
 
 | Decision | Tradeoff | Recommendation |
 |----------|----------|-----------------|
-| **Mount Starlight at `/docs` path?** | Requires mounting entire site at `/docs`, moving landing to `/docs/`. Clean for Starlight; breaks "/" expectation for landing. | Accept landing + docs at root URLs; use navigation/branding to signal "docs section". OR plan to migrate landing to `/docs/` in future. |
+| **Mount Starlight at `/docs` path?** | Site-wide `base: '/docs'` also moves the landing; Starlight has no native prefix option. | Nest all docs under `src/content/docs/docs/` (documented subpath pattern): landing stays at `/`, docs at `/docs/…`. |
 | **Single project vs. two projects?** | One project is simpler to maintain; two projects isolates concerns but requires separate deploys. | Use single project (Astro + Starlight coexistence is supported). |
 | **Node version pinning?** | Explicit pinning (22.12.0) ensures reproducibility; Cloudflare's LTS default is usually safe. | Let Cloudflare use LTS; pin only if you have a specific version requirement. |
 | **Preview vs. production branch strategy?** | All non-production branches is the safest default; custom patterns give fine control but risk human error. | Start with "All non-production branches"; add custom patterns if automation (Dependabot) creates noise. |
@@ -302,7 +297,7 @@ If you want to stay flexible, you can also:
 | Topic | Primary Source | Confidence |
 |-------|---|---|
 | Astro + Starlight coexistence | Starlight Manual Setup + Astro routing docs | HIGH |
-| Starlight at `/docs` path | Astro `base` config + i18n routing docs | MEDIUM (no single "recommended" path) |
+| Starlight at `/docs` path (nested subdirectory) | Starlight Pages guide + Configuration reference (no native prefix) | HIGH |
 | Cloudflare Pages Astro build config | Official Cloudflare Pages Astro guide | HIGH |
 | Node.js version | Astro installation docs | HIGH |
 | Preview deployments & branch control | Cloudflare Pages docs | HIGH |
@@ -315,6 +310,10 @@ If you want to stay flexible, you can also:
 
 - [Starlight Getting Started](https://starlight.astro.build/getting-started/)
 - [Starlight Manual Setup](https://starlight.astro.build/manual-setup/)
+- [Starlight Pages Guide (subpath via subdirectory)](https://starlight.astro.build/guides/pages/)
+- [Starlight Sidebar Guide (autogenerate)](https://starlight.astro.build/guides/sidebar/)
+- [Starlight Configuration Reference](https://starlight.astro.build/reference/configuration/)
+- [Starlight discussion #966 (route-prefix request, unshipped)](https://github.com/withastro/starlight/discussions/966)
 - [Starlight Internationalization](https://starlight.astro.build/guides/i18n/)
 - [Astro Project Structure](https://docs.astro.build/en/basics/project-structure/)
 - [Astro Routing](https://docs.astro.build/en/basics/routing/)
