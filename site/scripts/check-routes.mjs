@@ -104,6 +104,28 @@ const commandsMustContain = [
 
 const docsPlaceholder = 'Skeleton placeholder';
 
+// Per-page hero illustrations (#112): every /docs/* page renders exactly one
+// decorative map-card hero above the real `<h1 id="_top">`, keyed by
+// `data-illustration`. Keyed by the illustration key -> its built HTML file,
+// so a missing file is a hard failure rather than a silently skipped
+// assertion (the `existsSync`-gated blocks above intentionally skip when a
+// file is absent; these must not).
+const heroCardsByKey = {
+  overview: path.join(dist, 'docs', 'index.html'),
+  'getting-started': path.join(dist, 'docs', 'getting-started', 'index.html'),
+  concepts: path.join(dist, 'docs', 'concepts', 'index.html'),
+  workflow: path.join(dist, 'docs', 'workflow', 'index.html'),
+  'ticket-types': path.join(dist, 'docs', 'ticket-types', 'index.html'),
+  commands: path.join(dist, 'docs', 'commands', 'index.html'),
+  captures: path.join(dist, 'docs', 'captures', 'index.html'),
+  teamwork: path.join(dist, 'docs', 'teamwork', 'index.html'),
+  configuration: path.join(dist, 'docs', 'configuration', 'index.html'),
+  hooks: path.join(dist, 'docs', 'hooks', 'index.html'),
+};
+
+const heroMarkerAttr = 'data-docs-hero';
+const notFoundIndex = path.join(dist, '404.html');
+
 // Docs-brand assertions: the /docs/ section must be themed to the landing
 // brand (dark-only) — the header renders the same wordmark as the landing
 // nav, and Starlight's light/dark/auto theme picker is gone (the custom
@@ -184,6 +206,48 @@ for (const slug of ['index', ...docsSlugs]) {
   }
 }
 
+for (const [key, file] of Object.entries(heroCardsByKey)) {
+  if (!existsSync(file)) {
+    failures.push(`docs hero (${key}): missing expected build output: ${path.relative(siteRoot, file)}`);
+    continue;
+  }
+  const html = readFileSync(file, 'utf8');
+  if (!html.includes(heroMarkerAttr)) {
+    failures.push(`docs hero (${key}): missing ${heroMarkerAttr}`);
+  }
+  if (!html.includes(`data-illustration="${key}"`)) {
+    failures.push(`docs hero (${key}): missing data-illustration="${key}"`);
+  }
+  // Robust to Astro splitting the inline SVG across many nodes: count the
+  // literal attribute name (with the trailing `=`), not the whole element.
+  const heroMarkerCount = html.split(`${heroMarkerAttr}=`).length - 1;
+  if (heroMarkerCount !== 1) {
+    failures.push(
+      `docs hero (${key}): expected exactly one ${heroMarkerAttr} occurrence, found ${heroMarkerCount}`
+    );
+  }
+  const h1Count = html.split('<h1 id="_top"').length - 1;
+  if (h1Count !== 1) {
+    failures.push(`docs hero (${key}): expected exactly one <h1 id="_top"> occurrence, found ${h1Count}`);
+  }
+}
+
+// Negative assertions: the hero marker must never leak onto the landing page
+// or a 404/system route.
+if (existsSync(landingIndex)) {
+  const landingHtml = readFileSync(landingIndex, 'utf8');
+  if (landingHtml.includes(heroMarkerAttr)) {
+    failures.push(`landing (dist/index.html) unexpectedly contains ${heroMarkerAttr}`);
+  }
+}
+
+if (existsSync(notFoundIndex)) {
+  const notFoundHtml = readFileSync(notFoundIndex, 'utf8');
+  if (notFoundHtml.includes(heroMarkerAttr)) {
+    failures.push(`404 (dist/404.html) unexpectedly contains ${heroMarkerAttr}`);
+  }
+}
+
 if (failures.length > 0) {
   console.error('check-routes: FAILED');
   for (const failure of failures) {
@@ -193,6 +257,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left.'
+  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present.'
 );
 process.exit(0);
