@@ -1,31 +1,8 @@
 /* Landing page styles, reproduced from the approved design mockup.
    Imported only from src/pages/index.astro so it never leaks into
    the Starlight /docs/ pages. */
+@import './brand-tokens.css';
 
-:root {
-  --bg: #0c1210;
-  --bg-2: #0f1714;
-  --panel: #131b18;
-  --panel-2: #172420;
-  --border: #24322c;
-  --border-soft: #1c2823;
-  --fg: #f2efe8;
-  --fg-muted: #9fb0a6;
-  --fg-dim: #7d8f84;
-  --green: #3c7a5a;
-  --green-bright: #4fae7c;
-  --navy: #1e2a54;
-  --accent: #e8613c;
-  --accent-2: #f3844f;
-  --blue: #3b6ef5;
-  --coral: #e8613c;
-  --purple: #7c5cff;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --maxw: 1120px;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Cascadia Code", monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
-}
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
