@@ -105,7 +105,7 @@ const commandsMustContain = [
 const docsPlaceholder = 'Skeleton placeholder';
 
 // Per-page hero illustrations (#112): every /docs/* page renders exactly one
-// decorative map-card hero floated into the content, below the real
+// decorative map-card hero as a full-width banner below the real
 // `<h1 id="_top">`, keyed by `data-illustration`. Keyed by the illustration
 // key -> its built HTML file, so a missing file is a hard failure rather
 // than a silently skipped assertion (the `existsSync`-gated blocks above
@@ -238,8 +238,9 @@ for (const [key, file] of Object.entries(heroCardsByKey)) {
   if (!heroAriaHiddenPattern.test(html)) {
     failures.push(`docs hero (${key}): missing aria-hidden="true" on the hero element`);
   }
-  // #112: the hero is now floated INTO the content, so it must render AFTER
-  // the real <h1 id="_top">, not above it.
+  // #112: the hero is a banner at the top of the content, so it must render
+  // AFTER the real <h1 id="_top"> (which the stock PageTitle emits above it),
+  // not before it.
   const heroIndex = html.indexOf(`${heroMarkerAttr}=`);
   const h1Index = html.indexOf('<h1 id="_top"');
   if (!(heroIndex > h1Index)) {
@@ -272,6 +273,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (floated into the content, below the title, aria-hidden).'
+  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden).'
 );
 process.exit(0);
