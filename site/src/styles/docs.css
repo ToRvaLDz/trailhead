@@ -145,6 +145,13 @@ button > kbd {
   hyphens: auto;
   text-wrap: pretty;
 }
+/* Wide, boxed blocks never wrap beside the floated hero (#112): squeezed into
+   the ~300px column left of the card they read badly (a cramped table, a
+   scrolling code block), so they clear below the float. Paragraphs, lists and
+   short headings still wrap around the card. */
+.sl-markdown-content :is(table, .expressive-code, .starlight-aside) {
+  clear: right;
+}
 .sl-markdown-content a:not(:where(.not-content *)) {
   text-decoration: underline;
   text-decoration-color: rgba(243, 132, 79, 0.35);
