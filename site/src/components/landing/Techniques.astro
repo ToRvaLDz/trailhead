@@ -1,0 +1,62 @@
+---
+// "Built in, not bolted on" band: the three techniques cards, the sub-techniques
+// grid, and the self-contained note.
+---
+
+<section class="band">
+  <div class="wrap">
+    <span class="eyebrow">Built in, not bolted on</span>
+    <h2 class="h2">The techniques come with it</h2>
+    <p class="sub">Grilling, quick off-map capture, design mockups: no extra plugins to wire up. trailhead ships its own agents and needs only an authenticated <code>gh</code>.</p>
+    <div class="techs">
+      <div class="tech grill">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0-6 6c0 2 1 3 1 5h10c0-2 1-3 1-5a6 6 0 0 0-6-6z"/><path d="M9 21h6M8.5 18h7"/></svg></div>
+        <h3>Grilling</h3>
+        <p>One question at a time until a fuzzy decision becomes a closed choice. It's how the <b>fog on the map</b> turns into tickets, and it keeps the call yours, not the agent's.</p>
+        <div class="foot-tags"><span class="mini">converge decisions</span><span class="mini">clear the fog</span></div>
+      </div>
+      <div class="tech wb">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/><path d="M7 9h6M7 13h4"/></svg></div>
+        <h3>Whiteboard</h3>
+        <p>Not every task belongs on a map. Capture a <b>bug, a to-do, or a loose idea</b> to the whiteboard and work it off to the side, no map ceremony, then get straight back to the trail.</p>
+        <div class="foot-tags"><span class="mini">off-map tickets</span><span class="mini">quick, no split</span></div>
+      </div>
+      <div class="tech proto">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+        <h3>Design prototypes</h3>
+        <p>For UI work, mock up the screen on <b>claude.ai/design</b> or <b>Google Stitch</b> before any code, react to it, then reproduce it faithfully. This very page started as one of those mockups.</p>
+        <div class="foot-tags"><span class="mini">claude.ai/design</span><span class="mini">Stitch</span></div>
+      </div>
+    </div>
+    <div class="subtech-head">
+      <h3>And the heavy machinery, where it earns its keep</h3>
+      <span>Run once per ticket or once per repo, never as busywork.</span>
+    </div>
+    <div class="subtechs">
+      <div class="subtech">
+        <div class="k">RED &rarr; GREEN</div>
+        <h4>TDD at the seams</h4>
+        <p>A failing test at the real seam before any implementation, then make it pass, then refactor. Dial it up or off per project.</p>
+      </div>
+      <div class="subtech">
+        <div class="k">adversarial</div>
+        <h4>Code review</h4>
+        <p>Every build's diff reviewed across axes, each finding verified before it's reported, deferring to no "settled decision" or convention.</p>
+      </div>
+      <div class="subtech">
+        <div class="k">scientific method</div>
+        <h4>Debugging</h4>
+        <p>Reproduce, localise, a falsifiable hypothesis, confirm the cause with a test, then verify the fix. No guess-and-patch.</p>
+      </div>
+      <div class="subtech">
+        <div class="k">once per repo</div>
+        <h4>Codebase mapping</h4>
+        <p>A one-time fan-out that distils architecture, stack, conventions, and risks into a single issue the whole team reads.</p>
+      </div>
+    </div>
+    <div class="selfcontained">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      <span>Each runs as <b>trailhead's own agent</b>, projected to Claude Code and Codex. Zero external-plugin dependencies, nothing else to install.</span>
+    </div>
+  </div>
+</section>

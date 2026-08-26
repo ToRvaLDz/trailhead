@@ -1,21 +1,124 @@
 ---
-// Skeleton placeholder landing page. The real landing design is tracked
-// separately (out of scope for this ticket) — this exists only to prove
-// the build/routing skeleton works end to end.
+// Landing page: composes the approved design mockup's sections and carries
+// its entrance/scroll/hover animation script verbatim.
+import "../styles/landing.css";
+import Nav from "../components/landing/Nav.astro";
+import Hero from "../components/landing/Hero.astro";
+import ValueProps from "../components/landing/ValueProps.astro";
+import Install from "../components/landing/Install.astro";
+import HowItWorks from "../components/landing/HowItWorks.astro";
+import Techniques from "../components/landing/Techniques.astro";
+import Views from "../components/landing/Views.astro";
+import Captures from "../components/landing/Captures.astro";
+import Maps from "../components/landing/Maps.astro";
+import Footer from "../components/landing/Footer.astro";
 ---
 
 <!doctype html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>trailhead</title>
-	</head>
-	<body>
-		<main>
-			<h1>trailhead</h1>
-			<p>Skeleton placeholder — the real landing page is not built yet.</p>
-			<p><a href="/docs/">Read the docs</a></p>
-		</main>
-	</body>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>trailhead</title>
+	<meta
+		name="description"
+		content="Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the destination is clear."
+	/>
+</head>
+<body>
+
+<Nav />
+<Hero />
+<ValueProps />
+<Install />
+<HowItWorks />
+<Techniques />
+<Views />
+<Captures />
+<Maps />
+<Footer />
+
+<script is:inline>
+(function(){
+  var groups = ['.props > .prop', '.installs > .inst', '.cycle > .step', '.techs > .tech', '.subtechs > .subtech', '.views > .view', '.captures > .cap', '.duo > .feat', '.frontier-note > .chip', '.callout'];
+  var tilts = [-3.2, 2.4, -1.8, 3, -2.6, 1.6];
+  var yaws = [7, -5, 6, -7, 4, -6];
+  groups.forEach(function(sel){
+    document.querySelectorAll(sel).forEach(function(el, i){
+      el.classList.add('rv');
+      el.style.setProperty('--rz', tilts[i % tilts.length] + 'deg');
+      el.style.setProperty('--ry', yaws[i % yaws.length] + 'deg');
+      el.style.transitionDelay = (i * 85) + 'ms';
+    });
+  });
+  var heads = [];
+  document.querySelectorAll('section.band > .wrap').forEach(function(w){
+    ['.eyebrow', '.h2', '.sub', '.subtech-head', '.selfcontained', '.more-tech', '.prereq'].forEach(function(s){
+      w.querySelectorAll(':scope > ' + s).forEach(function(el){ heads.push(el); });
+    });
+  });
+  heads.forEach(function(el){ el.classList.add('hv'); });
+
+  // hero entrance stagger
+  var hero = document.querySelector('.hero-grid > div:first-child');
+  if (hero) {
+    Array.prototype.slice.call(hero.children).forEach(function(el, i){
+      el.classList.add('anim-rise');
+      el.style.animationDelay = (60 + i * 95) + 'ms';
+    });
+  }
+  var mc = document.querySelector('.mapcard');
+  if (mc) {
+    mc.addEventListener('animationend', function(e){ if (e.animationName === 'cardIn') mc.classList.add('floating'); }, { once: true });
+    setTimeout(function(){ var b = document.querySelector('.bar > span'); if (b) b.classList.add('fill'); }, 60);
+    var act = document.querySelector('.row.active');
+    if (act) setTimeout(function(){ act.classList.add('pulse'); setTimeout(function(){ act.classList.remove('pulse'); }, 900); }, 1400);
+  }
+
+  var els = document.querySelectorAll('.rv, .hv');
+  if (!('IntersectionObserver' in window)) { els.forEach(function(e){ e.classList.add('in'); }); return; }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+  els.forEach(function(e){ io.observe(e); });
+})();
+</script>
+
+<script is:inline>
+(function(){
+  // Progressive enhancement for the hero "copy" button: copies the install
+  // command to the clipboard with visible success/failure feedback. Purely
+  // additive — markup and layout are unchanged if this fails or is unsupported.
+  var btn = document.querySelector('.install-inline .copy');
+  if (!btn) return;
+  btn.setAttribute('type', 'button');
+  var defaultLabel = btn.textContent;
+  var text = btn.getAttribute('data-copy-text') || defaultLabel;
+  btn.addEventListener('click', function(){
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent = 'copied';
+      setTimeout(function(){ btn.textContent = defaultLabel; }, 1400);
+    }, function(){
+      btn.textContent = 'failed';
+      setTimeout(function(){ btn.textContent = defaultLabel; }, 1400);
+    });
+  });
+})();
+</script>
+
+<script is:inline>
+(function(){
+  // Restore the mockup's "/plugin" accent-colour highlight on the plugin
+  // install commands. The static markup keeps these lines as plain,
+  // contiguous text (see Install.astro) so the built HTML still contains the
+  // literal, unbroken command strings; this wraps the leading "/plugin" verb
+  // in the same `.c` accent span the mockup uses, purely for display.
+  document.querySelectorAll('[data-cmd-highlight]').forEach(function(el){
+    el.innerHTML = el.innerHTML.replace(/(^|<br\s*\/?>)\/plugin(?=\s)/g, '$1<span class="c">/plugin</span>');
+  });
+})();
+</script>
+
+</body>
 </html>

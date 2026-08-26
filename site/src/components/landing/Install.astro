@@ -1,0 +1,37 @@
+---
+// Install band: the three install paths (Claude Code plugin, npm, Codex CLI).
+---
+
+<section class="band" id="install">
+  <div class="wrap">
+    <span class="eyebrow">Install</span>
+    <h2 class="h2">Runs on Claude Code and Codex CLI</h2>
+    <p class="sub">Authored once; the installer projects host-native artifacts. Pick your path.</p>
+    <div class="installs">
+      <div class="inst recommended">
+        <div class="inst-head"><h3>Claude Code plugin</h3><span class="badge-rec">native</span></div>
+        <!--
+          The static markup here is plain, contiguous text (no inner span
+          around "/plugin"): the build's route-check seam asserts the raw
+          built HTML contains the literal command strings unbroken by tags.
+          The "/plugin" accent-colour highlight from the mockup is restored
+          at runtime by the highlight script below, so the rendered page
+          matches the mockup exactly while the static output stays plain.
+        -->
+        <div class="code" data-cmd-highlight>/plugin marketplace add ToRvaLDz/trailhead<br/>/plugin install trailhead@trailhead</div>
+        <p class="note">Managed by <code>/plugin</code>. Update with <code>/plugin update trailhead</code>.</p>
+      </div>
+      <div class="inst">
+        <div class="inst-head"><h3>npm</h3></div>
+        <div class="code">npx @marcomigozzi/trailhead <span class="m"># auto-detect host</span></div>
+        <p class="note">Installs into your agent's config dir (<code>~/.claude</code>). Node 18+.</p>
+      </div>
+      <div class="inst">
+        <div class="inst-head"><h3>Codex CLI</h3></div>
+        <div class="code">npx @marcomigozzi/trailhead <span class="c">--codex</span></div>
+        <p class="note">Projects a native <code>$trailhead</code> skill + hooks. Codex 0.145.0+.</p>
+      </div>
+    </div>
+    <p class="prereq"><b>Prerequisites:</b> an authenticated <b>gh</b> CLI and a GitHub repo to work in.</p>
+  </div>
+</section>
