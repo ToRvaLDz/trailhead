@@ -1,0 +1,35 @@
+---
+title: Overview
+description: What trailhead is, why it exists, and the design choices that follow from it.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+**Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the way to the destination is clear.**
+
+`trailhead` is an orchestrator skill for coding agents, running on [Claude Code](https://docs.claude.com/en/docs/claude-code) and [Codex CLI](https://developers.openai.com/codex/cli) from a single source. It gives a big, foggy idea a place to begin (a *trailhead*) and a disciplined way to walk it to a working result, with the whole plan living on your issue tracker instead of in scattered local files.
+
+## Why trailhead exists
+
+Two approaches to agent-driven project work each nail one half of the problem:
+
+- **[Wayfinder](https://github.com/mattpocock/skills)** (by Matt Pocock) is brilliant at *starting*. It turns a loose idea into a shared map of decision tickets on your issue tracker, named through a proper grilling conversation, with a visible frontier and a "fog of war" for what isn't sharp enough to plan yet. You resolve one decision per session and the map grows outward. What it deliberately doesn't do is *build*: it plans, then hands off.
+- **GSD** (the [open-gsd](https://github.com/open-gsd/gsd-core) workflow system) is brilliant at *doing*. Its `discuss → plan → execute → verify` cycle, atomic commits, and zero-friction capture make the actual construction reliable and reviewable. But its state lives in a local `.planning/` tree, separate from where the team can see it.
+
+Working across both, one pattern kept recurring: use a Wayfinder-style map and onboarding to decide the shape of the work, then a GSD-style engine to build each piece, without ever leaving the issue tracker. `trailhead` is that pattern made into a set of cohesion-clustered skills over a shared core — its own self-contained take on both ideas rather than a wrapper around either.
+
+**trailhead is self-contained** in the sense that it has zero external-plugin dependencies: trailhead-owned agents and the host's built-ins are fine, and no other skill or plugin is required. Wayfinder and GSD are *inspiration*, not dependencies. Every technique those systems package as a separate skill (grilling, TDD, systematic debugging, codebase mapping, code review) is built in here as an inline protocol, dispatching to trailhead's own agents rather than to any external skill. The only thing to install is trailhead itself.
+
+## Design choices
+
+- **Everything lives on GitHub Issues.** The map is the parent issue; each ticket is a child issue; discussion, plan, and verification are *comments*. There is no `.planning/` directory: the repo holds code only, and the plan is always visible to anyone with the repo.
+- **Execution happens inside the map.** Unlike pure Wayfinder ("plan, don't do"), build tickets graduate from the fog and are executed as children of the map. The destination is the working artifact (a deployed app), not a spec document, though a project can override that and stop at the spec.
+- **Lean by default.** The heavy machinery (codebase mapping, systematic debugging) runs once where it earns its keep; the per-ticket cycle stays light.
+- **Built for teams, because the plan is shared.** The tracker is the single source of truth, so the map is a shared workspace, not one person's local file. See [Working as a team](/docs/teamwork) for the mechanics that keep concurrent contributors from colliding.
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Getting started" href="/docs/getting-started" description="Install trailhead as a Claude Code plugin, via npm, or on Codex CLI." />
+  <LinkCard title="Core concepts" href="/docs/concepts" description="Maps, tickets, the frontier, the fog, and the repo-scoped anchor issues." />
+</CardGrid>

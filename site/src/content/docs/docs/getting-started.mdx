@@ -1,0 +1,58 @@
+---
+title: Getting started
+description: Install trailhead on Claude Code or Codex CLI and run your first commands.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+**Runs on Claude Code and Codex CLI.** trailhead is authored once; the installer projects host-native artifacts. On Claude Code: a skill + `/trailhead:*` commands + hooks. On Codex CLI: a native skill invoked `$trailhead`, one `$trailhead-<verb>` skill per verb for discoverability, and the guardrails as native Codex hooks. Choose the host with `--claude` / `--codex`, or let the installer auto-detect.
+
+## Prerequisites
+
+- An authenticated [`gh` CLI](https://cli.github.com) — the tracker is GitHub Issues.
+- A GitHub repo to work in.
+- For the npm path, Node 18+.
+
+## Install
+
+<Tabs>
+  <TabItem label="Claude Code plugin">
+    Native install, managed by `/plugin`:
+
+    ```
+    /plugin marketplace add ToRvaLDz/trailhead
+    /plugin install trailhead@trailhead
+    ```
+
+    Update with `/plugin update trailhead`; remove with `/plugin uninstall trailhead`.
+  </TabItem>
+  <TabItem label="npm">
+    Installs into your agent's config dir:
+
+    ```
+    npx @marcomigozzi/trailhead              # auto-detect the host (defaults to ~/.claude)
+    npx @marcomigozzi/trailhead --claude     # Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
+    npx @marcomigozzi/trailhead --codex      # Codex CLI ($CODEX_HOME or ~/.codex)
+    npx @marcomigozzi/trailhead --symlink    # dev install (Claude; symlink to the checkout, edits go live)
+    npx @marcomigozzi/trailhead --uninstall  # remove everything it added (pair with --claude / --codex)
+    npx @marcomigozzi/trailhead --dir=<path> # target a specific config dir
+    ```
+
+    On Claude Code it copies the skill (+ its `references/`), the `/trailhead:*` commands, the hooks (into `hooks/`, registered in `settings.json`) including a SessionStart update check, and the label-guard + statusline templates, idempotently.
+  </TabItem>
+  <TabItem label="Codex CLI">
+    `npx @marcomigozzi/trailhead --codex` projects a native Codex skill invoked as `$trailhead` (`$trailhead work`, `$trailhead new "idea"`, …), one thin `$trailhead-<verb>` skill per verb for discoverability, the four guardrails as native Codex hooks (`~/.codex/hooks.json`, enabling `features.hooks`), and per-technique subagent model pins from `models.codex.*` into `~/.codex/agents/`.
+
+    Codex 0.145.0+ is required (the installer gates on `codex --version`). The `claude.ai/design` mockup mode isn't available on Codex; the cross-host `design: stitch` mode (Google Stitch MCP) is the hosted option there, with local disk as the fallback.
+  </TabItem>
+</Tabs>
+
+Re-run the install to update, or run `/trailhead:update` (Claude) / `$trailhead update` (Codex) from inside the agent: it detects how trailhead was installed and installs the newer version where that is safe.
+
+## After installing
+
+Restart or reload your agent so the commands register, then run `/trailhead` to start (smart entry), or `/trailhead:new "<idea>"` to chart a map. On Codex the surface is `$trailhead` instead: run `$trailhead` for smart entry, `$trailhead new "<idea>"` to chart, or a per-verb `$trailhead-<verb>` skill.
+
+Note: once installed, the commit guard hook runs on every `git commit` (enforcing Conventional Commits and blocking `Co-Authored-By`); disable the plugin's hooks in settings if you don't want that. Either way trailhead is self-contained: no external skill or plugin is required, no preflight, no version drift.
+
+Next: read [Core concepts](/docs/concepts) for the map/ticket/frontier/fog vocabulary, or jump straight to [Commands](/docs/commands) for the full verb list.

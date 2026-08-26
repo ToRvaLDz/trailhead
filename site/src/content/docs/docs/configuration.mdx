@@ -1,0 +1,68 @@
+---
+title: Configuration
+description: The three config layers, guided setup, the keys table, models, and design mockups.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Three layers, nearest wins, key by key (a key unset at one layer inherits the next):
+
+- **Project**: a `.trailhead/config.json` file at the repo root: overrides for this project, committed so a team shares one config. Config lives in a plain file, never in the map issue; it's yours to change at any time.
+- **Global**: `~/.claude/trailhead/config.json`: your standing defaults across every project.
+- **Defaults**: the built-in values.
+
+## Guided setup
+
+`/trailhead:config` runs a guided, menu-driven setup: pick the scope, then walk each setting (ticket language, models, design + approval, TDD, acceptance testing, plan review, statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and plan and execute models are always two separate, version-pinned choices. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+
+The statusline step offers to install trailhead's Claude Code status bar: one line with model · project · branch · plan usage (`5h %` · reset · `7d %`) · a context-window bar, plus a second line with the active ticket (`▸ #N Title`) whenever you're working one, and a `⬆ trailhead <version>` flag when a newer trailhead is available (run `/trailhead:update`). The project is always the main repo's name even from an isolated checkout, and the branch carries a `(WT)` tag in a worktree or `(C)` in a per-ticket clone (nothing on the original checkout). It's a global Claude Code setting; if you already run a statusline the setup asks before replacing it, and the script also exposes `--ticket-only` / `--context-only` / `--usage-only` segments to slot into an existing tool.
+
+<Aside type="tip" title="First-use offer (once per project)">
+  You don't have to seek this out: the first time you set a project up (at the end of `/trailhead:new`/`:adopt`, or on a bare `/trailhead` when a map exists but no config does) trailhead offers to run the guided setup, or to continue on defaults. It asks only once: configuring writes `.trailhead/config.json`, and "continue on defaults" writes an empty `{}`. Once that file exists it's never offered again, and it never interrupts mid-ticket.
+</Aside>
+
+## Keys
+
+| Key | Values (default **bold**) | Effect |
+|---|---|---|
+| `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead writes its GitHub prose & commit descriptions in, decoupled from the language it converses in |
+| `models.{plan,execute,research,review,debug}` | a full versioned model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
+| `design` | **`disk`** \| `claude.ai/design` \| `stitch` | where UI mockups go: local throwaway HTML, claude.ai/design via Anthropic's official Claude Design MCP, or Google Stitch (cross-host, via the Stitch MCP) |
+| `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design` or `stitch`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
+| `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
+| `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
+| `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or walk you through a conversational UAT (step by step in chat, not a checklist to self-serve) |
+| `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
+| `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
+| `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
+| `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
+
+## Models
+
+Each key runs its activity as a subagent on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
+
+- `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
+- `research`, `review`, `debug`, and the codebase-map fan-out each run on their own key.
+
+Choose `plan` and `execute` separately, each by full versioned id (never a bare `opus` or `sonnet`). A key that is unset, or equal to the session model, simply runs inline.
+
+The main session stays the orchestrator. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting, grilling, and ticket-writing on its own model. No key governs ticket quality, so run charting sessions on your strong model.
+
+Example config file (the same shape works for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
+
+```json
+{ "ticket": { "language": "en" }, "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
+```
+
+## Design mockups
+
+`design: disk` (the default) drops a throwaway static HTML mockup next to the code and links it from the ticket. `design: claude.ai/design` instead builds the mockup on claude.ai/design (canvas via the built-in `/design` skill or a hand-made web-app project; design-system via Anthropic's official Claude Design MCP, sign in with `/design-login`), where you refine it visually, and `design: stitch` uses the Google Stitch MCP, Google's Gemini-powered UI generator that runs on both Claude Code and Codex (the cross-host hosted option). Both honour `design.surface`:
+
+- **`canvas`** (default): a one-off screen to react to, editable and exportable as a live prototype. Under `claude.ai/design` it's the built-in `/design` skill (published as an Artifact) or a claude.ai/design project made by hand in the web app; under `stitch` it's a Stitch project.
+- **`design-system`**: a design-system project driven by DesignSync (the `/design-sync` skill plus the `claude-design` MCP), for a shared component library kept in sync.
+
+On the first UI screen, trailhead attaches to a surface: for a Stitch project or a claude.ai/design design-system, it can pick an existing one, paste a URL, or create a new one (it asks you for the name); for a claude.ai/design canvas there is no create-via-MCP, so it uses the `/design` skill (an Artifact) or a web-app project whose `/p/<id>` URL you paste. It caches the chosen id/URL in `design.project`; a project already cached from before keeps the `design-system` surface unless you set `design.surface`, so existing setups don't change. Each screen is added there, and its URL is linked from the ticket. Once you approve, trailhead re-fetches the current design (in case you edited it live) before writing any UI code.
+
+If a hosted mode's MCP isn't connected, trailhead offers to install it once; decline and it falls back to local disk. (The `claude.ai/design` canvas surface needs no MCP, so nothing is offered for it; only the design-system surface has an install offer.) On Codex, `claude.ai/design` isn't available, so trailhead offers to switch to `stitch` (cross-host) before falling to local disk. `design.approval` decides whether the build waits for your explicit go-ahead (`explicit`), or proceeds right after surfacing the mockup (`auto`); it doesn't affect the one-time install offer, which prompts either way.
+
+Next: [Hooks](/docs/hooks) for the guardrails that enforce parts of this discipline, or [Ticket types](/docs/ticket-types) for how `tdd` and `acceptance.browser` are used inside the `build` engine.
