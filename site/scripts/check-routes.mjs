@@ -105,11 +105,11 @@ const commandsMustContain = [
 const docsPlaceholder = 'Skeleton placeholder';
 
 // Per-page hero illustrations (#112): every /docs/* page renders exactly one
-// decorative map-card hero above the real `<h1 id="_top">`, keyed by
-// `data-illustration`. Keyed by the illustration key -> its built HTML file,
-// so a missing file is a hard failure rather than a silently skipped
-// assertion (the `existsSync`-gated blocks above intentionally skip when a
-// file is absent; these must not).
+// decorative map-card hero floated into the content, below the real
+// `<h1 id="_top">`, keyed by `data-illustration`. Keyed by the illustration
+// key -> its built HTML file, so a missing file is a hard failure rather
+// than a silently skipped assertion (the `existsSync`-gated blocks above
+// intentionally skip when a file is absent; these must not).
 const heroCardsByKey = {
   overview: path.join(dist, 'docs', 'index.html'),
   'getting-started': path.join(dist, 'docs', 'getting-started', 'index.html'),
@@ -124,6 +124,9 @@ const heroCardsByKey = {
 };
 
 const heroMarkerAttr = 'data-docs-hero';
+// Robust to either attribute order on the hero root element.
+const heroAriaHiddenPattern =
+  /data-docs-hero="true"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*data-docs-hero="true"/;
 const notFoundIndex = path.join(dist, '404.html');
 
 // Docs-brand assertions: the /docs/ section must be themed to the landing
@@ -230,6 +233,18 @@ for (const [key, file] of Object.entries(heroCardsByKey)) {
   if (h1Count !== 1) {
     failures.push(`docs hero (${key}): expected exactly one <h1 id="_top"> occurrence, found ${h1Count}`);
   }
+  // #112: the hero is decorative and must never be announced before the
+  // real title — assert it self-hides via aria-hidden.
+  if (!heroAriaHiddenPattern.test(html)) {
+    failures.push(`docs hero (${key}): missing aria-hidden="true" on the hero element`);
+  }
+  // #112: the hero is now floated INTO the content, so it must render AFTER
+  // the real <h1 id="_top">, not above it.
+  const heroIndex = html.indexOf(`${heroMarkerAttr}=`);
+  const h1Index = html.indexOf('<h1 id="_top"');
+  if (!(heroIndex > h1Index)) {
+    failures.push(`docs hero (${key}): expected hero to appear after <h1 id="_top"> in the built HTML`);
+  }
 }
 
 // Negative assertions: the hero marker must never leak onto the landing page
@@ -257,6 +272,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present.'
+  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (floated into the content, below the title, aria-hidden).'
 );
 process.exit(0);
