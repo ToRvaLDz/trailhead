@@ -104,6 +104,15 @@ const commandsMustContain = [
 
 const docsPlaceholder = 'Skeleton placeholder';
 
+// Docs-brand assertions: the /docs/ section must be themed to the landing
+// brand (dark-only) — the header renders the same wordmark as the landing
+// nav, and Starlight's light/dark/auto theme picker is gone (the custom
+// element it registers itself as must not appear in the markup).
+const docsBrandIndex = path.join(dist, 'docs', 'index.html');
+const docsBrandInnerPage = path.join(dist, 'docs', 'concepts', 'index.html');
+const themeSelectTag = '<starlight-theme-select';
+const brandWordmarkAttr = 'data-brand-wordmark';
+
 const failures = [];
 
 for (const file of mustExist) {
@@ -148,6 +157,19 @@ if (existsSync(commandsIndex)) {
   for (const needle of commandsMustContain) {
     if (!text.includes(needle)) {
       failures.push(`docs/commands missing expected verb: ${needle}`);
+    }
+  }
+}
+
+for (const file of [docsBrandIndex, docsBrandInnerPage]) {
+  if (existsSync(file)) {
+    const html = readFileSync(file, 'utf8');
+    const label = path.relative(siteRoot, file);
+    if (!html.includes(brandWordmarkAttr)) {
+      failures.push(`${label} missing brand wordmark seam attribute: ${brandWordmarkAttr}`);
+    }
+    if (html.includes(themeSelectTag)) {
+      failures.push(`${label} still renders the Starlight theme-select toggle (should be dark-only)`);
     }
   }
 }
