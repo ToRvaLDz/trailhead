@@ -13,7 +13,9 @@
 	@layer starlight.core {
 		.site-title {
 			align-items: center;
-			gap: var(--sl-nav-gap);
+			/* No gap: the wordmark reads as one word ("trailhead"), contiguous
+			   like the landing nav, not "trail head" split by the stock nav gap. */
+			gap: 0;
 			font-size: 20px;
 			font-weight: 800;
 			letter-spacing: -0.02em;
