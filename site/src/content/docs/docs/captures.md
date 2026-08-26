@@ -5,10 +5,10 @@ description: Zero-friction capture, the commitment spectrum, the whiteboard, and
 
 ## Don't get trapped in a map: the whiteboard
 
-Deep in a map, something unrelated surfaces: a bug in another area, a chore, a quick idea you want to act on now. Forcing it onto the map's frontier pollutes the map; charting a whole new map for it is overkill. That's what the **whiteboard** is for — loose, map-less work — and two moves keep you from getting stuck:
+Deep in a map, something unrelated surfaces: a bug in another area, a chore, a quick idea you want to act on now. Forcing it onto the map's frontier pollutes the map; charting a whole new map for it is overkill. That's what the **whiteboard** is for (loose, map-less work), and two moves keep you from getting stuck:
 
 - **Capture it aside.** A `todo`/`bug`/`seed`/sharp `idea` fired while a map is open asks *map or whiteboard?*. Send it to the whiteboard and it stays off the map: tracked, but out of the way, so the map's frontier keeps meaning "the way to this destination".
-- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting — the full discuss → plan → execute → verify engine (atomic commits, code review, the lot) — except it grills only if needed and never splits, and skips every map book-keeping step. `/trailhead:quick <n>` does the same for a ticket that already exists.
+- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting, the full discuss → plan → execute → verify engine (atomic commits, code review, the lot), except it grills only if needed and never splits, and skips every map book-keeping step. `/trailhead:quick <n>` does the same for a ticket that already exists.
 
 See the whole whiteboard with `/trailhead:whiteboard`. Nothing about the map changes: you just stepped off it, did the thing, and step back on when you're ready.
 

@@ -29,11 +29,11 @@ As tickets resolve, the fog clears: questions that were too vague to phrase beco
 
 A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in repo-scoped anchor issues, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 
-- **`trailhead:codebase`** — the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
-- **`trailhead:conventions`** — the project's way of working, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: none|worktree|clone`) over human prose. `/trailhead:adopt` and `:new` ask for it up front.
-- **`trailhead:dashboard`** — the pinned index of the whole surface: a link to every open map, the whiteboard, and live counts (inbox, whiteboard frontier).
+- **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
+- **`trailhead:conventions`**: the project's way of working, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: none|worktree|clone`) over human prose. `/trailhead:adopt` and `:new` ask for it up front.
+- **`trailhead:dashboard`**: the pinned index of the whole surface: a link to every open map, the whiteboard, and live counts (inbox, whiteboard frontier).
 
-These three fill GitHub's 3 pinned-issue slots, so a repo's trailhead anchors stay one click away; maps themselves are never pinned (they're indexed by the dashboard instead). Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue — see [Configuration](/docs/configuration).
+These three fill GitHub's 3 pinned-issue slots, so a repo's trailhead anchors stay one click away; maps themselves are never pinned (they're indexed by the dashboard instead). Project *config* (models, TDD, design…) is separate again, a plain `.trailhead/config.json` file at the repo root, never in an issue. See [Configuration](/docs/configuration).
 
 ## Labels
 

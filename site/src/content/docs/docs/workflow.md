@@ -8,7 +8,7 @@ description: The lifecycle loop, a worked example, and how outside suggestions g
 Every project walks the same loop:
 
 1. **Start**: `/trailhead:new "<idea>"` (greenfield) or `/trailhead:adopt` (existing code: map the codebase once, then go lean). This charts the map: name the destination, then map the frontier breadth-first into the first tickets and the fog.
-2. **Work the frontier, one ticket per session**: `/trailhead:work` takes the next takeable ticket (or one you name) and runs the engine for its type — `research` gathers a fact, `decision` diverges options then grills to choose, `prototype` makes a rough artifact to react to, `build` runs discuss → plan → execute → verify, `bug` runs repro → diagnose → fix → verify, `task` is manual plumbing that unblocks a decision.
+2. **Work the frontier, one ticket per session**: `/trailhead:work` takes the next takeable ticket (or one you name) and runs the engine for its type: `research` gathers a fact, `decision` diverges options then grills to choose, `prototype` makes a rough artifact to react to, `build` runs discuss → plan → execute → verify, `bug` runs repro → diagnose → fix → verify, `task` is manual plumbing that unblocks a decision.
 3. **Close & unblock**: resolve the ticket (comment + close), gist it into `Decisions so far`, and drop `trailhead:blocked` from any dependent whose last blocker just closed, graduating it onto the frontier.
 4. **Repeat** until the frontier is empty and the fog has cleared: the destination (a working artifact) is reached.
 

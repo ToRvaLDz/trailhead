@@ -17,6 +17,6 @@ Each ticket carries a type label; each type has its own way of being resolved. E
 ## Two rules of thumb
 
 - Build tickets never auto-grill: on blocking ambiguity the skill stops and asks.
-- Brainstorming (divergence) lives in charting, in `ticket`'s micro-charting, and in a `decision`'s option phase — never in the grilling itself, which only converges.
+- Brainstorming (divergence) lives in charting, in `ticket`'s micro-charting, and in a `decision`'s option phase, never in the grilling itself, which only converges.
 
 Next: [Commands](/docs/commands) for the verbs that drive each type, or [Core concepts](/docs/concepts) for the map/ticket/frontier vocabulary these engines operate on.

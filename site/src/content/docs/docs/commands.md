@@ -42,7 +42,7 @@ The four fog/ticket captures form a spectrum of commitment and timing: note < id
 
 Two more verbs round out the surface, documented in their own sections:
 
-- **`/trailhead:config`** — the guided, menu-driven setup for `.trailhead/config.json`; see [Configuration](/docs/configuration).
-- **`/trailhead:update`** — re-installs trailhead to the newer version, detecting how it was installed (dev-symlink, npm, or plugin); see [Getting started](/docs/getting-started).
+- **`/trailhead:config`**: the guided, menu-driven setup for `.trailhead/config.json`; see [Configuration](/docs/configuration).
+- **`/trailhead:update`**: re-installs trailhead to the newer version, detecting how it was installed (dev-symlink, npm, or plugin); see [Getting started](/docs/getting-started).
 
 Next: [Captures & the whiteboard](/docs/captures) for the commitment spectrum, or [Working as a team](/docs/teamwork) for how these commands behave with multiple contributors.
