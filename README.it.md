@@ -306,6 +306,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |
 | `code_review.rounds` | integer (**`2`**) | numero massimo di round fix-and-re-review in Code review prima del checkpoint HITL di confine |
+| `effort` | **`standard`** \| `lean` | quanto lavora il motore `build`/`bug`/`quick` su una modifica: `standard` esegue ogni step, `lean` fa una triage di dimensione sulle modifiche piccole e offre di saltare quelli pesanti (plan, TDD, cross-AI review, code review completa) |
 
 **Models.** Ogni chiave esegue la sua attività come **subagent** sul modello che nomini, così l'intera suddivisione per-attività si applica dentro una singola sessione di lavoro, qualunque modello quella sessione esegua:
 
