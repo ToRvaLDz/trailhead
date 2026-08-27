@@ -131,7 +131,7 @@ ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-gua
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
 ok('codex: config.toml enables hooks feature', fs.readFileSync(codexConfigTomlPath, 'utf8').includes('hooks = true'));
-// All 7 agents are always projected uniformly (pinned or pin-less), so
+// All 8 agents are always projected uniformly (pinned or pin-less), so
 // multi_agent_v2 is ON even with no models.codex.* set (this install,
 // repoRoot, sets none): the adapter §D registry is always present.
 ok('codex: config.toml enables multi_agent_v2 even with no models.codex.* pins projected',
@@ -170,17 +170,27 @@ ok('codex copy: templates is a regular dir (not a symlink)',
   !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'templates')).isSymbolicLink());
 
 // --- codex agent TOML projection (#38, #88) -------------------------------------
-// repoRoot's own .trailhead/config.json has no models.codex.*, so a plain
-// install (cwd: repoRoot, no models.codex anywhere) still projects all 7
-// agents pin-less (uniform projection, #88), never zero.
-ok('codex: all 7 trailhead-*.toml exist under agents/ even with models.codex.* unset', (() => {
-  const dir = path.join(codexDir, 'agents');
+// With NO models.codex.* set, a codex install still projects all 8 agents
+// uniformly, pin-less (uniform projection, #88), never zero. Install from an
+// isolated cwd whose .trailhead/config.json sets no models.codex.*, not
+// repoRoot (whose own config now pins models.codex.*, so it would project
+// pinned TOMLs rather than pin-less ones).
+const unsetProjectDir = mktmp();
+fs.mkdirSync(path.join(unsetProjectDir, '.trailhead'), { recursive: true });
+fs.writeFileSync(
+  path.join(unsetProjectDir, '.trailhead', 'config.json'),
+  JSON.stringify({ models: {} }, null, 2) + '\n'
+);
+const unsetCodexHomeDir = mktmp();
+runInstaller([`--codex`, `--dir=${unsetCodexHomeDir}`], { cwd: unsetProjectDir });
+ok('codex: all 8 trailhead-*.toml exist under agents/ even with models.codex.* unset', (() => {
+  const dir = path.join(unsetCodexHomeDir, 'agents');
   if (!fs.existsSync(dir)) return false;
   const tomls = fs.readdirSync(dir).filter((f) => /^trailhead-.*\.toml$/.test(f));
-  return tomls.length === 7;
+  return tomls.length === 8;
 })());
 ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (() => {
-  const dir = path.join(codexDir, 'agents');
+  const dir = path.join(unsetCodexHomeDir, 'agents');
   const tomls = fs.readdirSync(dir).filter((f) => /^trailhead-.*\.toml$/.test(f));
   return tomls.every((f) => !/^model = /m.test(fs.readFileSync(path.join(dir, f), 'utf8')));
 })());
