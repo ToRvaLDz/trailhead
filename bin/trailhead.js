@@ -552,9 +552,9 @@ function installCodex(configDir, { useSymlink }) {
   // Per-technique agent registry: project ALL 8 committed agents
   // (readAgentDefs, sourced from plugins/trailhead/agents/*.md) as
   // trailhead-<technique>.toml under the real ~/.codex/agents/ dir, uniformly.
-  // A keyed technique (plan/execute/research/review/debug) carries its
-  // models.codex.<key> pin (merged project + global config) when set, else is
-  // pin-less; the 2 keyless agents (fix, codebase-map) are always pin-less.
+  // A keyed technique (plan/execute/research/review/debug/verify/codebase-map)
+  // carries its models.codex.<key> pin (merged project + global config) when
+  // set, else is pin-less; the 1 keyless agent (fix) is always pin-less.
   // Sweep only trailhead's own files first, so a stale pin from a prior
   // install (or a removed technique) never lingers, without touching the
   // user's other custom-agent TOMLs.
