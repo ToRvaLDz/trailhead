@@ -26,7 +26,7 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead writes its GitHub prose & commit descriptions in, decoupled from the language it converses in |
-| `models.{plan,execute,research,review,debug}` | a full versioned model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
+| `models.{plan,execute,research,review,debug,verify}` | a full versioned model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
 | `design` | **`disk`** \| `claude.ai/design` \| `stitch` | where UI mockups go: local throwaway HTML, claude.ai/design via Anthropic's official Claude Design MCP, or Google Stitch (cross-host, via the Stitch MCP) |
 | `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design` or `stitch`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
@@ -43,7 +43,7 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 Each key runs its activity as a subagent on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
-- `research`, `review`, `debug`, and the codebase-map fan-out each run on their own key.
+- `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and the codebase-map fan-out each run on their own key.
 
 Choose `plan` and `execute` separately, each by full versioned id (never a bare `opus` or `sonnet`). A key that is unset, or equal to the session model, simply runs inline.
 

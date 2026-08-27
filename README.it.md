@@ -296,7 +296,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | Key | Values (default **bold**) | Effetto |
 |---|---|---|
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
-| `models.{plan,execute,research,review,debug}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
+| `models.{plan,execute,research,review,debug,verify}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
 | `design` | **`disk`** \| `claude.ai/design` \| `stitch` | dove vanno i mockup UI: HTML usa-e-getta locale, claude.ai/design via l'MCP ufficiale Claude Design di Anthropic, o Google Stitch (cross-host, via l'MCP Stitch) |
 | `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design` o `stitch`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
@@ -311,7 +311,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 **Models.** Ogni chiave esegue la sua attività come **subagent** sul modello che nomini, così l'intera suddivisione per-attività si applica dentro una singola sessione di lavoro, qualunque modello quella sessione esegua:
 
 - `plan` ed `execute` sono i passi del motore build/bug. Execute è anch'esso un subagent, e committa su `main`.
-- `research`, `review`, `debug`, e il fan-out della codebase-map girano ciascuno sulla propria chiave.
+- `research`, `review`, `debug`, `verify` (il controllo goal-backward in Verify), e il fan-out della codebase-map girano ciascuno sulla propria chiave.
 
 Scegli `plan` ed `execute` separatamente, ciascuno per **id completo versionato** (mai un `opus` o `sonnet` nudo). Una chiave non impostata, o uguale al modello della sessione, gira semplicemente inline.
 
