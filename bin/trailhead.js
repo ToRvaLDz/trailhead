@@ -409,7 +409,7 @@ function unquoteYamlScalar(v) {
   return v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }
 
-// Read the 7 committed agent sources from plugins/trailhead/agents/*.md: each
+// Read the 8 committed agent sources from plugins/trailhead/agents/*.md: each
 // file's basename is the agent's name; frontmatter description/tools ride
 // along, and `body` is the markdown after the closing frontmatter `---`.
 // Single-sources the Codex agent-TOML projection so it never drifts from the
@@ -549,7 +549,7 @@ function installCodex(configDir, { useSymlink }) {
     featureManual = true;
   }
 
-  // Per-technique agent registry: project ALL 7 committed agents
+  // Per-technique agent registry: project ALL 8 committed agents
   // (readAgentDefs, sourced from plugins/trailhead/agents/*.md) as
   // trailhead-<technique>.toml under the real ~/.codex/agents/ dir, uniformly.
   // A keyed technique (plan/execute/research/review/debug) carries its
