@@ -12,7 +12,7 @@
       "name": "trailhead",
       "source": "./plugins/trailhead",
       "description": "Start and drive large projects as a map of tickets on GitHub Issues. Map-based onboarding + a discuss→plan→execute→verify engine, all on the Issues. Self-contained: no external skill required.",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "author": {
         "name": "Marco Migozzi"
       },

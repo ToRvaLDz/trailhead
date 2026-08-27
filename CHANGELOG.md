@@ -2,6 +2,22 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.6.0 (2026-08-27)
+
+### Added
+- **`effort` config knob: size-triaged, cost-aware execution.** Under `effort: lean`, the `build` / `bug` / `quick` engine classifies a change before planning and, on a trivial or small one, surfaces a single consolidated offer to skip the heavier steps (the planner subagent, TDD, cross-AI plan review, the full code-review subagent, and the goal-backward verify), going lean only on an explicit yes. The correctness spine (atomic `Refs:` commits, tests / the plan's criterion, the post-commit self-check, Resolve) is never in the offer. Default `standard` runs the full cycle unchanged.
+- **`trailhead-verify` agent + goal-backward verification.** A read-only verify subagent (`models.verify`, own terminal colour) runs a goal-backward check in the `build` / `bug` Verify step, backward from the ticket's Question and the plan's criteria, branching on a leading `status:` tag. Projected to Codex via `models.codex.verify`; `effort: lean` can also offer to skip it.
+- **`models.codebase-map` as its own model key.** The codebase-map technique gets a dedicated model key (its own default tier), independently pinnable in the Codex projection, instead of riding another key.
+- **The trailhead website.** A static Astro + Starlight site (landing page + curated `/docs`) deployed to Cloudflare Pages at trailhead.marcomigozzi.it, with a route-check build seam that asserts the install commands and the command/verb list so `/docs` cannot silently drift from `README.md`. (Site only; not part of the npm package.)
+
+### Changed / Fixed
+- **Balanced model profile.** `review` and `debug` now sit on the standard (Sonnet) tier; the repo's own `models.codex.*` are set to the mirror-GSD Balanced tiers.
+- **Fog entries are numbered in the `/trailhead:map` render (#113).** Each top-level `## Not yet specified` entry gets a render-time number so a specific fog point can be dissolved or graduated by its number instead of pasting its text; the handoff prompt references the numbered list. Render-time only, never persisted into the map body.
+- **`trailhead:blocked` is applied at ticket creation**, not via a post-creation `--add-label`, so a bulk setup pass no longer spawns a burst of label-guard Action runs that GitHub sheds as `startup_failure`.
+- **DesignSync artboards always land at the repo root**, never a nested working dir.
+- **Model id handling.** `config.models.*` full ids are normalized to Agent-tool aliases at spawn, and the inline-vs-subagent decision is kept version-aware so a pinned Opus matching the session model still runs inline.
+- Documentation: `effort`, `models.verify`, and `models.codebase-map` are documented in both READMEs and `/docs`; em-dashes removed from the `/docs` pages.
+
 ## 0.5.1 (2026-08-25)
 
 ### Added
