@@ -1,6 +1,6 @@
 ---
 name: trailhead-verify
-color: green
+color: pink
 description: "trailhead verify subagent: goal-backward check that a ticket's change delivers what it promised. Read-only, never edits or commits."
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 ---
