@@ -5,7 +5,7 @@
     "execute": "claude-sonnet-5",
     "research": "claude-haiku-4-5-20251001",
     "review": "claude-sonnet-5",
-    "debug": "claude-opus-4-8"
+    "debug": "claude-sonnet-5"
   },
   "design": {
     "mode": "claude.ai/design",

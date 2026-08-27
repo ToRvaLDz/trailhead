@@ -43,7 +43,7 @@ If a value is unset, it resolves to its **Balanced**-profile default for that ac
 | profile | plan | execute | research | review | debug | verify |
 |---|---|---|---|---|---|---|
 | **High** | strong | strong | standard | strong | strong | strong |
-| **Balanced** | strong | standard | fast | standard | strong | standard |
+| **Balanced** | strong | standard | fast | standard | standard | standard |
 | **Low** | standard | standard | fast | fast | standard | fast |
 
 **Tier-class -> id**, resolved from the lineup actually reachable at setup time (verify, don't trust these verbatim):
