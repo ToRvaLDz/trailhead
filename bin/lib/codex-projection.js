@@ -101,7 +101,7 @@ Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_inp
 
 **Never surrender the session to one open-ended \`wait_agent\`; poll instead.** \`wait_agent\` blocks until the subagent returns, so a single unconditional \`wait_agent\` on a long or stalling subagent freezes the whole session with nothing to check: this is the review / plan-review hang. Collect every delegated subagent through a **bounded wait in a poll loop**, not one open-ended blocking call. Give \`wait_agent\` a short timeout (30 to 60s); on each timeout, report a one-line "still running" progress note and loop again, so the session stays responsive and can be checked or interrupted between polls. The two **review** steps, **Code review** and **Cross-AI plan review**, always run this way: backgrounding and polling them (never a blind \`wait_agent\`) is the engine's hard cross-host default, not merely the case where it matters most. They are also the longest quiet activities in the cycle (a full-diff adversarial review, or an external CLI) and the ones most often seen to hang. If your Codex build's \`wait_agent\` exposes no timeout, poll the agent's status/output at intervals instead of blocking, or run the review as a **background job** and check back on it at intervals; the rule is the same either way. When several subagents run in parallel, poll them as a set, a bounded wait cycling across the outstanding handles, reporting which are still running.
 
-**Per-technique agent registry (\`agent_type\` dispatch).** The installer always projects all 8 committed trailhead agents as \`~/.codex/agents/trailhead-<technique>.toml\` (one per technique) and enables \`features.multi_agent_v2\`, so Codex always exposes a per-technique agent registry. A TOML whose technique has a \`models.codex.<key>\` pin set carries that OpenAI model (plus its reasoning effort); every other TOML — an unpinned keyed technique, or one of the 2 keyless agents — is pin-less and its subagent inherits the session model. Detect the registry at runtime by introspecting the visible \`spawn_agent\` tool schema (GSD-style, never a config read): if its parameters expose an \`agent_type\` field, spawn each delegated activity as \`spawn_agent(agent_type="trailhead-<technique>", reasoning_effort=…)\` (\`trailhead-plan\` for the Plan step, \`trailhead-execute\` for Execute, likewise research/review/debug/verify, plus the 2 keyless \`trailhead-fix\` and \`trailhead-codebase-map\` for the Fix and Codebase-map steps), which routes it onto that technique's pinned model when one is set, or the session model otherwise. If the \`spawn_agent\` schema exposes NO \`agent_type\` field at all (a Codex build with only base multi_agent v1), spawn with base \`spawn_agent\` and the subagents inherit the one session model. Trust the tool surface you actually see and degrade gracefully: \`multi_agent_v2\` is still under development upstream, so v1 stays a supported runtime.
+**Per-technique agent registry (\`agent_type\` dispatch).** The installer always projects all 8 committed trailhead agents as \`~/.codex/agents/trailhead-<technique>.toml\` (one per technique) and enables \`features.multi_agent_v2\`, so Codex always exposes a per-technique agent registry. A TOML whose technique has a \`models.codex.<key>\` pin set carries that OpenAI model (plus its reasoning effort); every other TOML — an unpinned keyed technique, or the 1 keyless agent — is pin-less and its subagent inherits the session model. Detect the registry at runtime by introspecting the visible \`spawn_agent\` tool schema (GSD-style, never a config read): if its parameters expose an \`agent_type\` field, spawn each delegated activity as \`spawn_agent(agent_type="trailhead-<technique>", reasoning_effort=…)\` (\`trailhead-plan\` for the Plan step, \`trailhead-execute\` for Execute, likewise research/review/debug/verify and \`trailhead-codebase-map\` for the Codebase-map step, plus the 1 keyless \`trailhead-fix\` for the Fix step), which routes it onto that technique's pinned model when one is set, or the session model otherwise. If the \`spawn_agent\` schema exposes NO \`agent_type\` field at all (a Codex build with only base multi_agent v1), spawn with base \`spawn_agent\` and the subagents inherit the one session model. Trust the tool surface you actually see and degrade gracefully: \`multi_agent_v2\` is still under development upstream, so v1 stays a supported runtime.
 
 \`config.models.*\` (Claude model ids) still cannot take effect here regardless: Codex's subagent model registry is OpenAI-only, so a Claude id cannot run and those keys collapse to the session model. The honoured namespace on Codex is \`models.codex.*\` (above); the one-time models-collapse notice still applies while a stray \`models.*\` is set and \`models.codex.*\` is empty.
 
@@ -180,10 +180,10 @@ function codexTechniqueKey(name) {
 }
 
 // --- MODEL_KEYS --------------------------------------------------------------
-// The 6 pinnable technique keys, mirroring the models.codex.* namespace. The
-// other 2 committed agents (fix, codebase-map) have no pin key and are always
+// The 7 pinnable technique keys, mirroring the models.codex.* namespace. The
+// other committed agent (fix) has no pin key and is always
 // projected pin-less (session model).
-const MODEL_KEYS = new Set(['plan', 'execute', 'research', 'review', 'debug', 'verify']);
+const MODEL_KEYS = new Set(['plan', 'execute', 'research', 'review', 'debug', 'verify', 'codebase-map']);
 
 // --- codexAgentToml ---------------------------------------------------------
 // Render one Codex custom-agent TOML. When `model` is empty/absent, the TOML
@@ -228,8 +228,8 @@ function codexAgentToml({ name, description, developerInstructions, model, effor
 // each { name, description, tools, body }), return the set of
 // trailhead-<technique>.toml writes the installer should make: ONE per agent,
 // uniformly (all 8 project, always). A keyed agent (plan/execute/research/
-// review/debug/verify) carries its models.codex.<key> pin when set, else is
-// pin-less; the 2 keyless agents (fix, codebase-map) are always pin-less.
+// review/debug/verify/codebase-map) carries its models.codex.<key> pin when set, else is
+// pin-less; the 1 keyless agent (fix) is always pin-less.
 // Iterates agentDefs in the given order (readAgentDefs sorts by name) so the
 // write order is deterministic.
 function codexAgentTomlPlan(codexHome, codexModels, agentDefs) {

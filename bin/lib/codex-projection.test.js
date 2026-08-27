@@ -231,9 +231,9 @@ ok('codexAgentToml escapes a " and \\ in name/description so the TOML stays vali
 
 // --- codexAgentTomlPlan ---
 // 7-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
-// sources: 5 keyed techniques (plan/execute/research/review/debug, whose
-// filenames derive from trailhead-executor -> execute and
-// trailhead-code-review -> review) + 2 always-keyless agents.
+// sources: 6 keyed techniques (plan/execute/research/review/debug/codebase-map,
+// whose filenames derive from trailhead-executor -> execute and
+// trailhead-code-review -> review) + 1 always-keyless agent (fix).
 const STUB_AGENT_DEFS = [
   { name: 'trailhead-plan', description: 'plan desc', tools: 'Read', body: 'Plan body.' },
   { name: 'trailhead-executor', description: 'execute desc', tools: 'Read, Write', body: 'Execute body.' },
@@ -255,14 +255,14 @@ ok('codexAgentTomlPlan: 7 agentDefs -> 7 writes with only the pinned key carryin
   return others.length === 6 && others.every((w) => !/^model = /m.test(w.content));
 })());
 
-ok('codexAgentTomlPlan: keyless trailhead-fix / trailhead-codebase-map are always pin-less', (() => {
+ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase-map now pins on codebase-map', (() => {
   const plan = codexAgentTomlPlan('/c', { fix: 'gpt-5.6-terra', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
   const fix = byName['trailhead-fix'];
   const map = byName['trailhead-codebase-map'];
   return fix && map &&
     fix.path === '/c/agents/trailhead-fix.toml' && !/^model = /m.test(fix.content) &&
-    map.path === '/c/agents/trailhead-codebase-map.toml' && !/^model = /m.test(map.content);
+    map.path === '/c/agents/trailhead-codebase-map.toml' && map.content.includes('model = "gpt-5.6-terra"');
 })());
 
 ok('codexAgentTomlPlan: empty models object -> 7 pin-less writes (not zero)', (() => {
