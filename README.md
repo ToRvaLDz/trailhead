@@ -306,7 +306,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
-| `effort` | **`standard`** \| `lean` | how hard the `build`/`bug`/`quick` engine works a change: `standard` runs every step, `lean` size-triages small changes and offers to skip the heavy ones (plan pass, TDD, cross-AI review, full code review) |
+| `effort` | **`standard`** \| `lean` | how hard the `build`/`bug`/`quick` engine works a change: `standard` runs every step, `lean` size-triages small changes and offers to skip the heavy ones (plan pass, TDD, cross-AI review, full code review, goal-backward verify) |
 
 **Models.** Each key runs its activity as a **subagent** on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
 
