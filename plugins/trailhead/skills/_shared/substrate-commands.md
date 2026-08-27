@@ -10,8 +10,9 @@ gh issue create --label "trailhead:map" --title "<destination>" --body-file <bod
 gh issue create --label "trailhead:ticket,trailhead:build,trailhead:map-<map>" --title "<question/goal>" --body-file <body>
 # link the ticket to its map: native sub-issue (structure/UI) + the map label above (the query)
 gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id=$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)
-# wire a blocker: native dependency (visual frontier in the UI) + the label (the query)
+# wire a blocker: native dependency (visual frontier in the UI) + the trailhead:blocked label (the query)
 gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
+# the label rides in the --label list at creation for a ticket already known-blocked (fires no issues.labeled event); use --add-label ONLY when a ticket becomes blocked LATER (a single event, never a bulk burst):
 gh issue edit <blocked> --add-label "trailhead:blocked"
 # the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
 gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:whiteboard"
@@ -47,10 +48,11 @@ Wire all three in the same pass; a ticket carrying only one or two has drifted. 
    ```bash
    gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
    ```
-3. The `trailhead:blocked` label:
+3. The `trailhead:blocked` label. **Set it at creation** (include it in the `gh issue create --label` list) for any ticket known-blocked up front, which is every bulk path (the chart/adopt wiring second pass, split children, an on-the-fly ticket with a known blocker): the label then rides in the ticket's `issues.opened` event and fires **no** `issues.labeled` event. Reserve the post-creation `--add-label` form for a ticket that becomes blocked **later**, after it already exists (a single, non-bursty event):
    ```bash
    gh issue edit <blocked> --add-label "trailhead:blocked"
    ```
+   **Why at creation.** The repo-side label guard (`.github/workflows/trailhead-label-guard.yml`) fires on `issues.labeled`. A setup pass that adds `trailhead:blocked` to many freshly-created tickets via `--add-label` fires a burst of `issues.labeled` events, one guard run each; GitHub sheds a fraction of that concurrent burst as `startup_failure`/`cancelled`, reddening the Actions history with no-op runs (the labeler is the authorized maintainer). Riding the label in `issues.opened` avoids the burst; moves 1-2 (the `## Blocked by` prose and the native dependency edge) still wire together in the second pass and fire no label event.
 
 Same-blocker rule: all three must name the SAME blocker ticket, never a superseded parent, a split-origin, or a by-role placeholder ("child A"). Write the prose line and the native dependency from the same id, in the same pass, so they cannot point at different tickets.
 
