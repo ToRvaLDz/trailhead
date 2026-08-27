@@ -3,9 +3,10 @@
   "models": {
     "plan": "claude-opus-4-8",
     "execute": "claude-sonnet-5",
-    "research": "claude-haiku-4-5-20251001",
+    "research": "claude-sonnet-5",
     "review": "claude-sonnet-5",
-    "debug": "claude-sonnet-5"
+    "debug": "claude-sonnet-5",
+    "codebase-map": "claude-haiku-4-5-20251001"
   },
   "design": {
     "mode": "claude.ai/design",

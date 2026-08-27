@@ -296,7 +296,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | Key | Values (default **bold**) | Effetto |
 |---|---|---|
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
-| `models.{plan,execute,research,review,debug,verify}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
+| `models.{plan,execute,research,review,debug,verify,codebase-map}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
 | `design` | **`disk`** \| `claude.ai/design` \| `stitch` | dove vanno i mockup UI: HTML usa-e-getta locale, claude.ai/design via l'MCP ufficiale Claude Design di Anthropic, o Google Stitch (cross-host, via l'MCP Stitch) |
 | `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design` o `stitch`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
