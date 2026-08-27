@@ -6,7 +6,16 @@
     "research": "claude-sonnet-5",
     "review": "claude-sonnet-5",
     "debug": "claude-sonnet-5",
-    "codebase-map": "claude-haiku-4-5-20251001"
+    "codebase-map": "claude-haiku-4-5-20251001",
+    "codex": {
+      "plan": { "model": "gpt-5.6-sol", "effort": "high" },
+      "execute": { "model": "gpt-5.6-terra", "effort": "medium" },
+      "research": { "model": "gpt-5.6-terra", "effort": "medium" },
+      "review": { "model": "gpt-5.6-terra", "effort": "medium" },
+      "debug": { "model": "gpt-5.6-terra", "effort": "medium" },
+      "verify": { "model": "gpt-5.6-terra", "effort": "medium" },
+      "codebase-map": { "model": "gpt-5.6-luna", "effort": "low" }
+    }
   },
   "design": {
     "mode": "claude.ai/design",
