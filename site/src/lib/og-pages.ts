@@ -14,7 +14,10 @@ export interface OgPage {
   description: string;
 }
 
-const landingPage: OgPage = {
+// Exported so src/pages/index.astro can reuse the exact same copy for its
+// own <meta name="description">/og:description/twitter:description — the
+// landing page and its OG card must never say different things (#116).
+export const landingCard: OgPage = {
   title: 'trailhead',
   description:
     'Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the destination is clear.',
@@ -41,7 +44,7 @@ export async function getOgPages(): Promise<Record<string, OgPage>> {
   );
 
   return {
-    index: landingPage,
+    index: landingCard,
     ...docsPages,
   };
 }
