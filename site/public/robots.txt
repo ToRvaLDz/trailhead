@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://trailhead.marcomigozzi.it/sitemap-index.xml

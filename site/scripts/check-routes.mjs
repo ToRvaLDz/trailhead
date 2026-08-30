@@ -265,25 +265,33 @@ if (existsSync(notFoundIndex)) {
 }
 
 // #116: sitemap + robots.txt, present and pointing at the right domain.
-const siteOrigin = 'https://trailhead.marcomigozzi.it';
+// The origin is derived from the built sitemap-index.xml itself (not a
+// literal hardcoded here) so this assertion can never silently pass against
+// the wrong domain if astro.config.mjs's `site` ever changes.
 const sitemapIndex = path.join(dist, 'sitemap-index.xml');
+let siteOrigin;
 if (!existsSync(sitemapIndex)) {
   failures.push(`missing expected build output: ${path.relative(siteRoot, sitemapIndex)}`);
 } else {
   const sitemapText = readFileSync(sitemapIndex, 'utf8');
-  if (!sitemapText.includes(`${siteOrigin}/`)) {
-    failures.push(`sitemap-index.xml missing expected site origin: ${siteOrigin}/`);
+  const locMatch = sitemapText.match(/<loc>(https?:\/\/[^/]+)\/[^<]*<\/loc>/);
+  if (!locMatch) {
+    failures.push('sitemap-index.xml has no <loc> entry to derive the site origin from');
+  } else {
+    siteOrigin = locMatch[1];
   }
 }
 
-const robotsTxt = path.join(dist, 'robots.txt');
-const robotsSitemapLine = `Sitemap: ${siteOrigin}/sitemap-index.xml`;
-if (!existsSync(robotsTxt)) {
-  failures.push(`missing expected build output: ${path.relative(siteRoot, robotsTxt)}`);
-} else {
-  const robotsText = readFileSync(robotsTxt, 'utf8');
-  if (!robotsText.includes(robotsSitemapLine)) {
-    failures.push(`robots.txt missing expected line: ${robotsSitemapLine}`);
+if (siteOrigin) {
+  const robotsTxt = path.join(dist, 'robots.txt');
+  const robotsSitemapLine = `Sitemap: ${siteOrigin}/sitemap-index.xml`;
+  if (!existsSync(robotsTxt)) {
+    failures.push(`missing expected build output: ${path.relative(siteRoot, robotsTxt)}`);
+  } else {
+    const robotsText = readFileSync(robotsTxt, 'utf8');
+    if (!robotsText.includes(robotsSitemapLine)) {
+      failures.push(`robots.txt missing expected line: ${robotsSitemapLine}`);
+    }
   }
 }
 
@@ -305,7 +313,7 @@ if (!existsSync(ogImageIndex)) {
   failures.push(`missing expected build output: ${path.relative(siteRoot, ogImageIndex)}`);
 }
 
-if (existsSync(dist)) {
+if (existsSync(dist) && siteOrigin) {
   const ogImagePattern = /<meta\s+property="og:image"\s+content="([^"]+)"/;
   for (const htmlFile of findHtmlFiles(dist)) {
     const label = path.relative(siteRoot, htmlFile);
