@@ -23,12 +23,18 @@ const notoSansBold = './src/assets/fonts/noto-sans-latin-700-normal.ttf';
 export const { getStaticPaths, GET } = await OGImageRoute({
   pages,
   getSlug: (path) => path,
-  getImageOptions: (_path, page) => ({
+  getImageOptions: (key, page) => ({
     title: page.title,
     description: page.description,
     bgGradient: [[10, 15, 13]],
     border: { color: [243, 132, 79], width: 8, side: 'inline-start' },
     padding: 64,
+    // The docs cards carry only the page title, so brand them with the
+    // trailhead wordmark at the top (#116). The landing card's title is
+    // already "trailhead", so it needs no logo.
+    ...(key === 'index'
+      ? {}
+      : { logo: { path: './src/assets/trailhead-wordmark.png', size: [200] } }),
     fonts: [notoSansRegular, notoSansBold],
     font: {
       title: { color: [242, 239, 232], size: 68, weight: 'Bold', families: ['Noto Sans'] },
