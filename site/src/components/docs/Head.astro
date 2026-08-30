@@ -1,0 +1,31 @@
+---
+// Overrides Starlight's default <Head>: renders the stock head tags
+// (title, description, existing OpenGraph text fields, etc.) unchanged,
+// then appends the image meta Starlight itself does not emit (#116).
+//
+// The image is looked up by `Astro.locals.starlightRoute.id` in the og-pages
+// registry (src/lib/og-pages.ts) — the same route id already relied on by
+// src/components/docs/cards.ts and DocsMarkdownContent.astro. Any route not
+// in the registry (404, or a future page not yet added) falls back to the
+// landing's /og/index.png so every generated page still carries a valid
+// og:image rather than a broken one.
+import Default from '@astrojs/starlight/components/Head.astro';
+import { getOgPages } from '../../lib/og-pages';
+
+const { id, entry } = Astro.locals.starlightRoute;
+const pages = await getOgPages();
+const imagePath = id in pages ? `/og/${id}.png` : '/og/index.png';
+const ogImageUrl = new URL(imagePath, Astro.site);
+const imageAlt = entry.data.title || 'trailhead';
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<meta property="og:image" content={ogImageUrl} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:alt" content={imageAlt} />
+
+<meta name="twitter:image" content={ogImageUrl} />
+<meta name="twitter:image:alt" content={imageAlt} />

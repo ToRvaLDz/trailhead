@@ -97,6 +97,7 @@ export default defineConfig({
         SiteTitle: './src/components/DocsSiteTitle.astro',
         ThemeSelect: './src/components/EmptyThemeSelect.astro',
         MarkdownContent: './src/components/docs/DocsMarkdownContent.astro',
+        Head: './src/components/docs/Head.astro',
       },
       customCss: ['./src/styles/docs.css'],
       expressiveCode: {
