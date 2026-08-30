@@ -26,3 +26,8 @@ exclude = ["static.cloudflareinsights.com", "www.npmjs.com"]
 
 # Skip mailto: links, out of scope for a dead-link check.
 include_mail = false
+
+# Also verify same-page anchor fragments (e.g. href="#install" must find a
+# matching id on the target page), so a renamed/removed anchor fails CI too,
+# not just a missing page. `anchor-only` skips #:~:text= fragments.
+include_fragments = "anchor-only"
