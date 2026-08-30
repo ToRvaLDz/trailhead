@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import sitemap from '@astrojs/sitemap';
 
 // Custom Expressive Code theme for the /docs/ code blocks, matching the
 // landing page's `.code` treatment (see src/styles/landing.css): dim
@@ -136,5 +137,6 @@ export default defineConfig({
         },
       ],
     }),
+    sitemap(),
   ],
 });
