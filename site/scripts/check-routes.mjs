@@ -11,7 +11,7 @@
 // named, so the benign `locales: { en }`-as-default substitution stays at
 // /docs/ (and a mismatched defaultLocale hard-fails the build instead); this
 // check catches the prefixed-locale case, not that substitution.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -264,6 +264,81 @@ if (existsSync(notFoundIndex)) {
   }
 }
 
+// #116: sitemap + robots.txt, present and pointing at the right domain.
+const siteOrigin = 'https://trailhead.marcomigozzi.it';
+const sitemapIndex = path.join(dist, 'sitemap-index.xml');
+if (!existsSync(sitemapIndex)) {
+  failures.push(`missing expected build output: ${path.relative(siteRoot, sitemapIndex)}`);
+} else {
+  const sitemapText = readFileSync(sitemapIndex, 'utf8');
+  if (!sitemapText.includes(`${siteOrigin}/`)) {
+    failures.push(`sitemap-index.xml missing expected site origin: ${siteOrigin}/`);
+  }
+}
+
+const robotsTxt = path.join(dist, 'robots.txt');
+const robotsSitemapLine = `Sitemap: ${siteOrigin}/sitemap-index.xml`;
+if (!existsSync(robotsTxt)) {
+  failures.push(`missing expected build output: ${path.relative(siteRoot, robotsTxt)}`);
+} else {
+  const robotsText = readFileSync(robotsTxt, 'utf8');
+  if (!robotsText.includes(robotsSitemapLine)) {
+    failures.push(`robots.txt missing expected line: ${robotsSitemapLine}`);
+  }
+}
+
+// #116: every page's og:image must point at a PNG that was actually built.
+// Walk the whole dist/ tree (not just the known routes above) so a future
+// page that forgets to wire up its social-card image fails loudly here.
+function findHtmlFiles(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) {
+      return findHtmlFiles(full);
+    }
+    return name.endsWith('.html') ? [full] : [];
+  });
+}
+
+const ogImageIndex = path.join(dist, 'og', 'index.png');
+if (!existsSync(ogImageIndex)) {
+  failures.push(`missing expected build output: ${path.relative(siteRoot, ogImageIndex)}`);
+}
+
+if (existsSync(dist)) {
+  const ogImagePattern = /<meta\s+property="og:image"\s+content="([^"]+)"/;
+  for (const htmlFile of findHtmlFiles(dist)) {
+    const label = path.relative(siteRoot, htmlFile);
+    const html = readFileSync(htmlFile, 'utf8');
+    const match = html.match(ogImagePattern);
+    if (!match) {
+      failures.push(`${label} missing an og:image meta tag`);
+      continue;
+    }
+    const ogImageUrl = match[1];
+    if (!ogImageUrl.startsWith(`${siteOrigin}/`)) {
+      failures.push(`${label} has an og:image not rooted at ${siteOrigin}: ${ogImageUrl}`);
+      continue;
+    }
+    const ogImageLocalPath = path.join(dist, ogImageUrl.slice(siteOrigin.length));
+    if (!existsSync(ogImageLocalPath)) {
+      failures.push(
+        `${label} references og:image ${ogImageUrl}, but ${path.relative(siteRoot, ogImageLocalPath)} was not built`
+      );
+    }
+  }
+}
+
+if (existsSync(landingIndex)) {
+  const landingHtml = readFileSync(landingIndex, 'utf8');
+  if (!landingHtml.includes('rel="canonical"')) {
+    failures.push('landing (dist/index.html) missing rel="canonical"');
+  }
+  if (!landingHtml.includes('twitter:card')) {
+    failures.push('landing (dist/index.html) missing twitter:card meta');
+  }
+}
+
 if (failures.length > 0) {
   console.error('check-routes: FAILED');
   for (const failure of failures) {
@@ -273,6 +348,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden).'
+  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, and every page\'s og:image resolves to a built PNG.'
 );
 process.exit(0);
