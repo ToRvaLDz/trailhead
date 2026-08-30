@@ -12,6 +12,13 @@ import Views from "../components/landing/Views.astro";
 import Captures from "../components/landing/Captures.astro";
 import Maps from "../components/landing/Maps.astro";
 import Footer from "../components/landing/Footer.astro";
+
+// #116: absolute URLs for canonical/OpenGraph/Twitter metadata, derived from
+// the configured `site` so they stay correct if the domain ever changes.
+const description =
+	"Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the destination is clear.";
+const canonicalUrl = new URL("/", Astro.site);
+const ogImageUrl = new URL("/og/index.png", Astro.site);
 ---
 
 <!doctype html>
@@ -20,10 +27,25 @@ import Footer from "../components/landing/Footer.astro";
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>trailhead</title>
-	<meta
-		name="description"
-		content="Start and drive large projects as a map of tickets on GitHub Issues, resolving one at a time until the destination is clear."
-	/>
+	<meta name="description" content={description} />
+	<link rel="canonical" href={canonicalUrl} />
+
+	<meta property="og:site_name" content="trailhead" />
+	<meta property="og:title" content="trailhead" />
+	<meta property="og:description" content={description} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta property="og:type" content="website" />
+	<meta property="og:image" content={ogImageUrl} />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta property="og:image:type" content="image/png" />
+	<meta property="og:image:alt" content="trailhead" />
+
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="trailhead" />
+	<meta name="twitter:description" content={description} />
+	<meta name="twitter:image" content={ogImageUrl} />
+	<meta name="twitter:image:alt" content="trailhead" />
 </head>
 <body>
 
