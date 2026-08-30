@@ -34,6 +34,10 @@ const mustExist = [
   path.join(dist, 'index.html'),
   path.join(dist, 'docs', 'index.html'),
   ...docsSlugs.map((slug) => path.join(dist, 'docs', slug, 'index.html')),
+  // #117: 404.html must be built, else its existsSync-guarded checks (the
+  // beacon assertion below and the hero-leak negative assertion) silently
+  // no-op while the summary still claims 404 coverage.
+  path.join(dist, '404.html'),
 ];
 
 const mustNotExist = [path.join(dist, 'en')];
@@ -103,6 +107,11 @@ const commandsMustContain = [
 ];
 
 const docsPlaceholder = 'Skeleton placeholder';
+
+// #117: Cloudflare Web Analytics beacon — cookieless, consent-free — must
+// load on every published route (landing, every /docs/* page, and the 404).
+const cfBeaconSrc = 'static.cloudflareinsights.com/beacon.min.js';
+const cfBeaconToken = '9d745984ddba48329691930072aea137';
 
 // Per-page hero illustrations (#112): every /docs/* page renders exactly one
 // decorative map-card hero as a full-width banner below the real
@@ -347,6 +356,36 @@ if (existsSync(landingIndex)) {
   }
 }
 
+// #117: assert the beacon renders as exactly one coherent <script> tag on
+// every published route, order-independent among the head's other scripts.
+// Raw HTML (not normalizedText(), which strips tags) so the `<script ...>`
+// open tags themselves are still there to match against.
+const beaconRoutes = [
+  { label: path.relative(siteRoot, landingIndex), file: landingIndex },
+  { label: path.relative(siteRoot, docsBrandIndex), file: docsBrandIndex },
+  ...docsSlugs.map((slug) => {
+    const file = path.join(dist, 'docs', slug, 'index.html');
+    return { label: path.relative(siteRoot, file), file };
+  }),
+  { label: path.relative(siteRoot, notFoundIndex), file: notFoundIndex },
+];
+
+for (const { label, file } of beaconRoutes) {
+  if (!existsSync(file)) {
+    continue;
+  }
+  const html = readFileSync(file, 'utf8');
+  const scriptOpenTags = html.match(/<script\b[^>]*>/gi) || [];
+  const beaconTags = scriptOpenTags.filter((tag) => tag.includes(cfBeaconSrc));
+  if (beaconTags.length !== 1) {
+    failures.push(
+      `${label}: expected exactly one Cloudflare Web Analytics beacon <script>, found ${beaconTags.length}`
+    );
+  } else if (!beaconTags[0].includes(cfBeaconToken)) {
+    failures.push(`${label}: beacon <script> present but missing/mismatched token ${cfBeaconToken}`);
+  }
+}
+
 if (failures.length > 0) {
   console.error('check-routes: FAILED');
   for (const failure of failures) {
@@ -356,6 +395,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, and every page\'s og:image resolves to a built PNG.'
+  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 10 /docs/* pages, and 404).'
 );
 process.exit(0);

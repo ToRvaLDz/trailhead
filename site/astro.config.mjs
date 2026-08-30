@@ -119,6 +119,15 @@ export default defineConfig({
           tag: 'script',
           content: "document.documentElement.dataset.theme = 'dark';",
         },
+        // Cloudflare Web Analytics beacon on every docs route (and 404), via the stock Head.
+        {
+          tag: 'script',
+          attrs: {
+            type: 'module',
+            src: 'https://static.cloudflareinsights.com/beacon.min.js',
+            'data-cf-beacon': '{"token": "9d745984ddba48329691930072aea137"}',
+          },
+        },
       ],
       sidebar: [
         {

@@ -48,6 +48,9 @@ const ogImageUrl = new URL("/og/index.png", Astro.site);
 	<meta name="twitter:description" content={description} />
 	<meta name="twitter:image" content={ogImageUrl} />
 	<meta name="twitter:image:alt" content={title} />
+
+	<!-- Cloudflare Web Analytics: cookieless, consent-free beacon. type="module" is deferred, so it never blocks paint. Astro leaves absolute-src scripts untouched. -->
+	<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "9d745984ddba48329691930072aea137"}'></script>
 </head>
 <body>
 
