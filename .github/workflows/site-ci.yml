@@ -1,0 +1,61 @@
+# Gates the docs/marketing site (site/): a build check plus a dead-link
+# check over the built static output (site/dist), scoped to site paths so
+# it only runs when the site actually changed.
+#
+# Caveat: if this workflow is later turned into a *required* branch-protection
+# check, these `paths` filters mean it can sit "pending" forever on PRs that
+# never touch `site/**` (GitHub only reports a required check once it's
+# actually triggered). If that's needed, add an always-run stub job with the
+# same name that no-ops when the path filter doesn't match, so the required
+# check always reports. Left out here since the path scope is intentional.
+
+name: Site CI
+
+on:
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/site-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/site-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-links:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: site/.node-version
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build + route check
+        run: npm run check
+
+      - name: Check for dead links
+        # `defaults.run.working-directory` above only applies to `run:`
+        # steps, not `uses:` steps, so paths here are repo-root-relative.
+        # `--root-dir` must be an absolute path, hence $GITHUB_WORKSPACE.
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --root-dir "$GITHUB_WORKSPACE/site/dist"
+            --config site/lychee.toml
+            site/dist
+          fail: true

@@ -1,0 +1,28 @@
+# Config for the site CI dead-link check (lycheeverse/lychee), run against
+# the built static site (site/dist). Kept intentionally conservative: only
+# genuinely dead links should fail CI.
+
+# Root-relative links (e.g. "/docs/getting-started") are resolved via the
+# `--root-dir` CLI flag in .github/workflows/site-ci.yml instead of a
+# `base_url` key here: lychee requires an absolute path for both, and the
+# build output's absolute path only exists at CI runtime.
+
+# Only accept real success codes. Do NOT blanket-accept 429: retries below
+# absorb transient rate-limiting, so a persistent 429 still fails CI.
+accept = ["200..=299"]
+
+# Absorb transient network/rate-limit blips without weakening `accept`.
+max_retries = 3
+retry_wait_time = 2
+timeout = 20
+
+# The Cloudflare Web Analytics beacon is a browser-only script that HEAD
+# requests flake against; it isn't a content link worth checking.
+# www.npmjs.com's package pages sit behind bot protection that 403s even
+# well-formed, browser-UA requests (confirmed independently of lychee), so
+# it produces false positives here; the registry API (registry.npmjs.org)
+# is unaffected and not excluded.
+exclude = ["static.cloudflareinsights.com", "www.npmjs.com"]
+
+# Skip mailto: links, out of scope for a dead-link check.
+include_mail = false
