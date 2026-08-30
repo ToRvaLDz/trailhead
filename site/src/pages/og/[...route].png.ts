@@ -13,6 +13,13 @@ import { getOgPages } from '../../lib/og-pages';
 
 const pages = await getOgPages();
 
+// Vendored Noto Sans (regular + bold), both under the embedded family name
+// "Noto Sans" (#116): astro-og-canvas otherwise fetches this same face from
+// api.fontsource.org on every build. Bundling it locally keeps the build
+// hermetic and self-hosted, with no network dependency.
+const notoSansRegular = './src/assets/fonts/noto-sans-latin-400-normal.ttf';
+const notoSansBold = './src/assets/fonts/noto-sans-latin-700-normal.ttf';
+
 export const { getStaticPaths, GET } = await OGImageRoute({
   pages,
   getSlug: (path) => path,
@@ -22,9 +29,10 @@ export const { getStaticPaths, GET } = await OGImageRoute({
     bgGradient: [[10, 15, 13]],
     border: { color: [243, 132, 79], width: 8, side: 'inline-start' },
     padding: 64,
+    fonts: [notoSansRegular, notoSansBold],
     font: {
-      title: { color: [242, 239, 232], size: 68, weight: 'Bold' },
-      description: { color: [159, 176, 166], size: 34 },
+      title: { color: [242, 239, 232], size: 68, weight: 'Bold', families: ['Noto Sans'] },
+      description: { color: [159, 176, 166], size: 34, families: ['Noto Sans'] },
     },
   }),
 });
