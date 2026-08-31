@@ -1,6 +1,6 @@
 ---
 title: Ticket types
-description: The six ticket types, their engines, and two rules of thumb.
+description: The six ticket types, their engines, the rules of thumb, and how trailhead frames forced choices.
 ---
 
 Each ticket carries a type label; each type has its own way of being resolved. Each type has its own inline engine: no external skill is invoked.

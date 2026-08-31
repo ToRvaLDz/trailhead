@@ -6,10 +6,12 @@ When trailhead must put a **forced choice** to the human (any `AskUserQuestion`-
 
 ## The one-line test: whose choice is it?
 
-Before offering the delegate option, ask: **does the answer get written into the map's `Decisions so far`, or change the destination or scope?**
+Before offering the delegate option, ask: **is the answer itself a project decision (a `decision`-ticket's answer, or a change to the map's destination or scope), as opposed to a process choice that merely gets folded into some ticket's ordinary resolution summary?**
 
-- **Yes, the human owns it.** Do NOT offer the delegate option (the agent must never both frame the options and pick a decision that shapes the destination; see the decision engine's "the choice stays theirs"). You may still offer **defer** if the choice is genuinely blocked on something not yet resolved.
-- **No, it is an advisory / process choice** (how the engine does its work, not what the project decides). Offer the **delegate** option.
+- **Yes, it is a project decision, so the human owns it.** Do NOT offer the delegate option (the agent must never both frame the options and pick a decision that shapes the destination; see the decision engine's "the choice stays theirs"). You may still offer **defer** if the choice is genuinely blocked on something not yet resolved.
+- **No, it is an advisory / process choice** (how the engine does its work, not what the project decides, even though the step it belongs to may later be summarised in a resolution comment). Offer the **delegate** option.
+
+The distinction is "is this answer itself a project decision" versus "does this answer just happen to end up mentioned when a ticket resolves": every ticket's Resolve updates `Decisions so far`, so *being mentioned there* is not the test; *being a decision that shapes the work* is.
 
 Positive (delegate offered): config values and the `/trailhead config` menus, model/tooling picks, the effort skip offer, cross-AI plan-review convergence, "which fix approach" at a verify checkpoint, a prototype-or-not ask, a badge style, a lychee flag, a branch/worktree mechanism.
 
@@ -34,6 +36,8 @@ For a choice whose best answer depends on something **not yet resolved**. It nev
 - **Depends on a future external trigger** (not a map decision) → capture a `seed` (`trailhead:seed`, kept blocked) gated on that trigger.
 - **No substrate to route into** (a `/trailhead config` menu, or a map-less choice with no real dependency) → **defer is not offered**; make the choice now (delegate or chat). Defer is offered only when there is a genuine dependency to wait on.
 
+When the deferred choice was blocking **this** ticket's own progress (e.g. a `build` ticket that stopped mid-Discuss on the ambiguity), also wire the ticket that raised it `## Blocked by` the new `decision` ticket, or pause it per `teamwork.md`, so it leaves the frontier until the prerequisite resolves. That ticket cannot finish this session; hand off per the session ritual.
+
 ## Where each applies (call-site table)
 
 | Call-site | Delegate | Defer |
@@ -50,6 +54,6 @@ For a choice whose best answer depends on something **not yet resolved**. It nev
 | Exhaustion "close the map?" | No (record the human owns) | No |
 | Out-of-scope routing (deferred line → seed/idea/todo) | No (routing the human owns) | This IS a defer already |
 
-The one-line test above generalises to any call-site not listed: written into `Decisions so far` or changes destination/scope means no delegate.
+The one-line test above generalises to any call-site not listed: if the answer is itself a project decision (a `decision`-ticket answer, or a destination/scope change) there is no delegate; a process choice that merely gets mentioned in a later resolution comment is still advisory.
 
 **Compatibility with "the choice stays the human's."** The delegate option is compatible *because of* the confirm gate (the agent proposes, the human ratifies) and because it is withheld on destination-shaping decisions. Defer never hands a decision to the agent; it parks it on the substrate for a real decision later.
