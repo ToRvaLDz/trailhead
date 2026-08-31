@@ -19,4 +19,6 @@ Each ticket carries a type label; each type has its own way of being resolved. E
 - Build tickets never auto-grill: on blocking ambiguity the skill stops and asks.
 - Brainstorming (divergence) lives in charting, in `ticket`'s micro-charting, and in a `decision`'s option phase, never in the grilling itself, which only converges.
 
+When trailhead puts a forced choice to you, an advisory one (not a decision that shapes the map) may also offer "let the agent pick (with rationale, then confirm)", and any choice may offer "defer this decision", which parks it as a blocked `decision` ticket or a `seed` until its prerequisite resolves.
+
 Next: [Commands](/docs/commands) for the verbs that drive each type, or [Core concepts](/docs/concepts) for the map/ticket/frontier vocabulary these engines operate on.

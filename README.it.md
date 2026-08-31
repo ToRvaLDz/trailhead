@@ -235,6 +235,8 @@ Ogni tipo ha il proprio motore inline: nessuna skill esterna viene invocata.
 
 Due regole pratiche: i build ticket **non fanno mai auto-grill**: su un'ambiguità bloccante la skill si ferma e chiede; e il brainstorming (divergenza) vive nel charting, nel micro-charting di `ticket`, e nella fase di opzioni di una `decision`, mai nel grilling stesso, che converge soltanto.
 
+Quando trailhead pone una scelta forzata, una scelta advisory (non una decisione che plasma la mappa) può offrire anche "lascia scegliere all'agente (con motivazione, poi conferma)", e qualsiasi scelta può offrire "rimanda questa decisione", che la parcheggia come ticket `decision` bloccato o come `seed` finché il suo prerequisito non si risolve.
+
 ---
 
 ## 🏷️ Labels

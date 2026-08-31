@@ -235,6 +235,8 @@ Each type has its own inline engine: no external skill is invoked.
 
 Two rules of thumb: build tickets **never auto-grill**: on blocking ambiguity the skill stops and asks; and brainstorming (divergence) lives in charting, in `ticket`'s micro-charting, and in a `decision`'s option phase, never in the grilling itself, which only converges.
 
+When trailhead puts a forced choice to you, an advisory one (not a decision that shapes the map) may also offer "let the agent pick (with rationale, then confirm)", and any choice may offer "defer this decision", which parks it as a blocked `decision` ticket or a `seed` until its prerequisite resolves.
+
 ---
 
 ## 🏷️ Labels
