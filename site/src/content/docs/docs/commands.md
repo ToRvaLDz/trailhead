@@ -22,6 +22,7 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:pause [note]` | checkpoint the ticket in play so anyone can resume it |
 | `/trailhead:ticket <type> <title>` | open a ticket on the fly (diverges briefly first: a micro-charting act) |
 | `/trailhead:split [ticket]` | split an oversized ticket into children, supersede the original |
+| `/trailhead:auto [map]` | run the frontier autonomously, one ticket after another, until a stop condition (safety rail / fog / a human-necessary decision) or exhaustion; suspends one-ticket-per-session |
 | `/trailhead:grill [topic]` | run a standalone grilling session on a decision/topic |
 | `/trailhead:map` | show the low-res map (destination, decisions, frontier, fog) |
 | `/trailhead:dashboard` | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
