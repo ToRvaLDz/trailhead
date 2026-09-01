@@ -14,6 +14,21 @@ Every project walks the same loop:
 
 Along the way: capture ideas mid-work without derailing (see [Captures & the whiteboard](/docs/captures)), split a ticket that grew too big, pause/resume across sessions, and let several people work unblocked tickets in parallel (see [Working as a team](/docs/teamwork)).
 
+## Autonomous run: `auto`
+
+`/trailhead:auto [map]` chains the frontier unattended: it takes one ticket after another (suspending the one-ticket-per-session rule) and resolves each with its normal type engine, instead of handing back to you between tickets.
+
+It stops only at:
+- the **safety rail** (always on, hardcoded): cutting a release, `git push`, opening a PR, a delete/force, or any other outward-facing action. Atomic local commits to `main` are not rail-tripping and continue automatically.
+- **fog** that needs a human to dissolve it into tickets.
+- a **human-necessary decision**: a `decision`-ticket convergence, a destination or scope change, an out-of-scope ruling, routing a deferred line, closing an exhausted map, a claim collision.
+
+A ticket a run cannot verify is not left hanging: it gets a bounded **failure budget** (a no-progress rule plus a hardcoded ceiling of extra rounds), and at exhaustion the run **pauses that ticket, keeping its claim, and skips to the next** rather than stopping the whole run.
+
+**Interruption** is just the host interrupt (Stop/Esc): the in-flight ticket keeps its claim and gets a `PAUSED` checkpoint. **Resume** is you re-invoking `/trailhead:auto`; it never re-engages on its own.
+
+`auto` is **orthogonal to `effort` and `models.*`**: it changes neither, and it has **no config surface of its own** (there is nothing to configure).
+
 ## A worked example: "add social login"
 
 Destination: *users sign in with Google and GitHub, alongside email/password.* Charting fans it into six tickets (one of each type) wired by their dependencies:
