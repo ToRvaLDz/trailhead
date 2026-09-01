@@ -53,4 +53,25 @@ ok('Co-Authored-By trailer is blocked (exit 2)', r5.code === 2 && /CO_AUTHORED_B
 const r6 = runHook('ls -la');
 ok('non-git-commit command is allowed (exit 0)', r6.code === 0 && r6.out.trim() === '');
 
+// --- code review follow-up (#121): single-quoted values are shell-literal,
+// so `$(` / backtick text inside single quotes is NOT expanded and must be
+// validated like any other message. A single-quoted bad message containing
+// `$(` must still be BLOCKED.
+const r7 = runHook("git commit -m '$(not a conventional subject)'");
+ok('single-quoted bad -m with $( is blocked (exit 2)', r7.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r7.out));
+
+// --- single-quoted bad message containing a backtick must still be BLOCKED ---
+const r8 = runHook("git commit -m 'has a ` backtick and is not conventional'");
+ok('single-quoted bad -m with a backtick is blocked (exit 2)', r8.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r8.out));
+
+// --- the `<<` sub-pattern was redundant and caused false negatives on
+// ordinary text like "a<<b"; it must be removed so this is BLOCKED ---
+const r9 = runHook('git commit -m "a<<b is not a conventional subject"');
+ok('double-quoted bad -m containing a<<b is blocked (exit 2)', r9.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r9.out));
+
+// --- regression guard: a single-quoted VALID conventional message is
+// still allowed ---
+const r10 = runHook("git commit -m 'feat: valid subject'");
+ok('single-quoted valid -m is allowed (exit 0)', r10.code === 0 && r10.out.trim() === '');
+
 console.log(`✓ commit-guard: ${passed} assertions passed`);
