@@ -2,6 +2,16 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.7.0 (2026-09-01)
+
+### Added
+- **Forced-choice affordances made operative (delegate / defer).** The convention that any forced choice trailhead authors can offer "let the agent pick (with rationale, then confirm)" and "defer this decision" is now backed by a concrete recipe instead of a loose pointer: `choices.md` carries fixed labels (rendered in the user's conversation language), a deterministic `AskUserQuestion` cap rule (fill up to the 4-option cap, else fall back to one prose line after the menu), and a prose recipe for grilling. Every call-site was tightened from a permissive "may carry ... per choices.md" to a mandatory "offer ... per the recipe": `build`/`quick` Discuss, the `build`/`bug` Verify checkpoint, the `decision`-converge defer, the effort skip offer, the `/trailhead config` menus, cross-AI plan-review convergence, the prototype ask, grilling, and the split shape. Documented in both READMEs and `/docs`.
+- **`verify status: inconclusive` verdict.** The goal-backward verification technique can return `inconclusive` for claims it cannot evaluate, triggering a per-reason-class HITL checkpoint with no auto-retry instead of silently resolving over an unevaluated goal.
+
+### Changed / Fixed
+- **Commit-guard `-m` handling hardened.** The commit-message guard fails open only on genuinely unexpandable, shell-expanded `-m` values, treats escaped `$(` and backticks in `-m` as literal, and guards the never-false-positive invariant on an escaped `-m` with a test.
+- **Website (site only; not part of the npm package).** Since 0.6.0 the site gained per-page OpenGraph/Twitter social-card images and meta, sitemap generation and a dynamic `robots.txt`, a brand favicon, privacy-friendly Cloudflare Web Analytics, and a site CI workflow (build + link check) with same-page anchor-fragment checking; the OG-card font is vendored to drop a remote fetch.
+
 ## 0.6.0 (2026-08-27)
 
 ### Added
