@@ -42,7 +42,7 @@ When the deferred choice was blocking **this** ticket's own progress (e.g. a `bu
 
 This is the operational recipe every applicable call-site follows. It is **mandatory, not optional**: where the table below marks an affordance applicable, it is **offered**, never merely "available". Applicability is set by the one-line test above and the table (delegate on advisory / process choices; defer only when there is a genuine dependency to wait on).
 
-**Fixed labels.** Author the affordances with these canonical labels, rendered in the user's **conversation language** (they appear in the live prompt, not on the Issue, so this is the one place the ticket-language rule does not apply):
+**Fixed labels.** Author the affordances with these canonical labels, rendered in the user's **conversation language** (they appear in the live prompt, not on the Issue, so `ticket.language` never governs them, as with any chat-facing prompt):
 - Delegate -> "Let the agent pick (with rationale, then confirm)" (IT: "Lascia scegliere all'agente (con motivazione, poi conferma)", short "scegli tu").
 - Defer -> "Defer this decision" (IT: "Rimanda questa decisione", short "scelgo dopo").
 

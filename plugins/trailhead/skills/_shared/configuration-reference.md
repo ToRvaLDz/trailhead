@@ -81,7 +81,7 @@ Example `config.json` (same shape for the project `.trailhead/config.json` and t
 
 ## Guided setup
 
-`/trailhead config` (no args) runs an **interactive walkthrough**: never make the user hand-edit JSON. Present each step as an `AskUserQuestion` menu with **icon-labelled options** and the current value pre-selected; write the answers to the chosen scope at the end and show a summary. These menus **carry** the delegate option (agent picks, with rationale, then confirm) as an explicit choice, per the injection recipe in `choices.md`.
+`/trailhead config` (no args) runs an **interactive walkthrough**: never make the user hand-edit JSON. Present each step as an `AskUserQuestion` menu with **icon-labelled options** and the current value pre-selected; write the answers to the chosen scope at the end and show a summary. These menus **offer** the delegate option (agent picks, with rationale, then confirm), per the injection recipe in `choices.md`: as an explicit menu option where the cap allows, otherwise in a prose line right after the menu (several of these steps already list 4 or more real options, so there delegate is offered in prose).
 
 **Never skip a step.** Walk every step in order **and** every conditional sub-step its branch activates; never omit one, and **never silently take a default for a step the flow reaches**. The pre-selected value is a convenience, not licence to not ask; a step counts as done only once the user has actually answered it. If a choice opens follow-ups (e.g. *pick specific CLIs* → which ones **and** how many rounds; *browser on* → base URL), ask **each** before moving on.
 
