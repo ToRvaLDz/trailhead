@@ -31,10 +31,18 @@ function isGitCommit(cmd) {
   return toks[i] === 'commit';
 }
 
+// Un costrutto che il guard non può espandere staticamente: command
+// substitution, backtick o heredoc. In questi casi il testo catturato dalla
+// regex tra virgolette non è il messaggio reale (è la sintassi letteraria
+// della shell, es. `$(cat <<'EOF'`), quindi validarlo produce falsi
+// positivi che bloccano commit legittimi (#121). Fail open: meglio non
+// validare che bloccare un commit valido.
+const UNEXPANDABLE = /\$\(|`|<<-?['"]?\w/;
+
 function extractMessage(cmd) {
   // -m "…" / -m '…' / -m token / --message=…
   let m = cmd.match(/(?:^|\s)(?:-m|--message)(?:=|\s+)(["'])([\s\S]*?)\1/);
-  if (m) return m[2];
+  if (m) return UNEXPANDABLE.test(m[2]) ? null : m[2];
   m = cmd.match(/(?:^|\s)(?:-m|--message)(?:=|\s+)(\S+)/);
   return m ? m[1] : null;
 }
