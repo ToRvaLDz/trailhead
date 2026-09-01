@@ -1,11 +1,11 @@
 ---
 name: trailhead-work
 user-invocable: false
-description: "trailhead work cluster: the verbs that resolve tickets on the map and manage a ticket's lifecycle. Work the next frontier ticket or the one you name (work), work one ticket whole off the map without splitting (quick), checkpoint the ticket in play (pause), resume it from its checkpoint (resume), and split an oversized ticket into children (split). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers. Not auto-invoked: it runs only when one of these verbs is dispatched."
-argument-hint: "[work|quick|pause|resume|split] [ticket | \"text\" | note]"
+description: "trailhead work cluster: the verbs that resolve tickets on the map and manage a ticket's lifecycle. Work the next frontier ticket or the one you name (work), work one ticket whole off the map without splitting (quick), checkpoint the ticket in play (pause), resume it from its checkpoint (resume), split an oversized ticket into children (split), and run the whole frontier autonomously until a stop condition or exhaustion (auto). A cohesion cluster of the trailhead skill split, loading the shared `_shared/` core; reached through the `/trailhead:<verb>` command wrappers. Not auto-invoked: it runs only when one of these verbs is dispatched."
+argument-hint: "[work|quick|pause|resume|split|auto] [ticket | \"text\" | note]"
 ---
 
-`trailhead-work` is the **work cluster** of the trailhead skill: the verbs that resolve tickets and manage a ticket's lifecycle. `work` takes the next frontier ticket (or the one you name) and resolves it with its type's engine; `quick` works one ticket whole, off the map, without splitting; `pause` checkpoints the ticket in play; `resume` picks it back up; `split` breaks an oversized ticket into children. Everything lives on the GitHub Issues; the repo holds code only.
+`trailhead-work` is the **work cluster** of the trailhead skill: the verbs that resolve tickets and manage a ticket's lifecycle. `work` takes the next frontier ticket (or the one you name) and resolves it with its type's engine; `quick` works one ticket whole, off the map, without splitting; `pause` checkpoints the ticket in play; `resume` picks it back up; `split` breaks an oversized ticket into children; `auto` runs the map's frontier autonomously, ticket by ticket, suspending the one-ticket-per-session rule until a stop condition or exhaustion. Everything lives on the GitHub Issues; the repo holds code only.
 
 ## Load first, in order
 
@@ -27,6 +27,7 @@ The **first word** of the arguments is the verb; the rest is the text (a ticket 
 - **`work [ticket]`** to the **Work the map** engine below (Mode 2). It dispatches the chosen ticket to its type's engine in **`references/ticket-engines.md`** (`decision` / `research` / `prototype` / `build` / `bug` / `task`). Read that file when you resolve the ticket.
 - **`quick [ticket | "text"]`** to the **Work one ticket whole** engine below. It runs the full `build`/`bug` cycle from `references/ticket-engines.md`, off the map, without splitting.
 - **`pause [note]`** / **`resume [ticket]`** / **`split [ticket]`** to the teamwork lifecycle: `../_shared/teamwork.md` (multi-cluster, so it lives in `_shared/`). Read it and follow it.
+- **`auto [map]`** to the **autonomous run** engine in **`references/auto.md`**: it runs the map's frontier ticket-by-ticket, suspending one-ticket-per-session, taking every advisory choice as delegate without the confirm gate and stopping only at the safety rail, fog, human-necessary decisions, or human interrupt. Read that file when you engage a run.
 
 The cross-cluster situational references and the technique bodies these engines call live in `_shared/`; this cluster names each by its `../_shared/...` path where it needs one (teamwork, out-of-scope, the gh cookbook, the techniques).
 
