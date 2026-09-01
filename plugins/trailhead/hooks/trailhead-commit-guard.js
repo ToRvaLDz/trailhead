@@ -31,13 +31,15 @@ function isGitCommit(cmd) {
   return toks[i] === 'commit';
 }
 
-// $(...) and backticks are the only two command-substitution syntaxes. The
-// shell expands them only in a double-quoted or unquoted context; there the
-// text the regex captures is shell syntax (e.g. `$(cat <<'EOF'`), not the real
-// message, so validating it produces false positives that block valid commits
-// (#121). Fail open in that case. Inside single quotes everything is literal,
-// so the captured text IS the message and must be validated normally.
-const UNEXPANDABLE = /\$\(|`/;
+// $(...) and backticks are the two command-substitution syntaxes. Inside a
+// double-quoted (or unquoted) value the shell expands them, so the text the
+// regex captured is shell syntax, not the real message -> fail open, or we'd
+// raise false positives on valid commits (#121). But a backslash-escaped
+// `\$(` / `` \` `` (an EVEN count preceding the marker means it is NOT escaped;
+// an ODD count means it is) is a LITERAL, fully-static message that must still
+// be validated, so only an UNESCAPED marker triggers fail-open. Inside single
+// quotes everything is literal, so the captured text is always the real message.
+const UNEXPANDABLE = /(?:^|[^\\])(?:\\\\)*(?:\$\(|`)/;
 
 function extractMessage(cmd) {
   // -m "…" / -m '…' / -m token / --message=…

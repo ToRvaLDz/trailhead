@@ -74,4 +74,17 @@ ok('double-quoted bad -m containing a<<b is blocked (exit 2)', r9.code === 2 && 
 const r10 = runHook("git commit -m 'feat: valid subject'");
 ok('single-quoted valid -m is allowed (exit 0)', r10.code === 0 && r10.out.trim() === '');
 
+// --- re-review follow-up (#121): a backslash-escaped `\$(` / `` \` `` inside
+// double quotes is a LITERAL, fully-static message (bash does not expand an
+// escaped marker), so it must be validated like any other message, not
+// fail-opened. A bad message using the escaped form must still be BLOCKED.
+const r11 = runHook('git commit -m "\\$(x) not conventional"');
+ok('double-quoted bad -m with escaped \\$( is blocked (exit 2)', r11.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r11.out));
+
+const r12 = runHook('git commit -m "\\`x\\` not conventional"');
+ok('double-quoted bad -m with escaped backticks is blocked (exit 2)', r12.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r12.out));
+
+const r13 = runHook('git commit --message="\\$(x) not conventional"');
+ok('--message= bad value with escaped \\$( is blocked (exit 2)', r13.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r13.out));
+
 console.log(`✓ commit-guard: ${passed} assertions passed`);
