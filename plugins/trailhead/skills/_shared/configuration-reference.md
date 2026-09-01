@@ -74,6 +74,8 @@ On **trivial/small** the engine surfaces **one consolidated skip offer** and act
 
 **Never in the offer** (always kept, whatever the size or the answer): atomic `Refs:` commits, running the tests / the plan's verification criterion, the post-commit self-check, `bug`'s Diagnose (a confirmed root cause is mandatory before Fix), and Resolve. `effort` scales *redundant heavy* work to the change; it never drops a correctness check.
 
+**`auto` has no config surface.** The autonomous run (`/trailhead:auto`, `../trailhead-work/references/auto.md`) takes no key here, by decision: it changes neither `effort` nor `models.*` (orthogonal to both). Its safety rail is hardcoded always-on, never a toggle, and its stop/go boundary is the same `choices.md` one-line test every other engine step uses (delegate options run without the confirm gate; a human-necessary choice is always set aside), so there is nothing to configure separately.
+
 Example `config.json` (same shape for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 ```json
 { "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
