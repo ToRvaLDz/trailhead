@@ -96,6 +96,11 @@ ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.jo
 ok('codex: trailhead-bug SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-bug\n'));
 ok('codex: trailhead-bug skill delegates to $trailhead bug', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').includes('$trailhead bug'));
 ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
+// auto is a plain verb skill too: no trailhead-auto CLUSTER dir exists, so it
+// projects a thin per-verb skill exactly like bug/quick/pause.
+ok('codex: per-verb skills/trailhead-auto/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-auto', 'SKILL.md')));
+ok('codex: trailhead-auto SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-auto', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-auto\n'));
+ok('codex: trailhead-auto skill delegates to $trailhead auto', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-auto', 'SKILL.md'), 'utf8').includes('$trailhead auto'));
 // The trailhead-work dir is the WORK CLUSTER skill (not a thin verb delegator).
 ok('codex: trailhead-work is the cluster skill (frontmatter name at byte 0)', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-work\n'));
 ok('codex: trailhead-work cluster carries the adapter header', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-work', 'SKILL.md'), 'utf8').includes('<codex_skill_adapter>'));
@@ -245,6 +250,7 @@ for (const cl of ['trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailh
 }
 ok('claude: cluster ../_shared/ reference resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'substrate.md')));
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
+ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
