@@ -87,4 +87,15 @@ ok('double-quoted bad -m with escaped backticks is blocked (exit 2)', r12.code =
 const r13 = runHook('git commit --message="\\$(x) not conventional"');
 ok('--message= bad value with escaped \\$( is blocked (exit 2)', r13.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(r13.out));
 
+// --- positive-path guard for the guard's HARD invariant (never a false
+// positive): a VALID conventional message that merely contains an escaped
+// `\$(` / `` \` `` marker must stay ALLOWED. Without these, a future regex
+// tweak could reintroduce the #121 false positive on the escaped-literal path
+// and no test would catch it.
+const r14 = runHook('git commit -m "fix: escape \\$(VAR) safely"');
+ok('double-quoted valid -m with escaped \\$( is allowed (exit 0)', r14.code === 0 && r14.out.trim() === '');
+
+const r15 = runHook('git commit -m "fix: rename \\`getUser\\` to \\`fetchUser\\`"');
+ok('double-quoted valid -m with escaped backticks is allowed (exit 0)', r15.code === 0 && r15.out.trim() === '');
+
 console.log(`✓ commit-guard: ${passed} assertions passed`);
