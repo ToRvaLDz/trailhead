@@ -22,8 +22,11 @@ It stops only at:
 - the **safety rail** (always on, hardcoded): cutting a release, `git push`, opening a PR, a delete/force, or any other outward-facing action. Atomic local commits to `main` are not rail-tripping and continue automatically.
 - **fog** that needs a human to dissolve it into tickets.
 - a **human-necessary decision**: a `decision`-ticket convergence, a destination or scope change, an out-of-scope ruling, routing a deferred line, closing an exhausted map, a claim collision.
+- a **human-only step**: a HITL `task` (manual plumbing only you can do, like signing up for a service); auto hands you the checklist rather than fabricating it.
 
-A ticket a run cannot verify is not left hanging: it gets a bounded **failure budget** (a no-progress rule plus a hardcoded ceiling of extra rounds), and at exhaustion the run **pauses that ticket, keeping its claim, and skips to the next** rather than stopping the whole run.
+Under a **`git: pr`** convention (or worktree/clone isolation) a ticket finishes with a branch push and a PR, both rail actions, so auto does each ticket's whole local cycle and then sets the push/PR/integration aside for you: it is most productive under `git: main`, where a resolved ticket closes and unblocks its dependents immediately.
+
+A ticket a run cannot verify is not left hanging: it gets a bounded **failure budget** (a no-progress rule plus a hardcoded ceiling of 3 extra rounds), and at exhaustion the run **pauses that ticket, keeping its claim, and skips to the next** rather than stopping the whole run.
 
 **Interruption** is just the host interrupt (Stop/Esc): the in-flight ticket keeps its claim and gets a `PAUSED` checkpoint. **Resume** is you re-invoking `/trailhead:auto`; it never re-engages on its own.
 
