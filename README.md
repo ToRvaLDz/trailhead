@@ -6,7 +6,7 @@
 
 🇬🇧 **English** · 🇮🇹 [Italiano](README.it.md)
 
-[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![site CI](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=site%20CI)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-20%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-4%20hooks-e8710a?style=flat-square)
+[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![site CI](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=site%20CI)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-21%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-4%20hooks-e8710a?style=flat-square)
 
 </div>
 
@@ -106,7 +106,7 @@ These three fill GitHub's **3 pinned-issue slots**, so a repo's trailhead anchor
 **The lifecycle.** Every project walks the same loop:
 
 1. **Start**: `/trailhead:new "<idea>"` (greenfield) or `/trailhead:adopt` (existing code: map the codebase once, then go lean). This *charts the map*: name the destination, then map the frontier breadth-first into the first tickets and the fog.
-2. **Work the frontier, one ticket per session**: `/trailhead:work` takes the next takeable ticket (or one you name) and runs the engine for its type: `research` gathers a fact · `decision` diverges options then grills to choose · `prototype` makes a rough artifact to react to · `build` runs discuss → plan → execute → verify · `bug` runs repro → diagnose → fix → verify · `task` is manual plumbing that unblocks a decision.
+2. **Work the frontier, one ticket per session**: `/trailhead:work` takes the next takeable ticket (or one you name) and runs the engine for its type: `research` gathers a fact · `decision` diverges options then grills to choose · `prototype` makes a rough artifact to react to · `build` runs discuss → plan → execute → verify · `bug` runs repro → diagnose → fix → verify · `task` is manual plumbing that unblocks a decision. `/trailhead:auto` chains the frontier unattended, one ticket after another, stopping only at the safety rail, fog, or a human-necessary decision.
 3. **Close & unblock**: resolve the ticket (comment + close), gist it into `Decisions so far`, and drop `trailhead:blocked` from any dependent whose last blocker just closed, graduating it onto the frontier.
 4. **Repeat** until the frontier is empty and the fog has cleared: the destination (a working artifact) is reached.
 
@@ -181,6 +181,7 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:pause [note]` | checkpoint the ticket in play so anyone can resume it |
 | `/trailhead:ticket <type> <title>` | open a ticket on the fly (diverges briefly first: a micro-charting act) |
 | `/trailhead:split [ticket]` | split an oversized ticket into children, supersede the original |
+| `/trailhead:auto [map]` | run the frontier autonomously, one ticket after another, until a stop condition (safety rail / fog / a human-necessary decision) or exhaustion; suspends one-ticket-per-session |
 | `/trailhead:grill [topic]` | run a standalone grilling session on a decision/topic |
 | `/trailhead:map` | show the low-res map (destination, decisions, frontier, fog) |
 | `/trailhead:dashboard` | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
