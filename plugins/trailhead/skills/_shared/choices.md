@@ -38,6 +38,24 @@ For a choice whose best answer depends on something **not yet resolved**. It nev
 
 When the deferred choice was blocking **this** ticket's own progress (e.g. a `build` ticket that stopped mid-Discuss on the ambiguity), also wire the ticket that raised it `## Blocked by` the new `decision` ticket, or pause it per `teamwork.md`, so it leaves the frontier until the prerequisite resolves. That ticket cannot finish this session; hand off per the session ritual.
 
+## How to inject them (the recipe)
+
+This is the operational recipe every applicable call-site follows. It is **mandatory, not optional**: where the table below marks an affordance applicable, it is **offered**, never merely "available". Applicability is set by the one-line test above and the table (delegate on advisory / process choices; defer only when there is a genuine dependency to wait on).
+
+**Fixed labels.** Author the affordances with these canonical labels, rendered in the user's **conversation language** (they appear in the live prompt, not on the Issue, so this is the one place the ticket-language rule does not apply):
+- Delegate -> "Let the agent pick (with rationale, then confirm)" (IT: "Lascia scegliere all'agente (con motivazione, poi conferma)", short "scegli tu").
+- Defer -> "Defer this decision" (IT: "Rimanda questa decisione", short "scelgo dopo").
+
+**Menu call-sites (an `AskUserQuestion` trailhead authors): the cap rule.** The host tool accepts only 2-4 real options (plus its own auto escape), so the affordances can be crowded out. The rule is deterministic: **fill up to the cap, then fall back to prose.**
+- If **(real options + applicable affordances) <= 4**, add each applicable affordance as an explicit extra option in the same menu.
+- If they **would exceed 4**, keep the real options in the menu and offer the affordance(s) that did not fit in **one line of prose immediately after the menu** (or as an immediate follow-up question). The cap never silently swallows them.
+
+Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 real options + delegate + defer = 5 -> the menu carries the 3 real options and delegate/defer are offered in the prose line right after it; 2 real options + delegate (defer not applicable) = 3 -> in the menu.
+
+**Prose / conversational call-sites (grilling, or any choice put in words rather than a menu).** There is no cap: **state the applicable affordance(s) in words** in the same message that puts the choice (for example append "Oppure: scegli tu, propongo io / scelgo dopo se dipende da un prerequisito."). Grilling stays human-decides, so delegate is not offered there; **defer is offered in prose when the decision is genuinely blocked on a prerequisite.**
+
+`(Recommended)` on a real option is a separate, static hint that may coexist with the affordances; it is not the delegate option.
+
 ## Where each applies (call-site table)
 
 | Call-site | Delegate | Defer |
