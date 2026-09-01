@@ -6,7 +6,7 @@
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
-[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-20%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-4%20hook-e8710a?style=flat-square)
+[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-21%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-4%20hook-e8710a?style=flat-square)
 
 </div>
 
@@ -106,7 +106,7 @@ Questi tre riempiono i **3 slot di issue pinnate** di GitHub, così gli anchor d
 **Il ciclo di vita.** Ogni progetto percorre lo stesso loop:
 
 1. **Start**: `/trailhead:new "<idea>"` (greenfield) o `/trailhead:adopt` (codice esistente: mappa la codebase una volta, poi vai lean). Questo *traccia la mappa*: dai un nome alla destination, poi mappa la frontier in ampiezza (breadth-first) nei primi ticket e nella fog.
-2. **Lavora la frontier, un ticket per sessione**: `/trailhead:work` prende il prossimo ticket prendibile (o quello che nomini) ed esegue il motore per il suo tipo: `research` raccoglie un fatto · `decision` dirama le opzioni poi fa grilling per scegliere · `prototype` crea un artefatto grezzo a cui reagire · `build` esegue discuss → plan → execute → verify · `bug` esegue repro → diagnose → fix → verify · `task` è plumbing manuale che sblocca una decision.
+2. **Lavora la frontier, un ticket per sessione**: `/trailhead:work` prende il prossimo ticket prendibile (o quello che nomini) ed esegue il motore per il suo tipo: `research` raccoglie un fatto · `decision` dirama le opzioni poi fa grilling per scegliere · `prototype` crea un artefatto grezzo a cui reagire · `build` esegue discuss → plan → execute → verify · `bug` esegue repro → diagnose → fix → verify · `task` è plumbing manuale che sblocca una decision. `/trailhead:auto` incatena la frontier in autonomia, un ticket dopo l'altro, fermandosi solo al safety rail, alla fog, o a una decisione che serve l'umano.
 3. **Chiudi e sblocca**: risolvi il ticket (commento + chiusura), fanne il gist in `Decisions so far`, e rimuovi `trailhead:blocked` da ogni dipendente il cui ultimo blocker si è appena chiuso, diplomandolo sulla frontier.
 4. **Ripeti** finché la frontier è vuota e la fog si è diradata: la destination (un artefatto funzionante) è raggiunta.
 
@@ -181,6 +181,7 @@ Ogni verbo è anche un comando con namespace (`/trailhead:new`, `/trailhead:work
 | `/trailhead:pause [note]` | mette un checkpoint sul ticket in gioco così chiunque può riprenderlo |
 | `/trailhead:ticket <type> <title>` | apre un ticket al volo (diverge brevemente prima: un atto di micro-charting) |
 | `/trailhead:split [ticket]` | splitta un ticket sovradimensionato in figli, supersede l'originale |
+| `/trailhead:auto [map]` | esegue la frontier in autonomia, un ticket dopo l'altro, fino a uno stop condition (safety rail / fog / una decisione che serve l'umano) o all'esaurimento; sospende la regola un-ticket-per-sessione |
 | `/trailhead:grill [topic]` | esegue una sessione di grilling autonoma su una decision/topic |
 | `/trailhead:map` | mostra la mappa a bassa risoluzione (destination, decisions, frontier, fog) |
 | `/trailhead:dashboard` | mostra la dashboard del repo: l'indice pinnato di ogni mappa aperta, la whiteboard, e i conteggi live |
