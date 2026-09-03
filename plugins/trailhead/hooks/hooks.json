@@ -21,6 +21,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-search-guard.js\""
           }
         ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-secret-read-guard.js\""
+          }
+        ]
       }
     ],
     "PostToolUse": [

@@ -176,7 +176,7 @@ function claudePaths(configDir) {
     settings: path.join(configDir, 'settings.json'),
   };
 }
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-check-update.js'];
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-secret-read-guard.js', 'trailhead-check-update.js'];
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
 // require('./lib/commit-message-check.js')). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must not
@@ -289,6 +289,7 @@ function uninstallClaude(configDir) {
   stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-install-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-search-guard.js');
+  stripHook(s, 'PreToolUse', 'trailhead-secret-read-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
   stripHook(s, 'SessionStart', 'trailhead-check-update.js');
   writeJSON(P.settings, s);
@@ -335,6 +336,7 @@ function installClaude(configDir, { useSymlink }) {
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-install-guard.js')),
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-search-guard.js')),
+    addHook(s, 'PreToolUse', 'Read|Bash', hookCmd('trailhead-secret-read-guard.js')),
     addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
     addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
   ].some(Boolean);
@@ -639,6 +641,7 @@ function uninstallCodex(configDir) {
     stripHook(h, 'PreToolUse', 'trailhead-secret-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-install-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-search-guard.js');
+    stripHook(h, 'PreToolUse', 'trailhead-secret-read-guard.js');
     stripHook(h, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
     stripHook(h, 'SessionStart', 'trailhead-check-update.js');
     writeJSON(L.hooksJson, h);
