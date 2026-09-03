@@ -105,4 +105,8 @@ ok('loop-body cd + grep is blocked (exit 2)', g3.code === 2 && /search-hygiene/.
 const g4 = runHook('(cd /abs && npm test)');
 ok('subshell-wrapped cd <abs> && npm test (no read verb) is still allowed (exit 0)', g4.code === 0 && g4.out.trim() === '');
 
+// --- #134 follow-up: Finding 3 - `--` end-of-options marker must not swallow the file ---
+const d1 = runHook('cd app && grep -- -x foo.txt');
+ok('cd + grep -- -x <relative file> is blocked (exit 2), `--` must not eat the file arg', d1.code === 2 && /search-hygiene/.test(d1.out) && /foo\.txt/.test(d1.out));
+
 console.log(`✓ search-guard: ${passed} assertions passed`);

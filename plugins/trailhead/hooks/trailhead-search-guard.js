@@ -215,17 +215,18 @@ const VERB_CONFIG = {
 // when the verb has one, and return the first relative FILE argument found.
 function scanArgsForRelativeFile(args, config) {
   let patternConsumed = !config.patternFirst;
+  let afterDashDash = false; // once seen, every remaining token is positional, never a flag
   for (let j = 0; j < args.length; j++) {
     const t = args[j];
-    if (t === '--') continue; // end-of-options marker; remaining args are still positionals
-    if (t.startsWith('-') && t !== '-') {
+    if (!afterDashDash && t === '--') { afterDashDash = true; continue; }
+    if (!afterDashDash && t.startsWith('-') && t !== '-') {
       if (config.valueFlags.has(t)) {
         j++; // consume its separate-token value
         if (config.patternFlags && config.patternFlags.has(t)) patternConsumed = true;
       }
       continue;
     }
-    if (!patternConsumed) { patternConsumed = true; continue; }
+    if (!patternConsumed) { patternConsumed = true; continue; } // leading pattern/script positional
     if (isRelativeFileArg(t)) return t;
   }
   return null;
