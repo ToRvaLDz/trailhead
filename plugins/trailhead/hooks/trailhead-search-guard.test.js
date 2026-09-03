@@ -92,4 +92,17 @@ ok('heredoc fed to a command is allowed, its body is data not executed statement
 const h3 = runHook(`cat > setup.sh <<'EOF'\nsome literal data\nEOF\ncd app && grep -n x foo.txt`);
 ok('a REAL cd + grep violation outside a heredoc on the same command still blocks (exit 2)', h3.code === 2 && /search-hygiene/.test(h3.out));
 
+// --- #134 follow-up: Finding 2 - grouping containers must not hide the violation ---
+const g1 = runHook('(cd app && grep -n x foo.txt)');
+ok('subshell-wrapped cd + grep is blocked (exit 2)', g1.code === 2 && /search-hygiene/.test(g1.out));
+
+const g2 = runHook('{ cd app; grep -n x foo.txt; }');
+ok('brace-group-wrapped cd + grep is blocked (exit 2)', g2.code === 2 && /search-hygiene/.test(g2.out));
+
+const g3 = runHook('for d in */; do cd "$d" && grep -n x foo.txt; cd ..; done');
+ok('loop-body cd + grep is blocked (exit 2)', g3.code === 2 && /search-hygiene/.test(g3.out));
+
+const g4 = runHook('(cd /abs && npm test)');
+ok('subshell-wrapped cd <abs> && npm test (no read verb) is still allowed (exit 0)', g4.code === 0 && g4.out.trim() === '');
+
 console.log(`✓ search-guard: ${passed} assertions passed`);

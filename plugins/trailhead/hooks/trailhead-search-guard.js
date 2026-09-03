@@ -128,6 +128,44 @@ function skipEnvPrefix(tokens) {
   return i;
 }
 
+// A leading grouping/keyword token that can precede the "real" first word of a
+// statement without itself being that word: `(cd app && ...)`, `{ cd app; ... }`,
+// `do cd "$d" && ...` (loop body), `then cd x`, `else cd x`. Stripping these
+// (and a `(`/`{` glued directly onto the next token, e.g. `(cd`) lets the
+// `cd`/`pushd`/read-verb checks below see the actual command even when it's
+// wrapped in a subshell, brace group, or loop/conditional body.
+const LEADING_GROUP_TOKENS = new Set(['(', '{', 'do', 'then', 'else']);
+// A trailing grouping/keyword token (or glued punctuation) that can follow the
+// real last word of a statement: `grep ... foo.txt)`, `grep ... foo.txt;`,
+// `grep ... foo.txt }`, `... ; fi`, `... ; done`.
+const TRAILING_GROUP_TOKENS = new Set([')', '}', ';', 'fi', 'done']);
+
+// Strip a single leading grouping/keyword token and a single trailing
+// grouping/keyword token (or glued punctuation) from an already-tokenized
+// statement, so subshells, brace groups, and loop/conditional bodies don't
+// hide a `cd`/read-verb from the checks that follow. Best-effort: handles the
+// common shapes, not a full shell parser.
+function normalizeStatementTokens(tokens) {
+  let t = tokens;
+  if (t.length && LEADING_GROUP_TOKENS.has(t[0])) {
+    t = t.slice(1);
+  } else if (t.length && (t[0][0] === '(' || t[0][0] === '{') && t[0].length > 1) {
+    t = [t[0].slice(1), ...t.slice(1)];
+  }
+  if (t.length) {
+    const last = t[t.length - 1];
+    if (TRAILING_GROUP_TOKENS.has(last)) {
+      t = t.slice(0, -1);
+    } else {
+      const stripped = last.replace(/[)};]+$/, '');
+      if (stripped !== last) {
+        t = stripped ? [...t.slice(0, -1), stripped] : t.slice(0, -1);
+      }
+    }
+  }
+  return t;
+}
+
 function stripQuotes(t) {
   if ((t.startsWith('"') && t.endsWith('"') && t.length >= 2) ||
       (t.startsWith("'") && t.endsWith("'") && t.length >= 2)) {
@@ -227,7 +265,7 @@ function detectGitRelativeRead(tokens) {
 
 // Is this statement itself a read/search verb call with a relative file arg?
 function readViolationInStatement(stmt) {
-  const tokens = tokenize(stmt);
+  const tokens = normalizeStatementTokens(tokenize(stmt));
   const i = skipEnvPrefix(tokens);
   const rest = tokens.slice(i);
   if (rest.length === 0) return null;
@@ -247,7 +285,7 @@ function readViolationInStatement(stmt) {
 // command it wraps, not the rest of the script, so it's handled separately
 // as a same-statement check, not this cross-statement sticky flag.
 function isCdOrPushdStatement(stmt) {
-  const tokens = tokenize(stmt);
+  const tokens = normalizeStatementTokens(tokenize(stmt));
   const i = skipEnvPrefix(tokens);
   const bin = tokens[i];
   return bin === 'cd' || bin === 'pushd';
