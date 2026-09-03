@@ -109,4 +109,8 @@ ok('subshell-wrapped cd <abs> && npm test (no read verb) is still allowed (exit 
 const d1 = runHook('cd app && grep -- -x foo.txt');
 ok('cd + grep -- -x <relative file> is blocked (exit 2), `--` must not eat the file arg', d1.code === 2 && /search-hygiene/.test(d1.out) && /foo\.txt/.test(d1.out));
 
+// --- #134 follow-up: Finding 4 - rg-specific value flags must not misattribute the file ---
+const f1 = runHook('cd app && rg -g "*.js" TODO src/foo.js');
+ok('cd + rg -g <glob> <pattern> <relative file> reports the real file, not the pattern (exit 2)', f1.code === 2 && /search-hygiene/.test(f1.out) && /src\/foo\.js/.test(f1.out) && !/`TODO`/.test(f1.out));
+
 console.log(`✓ search-guard: ${passed} assertions passed`);

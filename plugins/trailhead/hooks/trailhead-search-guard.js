@@ -195,9 +195,17 @@ const GREP_VALUE_FLAGS = new Set([
   '--after-context', '--before-context', '--context', '--max-count',
 ]);
 
+// ripgrep has several value-taking flags GNU grep doesn't (glob/type filters,
+// column limits); without these, scanning treats their value as a plain
+// positional and misattributes it as the pattern/file in the block reason.
+const RG_VALUE_FLAGS = new Set([
+  ...GREP_VALUE_FLAGS,
+  '-g', '--glob', '-t', '--type', '-T', '--type-not', '-M', '--max-columns',
+]);
+
 const VERB_CONFIG = {
   grep: { patternFirst: true, valueFlags: GREP_VALUE_FLAGS, patternFlags: new Set(['-e']) },
-  rg: { patternFirst: true, valueFlags: GREP_VALUE_FLAGS, patternFlags: new Set(['-e']) },
+  rg: { patternFirst: true, valueFlags: RG_VALUE_FLAGS, patternFlags: new Set(['-e']) },
   ag: { patternFirst: true, valueFlags: GREP_VALUE_FLAGS, patternFlags: new Set(['-e']) },
   sed: { patternFirst: true, valueFlags: new Set(['-e', '-f']), patternFlags: new Set(['-e']) },
   awk: { patternFirst: true, valueFlags: new Set(['-f', '-v']), patternFlags: new Set() },
@@ -326,6 +334,10 @@ function envDashCRelativeRead(stmt) {
 
 // Detect the banned shape across the whole command. Returns
 // { verb, file } on a hit, or null. Pure, exported for tests.
+// KNOWN NARROWER GAP (deliberately not implemented): `cd app && grep -rn TODO`
+// with no path argument at all implicitly searches the (now-relative) cwd,
+// but adding that case risks false-positiving on legitimate stdin-reading
+// commands, so it is left to the prose directive.
 function detectSearchHygieneViolation(cmd) {
   const statements = splitStatements(cmd);
   let cwdChanged = false;
