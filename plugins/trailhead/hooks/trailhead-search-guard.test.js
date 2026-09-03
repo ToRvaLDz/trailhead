@@ -82,4 +82,14 @@ ok('cd <abs> && grep with an absolute-path argument is allowed (exit 0)', a8.cod
 const a9 = runHook('cd /abs/app && grep -n "x" -r --include=*.js');
 ok('cd <abs> && grep with only flags/patterns (no file arg) is allowed (exit 0)', a9.code === 0 && a9.out.trim() === '');
 
+// --- #134 follow-up: Finding 1 - heredoc bodies are DATA, not statements ---
+const h1 = runHook(`cat > setup.sh <<'EOF'\ncd /some/dir\ngrep -n pattern file.txt\nEOF\n`);
+ok('heredoc body (cd + grep as literal data) is allowed, not parsed as statements (exit 0)', h1.code === 0 && h1.out.trim() === '');
+
+const h2 = runHook(`bash -c 'cat' <<EOF\ncd app\ngrep -n x foo.txt\nEOF\n`);
+ok('heredoc fed to a command is allowed, its body is data not executed statements (exit 0)', h2.code === 0 && h2.out.trim() === '');
+
+const h3 = runHook(`cat > setup.sh <<'EOF'\nsome literal data\nEOF\ncd app && grep -n x foo.txt`);
+ok('a REAL cd + grep violation outside a heredoc on the same command still blocks (exit 2)', h3.code === 2 && /search-hygiene/.test(h3.out));
+
 console.log(`✓ search-guard: ${passed} assertions passed`);

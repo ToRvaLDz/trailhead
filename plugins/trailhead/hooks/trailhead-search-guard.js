@@ -36,13 +36,57 @@ function basename(p) {
   return s[s.length - 1];
 }
 
+// Matches a heredoc introducer anywhere it can appear on a line: `<<TAG`,
+// `<<'TAG'`, `<<"TAG"`, and `<<-TAG` (which also allows the terminator line to
+// be indented with leading tabs). Captures the operator's `-` and the tag
+// (quoted or bare) separately.
+const HEREDOC_RE = /<<(-?)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/;
+
+// A heredoc BODY is literal data (e.g. a script being written to a file), not
+// shell statements executed in the current shell. Scan the command line by
+// line; whenever a line introduces a heredoc, skip every following line up to
+// and including the matching terminator line before it ever reaches the
+// statement splitter below. Handles multiple heredocs on the same command and
+// both quoted and unquoted tags. Best-effort, like the rest of this file: not
+// a full shell parser.
+function stripHeredocBodies(cmd) {
+  const lines = String(cmd).split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    out.push(line);
+    let m;
+    // A single line can introduce more than one heredoc (`cmd <<A <<B`); walk
+    // left to right and skip each body in turn.
+    while ((m = HEREDOC_RE.exec(line))) {
+      const dashStrip = m[1] === '-';
+      const tag = m[2] || m[3] || m[4];
+      line = line.slice(m.index + m[0].length); // keep scanning the rest of this line for more `<<TAG`s
+      if (!tag) break;
+      // Skip lines until the terminator: an exact match, or (for `<<-`) the
+      // tag preceded only by tabs.
+      while (i + 1 < lines.length) {
+        i++;
+        const body = lines[i];
+        const term = dashStrip ? body.replace(/^\t+/, '') : body;
+        if (term === tag) break; // terminator line: consumed, not a candidate statement either
+        // else: heredoc data line, deliberately NOT pushed to `out` - it must
+        // never become a candidate statement.
+      }
+    }
+  }
+  return out.join('\n');
+}
+
 // Split a shell string into top-level statements on `&&`, `||`, `;`, `|`, and
 // newlines, respecting single/double quotes (so a separator INSIDE a quoted
-// argument, e.g. a grep pattern, does not fracture the statement). Best-effort,
-// like the other guards' token walks: not a full shell parser, just enough to
-// avoid the common false splits.
+// argument, e.g. a grep pattern, does not fracture the statement). Heredoc
+// bodies are stripped first (see stripHeredocBodies) so literal data written
+// via `<<TAG` is never mistaken for statements. Best-effort, like the other
+// guards' token walks: not a full shell parser, just enough to avoid the
+// common false splits.
 function splitStatements(cmd) {
-  const s = String(cmd);
+  const s = stripHeredocBodies(String(cmd));
   const stmts = [];
   let cur = '';
   let inSingle = false;
