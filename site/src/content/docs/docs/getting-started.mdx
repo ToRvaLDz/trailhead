@@ -41,7 +41,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
     On Claude Code it copies the skill (+ its `references/`), the `/trailhead:*` commands, the hooks (into `hooks/`, registered in `settings.json`) including a SessionStart update check, and the label-guard + statusline templates, idempotently.
   </TabItem>
   <TabItem label="Codex CLI">
-    `npx @marcomigozzi/trailhead --codex` projects a native Codex skill invoked as `$trailhead` (`$trailhead work`, `$trailhead new "idea"`, …), one thin `$trailhead-<verb>` skill per verb for discoverability, the four guardrails as native Codex hooks (`~/.codex/hooks.json`, enabling `features.hooks`), and per-technique subagent model pins from `models.codex.*` into `~/.codex/agents/`.
+    `npx @marcomigozzi/trailhead --codex` projects a native Codex skill invoked as `$trailhead` (`$trailhead work`, `$trailhead new "idea"`, …), one thin `$trailhead-<verb>` skill per verb for discoverability, the five guardrails as native Codex hooks (`~/.codex/hooks.json`, enabling `features.hooks`), and per-technique subagent model pins from `models.codex.*` into `~/.codex/agents/`.
 
     Codex 0.145.0+ is required (the installer gates on `codex --version`). The `claude.ai/design` mockup mode isn't available on Codex; the cross-host `design: stitch` mode (Google Stitch MCP) is the hosted option there, with local disk as the fallback.
   </TabItem>
