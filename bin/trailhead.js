@@ -178,10 +178,12 @@ function claudePaths(configDir) {
 }
 const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-secret-read-guard.js', 'trailhead-check-update.js'];
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
-// require('./lib/commit-message-check.js')). Copied by name, never a recursive
-// sweep: the Claude hooks/lib dir is shared with other plugins, so we must not
-// clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js'];
+// require('./lib/commit-message-check.js'); trailhead-search-guard.js and
+// trailhead-secret-read-guard.js both do require('./lib/shell-scan.js'), #135
+// follow-up). Copied by name, never a recursive sweep: the Claude hooks/lib
+// dir is shared with other plugins, so we must not clobber a co-tenant's lib
+// nor ship our own *.test.js files.
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js'];
 
 // Copy the hook scripts and their runtime libs into a destination hooks dir
 // (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
