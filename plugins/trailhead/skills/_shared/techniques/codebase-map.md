@@ -1,5 +1,8 @@
 # Codebase map (fan-out)
 One-time at project adoption. Fan out 5 read-only reader subagents in parallel (single message), each owning ONE non-overlapping facet; no facet reads another's territory. Dispatch each reader as the **`trailhead-codebase-map`** agent (read-only by construction); **never** an external-plugin mapper agent that another installed tool registered.
+
+**The repo to map may be handed in by absolute path** (the scan root), so **never assume the current working directory is that repo**: search and read it by absolute path and run git as `git -C <scan root> ...`, and **never `cd` into it in any shape** (no `cd <root> && grep <relative>`, no bare `cd <root>` line then a relative read, no heredoc/multi-statement block). This keeps every read target statically determinable, so a bypass-permissions scan of an out-of-tree repo runs without a manual approval prompt. See **Search-command hygiene** in `../techniques.md`.
+
 - **Architecture**: pattern, layers, data flow, entry points, module seams; where the deep modules live.
 - **Stack & dependencies**: languages, runtime, frameworks, manifests, build/config, external integrations (DBs, APIs, auth, webhooks).
 - **Decisions already embodied / conventions**: style, naming, error handling, the repo's documented standards; patterns a new change must match.
