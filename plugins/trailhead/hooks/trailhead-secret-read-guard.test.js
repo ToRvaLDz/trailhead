@@ -43,6 +43,38 @@ ok('Bash cd app && grep x pubspec.yaml is allowed (not a secret; search-guard go
 ok('Read env.sample (near-miss) is allowed', !detectSecretRead('Read', { file_path: 'env.sample' }));
 ok('Read .environment (near-miss) is allowed', !detectSecretRead('Read', { file_path: '.environment' }));
 
+// --- #135 follow-up: Finding 1 - glued shell metacharacters must not bypass detection ---
+ok('Bash cat .env|grep KEY is denied (glued pipe)', !!detectSecretRead('Bash', { command: 'cat .env|grep KEY' }));
+ok('Bash cat .env;echo done is denied (glued semicolon)', !!detectSecretRead('Bash', { command: 'cat .env;echo done' }));
+ok('Bash cat .env&&echo done is denied (glued &&)', !!detectSecretRead('Bash', { command: 'cat .env&&echo done' }));
+ok('Bash bash -c "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'bash -c "cat .env"' }));
+ok('Bash eval "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'eval "cat .env"' }));
+
+// --- #135 follow-up: Finding 2 - glued short-option value must not bypass detection ---
+ok('Bash cat -f.env is denied (glued short-flag value)', !!detectSecretRead('Bash', { command: 'cat -f.env' }));
+
+// --- #135 follow-up: Finding 3 - bare .env inside quoted prose must not false-positive ---
+ok('Bash git commit -m "document .env usage" is allowed (quoted prose, not a file operand)',
+  !detectSecretRead('Bash', { command: 'git commit -m "document .env usage"' }));
+ok('Bash echo "See .env for config" >> README.md is allowed (quoted prose)',
+  !detectSecretRead('Bash', { command: 'echo "See .env for config" >> README.md' }));
+ok('Bash cat ".env" is still denied (a quoted LONE path is still a secret path)',
+  !!detectSecretRead('Bash', { command: 'cat ".env"' }));
+
+// --- #135 follow-up: Finding 4 - quoted grep pattern must not false-positive ---
+ok('Bash grep ".env" config.txt is allowed (the read target is config.txt, not the pattern)',
+  !detectSecretRead('Bash', { command: 'grep ".env" config.txt' }));
+ok("Bash grep '.env' config.txt is allowed (single-quoted pattern)",
+  !detectSecretRead('Bash', { command: "grep '.env' config.txt" }));
+ok('Bash grep -n KEY .env.production is still denied (secret is the FILE operand, not the pattern)',
+  !!detectSecretRead('Bash', { command: 'grep -n KEY .env.production' }));
+
+// --- #135 follow-up: Finding 5 - case-insensitivity (same file on macOS/Windows) ---
+ok('Read .ENV is denied (case-insensitive)', !!detectSecretRead('Read', { file_path: '.ENV' }));
+ok('Bash cat .SECRETS is denied (case-insensitive)', !!detectSecretRead('Bash', { command: 'cat .SECRETS' }));
+ok('Read ENV.SAMPLE (near-miss) is still allowed regardless of case', !detectSecretRead('Read', { file_path: 'ENV.SAMPLE' }));
+ok('Read .ENVIRONMENT (near-miss) is still allowed regardless of case', !detectSecretRead('Read', { file_path: '.ENVIRONMENT' }));
+
 // --- end-to-end hook wire format ---
 const d1 = runHook('Read', { file_path: '.env' });
 ok('hook denies Read(.env) end-to-end (exit 2, block decision)', d1.code === 2 && /"decision":"block"/.test(d1.out));
