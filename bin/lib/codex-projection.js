@@ -109,7 +109,7 @@ Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_inp
 The engine's \`/clear\` is Codex's \`/new\` (start a fresh session). Command references in a handoff use the skill form (\`$trailhead work <n>\`).
 
 ## F. Lifecycle hooks (native Codex hooks)
-Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not degraded prose. The installer registers them in \`~/.codex/hooks.json\`: commit-guard, secret-guard and install-guard as \`PreToolUse\` (matcher \`Bash\`) hooks that can veto the command before it runs, the injection-scanner as a \`PostToolUse\` (matcher \`Bash\`) advisory, and check-update as a \`SessionStart\` hook. They use the same wire format they use on Claude Code (JSON on stdin, a \`decision\`/\`permissionDecision\` verdict on stdout), which Codex accepts. The host-independent git \`commit-msg\` hook is still installed at repo first-use as well (defence in depth), exactly as on Claude. Codex gates hooks behind \`features.hooks = true\` and reviews them for trust on first start: the installer enables the flag, and Codex will ask you to trust trailhead's hooks the next time it starts.
+Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not degraded prose. The installer registers them in \`~/.codex/hooks.json\`: commit-guard, secret-guard, install-guard and search-guard as \`PreToolUse\` (matcher \`Bash\`) hooks that can veto the command before it runs, the injection-scanner as a \`PostToolUse\` (matcher \`Bash\`) advisory, and check-update as a \`SessionStart\` hook. They use the same wire format they use on Claude Code (JSON on stdin, a \`decision\`/\`permissionDecision\` verdict on stdout), which Codex accepts. The host-independent git \`commit-msg\` hook is still installed at repo first-use as well (defence in depth), exactly as on Claude. Codex gates hooks behind \`features.hooks = true\` and reviews them for trust on first start: the installer enables the flag, and Codex will ask you to trust trailhead's hooks the next time it starts.
 
 ## G. Design / UI mockups -> local disk
 The \`claude.ai/design\` mockup mode (DesignSync: the \`claude_design\` MCP + the \`/design-sync\` skill) does not exist on Codex, so it **collapses to local-disk mockups** here: whatever \`config.design\` says, the Prototype technique's \`disk\` path is the only one available. Produce a throwaway static HTML mockup next to the code, link it from the ticket, and never attempt DesignSync / claude.ai/design on Codex (there is no \`claude_design\` MCP or \`/design-sync\` skill to call). \`config.design.approval\` still applies unchanged: \`explicit\` waits for the user's go-ahead before any UI code, \`auto\` surfaces the mockup and proceeds.
@@ -354,18 +354,20 @@ function codexVerbSkillPlan(codexHome, verbs) {
 }
 
 // --- codexHookEntries -----------------------------------------------------
-// The four guardrail hooks trailhead registers on Codex, as {event, matcher,
+// The five guardrail hooks trailhead registers on Codex, as {event, matcher,
 // command} records. Commands run the copied guard scripts under hooksScriptsDir
-// via node, matching Claude's `node "<path>"` form. PreToolUse guards (commit +
-// secret) can veto; the injection-scanner is a PostToolUse advisory; check-update
-// runs at SessionStart. Reused by the installer, which merges them into
-// ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
+// via node, matching Claude's `node "<path>"` form. PreToolUse guards (commit,
+// secret, install, search) can veto; the injection-scanner is a PostToolUse
+// advisory; check-update runs at SessionStart. Reused by the installer, which
+// merges them into ~/.codex/hooks.json (same shape as Claude's settings.json
+// hooks block).
 function codexHookEntries(hooksScriptsDir) {
   const cmd = (name) => `node "${path.join(hooksScriptsDir, name)}"`;
   return [
     { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-commit-guard.js') },
     { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-secret-guard.js') },
     { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-install-guard.js') },
+    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-search-guard.js') },
     { event: 'PostToolUse', matcher: 'Bash', command: cmd('trailhead-issue-injection-scanner.js') },
     { event: 'SessionStart', matcher: '', command: cmd('trailhead-check-update.js') },
   ];

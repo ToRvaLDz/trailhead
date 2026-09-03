@@ -143,13 +143,15 @@ ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', nul
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
-ok('codexHookEntries returns 5 entries', Array.isArray(entries) && entries.length === 5);
+ok('codexHookEntries returns 6 entries', Array.isArray(entries) && entries.length === 6);
 ok('codexHookEntries: commit-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-commit-guard.js') && e.command.includes('/h')));
 ok('codexHookEntries: secret-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-secret-guard.js')));
 ok('codexHookEntries: install-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-install-guard.js')));
+ok('codexHookEntries: search-guard is PreToolUse/Bash', entries.some((e) =>
+  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-search-guard.js')));
 ok('codexHookEntries: injection-scanner is PostToolUse/Bash', entries.some((e) =>
   e.event === 'PostToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-issue-injection-scanner.js')));
 ok('codexHookEntries: check-update is SessionStart', entries.some((e) =>
