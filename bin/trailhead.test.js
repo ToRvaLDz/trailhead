@@ -118,6 +118,22 @@ for (const cl of ['trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailh
 // A cluster's ../_shared/ reference target actually resolves as a sibling.
 ok('codex: trailhead-work/../_shared/substrate.md resolves', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-work', '..', '_shared', 'substrate.md')));
 
+// --- #139: single-sourced "Load first, in order" shared section --------------
+ok('codex: _shared/load-first.md projected', fs.existsSync(path.join(codexDir, 'skills', '_shared', 'load-first.md')));
+for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`codex: ${cl}/../_shared/load-first.md resolves as a sibling`, fs.existsSync(path.join(codexDir, 'skills', cl, '..', '_shared', 'load-first.md')));
+  ok(`codex: ${cl} SKILL.md references ../_shared/load-first.md`, fs.readFileSync(path.join(codexDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('../_shared/load-first.md'));
+}
+// Source-level anti-drift: the shared core-list signature line lives ONLY in
+// _shared/load-first.md, never duplicated back into a cluster SKILL.md.
+const sourceSkillsDir = path.join(__dirname, '..', 'plugins', 'trailhead', 'skills');
+const loadFirstSignature = '`../_shared/principles.md`: refer by name';
+const loadFirstSourcePath = path.join(sourceSkillsDir, '_shared', 'load-first.md');
+ok('source: _shared/load-first.md carries the core-list signature line', fs.readFileSync(loadFirstSourcePath, 'utf8').includes(loadFirstSignature));
+for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`source: ${cl}/SKILL.md does NOT duplicate the core-list signature line`, !fs.readFileSync(path.join(sourceSkillsDir, cl, 'SKILL.md'), 'utf8').includes(loadFirstSignature));
+}
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
@@ -249,6 +265,12 @@ for (const cl of ['trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailh
   ok(`claude: skills/${cl}/SKILL.md exists`, fs.existsSync(path.join(claudeDir, 'skills', cl, 'SKILL.md')));
 }
 ok('claude: cluster ../_shared/ reference resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'substrate.md')));
+// #139: single-sourced "Load first, in order" shared section, projected on Claude too.
+ok('claude: skills/_shared/load-first.md exists', fs.existsSync(path.join(claudeDir, 'skills', '_shared', 'load-first.md')));
+ok('claude: trailhead-work/../_shared/load-first.md resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'load-first.md')));
+for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`claude: ${cl} SKILL.md references ../_shared/load-first.md`, fs.readFileSync(path.join(claudeDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('../_shared/load-first.md'));
+}
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
