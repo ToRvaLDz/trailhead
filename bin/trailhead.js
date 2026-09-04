@@ -64,6 +64,43 @@ const useSymlink = has('--symlink');
 const uninstall = has('--uninstall');
 const dirArg = (args.find((a) => a.startsWith('--dir=')) || '').split('=')[1];
 
+// --- usage / arg guard --------------------------------------------------------
+// Single source for the flag list (mirrors the header comment above) so
+// --help/-h and the unknown-flag error both print the same text.
+const USAGE = `Usage:
+  npx @marcomigozzi/trailhead                install (auto-detects the CLI on your PATH; asks if it can't tell)
+  npx @marcomigozzi/trailhead --claude       force install for Claude Code (~/.claude or $CLAUDE_CONFIG_DIR)
+  npx @marcomigozzi/trailhead --codex        force install for Codex ($CODEX_HOME or ~/.codex)
+  npx @marcomigozzi/trailhead --symlink      dev install (symlink to the package, live edits; Claude only)
+  npx @marcomigozzi/trailhead --uninstall
+  npx @marcomigozzi/trailhead --dir=/path/to/configdir
+  npx @marcomigozzi/trailhead --help, -h     print this usage`;
+
+function printUsage(stream) {
+  stream.write(USAGE + '\n');
+}
+
+// Help wins: if a help flag is present anywhere, print usage and exit 0 even
+// if an unknown flag is also present.
+if (has('--help') || has('-h')) {
+  printUsage(process.stdout);
+  process.exit(0);
+}
+
+// Unknown-flag guard: any `-`-prefixed arg not on this recognised list (or a
+// recognised value-prefix) is rejected up front, instead of silently falling
+// through into a default install (#136). `--host=` is legacy and tolerated
+// (ignored; auto-detect wins instead).
+const RECOGNISED_FLAGS = new Set(['--symlink', '--uninstall', '--codex', '--claude', '--help', '-h']);
+const RECOGNISED_PREFIXES = ['--dir=', '--host='];
+const unknownArg = args.find((a) =>
+  a.startsWith('-') && !RECOGNISED_FLAGS.has(a) && !RECOGNISED_PREFIXES.some((p) => a.startsWith(p)));
+if (unknownArg) {
+  process.stderr.write(`unknown option: ${unknownArg}\n`);
+  printUsage(process.stderr);
+  process.exit(2);
+}
+
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
 const ensure = (p) => fs.mkdirSync(p, { recursive: true });
 const readJSON = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; } };
