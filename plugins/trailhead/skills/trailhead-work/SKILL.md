@@ -9,18 +9,9 @@ argument-hint: "[work|quick|pause|resume|split|auto] [ticket | \"text\" | note]"
 
 ## Load first, in order
 
-Before doing anything, read the shared core (paths relative to this file):
+Before doing anything, read `../_shared/load-first.md` and follow it: the shared-core load contract (the six core files, in order, then the effective config). `_shared/` is a **sibling** of this cluster's own directory (at `../_shared/`), never a child of it; its absence from a listing of the cluster dir is expected, not a missing core.
 
-`_shared/` is a **sibling** of this cluster's own directory (reached at `../_shared/`), never a child of it: the cluster dir holds only this cluster's own files (its `SKILL.md`, and a `references/` dir if it has one), so `_shared/` does not show up in a listing of it, and that absence never means the core is missing. Resolve and read `../_shared/`; never treat "no `_shared/` inside my own cluster dir" as "no shared core installed" and skip the core.
-
-1. `../_shared/principles.md`: refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
-2. `../_shared/ticket-language.md`: write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
-3. `../_shared/substrate.md`: the GitHub-Issues model: labels, the frontier query, the map / ticket / dashboard / whiteboard anatomy, and the base-command cookbook pointer.
-4. `../_shared/session-handoff.md`: how every resolution closes (`/clear` first, then the next command).
-5. `../_shared/configuration.md`: the three config layers and the load contract.
-6. `../_shared/techniques.md`: the technique index and the subagent-type rule.
-
-Load the **effective config** (per `../_shared/configuration.md`) at session start, from the map's project root (`.trailhead/config.json` plus the global file), **before** any isolation workspace is set up. Config is a property of the project/map, not the working directory: an isolation workspace inherits this config, never re-resolves it from the isolated copy's own root. **For an explicit `work <n>` / `quick <n>`, the named-ticket Preflight below runs *before* this config load:** never load config, or anything else, for a ticket that turns out closed.
+Config is a property of the project/map, not the working directory: an isolation workspace inherits this config, never re-resolves it from the isolated copy's own root. **For an explicit `work <n>` / `quick <n>`, the named-ticket Preflight below runs *before* this config load:** never load config, or anything else, for a ticket that turns out closed.
 
 ## Routing: verb to engine
 
