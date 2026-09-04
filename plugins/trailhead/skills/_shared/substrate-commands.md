@@ -153,7 +153,7 @@ gh issue list --label "trailhead:map-<n>" --state open --json number --jq 'lengt
 gh issue view <map> --json body --jq .body
 ```
 
-**When to refresh the body.** On structural events: a map is charted or exhausted (a map appears or disappears), a whiteboard ticket is born or resolved. And on demand via `/trailhead:dashboard`. NOT on every map-ticket resolve: that churns a pinned issue's notifications, and the native progress bar already tracks map-ticket progress on its own. The whiteboard has no native progress bar, so its ticket birth/close does refresh the dashboard.
+**When to refresh the body.** On structural events: a map is charted or exhausted (a map appears or disappears), a whiteboard ticket is born or resolved. And on demand via `/trailhead:dashboard`. NOT on every map-ticket resolve: that churns a pinned issue's notifications, and the native progress bar already tracks map-ticket progress on its own. The whiteboard has no native progress bar, so its ticket birth or close refreshes the dashboard, except a `quick`-born ticket (born and resolved in one session) refreshes at the handoff (Resolve, or pause), not at creation.
 
 ## First-use repo setup (do ALL THREE, every chart or adopt, never skip any)
 1. Create any missing labels with `gh label create` (all eighteen: `trailhead:map`, `trailhead:codebase`, `trailhead:conventions`, `trailhead:dashboard`, `trailhead:ticket`, the six type labels, `trailhead:blocked`, `trailhead:seed`, `trailhead:out-of-scope`, `trailhead:superseded`, `trailhead:unverified`, `trailhead:fog`, `trailhead:whiteboard`).
