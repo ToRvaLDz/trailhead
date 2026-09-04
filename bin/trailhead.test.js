@@ -462,6 +462,55 @@ ok('codex: config.toml enables multi_agent_v2 when a models.codex.* pin is proje
 runInstaller([`--codex`, `--dir=${pinCodexHomeDir}`, '--uninstall']);
 ok('codex uninstall: trailhead-execute.toml is gone', !fs.existsSync(pinnedTomlPath));
 
+// --- #136: --help / -h print usage and install nothing -----------------------
+// Asserts no install artifacts landed under a fresh --dir=, by checking for the
+// two markers common to both host layouts (settings.json is Claude-only, but
+// skills/ is written by both, so its absence proves nothing at all ran).
+function nothingInstalledUnder(dir) {
+  return !fs.existsSync(path.join(dir, 'settings.json')) &&
+    !fs.existsSync(path.join(dir, 'skills')) &&
+    !fs.existsSync(path.join(dir, 'commands')) &&
+    !fs.existsSync(path.join(dir, 'agents'));
+}
+
+const helpDir = mktmp();
+const helpOut = String(runInstaller([`--help`, `--dir=${helpDir}`]));
+ok('--help: prints usage (mentions --uninstall)', helpOut.includes('--uninstall'));
+ok('--help: prints usage (mentions --codex)', helpOut.includes('--codex'));
+ok('--help: installs nothing', nothingInstalledUnder(helpDir));
+
+const hDir = mktmp();
+const hOut = String(runInstaller([`-h`, `--dir=${hDir}`]));
+ok('-h: prints usage (mentions --uninstall)', hOut.includes('--uninstall'));
+ok('-h: installs nothing', nothingInstalledUnder(hDir));
+
+// --- #136: unknown flag is rejected, not silently ignored ---------------------
+const unknownDir = mktmp();
+let unknownRejected = false;
+let unknownOut = '';
+try {
+  runInstaller([`--frobnicate`, `--dir=${unknownDir}`]);
+} catch (e) {
+  unknownRejected = true;
+  unknownOut = String(e.stdout || '') + String(e.stderr || '');
+}
+ok('unknown flag: rejected (non-zero exit)', unknownRejected);
+ok('unknown flag: error message names the bad flag', unknownOut.includes('unknown option') && unknownOut.includes('--frobnicate'));
+ok('unknown flag: error output also includes usage (mentions --codex)', unknownOut.includes('--codex'));
+ok('unknown flag: installs nothing', nothingInstalledUnder(unknownDir));
+
+// Unknown flag after a valid one: proves the whole arg list is scanned, not
+// just a single expected position.
+const unknownAfterValidDir = mktmp();
+let unknownAfterValidRejected = false;
+try {
+  runInstaller([`--claude`, `--bogus`, `--dir=${unknownAfterValidDir}`]);
+} catch (e) {
+  unknownAfterValidRejected = true;
+}
+ok('unknown flag after a valid flag: still rejected', unknownAfterValidRejected);
+ok('unknown flag after a valid flag: installs nothing', nothingInstalledUnder(unknownAfterValidDir));
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
