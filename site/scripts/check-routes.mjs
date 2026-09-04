@@ -88,6 +88,7 @@ const commandsMustContain = [
   '/trailhead:adopt',
   '/trailhead:work',
   '/trailhead:quick',
+  '/trailhead:auto',
   '/trailhead:whiteboard',
   '/trailhead:inbox',
   '/trailhead:resume',
