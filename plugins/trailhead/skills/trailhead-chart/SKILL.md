@@ -11,7 +11,7 @@ argument-hint: "[new|adopt|ticket|inbox|grill] [idea | <type> <title> | issue | 
 
 Before doing anything, read the shared core (paths relative to this file):
 
-`_shared/` is a **sibling** of this cluster's own directory (at `../_shared/`, i.e. `~/.claude/skills/_shared/`), never a child of it: it does not show up in a listing of this cluster dir (which by design holds only `SKILL.md` and `references/`), and that absence never means the core is missing. Resolve and read `../_shared/`; never treat "no `_shared/` inside my own cluster dir" as "no shared core installed" and skip the core.
+`_shared/` is a **sibling** of this cluster's own directory (reached at `../_shared/`), never a child of it: the cluster dir holds only this cluster's own files (its `SKILL.md`, and a `references/` dir if it has one), so `_shared/` does not show up in a listing of it, and that absence never means the core is missing. Resolve and read `../_shared/`; never treat "no `_shared/` inside my own cluster dir" as "no shared core installed" and skip the core.
 
 1. `../_shared/principles.md`: refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
 2. `../_shared/ticket-language.md`: write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
