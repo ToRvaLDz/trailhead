@@ -11,6 +11,8 @@ argument-hint: "[config|update] [get|set …]"
 
 Before doing anything, read the shared core (paths relative to this file):
 
+`_shared/` is a **sibling** of this cluster's own directory (at `../_shared/`, i.e. `~/.claude/skills/_shared/`), never a child of it: it does not show up in a listing of this cluster dir (which by design holds only `SKILL.md` and `references/`), and that absence never means the core is missing. Resolve and read `../_shared/`; never treat "no `_shared/` inside my own cluster dir" as "no shared core installed" and skip the core.
+
 1. `../_shared/principles.md`: refer by name, result-oriented output, no em-dashes, git per conventions, one ticket per session.
 2. `../_shared/ticket-language.md`: write all Issue prose and commit bodies in `config.ticket.language` (default `en`), independent of the chat language.
 3. `../_shared/substrate.md`: the GitHub-Issues model: labels, the frontier query, the map / ticket / dashboard / whiteboard anatomy, and the base-command cookbook pointer.
