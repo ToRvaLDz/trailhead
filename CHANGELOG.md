@@ -2,6 +2,22 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.8.0 (2026-09-04)
+
+### Added
+- **Autonomous run: the `/trailhead:auto` verb.** Runs a map's frontier unattended, one ticket after another, resolving each with its own type engine and suspending the one-ticket-per-session rule, until a stop condition (safety rail, fog, a human-necessary decision, or a human interrupt) or exhaustion. Every advisory choice is taken as delegate without the confirm gate. Wired into the work cluster with its own engine reference, a dispatcher route, and a `/trailhead:auto` command wrapper; projected on both Claude and Codex (the installer test asserts it). Documented in both READMEs and `/docs` (a workflow subsection and the commands table row); interruption is the plain host Stop/Esc (the in-flight ticket keeps its claim and gets a `PAUSED` checkpoint), and resume is you re-invoking `/trailhead:auto`.
+- **`search-guard` hook (guardrail #5).** A `PreToolUse(Bash)` structural backstop for the search-command-hygiene rule: it hard-blocks a single Bash command that both changes directory (`cd`/`pushd`/`env -C`) and, in a joined or later statement, reads or searches a relative path, the shape that trips a `Read()` deny rule under bypass permissions (falling back to a manual approval prompt instead of running headless). Registered on Claude and Codex. It sees through subshell / brace-group / loop containers, skips heredoc bodies, advances past `--`, and gives `rg` its own value-flag set.
+- **`secret-read guard` hook (guardrail #6).** A `PreToolUse(Read|Bash)` guard that denies reads of `.env` / `.env.*` / `.secrets` (via the Read tool, or a Bash file operand, option value, or `<` redirect target), as a hook `deny` decision rather than a `Read()` permission rule, so secret files stay unreadable without arming Claude Code 2.1.259's `cd-compound-read` approval prompt. Registered on both hosts; quote-aware Bash scanning via a shared `hooks/lib/shell-scan.js` extracted from the search-guard.
+
+### Changed / Fixed
+- **`work <n>` / `quick <n>` reject a closed or missing named ticket before any setup.** A cheap state lookup runs first and stops immediately on a closed, superseded, out-of-scope, or nonexistent number, before config load, claim, or isolation setup, so a stale or mistyped number is a near-instant rejection rather than a wasted ramp-up.
+- **Deferred UAT is tracked with a mandatory follow-up ticket at close.** When Verify leaves acceptance testing deferred, Resolve opens a follow-up ticket carrying the owed UAT (linked to the parent) before the close; the routing and binding were sharpened.
+- **`_shared/` is a sibling in every cluster's load contract (#137).** Each cluster's `SKILL.md` now states `_shared/` lives at `../_shared/`, that its absence from the cluster's own directory is expected, and forbids treating that absence as a broken install; the correction flows into the Codex projection. Install-path and cluster-dir claims in the `_shared/` note were corrected too.
+- **Installer `--help` and unknown-flag handling (#136).** `--help` / `-h` prints usage to stdout and exits 0 writing nothing; any unrecognised flag prints `unknown option` plus usage to stderr and exits 2; the legacy `--host=` form is still tolerated.
+- **`quick "<text>"` refreshes the dashboard at the handoff, not mid-work (#138).** The create path no longer writes the pinned dashboard right after ticket creation (a mid-work partial patch over already-stale sections); the refresh now rides with the handoff (Resolve), plus `/trailhead:pause`, always as a full regeneration from the live tracker. A whiteboard ticket born by a terminal capture (`bug` / `todo` / `idea`) still refreshes at birth. Encoded across six engine surfaces and both READMEs.
+- **Guardrail count is now six** across both READMEs and `/docs`; the site route-check seam was extended to assert the `/trailhead:auto` verb so the documented command list cannot silently drop it.
+- search-guard hardening (persisted-cwd, `pushd` / `env -C`, and every container shape) and secret-read-guard bypass closes (glued separators, quoted prose), with the quote-aware `shell-scan` library shared between them.
+
 ## 0.7.0 (2026-09-01)
 
 ### Added
