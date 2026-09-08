@@ -68,4 +68,32 @@ ok('gh --help issue edit resolves issue/edit (real boolean flag not swallowing t
 ok('gh --hostname=h issue edit resolves issue/edit',
   (() => { const r = parseGhSubcommand('gh --hostname=h issue edit'); return r.sub === 'issue' && r.verb === 'edit'; })());
 
+// --- gh api with explicit flags before the write flag (baseline) ---
+ok('gh api --method PATCH ... resolves api',
+  (() => {
+    const r = parseGhSubcommand('gh api --method PATCH repos/o/r/issues/5 -f body=x');
+    return r.sub === 'api';
+  })());
+
+// --- REGRESSION (#153 second follow-up): an unknown BOOLEAN flag directly
+// before the subcommand must not swallow the subcommand as its own value
+// (the mirror of the keyword-value collision case above) ---
+ok('gh --foo issue edit 5 resolves issue/edit (unknown boolean flag)',
+  (() => { const r = parseGhSubcommand('gh --foo issue edit 5'); return r.sub === 'issue' && r.verb === 'edit'; })());
+ok('gh -x pr edit 5 resolves pr/edit (unknown short boolean flag)',
+  (() => { const r = parseGhSubcommand('gh -x pr edit 5'); return r.sub === 'pr' && r.verb === 'edit'; })());
+ok('gh --foo api repos/o/r/issues/5 -f body=x resolves api (unknown boolean flag)',
+  (() => {
+    const r = parseGhSubcommand('gh --foo api repos/o/r/issues/5 -f body=x');
+    return r.sub === 'api';
+  })());
+ok('gh --foo --bar issue edit 5 resolves issue/edit (two unknown boolean flags)',
+  (() => { const r = parseGhSubcommand('gh --foo --bar issue edit 5'); return r.sub === 'issue' && r.verb === 'edit'; })());
+
+// --- a genuine non-write subcommand must NOT be forced to look like a write ---
+// (the fallback only fires when the walk missed a WRITE_SUBCOMMANDS keyword;
+// `repo` is not one, so it must be reported as-is, not fabricated into a keyword)
+ok('gh repo view owner/repo resolves sub "repo" (not forced into a write keyword)',
+  (() => { const r = parseGhSubcommand('gh repo view owner/repo'); return r.sub === 'repo'; })());
+
 console.log(`✓ gh-subcommand: ${passed} assertions passed`);

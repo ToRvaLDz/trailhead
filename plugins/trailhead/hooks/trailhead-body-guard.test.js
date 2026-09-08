@@ -51,6 +51,10 @@ ok('recognizes gh pr edit behind an unknown two-token global flag (--hostname h)
 // edit` write.
 ok('recognizes gh issue edit behind a keyword-valued two-token global flag (--hostname api)',
   (() => { const r = ghBodyWrite('gh --hostname api issue edit 5 --body ""'); return r && r.kind === 'issue' && r.body === ''; })());
+// Regression (#153 second follow-up): an unknown BOOLEAN flag directly
+// before the subcommand must not swallow the subcommand as its own value.
+ok('recognizes gh issue edit behind an unknown boolean flag (--foo)',
+  (() => { const r = ghBodyWrite('gh --foo issue edit 5 --body ""'); return r && r.kind === 'issue' && r.body === ''; })());
 
 // --- unit: ghBodyWrite() non-matches ---
 ok('ignores gh issue edit with no body param',
@@ -101,6 +105,12 @@ ok('blocks an empty --body behind an unknown two-token global flag (pr edit, exi
 const bHost3 = runHook('gh --hostname api issue edit 5 --body ""');
 ok('blocks an empty --body behind a keyword-valued two-token global flag (--hostname api, exit 2)',
   bHost3.code === 2 && /"decision":"block"/.test(bHost3.out) && /EMPTY_ISSUE_BODY_WRITE/.test(bHost3.out));
+
+// Regression (#153 second follow-up): an unknown BOOLEAN flag before the
+// subcommand must not hide the write by swallowing the subcommand itself.
+const bFoo = runHook('gh --foo issue edit 5 --body ""');
+ok('blocks an empty --body behind an unknown boolean flag (--foo, exit 2)',
+  bFoo.code === 2 && /"decision":"block"/.test(bFoo.out) && /EMPTY_ISSUE_BODY_WRITE/.test(bFoo.out));
 
 {
   const empty = path.join(os.tmpdir(), `bg-empty-${process.pid}.md`);

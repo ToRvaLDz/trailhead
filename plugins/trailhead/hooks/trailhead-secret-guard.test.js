@@ -48,6 +48,10 @@ ok('detects gh --hostname h issue comment (unknown two-token global flag)',
 // equals a subcommand keyword must still resolve the real subcommand.
 ok('detects gh --hostname api issue edit (flag value equals a keyword)',
   ghIssueWrite('gh --hostname api issue edit 5 --body x') === 'issue');
+// Regression (#153 second follow-up): an unknown BOOLEAN flag directly
+// before the subcommand must not swallow the subcommand as its own value.
+ok('detects gh --foo issue edit (unknown boolean flag before the subcommand)',
+  ghIssueWrite('gh --foo issue edit 5 --body x') === 'issue');
 ok('ignores gh issue view (read)', ghIssueWrite('gh issue view 5 --json body') === null);
 ok('ignores gh -R o/r issue view (read, even with global flag)',
   ghIssueWrite('gh -R owner/repo issue view 5 --json body') === null);
@@ -113,6 +117,12 @@ ok('blocks an inline secret behind an unknown two-token global flag (--hostname 
 const b7 = runHook('gh --hostname api issue edit 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
 ok('blocks an inline secret behind a keyword-valued two-token global flag (--hostname api, exit 2)',
   b7.code === 2 && /"decision":"block"/.test(b7.out));
+
+// Regression (#153 second follow-up): an unknown BOOLEAN flag before the
+// subcommand must not hide the write by swallowing the subcommand itself.
+const b8 = runHook('gh --foo issue edit 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
+ok('blocks an inline secret behind an unknown boolean flag (--foo, exit 2)',
+  b8.code === 2 && /"decision":"block"/.test(b8.out));
 
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');
