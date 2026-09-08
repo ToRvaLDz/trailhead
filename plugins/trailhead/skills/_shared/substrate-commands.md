@@ -38,6 +38,12 @@ Two facts each get written in three places, all in the same pass, so they can ne
    gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)"
    ```
    This is the structure GitHub renders, including the map's progress bar.
+
+   The edge add is cap-aware: apply the `Parent:` line and the `trailhead:map-<n>` label FIRST (below), since they keep the ticket attached regardless of what happens next. Then, before the POST, read the map's current count:
+   ```bash
+   gh api repos/{owner}/{repo}/issues/<map> --jq '.sub_issues_summary.total'
+   ```
+   If it is >= 100, do NOT POST: tell the user the map is at GitHub's 100 sub-issue cap and offer `/trailhead:prune` to reclaim slots, then continue (the label already attached the ticket). If it is < 100, POST; if the POST itself still fails with a cap-signalling error (HTTP 422, or a "maximum number of sub-issues" message), treat it as at-cap and offer prune the same way. Any other POST failure is surfaced plainly as an ordinary error. Never silently drop the edge.
 3. The map's `trailhead:map-<n>` label on the ticket: the queryable key that scopes the frontier.
 
 Wire all three in the same pass; a ticket carrying only one or two has drifted. A whiteboard ticket has none of the three: no `Parent:` line, no sub-issue edge, no `trailhead:map-<n>` label.
@@ -61,6 +67,25 @@ Unblock: remove the label the moment the last blocker closes:
 gh issue edit <n> --remove-label "trailhead:blocked"
 ```
 The native edge needs no cleanup; GitHub auto-reflects a closed blocker on its own.
+
+## Sub-issue cap and pruning
+
+GitHub caps native sub-issues at 100 per parent. The engine reads this count wherever it matters (edge-add pre-check, dashboard flag) and `/trailhead:prune` reclaims slots when a map is near or at it. The classification (closed -> remove, open+labelled -> keep, open+not-labelled orphan -> remove, labelled-but-missing -> add) and the preview/confirm live in `../trailhead-manage/references/pruning.md`; this cookbook only holds the `gh` mechanics.
+
+Read the count (>= 90 near cap, >= 100 at cap):
+```bash
+gh api repos/{owner}/{repo}/issues/<map> --jq '.sub_issues_summary.total'
+```
+
+List every native sub-issue edge, paginated (never a single page), capturing number, id, and state:
+```bash
+gh api repos/{owner}/{repo}/issues/<map>/sub_issues --paginate --jq '.[] | {number, id, state}'
+```
+
+Remove an edge (note the singular `sub_issue` on DELETE, vs the plural `sub_issues` on POST):
+```bash
+gh api --method DELETE repos/{owner}/{repo}/issues/<map>/sub_issue -F sub_issue_id=<id>
+```
 
 ## Frontier queries
 
@@ -137,6 +162,7 @@ These renders create and pin only when missing; they never rewrite the body.
 
 **Body generation.** The body holds:
 - a link to every open `trailhead:map`, found with `gh issue list --label trailhead:map --state open`. The dashboard only links; GitHub renders each map's sub-issue progress bar natively, so the dashboard does not recompute per-ticket progress itself. **Per open map, additionally run one cheap `0 open scoped issues?` count** (below) as a **pre-filter**: zero open scoped issues makes a map a **candidate** for exhausted-but-open, not a verdict. The count cannot see fog (the map body's `## Not yet specified` prose is never a separate issue, and a `trailhead:fog` issue carries no `trailhead:map-<n>` label), and exhausted means **no open tickets AND no fog left**. So before flagging, confirm the candidate's body `## Not yet specified` is empty with one `gh issue view <map> --json body` read; only a candidate with no remaining fog is flagged in the Maps section as `exhausted · closeable`. The count runs for every open map, but the body read is bounded to the (rare) candidates, so this stays cheap and within the dashboard-only-links spirit. The flag is a signal, not an action: the `/trailhead:dashboard` render offers to close such a map, never auto-closes it (the never-close-unprompted rule holds);
+- **per open map, also flag GitHub's 100 sub-issue cap**: read `sub_issues_summary.total` (below) and flag `near cap · <total>/100` (total >= 90) or `at cap` (total >= 100). For only the (rare) at/near-cap maps, run one bounded native sub-issue list (see `## Sub-issue cap and pruning` above) to check for closed edges, exactly like the bounded fog-confirm above, and append `· prunable` when any are found. The render offers `/trailhead:prune` for such a map, never auto-prunes;
 - the whiteboard as a section, or a link to the `/trailhead:whiteboard` view;
 - dynamic counts: untriaged inbox size and whiteboard frontier size.
 
@@ -151,6 +177,8 @@ gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state 
 gh issue list --label "trailhead:map-<n>" --state open --json number --jq 'length'
 # confirm no fog before flagging a candidate closeable: its body's `## Not yet specified` must be empty
 gh issue view <map> --json body --jq .body
+# per-map sub-issue cap: total native sub-issues (>=90 near cap, >=100 at cap)
+gh api repos/{owner}/{repo}/issues/<map> --jq '.sub_issues_summary.total'
 ```
 
 **When to refresh the body.** On structural events: a map is charted or exhausted (a map appears or disappears), a whiteboard ticket is born or resolved. And on demand via `/trailhead:dashboard`. NOT on every map-ticket resolve: that churns a pinned issue's notifications, and the native progress bar already tracks map-ticket progress on its own. The whiteboard has no native progress bar, so its ticket birth or close refreshes the dashboard, except a `quick`-born ticket (born and resolved in one session) refreshes at the handoff (Resolve, or pause), not at creation.
