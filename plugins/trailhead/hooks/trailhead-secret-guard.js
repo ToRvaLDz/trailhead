@@ -14,6 +14,7 @@
 // executed directly.
 
 const fs = require('fs');
+const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
 
 // High-confidence secret formats: a match here is almost never a false positive.
 const SECRET_PATTERNS = [
@@ -39,21 +40,9 @@ const SAFE_VALUE =
 
 // Is this a `gh` command that WRITES issue/PR/comment text? Returns the kind or null.
 function ghIssueWrite(cmd) {
-  const toks = cmd.trim().split(/\s+/);
-  let i = 0;
-  while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
-  if (i >= toks.length || !/(^|\/)gh$/.test(toks[i])) return null;         // the gh binary
-  i++;
-  // Skip gh global flags before the subcommand, notably `-R`/`--repo <value>`
-  // (its separate-token value must be consumed too), so `gh -R o/r issue
-  // comment …` is still recognised as a write and gets scanned. Without this a
-  // secret could slip past simply by naming the repo up front.
-  while (i < toks.length && toks[i].startsWith('-')) {
-    if (/^(-R|--repo)$/.test(toks[i]) && !toks[i].includes('=')) i++;
-    i++;
-  }
-  const sub = toks[i];
-  const verb = toks[i + 1];
+  const parsed = parseGhSubcommand(cmd);
+  if (!parsed) return null;
+  const { sub, verb } = parsed;
   if ((sub === 'issue' || sub === 'pr') && ['create', 'comment', 'edit', 'review'].includes(verb)) {
     return sub;
   }

@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const os = require('os');
+const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
 
 // Is the resolved body text clearly empty or whitespace-only?
 function isEmptyBody(text) {
@@ -154,19 +155,9 @@ function resolveApiBody(cmd) {
 // and `comment` add new content rather than overwrite an existing body, so
 // they are out of scope for this guard.
 function ghBodyWrite(cmd) {
-  const toks = cmd.trim().split(/\s+/);
-  let i = 0;
-  while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
-  if (i >= toks.length || !/(^|\/)gh$/.test(toks[i])) return null;         // the gh binary
-  i++;
-  // Skip gh global flags before the subcommand, notably `-R`/`--repo <value>`
-  // (its separate-token value must be consumed too).
-  while (i < toks.length && toks[i].startsWith('-')) {
-    if (/^(-R|--repo)$/.test(toks[i]) && !toks[i].includes('=')) i++;
-    i++;
-  }
-  const sub = toks[i];
-  const verb = toks[i + 1];
+  const parsed = parseGhSubcommand(cmd);
+  if (!parsed) return null;
+  const { sub, verb } = parsed;
 
   if ((sub === 'issue' || sub === 'pr') && verb === 'edit') {
     const resolved = resolveEditBody(cmd);

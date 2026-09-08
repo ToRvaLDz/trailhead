@@ -40,6 +40,12 @@ ok('recognizes gh api ... -f body=foo',
   (() => { const r = ghBodyWrite('gh api --method PATCH repos/o/r/issues/5 -f body=foo'); return r && r.kind === 'api' && r.body === 'foo'; })());
 ok('recognizes the -R o/r global-flag form',
   (() => { const r = ghBodyWrite('gh -R owner/repo issue edit 5 --body "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
+// Regression (#153): an unknown two-token global flag (e.g. --hostname h)
+// before the subcommand must not desync the walk and hide the write.
+ok('recognizes gh issue edit behind an unknown two-token global flag (--hostname h)',
+  (() => { const r = ghBodyWrite('gh --hostname h issue edit 5 --body ""'); return r && r.kind === 'issue' && r.body === ''; })());
+ok('recognizes gh pr edit behind an unknown two-token global flag (--hostname h)',
+  (() => { const r = ghBodyWrite('gh --hostname h pr edit 5 --body ""'); return r && r.kind === 'pr' && r.body === ''; })());
 
 // --- unit: ghBodyWrite() non-matches ---
 ok('ignores gh issue edit with no body param',
@@ -74,6 +80,15 @@ ok("isEmptyBody(' a ') is false", isEmptyBody(' a ') === false);
 // --- end-to-end: block ---
 const b1 = runHook('gh issue edit 5 --body ""');
 ok('blocks an empty inline --body (exit 2)', b1.code === 2 && /"decision":"block"/.test(b1.out) && /EMPTY_ISSUE_BODY_WRITE/.test(b1.out));
+
+// Regression (#153): the same block must fire when an unknown two-token
+// global flag (e.g. --hostname h) sits before the subcommand.
+const bHost1 = runHook('gh --hostname h issue edit 5 --body ""');
+ok('blocks an empty --body behind an unknown two-token global flag (issue edit, exit 2)',
+  bHost1.code === 2 && /"decision":"block"/.test(bHost1.out) && /EMPTY_ISSUE_BODY_WRITE/.test(bHost1.out));
+const bHost2 = runHook('gh --hostname h pr edit 5 --body ""');
+ok('blocks an empty --body behind an unknown two-token global flag (pr edit, exit 2)',
+  bHost2.code === 2 && /"decision":"block"/.test(bHost2.out) && /EMPTY_ISSUE_BODY_WRITE/.test(bHost2.out));
 
 {
   const empty = path.join(os.tmpdir(), `bg-empty-${process.pid}.md`);

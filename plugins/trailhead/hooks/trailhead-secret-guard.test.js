@@ -40,6 +40,10 @@ ok('detects gh -R o/r issue comment (global flag before subcommand)',
   ghIssueWrite('gh -R owner/repo issue comment 5 --body x') === 'issue');
 ok('detects gh --repo=o/r pr create (attached global flag)',
   ghIssueWrite('gh --repo=owner/repo pr create --body x') === 'pr');
+// Regression (#153): an unknown two-token global flag (e.g. --hostname h)
+// before the subcommand must not desync the walk and hide the write.
+ok('detects gh --hostname h issue comment (unknown two-token global flag)',
+  ghIssueWrite('gh --hostname h issue comment 5 --body x') === 'issue');
 ok('ignores gh issue view (read)', ghIssueWrite('gh issue view 5 --json body') === null);
 ok('ignores gh -R o/r issue view (read, even with global flag)',
   ghIssueWrite('gh -R owner/repo issue view 5 --json body') === null);
@@ -92,6 +96,12 @@ fs.unlinkSync(leaky2);
 // A global flag before the subcommand must not let a secret slip past unscanned.
 const b5 = runHook('gh -R owner/repo issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
 ok('blocks an inline secret behind gh -R (exit 2)', b5.code === 2 && /"decision":"block"/.test(b5.out));
+
+// Regression (#153): an unknown two-token global flag (e.g. --hostname h)
+// before the subcommand must not let a secret slip past unscanned either.
+const b6 = runHook('gh --hostname h issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
+ok('blocks an inline secret behind an unknown two-token global flag (--hostname h, exit 2)',
+  b6.code === 2 && /"decision":"block"/.test(b6.out));
 
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');
