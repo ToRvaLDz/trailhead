@@ -2,6 +2,14 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.8.1 (2026-09-08)
+
+### Changed / Fixed
+- **Grilling and chart/adopt cover the full feature surface (#140).** The grilling technique and the chart/adopt frontier steps deep-dived one thread and left whole functional areas uninterrogated, so large parts of the scope stayed silently as fog off the map. Grilling now runs a breadth-before-depth pass (enumerate every functional area first; an empty frontier reached while whole areas were never enumerated is a false finish, scoped to multi-part spaces so a single isolated choice still finishes on an empty frontier), and chart Mode 1 step 2 / adopt Mode 1-bis step 4 now require every functional area the destination implies to land on the map (fog under `## Not yet specified` at minimum, or a ticket) before deep-diving any single area, with the map (not the grilling transcript) as the coverage deliverable, checked at map creation.
+- **"Load first, in order" is single-sourced (#139).** The identical `## Load first, in order` block, previously duplicated across the dispatcher and the five cluster `SKILL.md` files, is now single-sourced in `_shared/load-first.md`; each engine references it in one line and keeps only its own isolation tail, removing the five-copy drift surface #137 hit. Guarded by a projection + source-level anti-drift test.
+
+Both are internal engine / skill-doc quality changes (no runtime code changes).
+
 ## 0.8.0 (2026-09-04)
 
 ### Added
