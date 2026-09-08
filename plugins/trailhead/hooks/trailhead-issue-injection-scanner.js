@@ -13,14 +13,18 @@
 const GAP = String.raw`(?:\s+\w+){0,5}\s+`;
 // The prior context an override tries to cancel, and what it targets.
 const OVERRIDE_REF = String.raw`(?:previous|above|earlier|prior|preceding|system)`;
-const OVERRIDE_OBJ = String.raw`(?:instructions?|directions?|prompts?|guidelines?|rules?|context)`;
+// Strong injection-signal objects only. Deliberately excludes overloaded
+// software terms (rules/guidelines/context) that appear in ordinary review prose.
+const OVERRIDE_OBJ = String.raw`(?:instructions?|directions?|prompts?)`;
 
 const INJECTION_PATTERNS = [
   // Imperative overrides, tolerant of up to 5 filler words between key tokens:
   // "ignore/disregard/forget ... <reference> ... <object>".
   new RegExp(`(?:ignore|disregard|forget)${GAP}${OVERRIDE_REF}${GAP}${OVERRIDE_OBJ}`, 'i'),
-  // "forget ... instructions" with no explicit reference word.
-  new RegExp(`forget${GAP}${OVERRIDE_OBJ}`, 'i'),
+  // Unanchored "forget ... instructions" (no reference word): keep the object
+  // tight to avoid tripping on "forget the old rules". "forget the system prompt"
+  // stays covered by the anchored pattern above (system is a reference word).
+  new RegExp(`forget${GAP}instructions?`, 'i'),
   // "override (system|previous) (prompt|instructions)": kept tight, because
   // "override" is common in ordinary prose and padding it yields false positives.
   /override\s+(system|previous)\s+(prompt|instructions)/i,
