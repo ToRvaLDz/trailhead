@@ -134,6 +134,26 @@ for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
   ok(`source: ${cl}/SKILL.md does NOT duplicate the core-list signature line`, !fs.readFileSync(path.join(sourceSkillsDir, cl, 'SKILL.md'), 'utf8').includes(loadFirstSignature));
 }
 
+// --- #147: chart's close anchors the next step to /trailhead:work -----------
+// Source-level invariant: charting.md renders a codified next-step block at the
+// chart/adopt close, led by /clear, anchored to /trailhead:work (the map-frontier
+// verb) with /trailhead:quick only as the off-map alternative, single-sourced
+// once in Mode 1 step 6 with Mode 1-bis reaching it via "As Mode 1, steps 4-6".
+const chartingSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'charting.md'), 'utf8');
+ok('source: charting.md close carries a codified next-step block', /Next-step block \(the close of chart/.test(chartingSource));
+// Structural: the rendered blockquote must LEAD with a standalone /clear bullet
+// (guards the "never demote /clear to a trailing parenthetical" regression #147 exists for).
+ok('source: charting.md next-step block leads with a standalone /clear bullet', /> \*\*Prossimo passo:\*\*\n> - `\/clear`/.test(chartingSource));
+// Structural: /trailhead:work is the primary bullet, carrying the number (name in prose).
+ok('source: charting.md next-step block makes /trailhead:work the primary move with the number', /`\/trailhead:work <numero>` per lavorare \*\*<nome/.test(chartingSource));
+// Structural: /trailhead:quick is demoted to the last "in alternativa ... fuori mappa" bullet.
+ok('source: charting.md next-step block demotes /trailhead:quick to the off-map alternative bullet', /> - in alternativa `\/trailhead:quick[^\n]*fuori mappa/.test(chartingSource));
+ok('source: charting.md next-step block presents several independent tickets as a set to choose from', chartingSource.includes('set to choose from'));
+ok('source: charting.md next-step block frames quick as the off-map alternative', chartingSource.includes('only as the off-map alternative'));
+ok('source: charting.md single-sources the block via the "As Mode 1, steps 4-6" reference', /As Mode 1, steps 4[–-]6/.test(chartingSource));
+const chartSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'SKILL.md'), 'utf8');
+ok('source: trailhead-chart SKILL.md config-offer points at the next-step block', chartSkillSource.includes('next-step block') && chartSkillSource.includes('/trailhead:work'));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
