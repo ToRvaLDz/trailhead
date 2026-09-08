@@ -33,11 +33,13 @@ This choice is advisory (a process choice): offer the delegate option per `../..
 
 Remove each classified-for-removal edge with the DELETE from `../../_shared/substrate-commands.md` (section "Sub-issue cap and pruning"), passing the edge's internal `id` captured in step 2. Then **re-read** `sub_issues_summary.total` (do not trust the pre-removal count) and add the missing edges up to the remaining capacity (100 - current total), each independently, with the re-add POST from that same section. The missing set came from a label diff, so it holds issue *numbers*, not internal ids: resolve each missing ticket's internal id first (the POST snippet in the cookbook shows the `$(gh api .../<ticket> --jq .id)` substitution).
 
+If a removal DELETE comes back 404, the edge was already detached (never native): the slot is already free, so count it toward the reconciled/removed result and keep going, per the 404-tolerance documented in the cookbook. That is distinct from a genuine failure.
+
 Report **per edge**: each removal and each add, success or failure. A single edge failing (for example a concurrent creation consuming the last slot) is never fatal: record it and continue.
 
 ## 6. Report
 
-Say plainly what happened: slots reclaimed (closed + orphan removed), edges re-added, and the new `total` against 100. If open labelled tickets still lack an edge because capacity ran out, **list them** and note that a later `/trailhead:prune` (once more tickets close) will attach them. Never close, reopen, relabel, or otherwise touch any ticket: prune only ever adds or removes the map's native sub-issue edges.
+Say plainly what happened: slots reclaimed (closed + orphan removed), edges re-added, and the new `total` against 100. An already-detached edge caught as a 404 is a clean no-op, not a failed edge; keep it out of any failure count, distinct from a genuine edge failure (a transient API error or a permissions error), which is what "record it and continue" covers. If open labelled tickets still lack an edge because capacity ran out, **list them** and note that a later `/trailhead:prune` (once more tickets close) will attach them. Never close, reopen, relabel, or otherwise touch any ticket: prune only ever adds or removes the map's native sub-issue edges.
 
 ## Notes
 
