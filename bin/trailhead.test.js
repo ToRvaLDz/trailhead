@@ -196,6 +196,21 @@ ok('source: charting.md single-sources the block via the "As Mode 1, steps 4-6" 
 const chartSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'SKILL.md'), 'utf8');
 ok('source: trailhead-chart SKILL.md config-offer points at the next-step block', chartSkillSource.includes('next-step block') && chartSkillSource.includes('/trailhead:work'));
 
+// --- #149: capture confirmation anchors the next step to /trailhead:work -----
+// Source-level invariant, mirroring #147 for chart: capture.md's confirmation-line
+// rule names /trailhead:work as the anchor (full engine, keeps the map record) and
+// demotes /trailhead:quick to the off-map / no-split alternative, offered alongside,
+// never in its place. Localized + ordered assertions (not broad substrings): the anchor
+// clause precedes the quick-demotion clause within the Confirmation line. Targets the
+// capture confirmation line specifically, NOT a blanket /trailhead:quick ban
+// (session-handoff.md legitimately offers /trailhead:quick <n> for the next loose ticket).
+const captureSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
+ok('source: capture.md confirmation anchors the next step to /trailhead:work', /[Aa]nchor the next step to `\/trailhead:work <n>`, always/.test(captureSource));
+ok('source: capture.md demotes /trailhead:quick to only the off-map / no-split alternative, after the work anchor',
+  /[Aa]nchor the next step to `\/trailhead:work <n>`[\s\S]{0,400}`\/trailhead:quick <n>` is \*\*only\*\* the off-map \/ no-split alternative/.test(captureSource));
+ok('source: capture.md says quick is offered alongside work, never in its place', captureSource.includes('never in its place'));
+ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard capture', /whiteboard[\s\S]{0,200}the anchor stays `\/trailhead:work <n>`/.test(captureSource));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
