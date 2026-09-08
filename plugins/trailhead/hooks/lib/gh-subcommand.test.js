@@ -47,9 +47,22 @@ ok('gh --hostname h api --method PATCH ... resolves api',
 ok('gh --hostname h --foo bar issue edit 5 resolves issue/edit',
   (() => { const r = parseGhSubcommand('gh --hostname h --foo bar issue edit 5'); return r.sub === 'issue' && r.verb === 'edit'; })());
 
-// --- a boolean flag directly before the subcommand is not over-consumed ---
-ok('gh --foo issue edit 5 resolves issue/edit (boolean flag not swallowing the subcommand)',
-  (() => { const r = parseGhSubcommand('gh --foo issue edit 5'); return r.sub === 'issue' && r.verb === 'edit'; })());
+// --- REGRESSION (#153 follow-up): a two-token global flag whose VALUE
+// literally equals a subcommand keyword must still resolve the real
+// subcommand, not the flag's value ---
+ok('gh --hostname api issue edit 5 resolves issue/edit (flag value equals a keyword)',
+  (() => { const r = parseGhSubcommand('gh --hostname api issue edit 5'); return r.sub === 'issue' && r.verb === 'edit'; })());
+ok('gh --hostname issue issue comment 5 resolves issue/comment (flag value equals a keyword)',
+  (() => { const r = parseGhSubcommand('gh --hostname issue issue comment 5'); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('gh --hostname pr pr edit 5 resolves pr/edit (flag value equals a keyword)',
+  (() => { const r = parseGhSubcommand('gh --hostname pr pr edit 5'); return r.sub === 'pr' && r.verb === 'edit'; })());
+
+// --- a real boolean global flag directly before the subcommand is not over-consumed ---
+// (Trade-off of the new model: an UNKNOWN flag like --foo is now treated as
+// value-taking, so it consumes the next token. Only flags in
+// BOOLEAN_GLOBAL_FLAGS are known to take no value.)
+ok('gh --help issue edit resolves issue/edit (real boolean flag not swallowing the subcommand)',
+  (() => { const r = parseGhSubcommand('gh --help issue edit'); return r.sub === 'issue' && r.verb === 'edit'; })());
 
 // --- single-token --hostname=h form ---
 ok('gh --hostname=h issue edit resolves issue/edit',

@@ -44,6 +44,10 @@ ok('detects gh --repo=o/r pr create (attached global flag)',
 // before the subcommand must not desync the walk and hide the write.
 ok('detects gh --hostname h issue comment (unknown two-token global flag)',
   ghIssueWrite('gh --hostname h issue comment 5 --body x') === 'issue');
+// Regression (#153 follow-up): a two-token global flag whose VALUE literally
+// equals a subcommand keyword must still resolve the real subcommand.
+ok('detects gh --hostname api issue edit (flag value equals a keyword)',
+  ghIssueWrite('gh --hostname api issue edit 5 --body x') === 'issue');
 ok('ignores gh issue view (read)', ghIssueWrite('gh issue view 5 --json body') === null);
 ok('ignores gh -R o/r issue view (read, even with global flag)',
   ghIssueWrite('gh -R owner/repo issue view 5 --json body') === null);
@@ -102,6 +106,13 @@ ok('blocks an inline secret behind gh -R (exit 2)', b5.code === 2 && /"decision"
 const b6 = runHook('gh --hostname h issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
 ok('blocks an inline secret behind an unknown two-token global flag (--hostname h, exit 2)',
   b6.code === 2 && /"decision":"block"/.test(b6.out));
+
+// Regression (#153 follow-up): a two-token global flag whose VALUE literally
+// equals a subcommand keyword (`api`) must still be scanned as the real
+// `issue edit` write, not slip past unscanned as a mis-resolved `api` write.
+const b7 = runHook('gh --hostname api issue edit 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
+ok('blocks an inline secret behind a keyword-valued two-token global flag (--hostname api, exit 2)',
+  b7.code === 2 && /"decision":"block"/.test(b7.out));
 
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');

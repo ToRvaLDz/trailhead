@@ -12,17 +12,28 @@
 // the subcommand. The write became invisible to both guards (a missed
 // empty-body block in body-guard, an unscanned secret in secret-guard).
 //
-// Fix: tolerate ONE stray value token after any unknown flag, unless that
-// token is itself a flag or a KNOWN_SUBCOMMANDS keyword - so a boolean
-// (no-value) flag sitting directly before the subcommand does not swallow it.
-// `-R`/`--repo` keep their unconditional two-token handling since that is the
-// one value-taking global flag gh actually documents.
+// Follow-up fix (#153): a first pass tolerated a stray value token after any
+// unknown flag UNLESS that token was itself a flag or a subcommand keyword
+// (issue/pr/api). That guard reintroduced the exact same desync whenever the
+// flag's VALUE literally equalled a subcommand keyword, e.g.
+// `gh --hostname api issue edit 5` mis-resolved `sub` to `api` (the flag
+// value), hiding the real `issue edit` write again.
+//
+// Fix: drop the keyword-based guard entirely and model flag arity instead.
+// gh's only value-taking global flag before a subcommand is -R/--repo; a
+// small, explicit set of global flags are boolean (take no value). Every
+// OTHER flag token is treated as value-taking, so its value can never be
+// mistaken for the subcommand - including when that value happens to equal
+// a subcommand keyword like `issue`/`pr`/`api`.
 //
 // Self-contained. No requires.
 
-// Subcommands the guards care about; used to protect a boolean (no-value)
-// flag that is immediately followed by the subcommand from being over-consumed.
-const KNOWN_SUBCOMMANDS = new Set(['issue', 'pr', 'api']);
+// gh's boolean global flags (take NO value). gh's only value-taking global
+// flag before a subcommand is -R/--repo; every other flag token here is
+// treated as value-taking, so an unknown two-token global flag's value can
+// never be mistaken for the subcommand (#153) - including when that value
+// happens to equal a subcommand keyword like `issue`/`pr`/`api`.
+const BOOLEAN_GLOBAL_FLAGS = new Set(['-h', '--help', '--version']);
 
 // Parse a raw shell command string and locate the gh subcommand/verb.
 // Returns { sub, verb } (verb may be undefined) or null when this is not a
@@ -33,20 +44,18 @@ function parseGhSubcommand(cmd) {
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
   if (i >= toks.length || !/(^|\/)gh$/.test(toks[i])) return null;         // the gh binary
   i++;
-  // Walk global flags before the subcommand. Consume -R/--repo's separate
-  // value (the one value-taking global flag gh actually uses). For any OTHER
-  // flag, skip the flag token, then tolerate ONE stray value token so an
-  // unknown two-token global flag (e.g. `--hostname h`) cannot shift the
-  // subcommand position: skip that token unless it is itself a flag or a known
-  // subcommand keyword (so a boolean flag sitting directly before the
-  // subcommand does not swallow it).
+  // Walk global flags before the subcommand.
   while (i < toks.length && toks[i].startsWith('-')) {
-    const isRepo = /^(-R|--repo)$/.test(toks[i]) && !toks[i].includes('=');
-    i++; // the flag itself
-    if (isRepo) { i++; continue; } // known two-token flag: consume its value unconditionally
-    if (i < toks.length && !toks[i].startsWith('-') && !KNOWN_SUBCOMMANDS.has(toks[i])) i++;
+    const flag = toks[i];
+    i++; // consume the flag token itself
+    // A glued --flag=value / -x=value carries its value in the same token; a
+    // boolean global flag takes no value. Any other flag is value-taking:
+    // consume one following non-flag token so its value cannot shift the
+    // subcommand position.
+    if (flag.includes('=') || BOOLEAN_GLOBAL_FLAGS.has(flag)) continue;
+    if (i < toks.length && !toks[i].startsWith('-')) i++;
   }
   return { sub: toks[i], verb: toks[i + 1] };
 }
 
-module.exports = { parseGhSubcommand, KNOWN_SUBCOMMANDS };
+module.exports = { parseGhSubcommand, BOOLEAN_GLOBAL_FLAGS };
