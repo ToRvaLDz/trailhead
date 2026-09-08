@@ -269,6 +269,8 @@ ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJso
 ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
+ok('codex: skills/trailhead/hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-subcommand.js')));
 
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));
@@ -402,6 +404,8 @@ ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDi
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
+ok('claude: hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-subcommand.js')));
 // Regression: the commit-guard does require('./lib/commit-message-check.js'), so
 // it only loads if the lib was copied alongside it. Run it with a benign Bash
 // payload and assert it does not crash with a missing-module error.
