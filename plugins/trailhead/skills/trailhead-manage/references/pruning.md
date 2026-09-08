@@ -15,7 +15,7 @@ Read the map's native sub-issue count (one cheap field), then list every native 
 ## 3. Classify each edge (bidirectional reconcile)
 
 Classify every edge by its target, so the pass converges the map's edges to exactly "its open, still-labelled tickets":
-- **Target is CLOSED** -> **remove** the edge (reclaim the slot; references kept). This is the common case: resolved and superseded tickets.
+- **Target is CLOSED** -> **remove** the edge (reclaim the slot; references kept). This is mostly resolved tickets: since #151 a superseded / out-of-scope close already sheds its edge eagerly at close (see the eager drop in `../../_shared/substrate-commands.md`), so a closed ticket still carrying its edge here is normally a resolved one (or a pre-#151 / fallback legacy edge).
 - **Target is OPEN and still carries `trailhead:map-<n>` for this map** -> **keep** the edge.
 - **Target is OPEN but does NOT carry `trailhead:map-<n>` for this map** (an orphan: a ticket that no longer belongs to this map) -> **remove** the edge. It does not belong here; its own map, if any, holds its own edge. Confirm the label is genuinely absent before removing (read the ticket's labels), so a ticket that is legitimately mid-wiring is never stripped.
 

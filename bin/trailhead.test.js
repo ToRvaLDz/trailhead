@@ -224,9 +224,10 @@ ok('source: substrate-commands.md documents the eager edge drop at close (supers
 ok('source: substrate-commands.md fixes the label -> DELETE -> close ordering for the eager drop',
   /apply the state label first, then DELETE the edge, then `gh issue close`/.test(substrateCommandsSource));
 ok('source: substrate-commands.md eager drop excludes resolved closes (progress bar / prune)',
-  /Only these two closes shed eagerly/.test(substrateCommandsSource) &&
-  /progress bar/.test(substrateCommandsSource) &&
-  /`\/trailhead:prune`'s job/.test(substrateCommandsSource));
+  // Proximity-scoped so each conjunct is load-bearing on the NEW paragraph's own
+  // text, not on the pre-existing "progress bar" mentions elsewhere in the file.
+  /Only these two closes shed eagerly[\s\S]{0,300}progress bar/.test(substrateCommandsSource) &&
+  /Resolved edges stay[\s\S]{0,160}`\/trailhead:prune`'s job/.test(substrateCommandsSource));
 
 const substrateSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'substrate.md'), 'utf8');
 ok('source: substrate.md out-of-scope label notes the edge is dropped at close',
@@ -249,7 +250,7 @@ ok('source: inbox.md dropped-fog close drops any native sub-issue edge',
   /drop any native sub-issue edge to reclaim a slot/.test(inboxSource));
 
 // NEGATIVE invariant: the resolved-close paths (build/bug Resolve) must NOT
-// carry an eager edge-drop instruction — resolved edges stay for the progress bar.
+// carry an eager edge-drop instruction; resolved edges stay for the progress bar.
 const ticketEnginesSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
 ok('source: ticket-engines.md resolved-close path does NOT drop the native sub-issue edge',
   !/drop (its|any) native sub-issue edge/.test(ticketEnginesSource));
