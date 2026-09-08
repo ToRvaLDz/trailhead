@@ -87,6 +87,11 @@ Remove an edge (note the singular `sub_issue` on DELETE, vs the plural `sub_issu
 gh api --method DELETE repos/{owner}/{repo}/issues/<map>/sub_issue -F sub_issue_id=<id>
 ```
 
+Re-add a missing edge: the same native sub-issue POST as the Child -> map link above, resolving the ticket's internal id first (the label diff that finds a missing ticket yields its issue *number*, not the internal id the endpoint needs):
+```bash
+gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)"
+```
+
 ## Frontier queries
 
 Map frontier, single map, repo-wide (excludes whiteboard tickets so they don't leak in):

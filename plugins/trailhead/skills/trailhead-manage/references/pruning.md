@@ -10,14 +10,7 @@ The argument is the map (number or URL). With no argument, use the active map (`
 
 ## 2. Read the count and list the edges
 
-Read the map's native sub-issue count (one cheap field):
-```bash
-gh api repos/{owner}/{repo}/issues/<map> --jq '.sub_issues_summary.total'
-```
-List every native sub-issue of the map, **paginated** (never a single page), capturing each one's number, id, and state:
-```bash
-gh api repos/{owner}/{repo}/issues/<map>/sub_issues --paginate --jq '.[] | {number, id, state}'
-```
+Read the map's native sub-issue count (one cheap field), then list every native sub-issue of the map, **paginated** (never a single page), capturing each one's number, id, and state. The exact `gh` commands are in `../../_shared/substrate-commands.md` (section "Sub-issue cap and pruning"); this protocol only says how to use them.
 
 ## 3. Classify each edge (bidirectional reconcile)
 
@@ -38,14 +31,8 @@ This choice is advisory (a process choice): offer the delegate option per `../..
 
 ## 5. Apply
 
-Remove each classified-for-removal edge:
-```bash
-gh api --method DELETE repos/{owner}/{repo}/issues/<map>/sub_issue -F sub_issue_id=<id>
-```
-Then **re-read** `sub_issues_summary.total` (do not trust the pre-removal count) and add missing edges up to the remaining capacity (100 - current total), each independently:
-```bash
-gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id=<id>
-```
+Remove each classified-for-removal edge with the DELETE from `../../_shared/substrate-commands.md` (section "Sub-issue cap and pruning"), passing the edge's internal `id` captured in step 2. Then **re-read** `sub_issues_summary.total` (do not trust the pre-removal count) and add the missing edges up to the remaining capacity (100 - current total), each independently, with the re-add POST from that same section. The missing set came from a label diff, so it holds issue *numbers*, not internal ids: resolve each missing ticket's internal id first (the POST snippet in the cookbook shows the `$(gh api .../<ticket> --jq .id)` substitution).
+
 Report **per edge**: each removal and each add, success or failure. A single edge failing (for example a concurrent creation consuming the last slot) is never fatal: record it and continue.
 
 ## 6. Report
