@@ -126,6 +126,32 @@ ok('ghBodyWrite recognizes -b (issue edit)',
 ok('ghBodyWrite still resolves --body correctly alongside the -b alias',
   (() => { const r = ghBodyWrite('gh issue edit 5 --body "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
 
+// --- end-to-end: block via gh api empty-body forms ---
+const b8 = runHook('gh api --method PATCH repos/o/r/issues/5 -f body=""');
+ok('blocks gh api -f body="" (literal empty double-quotes, exit 2)', b8.code === 2 && /"decision":"block"/.test(b8.out));
+
+const b9 = runHook("gh api --method PATCH repos/o/r/issues/5 -f body=''");
+ok("blocks gh api -f body='' (literal empty single-quotes, exit 2)", b9.code === 2 && /"decision":"block"/.test(b9.out));
+
+{
+  const apiEmpty = path.join(os.tmpdir(), `bg-api-empty-${process.pid}.md`);
+  fs.writeFileSync(apiEmpty, '');
+  const b10 = runHook(`gh api --method PATCH repos/o/r/issues/5 -F body=@${apiEmpty}`);
+  ok('blocks gh api -F body=@<empty file> (exit 2)', b10.code === 2 && /"decision":"block"/.test(b10.out));
+  fs.unlinkSync(apiEmpty);
+}
+
+const a6 = runHook('gh api --method PATCH repos/o/r/issues/5 -F body=@-');
+ok('allows gh api -F body=@- (stdin, unknowable, exit 0)', a6.code === 0 && a6.out.trim() === '');
+
+{
+  const apiFull = path.join(os.tmpdir(), `bg-api-full-${process.pid}.md`);
+  fs.writeFileSync(apiFull, 'real content\n');
+  const a7 = runHook(`gh api --method PATCH repos/o/r/issues/5 -f body=@${apiFull}`);
+  ok('allows a non-empty gh api -f body=@<file> (exit 0)', a7.code === 0 && a7.out.trim() === '');
+  fs.unlinkSync(apiFull);
+}
+
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue edit 5 --body "not empty"');
 ok('allows a non-empty body write (exit 0, no output)', a1.code === 0 && a1.out.trim() === '');

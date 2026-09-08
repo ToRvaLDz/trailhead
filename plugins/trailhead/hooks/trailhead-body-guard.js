@@ -30,10 +30,27 @@ function isShellExpansion(text) {
   return /\$\(/.test(text) || /`/.test(text) || /^\$/.test(text);
 }
 
-// Read a --body-file target, mirroring secret-guard's bodyFileText: sliced to
-// ~1MB. Throws (ENOENT etc.) are the caller's problem to catch.
+// Read a --body-file (or api `@file`) target, mirroring secret-guard's
+// bodyFileText: sliced to ~1MB. Throws (ENOENT etc.) are the caller's
+// problem to catch.
 function readBodyFile(filePath) {
   return fs.readFileSync(filePath, 'utf8').slice(0, 1_000_000);
+}
+
+// Strip one matching pair of surrounding quotes (an artifact of parsing a
+// bare `body=` value that itself contains a literal `""`/`''`, e.g. `-f
+// body=""`, where the RAW command text carries the quote characters rather
+// than the shell having already stripped them). A no-op when the value
+// isn't quote-wrapped.
+function stripQuotedPair(val) {
+  if (val.length >= 2) {
+    const first = val[0];
+    const last = val[val.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return val.slice(1, -1);
+    }
+  }
+  return val;
 }
 
 // Resolve the body for a `gh issue edit` / `gh pr edit` command. Returns:
@@ -85,14 +102,36 @@ function resolveEditBody(cmd) {
 // Resolve the body for a `gh api ... -f/-F/--field/--raw-field body=<val>`
 // write. Called only once the caller has already confirmed a `body=` field
 // is present, so a null return here always means "unknowable", never
-// "absent".
+// "absent". Handles gh's `@<path>` file-reference form (`@-` is stdin, so
+// unknowable) and a bare value carrying literal surrounding quotes (e.g.
+// `-f body=""`, where the shell hasn't run yet so the quote characters are
+// still in the raw command text).
 function resolveApiBody(cmd) {
+  let raw;
   let m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+"body=([^"]*)"/);
-  if (!m) m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+'body=([^']*)'/);
-  if (!m) m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+body=(\S*)/);
-  if (!m) return null;
-  const val = m[1];
-  if (val === undefined) return null;
+  if (m) raw = m[1];
+  if (raw === undefined) {
+    m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+'body=([^']*)'/);
+    if (m) raw = m[1];
+  }
+  if (raw === undefined) {
+    m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+body=(\S*)/);
+    if (m) raw = m[1];
+  }
+  if (raw === undefined) return null;
+
+  const val = stripQuotedPair(raw);
+
+  if (val.startsWith('@')) {
+    const ref = val.slice(1);
+    if (ref === '-') return null; // @- : stdin, unknowable
+    try {
+      return readBodyFile(ref);
+    } catch {
+      return null; // unreadable: unknowable, not provably empty
+    }
+  }
+
   if (isShellExpansion(val)) return null;
   return val;
 }
