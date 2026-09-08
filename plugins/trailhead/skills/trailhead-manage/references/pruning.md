@@ -33,7 +33,7 @@ This choice is advisory (a process choice): offer the delegate option per `../..
 
 Remove each classified-for-removal edge with the DELETE from `../../_shared/substrate-commands.md` (section "Sub-issue cap and pruning"), passing the edge's internal `id` captured in step 2. Then **re-read** `sub_issues_summary.total` (do not trust the pre-removal count) and add the missing edges up to the remaining capacity (100 - current total), each independently, with the re-add POST from that same section. The missing set came from a label diff, so it holds issue *numbers*, not internal ids: resolve each missing ticket's internal id first (the POST snippet in the cookbook shows the `$(gh api .../<ticket> --jq .id)` substitution).
 
-If a removal DELETE comes back 404, the edge was already detached (never native): the slot is already free, so count it toward the reconciled/removed result and keep going, per the 404-tolerance documented in the cookbook. That is distinct from a genuine failure.
+Because each id came from step 2's listing, a 404 here means the edge is no longer native (a detach that raced this run, for example a concurrent prune): the slot is already free, so count it toward the reconciled/removed result and keep going, per the 404-tolerance documented in the cookbook. That is distinct from a genuine failure.
 
 Report **per edge**: each removal and each add, success or failure. A single edge failing (for example a concurrent creation consuming the last slot) is never fatal: record it and continue.
 

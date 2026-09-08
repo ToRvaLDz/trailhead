@@ -86,7 +86,7 @@ Remove an edge (note the singular `sub_issue` on DELETE, vs the plural `sub_issu
 ```bash
 gh api --method DELETE repos/{owner}/{repo}/issues/<map>/sub_issue -F sub_issue_id=<id>
 ```
-A DELETE that comes back 404 (Not Found) means that edge was never a native sub-issue of this map (already detached): the slot is already free, so treat it as success (a no-op reclaim), never as an error.
+A DELETE that comes back 404 (Not Found) means the edge is not, or is no longer, a native sub-issue of this map: either it was never native, or it was detached after the caller read it (for example, a listing that raced a concurrent detach). Either way the slot is already free, so treat it as success (a no-op reclaim), never as an error, provided `<map>` itself already resolved earlier in the flow; a 404 caused by an invalid or vanished `<map>` is a genuine error, not this benign case.
 
 Re-add a missing edge: the same native sub-issue POST as the Child -> map link above, resolving the ticket's internal id first (the label diff that finds a missing ticket yields its issue *number*, not the internal id the endpoint needs):
 ```bash
