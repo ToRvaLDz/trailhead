@@ -6,7 +6,7 @@
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
-[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-21%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-6%20hook-e8710a?style=flat-square)
+[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-22%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-6%20hook-e8710a?style=flat-square)
 
 </div>
 
@@ -291,6 +291,8 @@ Tre layer: **il più vicino vince**, chiave per chiave (una chiave non impostata
 - **Defaults**: i valori integrati.
 
 `/trailhead:config` esegue un **setup guidato, a menu**: scegli lo scope, poi percorri ogni impostazione (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) come un menu con icone; niente editing manuale del JSON. Ogni passo è chiesto (nessuno saltato), e i **modelli plan ed execute sono sempre due scelte separate e version-pinned**. `config get` stampa la config effettiva unita; `config set <key> <value>` scrive una chiave.
+
+`/trailhead:prune [map]` recupera gli slot di sub-issue di una mappa sotto il cap di 100 di GitHub (elimina gli edge chiusi/orfani, mantiene ogni riferimento). Offerto automaticamente quando una mappa è vicina o al cap, ed eseguibile anche su richiesta.
 
 Il passo **📊 statusline** offre di installare la status bar di trailhead per Claude Code: una riga con **model · project · branch · plan usage (`5h %` · reset · `7d %`) · una barra della context-window**, più una **seconda riga con il ticket attivo** (`▸ #N Title`) ogni volta che ne stai lavorando uno, e un flag `⬆ trailhead <version>` quando è disponibile un trailhead più recente (esegui `/trailhead:update`). Il project è sempre il nome del repo principale anche da un checkout isolato, e il branch porta un tag `(WT)` in un worktree o `(C)` in un clone per-ticket (niente sul checkout originale). È un'impostazione globale di Claude Code; se già usi una statusline (es. `ccstatusline`) il setup chiede prima di rimpiazzarla, e lo script espone anche i segmenti `--ticket-only` / `--context-only` / `--usage-only` da inserire in un tool esistente.
 

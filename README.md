@@ -6,7 +6,7 @@
 
 🇬🇧 **English** · 🇮🇹 [Italiano](README.it.md)
 
-[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![site CI](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=site%20CI)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-21%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-6%20hooks-e8710a?style=flat-square)
+[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![site CI](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=site%20CI)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-22%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-6%20hooks-e8710a?style=flat-square)
 
 </div>
 
@@ -291,6 +291,8 @@ Three layers: **nearest wins**, key by key (a key unset at one layer inherits th
 - **Defaults**: the built-in values.
 
 `/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+
+`/trailhead:prune [map]` reclaims a map's sub-issue slots under GitHub's 100-cap (drops closed/orphan edges, keeps every reference). Offered automatically when a map is near or at the cap, and runnable on demand.
 
 The **📊 statusline** step offers to install trailhead's Claude Code status bar: one line with **model · project · branch · plan usage (`5h %` · reset · `7d %`) · a context-window bar**, plus a **second line with the active ticket** (`▸ #N Title`) whenever you're working one, and a `⬆ trailhead <version>` flag when a newer trailhead is available (run `/trailhead:update`). The project is always the main repo's name even from an isolated checkout, and the branch carries a `(WT)` tag in a worktree or `(C)` in a per-ticket clone (nothing on the original checkout). It's a global Claude Code setting; if you already run a statusline (e.g. `ccstatusline`) the setup asks before replacing it, and the script also exposes `--ticket-only` / `--context-only` / `--usage-only` segments to slot into an existing tool.
 

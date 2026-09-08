@@ -105,6 +105,7 @@ const commandsMustContain = [
   '/trailhead:bug',
   '/trailhead:config',
   '/trailhead:update',
+  '/trailhead:prune',
 ];
 
 const docsPlaceholder = 'Skeleton placeholder';

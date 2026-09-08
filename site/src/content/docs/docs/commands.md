@@ -1,6 +1,6 @@
 ---
 title: Commands
-description: The full verb list, flow and capture, plus config and update.
+description: The full verb list, flow and capture, plus config, update, and prune.
 ---
 
 `trailhead` is user-invoked (it won't fire on its own). The first word is the verb; the rest is text or a ticket number. With no verb, `/trailhead` does smart entry: it inspects the repo and proposes the right next move.
@@ -39,11 +39,12 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 
 The four fog/ticket captures form a spectrum of commitment and timing: note < idea < seed < todo. See [Captures & the whiteboard](/docs/captures) for the full spectrum and the whiteboard.
 
-## Config and update
+## Config, update, and prune
 
-Two more verbs round out the surface, documented in their own sections:
+Three more verbs round out the surface, documented in their own sections:
 
 - **`/trailhead:config`**: the guided, menu-driven setup for `.trailhead/config.json`; see [Configuration](/docs/configuration).
 - **`/trailhead:update`**: re-installs trailhead to the newer version, detecting how it was installed (dev-symlink, npm, or plugin); see [Getting started](/docs/getting-started).
+- **`/trailhead:prune [map]`**: reclaim a map's native sub-issue slots under GitHub's 100 sub-issue cap by dropping the edges of closed and orphan tickets (every reference kept); offered automatically when a map is near or at the cap.
 
 Next: [Captures & the whiteboard](/docs/captures) for the commitment spectrum, or [Working as a team](/docs/teamwork) for how these commands behave with multiple contributors.
