@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+// Tests for trailhead-body-guard.js. Run: node trailhead-body-guard.test.js
+// No framework: plain asserts + child_process for the end-to-end hook behaviour.
+const assert = require('assert');
+const { execFileSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const HOOK = path.join(__dirname, 'trailhead-body-guard.js');
+const { ghBodyWrite, isEmptyBody } = require('./trailhead-body-guard.js');
+
+let passed = 0;
+const ok = (name, cond) => { assert.ok(cond, name); passed++; };
+
+// Run the hook end-to-end: pipe tool_input JSON on stdin, capture {code, out}.
+function runHook(command, env = {}) {
+  const input = JSON.stringify({ tool_input: { command } });
+  try {
+    const out = execFileSync('node', [HOOK], { input, env: { ...process.env, ...env } });
+    return { code: 0, out: out.toString() };
+  } catch (e) {
+    return { code: e.status, out: (e.stdout || '').toString(), err: (e.stderr || '').toString() };
+  }
+}
+
+// --- unit: ghBodyWrite() recognition ---
+{
+  const tmp = path.join(os.tmpdir(), `bg-file-${process.pid}.md`);
+  fs.writeFileSync(tmp, 'hello there\n');
+  const r1 = ghBodyWrite(`gh issue edit 5 --body-file ${tmp}`);
+  ok('recognizes gh issue edit --body-file', r1 && r1.kind === 'issue' && r1.body === 'hello there\n');
+  fs.unlinkSync(tmp);
+}
+ok('recognizes gh issue edit --body (inline)',
+  (() => { const r = ghBodyWrite('gh issue edit 5 --body "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
+ok('recognizes gh pr edit --body "" (empty inline)',
+  (() => { const r = ghBodyWrite('gh pr edit 5 --body ""'); return r && r.kind === 'pr' && r.body === ''; })());
+ok('recognizes gh api ... -f body=foo',
+  (() => { const r = ghBodyWrite('gh api --method PATCH repos/o/r/issues/5 -f body=foo'); return r && r.kind === 'api' && r.body === 'foo'; })());
+ok('recognizes the -R o/r global-flag form',
+  (() => { const r = ghBodyWrite('gh -R owner/repo issue edit 5 --body "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
+
+// --- unit: ghBodyWrite() non-matches ---
+ok('ignores gh issue edit with no body param',
+  ghBodyWrite('gh issue edit 5 --add-label x') === null);
+ok('ignores gh issue comment (excluded verb)',
+  ghBodyWrite('gh issue comment 5 --body "hi"') === null);
+ok('ignores gh issue create (excluded verb)',
+  ghBodyWrite('gh issue create --title t --body-file /tmp/x') === null);
+ok('ignores non-gh commands',
+  ghBodyWrite('echo --body ""') === null);
+
+// --- unit: unknowable bodies are not blockable ---
+{
+  const r = ghBodyWrite('gh issue edit 5 --body "$(cat f)"');
+  ok('a shell-expansion inline body is unknowable (not blockable)', r && r.kind === 'issue' && r.body === null);
+}
+{
+  const r = ghBodyWrite('gh issue edit 5 --body-file -');
+  ok('a --body-file - (stdin) body is unknowable (not blockable)', r && r.kind === 'issue' && r.body === null);
+}
+{
+  const r = ghBodyWrite('gh issue edit 5 --body-file /no/such/file/does-not-exist.md');
+  ok('a --body-file whose read throws is unknowable (not blockable)', r && r.kind === 'issue' && r.body === null);
+}
+
+// --- unit: isEmptyBody() ---
+ok("isEmptyBody('') is true", isEmptyBody('') === true);
+ok("isEmptyBody('   \\n\\t ') is true", isEmptyBody('   \n\t ') === true);
+ok("isEmptyBody('x') is false", isEmptyBody('x') === false);
+ok("isEmptyBody(' a ') is false", isEmptyBody(' a ') === false);
+
+// --- end-to-end: block ---
+const b1 = runHook('gh issue edit 5 --body ""');
+ok('blocks an empty inline --body (exit 2)', b1.code === 2 && /"decision":"block"/.test(b1.out) && /EMPTY_ISSUE_BODY_WRITE/.test(b1.out));
+
+{
+  const empty = path.join(os.tmpdir(), `bg-empty-${process.pid}.md`);
+  fs.writeFileSync(empty, '');
+  const b2 = runHook(`gh issue edit 5 --body-file ${empty}`);
+  ok('blocks an empty --body-file (exit 2)', b2.code === 2 && /"decision":"block"/.test(b2.out));
+  fs.unlinkSync(empty);
+}
+
+{
+  const whitespace = path.join(os.tmpdir(), `bg-ws-${process.pid}.md`);
+  fs.writeFileSync(whitespace, '   \n\t \n');
+  const b3 = runHook(`gh pr edit 5 --body-file ${whitespace}`);
+  ok('blocks a whitespace-only --body-file (exit 2)', b3.code === 2 && /"decision":"block"/.test(b3.out));
+  fs.unlinkSync(whitespace);
+}
+
+const b4 = runHook('gh api --method PATCH repos/o/r/issues/5 -f body=');
+ok('blocks an empty gh api body= (exit 2)', b4.code === 2 && /"decision":"block"/.test(b4.out));
+
+// --- end-to-end: allow ---
+const a1 = runHook('gh issue edit 5 --body "not empty"');
+ok('allows a non-empty body write (exit 0, no output)', a1.code === 0 && a1.out.trim() === '');
+const a2 = runHook('gh issue view 5 --json body'); // read, not a write
+ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
+const a3 = runHook('gh issue comment 5 --body ""'); // excluded verb, even though empty
+ok('allows an empty gh issue comment (excluded verb, exit 0)', a3.code === 0 && a3.out.trim() === '');
+const a4 = runHook('gh issue edit 5 --body "$(cat f)"'); // unknowable, can't prove empty
+ok('allows an unknowable (shell-expansion) body (exit 0)', a4.code === 0 && a4.out.trim() === '');
+
+// --- crash-safety ---
+try {
+  execFileSync('node', [HOOK], { input: 'not json at all {{{' });
+  ok('unparseable stdin does not throw (exit 0)', true);
+} catch (e) {
+  ok('unparseable stdin exits 0', e.status === 0);
+}
+const c2 = runHook('gh issue edit 5 --add-label x'); // non-body gh command
+ok('a non-body gh command exits 0', c2.code === 0 && c2.out.trim() === '');
+
+console.log(`✓ body-guard: ${passed} assertions passed`);
