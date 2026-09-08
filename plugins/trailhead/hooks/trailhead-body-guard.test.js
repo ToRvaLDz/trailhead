@@ -94,6 +94,38 @@ ok('blocks an empty inline --body (exit 2)', b1.code === 2 && /"decision":"block
 const b4 = runHook('gh api --method PATCH repos/o/r/issues/5 -f body=');
 ok('blocks an empty gh api body= (exit 2)', b4.code === 2 && /"decision":"block"/.test(b4.out));
 
+// --- end-to-end: block via short flags (-b / -F, gh's documented aliases) ---
+const b5 = runHook('gh issue edit 5 -b ""');
+ok('blocks an empty short -b (issue edit, exit 2)', b5.code === 2 && /"decision":"block"/.test(b5.out));
+
+const b6 = runHook('gh pr edit 5 -b ""');
+ok('blocks an empty short -b (pr edit, exit 2)', b6.code === 2 && /"decision":"block"/.test(b6.out));
+
+{
+  const shortEmpty = path.join(os.tmpdir(), `bg-short-empty-${process.pid}.md`);
+  fs.writeFileSync(shortEmpty, '');
+  const b7 = runHook(`gh issue edit 5 -F ${shortEmpty}`);
+  ok('blocks an empty short -F body-file (exit 2)', b7.code === 2 && /"decision":"block"/.test(b7.out));
+  fs.unlinkSync(shortEmpty);
+}
+
+const a5 = runHook('gh issue edit 5 -b "real content"');
+ok('allows a non-empty short -b (exit 0)', a5.code === 0 && a5.out.trim() === '');
+
+// --- unit: ghBodyWrite() recognizes short flags directly ---
+ok('ghBodyWrite recognizes -b (issue edit)',
+  (() => { const r = ghBodyWrite('gh issue edit 5 -b "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
+{
+  const tmp = path.join(os.tmpdir(), `bg-shortfile-${process.pid}.md`);
+  fs.writeFileSync(tmp, 'content\n');
+  const r = ghBodyWrite(`gh pr edit 5 -F ${tmp}`);
+  ok('ghBodyWrite recognizes -F (pr edit)', r && r.kind === 'pr' && r.body === 'content\n');
+  fs.unlinkSync(tmp);
+}
+// -b must not accidentally match the "-b" inside "--body" itself.
+ok('ghBodyWrite still resolves --body correctly alongside the -b alias',
+  (() => { const r = ghBodyWrite('gh issue edit 5 --body "hi"'); return r && r.kind === 'issue' && r.body === 'hi'; })());
+
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue edit 5 --body "not empty"');
 ok('allows a non-empty body write (exit 0, no output)', a1.code === 0 && a1.out.trim() === '');

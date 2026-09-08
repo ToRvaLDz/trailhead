@@ -43,10 +43,13 @@ function readBodyFile(filePath) {
 //                        (shell expansion, stdin/process-substitution path,
 //                        or an unreadable --body-file): never block on this.
 function resolveEditBody(cmd) {
-  // --body-file <path> (quoted or bare; bare stops at whitespace/shell
-  // metacharacters, same tokenizer approach as secret-guard's bodyFileText).
+  // --body-file <path> / its short alias -F (quoted or bare; bare stops at
+  // whitespace/shell metacharacters, same tokenizer approach as
+  // secret-guard's bodyFileText). The `(?<![-\w])` guard on -F mirrors
+  // secret-guard's bodyFileText: it stops -F matching when embedded inside
+  // a longer token, and keeps --body-file from being double-matched.
   const fileMatch = cmd.match(
-    /--body-file(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s"';|&()<>`]+))/
+    /(?:--body-file|(?<![-\w])-F)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s"';|&()<>`]+))/
   );
   if (fileMatch) {
     const p = fileMatch[1] || fileMatch[2] || fileMatch[3];
@@ -58,8 +61,12 @@ function resolveEditBody(cmd) {
     }
   }
 
-  // Inline --body <val> / --body=<val>, quoted or bare.
-  const inlineMatch = cmd.match(/--body(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S*))/);
+  // Inline --body <val> / --body=<val> / its short alias -b, quoted or
+  // bare. The `(?<![-\w])` guard on -b keeps it from matching the "-b"
+  // that appears inside "--body" itself.
+  const inlineMatch = cmd.match(
+    /(?:--body|(?<![-\w])-b)(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S*))/
+  );
   if (inlineMatch) {
     const val =
       inlineMatch[1] !== undefined
