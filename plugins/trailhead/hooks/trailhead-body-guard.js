@@ -16,6 +16,7 @@
 // executed directly.
 
 const fs = require('fs');
+const os = require('os');
 
 // Is the resolved body text clearly empty or whitespace-only?
 function isEmptyBody(text) {
@@ -30,11 +31,20 @@ function isShellExpansion(text) {
   return /\$\(/.test(text) || /`/.test(text) || /^\$/.test(text);
 }
 
+// `fs.readFileSync` does not expand `~`; do it ourselves so a `~/`-prefixed
+// (or bare `~`) --body-file / api @-path is actually read, rather than
+// throwing ENOENT and silently falling through to "unknowable".
+function expandHome(p) {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/')) return os.homedir() + p.slice(1);
+  return p;
+}
+
 // Read a --body-file (or api `@file`) target, mirroring secret-guard's
 // bodyFileText: sliced to ~1MB. Throws (ENOENT etc.) are the caller's
 // problem to catch.
 function readBodyFile(filePath) {
-  return fs.readFileSync(filePath, 'utf8').slice(0, 1_000_000);
+  return fs.readFileSync(expandHome(filePath), 'utf8').slice(0, 1_000_000);
 }
 
 // Strip one matching pair of surrounding quotes (an artifact of parsing a

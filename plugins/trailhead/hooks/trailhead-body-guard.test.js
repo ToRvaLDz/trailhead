@@ -152,6 +152,16 @@ ok('allows gh api -F body=@- (stdin, unknowable, exit 0)', a6.code === 0 && a6.o
   fs.unlinkSync(apiFull);
 }
 
+// --- end-to-end: block via ~-expanded --body-file (fs.readFileSync does not expand ~) ---
+{
+  const homeRel = `.bg-tilde-test-${process.pid}.md`;
+  const homeAbs = path.join(os.homedir(), homeRel);
+  fs.writeFileSync(homeAbs, '');
+  const b11 = runHook(`gh issue edit 5 --body-file ~/${homeRel}`);
+  ok('blocks an empty ~/-prefixed --body-file (exit 2)', b11.code === 2 && /"decision":"block"/.test(b11.out));
+  fs.unlinkSync(homeAbs);
+}
+
 // --- end-to-end: allow ---
 const a1 = runHook('gh issue edit 5 --body "not empty"');
 ok('allows a non-empty body write (exit 0, no output)', a1.code === 0 && a1.out.trim() === '');
