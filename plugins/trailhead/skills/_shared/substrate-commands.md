@@ -9,9 +9,9 @@ gh issue create --label "trailhead:map" --title "<destination>" --body-file <bod
 # create a child ticket (add trailhead:blocked too if it has an open blocker; add trailhead:map-<map> to scope it to its map)
 gh issue create --label "trailhead:ticket,trailhead:build,trailhead:map-<map>" --title "<question/goal>" --body-file <body>
 # link the ticket to its map: native sub-issue (structure/UI) + the map label above (the query)
-gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id=$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)
+gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)"
 # wire a blocker: native dependency (visual frontier in the UI) + the trailhead:blocked label (the query)
-gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
+gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id="$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)"
 # the label rides in the --label list at creation for a ticket already known-blocked (fires no issues.labeled event); use --add-label ONLY when a ticket becomes blocked LATER (a single event, never a bulk burst):
 gh issue edit <blocked> --add-label "trailhead:blocked"
 # the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
@@ -35,7 +35,7 @@ Two facts each get written in three places, all in the same pass, so they can ne
 1. A `Parent: <map name>(link)` line in the ticket body (human readable).
 2. The native sub-issue edge:
    ```bash
-   gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id=$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)
+   gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)"
    ```
    This is the structure GitHub renders, including the map's progress bar.
 3. The map's `trailhead:map-<n>` label on the ticket: the queryable key that scopes the frontier.
@@ -46,7 +46,7 @@ Wire all three in the same pass; a ticket carrying only one or two has drifted. 
 1. A `## Blocked by` line in the ticket body, naming and linking the real blocker ticket.
 2. The native dependency:
    ```bash
-   gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id=$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)
+   gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id="$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)"
    ```
 3. The `trailhead:blocked` label. **Set it at creation** (include it in the `gh issue create --label` list) for any ticket known-blocked up front, which is every bulk path (the chart/adopt wiring second pass, split children, an on-the-fly ticket with a known blocker): the label then rides in the ticket's `issues.opened` event and fires **no** `issues.labeled` event. Reserve the post-creation `--add-label` form for a ticket that becomes blocked **later**, after it already exists (a single, non-bursty event):
    ```bash
