@@ -211,6 +211,49 @@ ok('source: capture.md demotes /trailhead:quick to only the off-map / no-split a
 ok('source: capture.md says quick is offered alongside work, never in its place', captureSource.includes('never in its place'));
 ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard capture', /whiteboard[\s\S]{0,200}the anchor stays `\/trailhead:work <n>`/.test(captureSource));
 
+// --- #151: eager edge drop at close (superseded / out-of-scope only) ---------
+// Source-level invariant: closing a ticket as trailhead:superseded or
+// trailhead:out-of-scope drops its native sub-issue edge at close (reusing the
+// 404-tolerant DELETE from #150), while a genuinely-resolved close leaves the
+// edge in place (it feeds GitHub's native progress bar; /trailhead:prune is its
+// only shedder). Asserts the canonical rule, every operative close site, and a
+// NEGATIVE invariant on the resolved-close path.
+const substrateCommandsSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'substrate-commands.md'), 'utf8');
+ok('source: substrate-commands.md documents the eager edge drop at close (superseded / out-of-scope only)',
+  /[Ee]ager edge drop at close \(superseded \/ out-of-scope only\)/.test(substrateCommandsSource));
+ok('source: substrate-commands.md fixes the label -> DELETE -> close ordering for the eager drop',
+  /apply the state label first, then DELETE the edge, then `gh issue close`/.test(substrateCommandsSource));
+ok('source: substrate-commands.md eager drop excludes resolved closes (progress bar / prune)',
+  /Only these two closes shed eagerly/.test(substrateCommandsSource) &&
+  /progress bar/.test(substrateCommandsSource) &&
+  /`\/trailhead:prune`'s job/.test(substrateCommandsSource));
+
+const substrateSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'substrate.md'), 'utf8');
+ok('source: substrate.md out-of-scope label notes the edge is dropped at close',
+  /`trailhead:out-of-scope`[\s\S]{0,260}native sub-issue edge is dropped at close/.test(substrateSource));
+ok('source: substrate.md superseded label notes the edge is dropped at close',
+  /`trailhead:superseded`[\s\S]{0,260}native sub-issue edge is dropped at close/.test(substrateSource));
+
+const teamworkSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'teamwork.md'), 'utf8');
+ok('source: teamwork.md supersede close drops the native sub-issue edge',
+  /Supersede the original[\s\S]{0,400}drop its native sub-issue edge from the map/.test(teamworkSource));
+
+const workSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'SKILL.md'), 'utf8');
+ok('source: trailhead-work SKILL.md out-of-scope close drops the native sub-issue edge',
+  /out of scope\*\* \(label, then \*\*drop its native sub-issue edge\*\*/.test(workSkillSource));
+
+const inboxSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'inbox.md'), 'utf8');
+ok('source: inbox.md out-of-scope close drops the native sub-issue edge',
+  /`trailhead:out-of-scope`, \*\*drop its native sub-issue edge\*\*/.test(inboxSource));
+ok('source: inbox.md dropped-fog close drops any native sub-issue edge',
+  /drop any native sub-issue edge to reclaim a slot/.test(inboxSource));
+
+// NEGATIVE invariant: the resolved-close paths (build/bug Resolve) must NOT
+// carry an eager edge-drop instruction — resolved edges stay for the progress bar.
+const ticketEnginesSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
+ok('source: ticket-engines.md resolved-close path does NOT drop the native sub-issue edge',
+  !/drop (its|any) native sub-issue edge/.test(ticketEnginesSource));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
