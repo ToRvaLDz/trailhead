@@ -134,6 +134,48 @@ for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
   ok(`source: ${cl}/SKILL.md does NOT duplicate the core-list signature line`, !fs.readFileSync(path.join(sourceSkillsDir, cl, 'SKILL.md'), 'utf8').includes(loadFirstSignature));
 }
 
+// --- #146: single-sourced ticket-language directive (anti-drift) -------------
+// The standing ticket-language rule (write Issue prose + commit bodies in
+// config.ticket.language, decoupled from the chat language) lives in ONE place,
+// _shared/ticket-language.md; it is listed in the load contract's six-file core
+// and REFERENCED (never restated) by the engine references. Mirrors the #139
+// load-first invariant so the directive can't silently drift.
+ok('codex: _shared/ticket-language.md projected', fs.existsSync(path.join(codexDir, 'skills', '_shared', 'ticket-language.md')));
+for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
+  ok(`codex: ${cl}/../_shared/ticket-language.md resolves as a sibling`, fs.existsSync(path.join(codexDir, 'skills', cl, '..', '_shared', 'ticket-language.md')));
+}
+// The single source states the rule's substance: the canonical config key AND
+// the decoupling clause (the heart of the rule), not merely a heading.
+const ticketLangSourcePath = path.join(sourceSkillsDir, '_shared', 'ticket-language.md');
+const ticketLangSource = fs.readFileSync(ticketLangSourcePath, 'utf8');
+const ticketLangKey = '`config.ticket.language`';
+const ticketLangDecoupling = '**independent of the language the agent converses in**';
+ok('source: ticket-language.md states the rule (config.ticket.language + decoupling clause)',
+  ticketLangSource.includes(ticketLangKey) && ticketLangSource.includes(ticketLangDecoupling));
+// The load contract lists it in the six-file core (item 2), by path reference.
+const loadFirstSource = fs.readFileSync(loadFirstSourcePath, 'utf8');
+ok('source: load-first.md references ../_shared/ticket-language.md', loadFirstSource.includes('../_shared/ticket-language.md'));
+// The engine references point AT the single source (path reference), not restate it.
+const ticketLangAutoSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'auto.md'), 'utf8');
+const ticketLangCaptureSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
+ok('source: auto.md references ticket-language.md', ticketLangAutoSource.includes('ticket-language.md'));
+ok('source: capture.md references ticket-language.md', ticketLangCaptureSource.includes('ticket-language.md'));
+// Source-level anti-drift: the substantive decoupling clause lives in EXACTLY
+// one file across the whole skills tree, _shared/ticket-language.md. A global
+// single-occurrence scan (not an enumerated per-file list) so any future doc
+// that restates the verbatim directive is caught, including reachable
+// shared-core references beyond the load contract and the two engine references
+// (e.g. configuration-reference.md, choices.md). The legitimate paraphrases in
+// configuration-reference.md/capture.md reword the rule and do not match this
+// bolded verbatim clause, so they don't trip the scan.
+const mdFilesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  const full = path.join(dir, e.name);
+  return e.isDirectory() ? mdFilesUnder(full) : (e.name.endsWith('.md') ? [full] : []);
+});
+const ticketLangClauseFiles = mdFilesUnder(sourceSkillsDir).filter((f) => fs.readFileSync(f, 'utf8').includes(ticketLangDecoupling));
+ok('source: ticket-language clause appears in exactly one skills-tree file', ticketLangClauseFiles.length === 1);
+ok('source: that one file is _shared/ticket-language.md', ticketLangClauseFiles.length === 1 && path.basename(ticketLangClauseFiles[0]) === 'ticket-language.md');
+
 // --- #147: chart's close anchors the next step to /trailhead:work -----------
 // Source-level invariant: charting.md renders a codified next-step block at the
 // chart/adopt close, led by /clear, anchored to /trailhead:work (the map-frontier
@@ -291,6 +333,11 @@ ok('claude: trailhead-work/../_shared/load-first.md resolves', fs.existsSync(pat
 for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
   ok(`claude: ${cl} SKILL.md references ../_shared/load-first.md`, fs.readFileSync(path.join(claudeDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('../_shared/load-first.md'));
 }
+
+// #146: single-sourced ticket-language directive, projected on Claude too.
+ok('claude: skills/_shared/ticket-language.md exists', fs.existsSync(path.join(claudeDir, 'skills', '_shared', 'ticket-language.md')));
+ok('claude: trailhead-work/../_shared/ticket-language.md resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'ticket-language.md')));
+
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
