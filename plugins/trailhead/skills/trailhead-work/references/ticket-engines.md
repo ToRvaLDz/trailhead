@@ -1,6 +1,6 @@
 # Ticket types and their engine
 
-The per-type engines the `work` verb dispatches to (Mode 2 step 3, in `../SKILL.md`). The `build`/`bug` engine is this cluster's single-cluster reference; `decision`/`research`/`prototype`/`task` round out the six types. `quick` (the off-map, no-split variant) lives inline in `../SKILL.md`.
+The per-type engines the `work` verb dispatches to (Mode 2 step 4, in `../SKILL.md`). The `build`/`bug` engine is this cluster's single-cluster reference; `decision`/`research`/`prototype`/`task` round out the six types. `quick` (the off-map, no-split variant) lives inline in `../SKILL.md`.
 
 Every ticket is **HITL** (human in the loop, speaking for themselves) or **AFK** (driven by the agent alone). A HITL ticket resolves only through the live exchange: the agent never stands in for the human's side.
 
