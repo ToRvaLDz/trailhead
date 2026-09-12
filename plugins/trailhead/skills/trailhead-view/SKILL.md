@@ -92,7 +92,7 @@ It holds:
 
 ## Render the whiteboard: `whiteboard`
 
-Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both. Loose tickets are created there by a capture routed to the whiteboard or born there by `quick`, and worked with `quick <n>` or `work <n>` (the capture and work clusters own those paths). This engine only **renders** the whiteboard.
+Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may be about something else entirely, or simply not worth charting a map for. The **whiteboard** is where that loose work lives: tickets labelled **`trailhead:whiteboard`**, map-less (no `trailhead:map-<n>` label, no `Parent:` line, no native sub-issue edge). A ticket is on a map **or** on the whiteboard, never both. Loose tickets are created there by a capture routed to the whiteboard or born there by `quick`, and worked with `work <n>` (the anchor: works the ticket whole and can split) or `quick <n>` (the no-split variant) (the capture and work clusters own those paths). This engine only **renders** the whiteboard.
 
 It has its **own frontier**, off every map's (see **Map frontier vs whiteboard frontier** in `../_shared/substrate.md`):
 ```bash
