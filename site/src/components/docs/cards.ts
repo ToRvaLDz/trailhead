@@ -269,7 +269,7 @@ export const cards: Record<string, Card> = {
     barPercent: 100,
     chips: [
       { key: 'git', value: 'main' },
-      { key: 'isolation', value: 'none' },
+      { key: 'isolation', value: 'auto' },
       { key: 'tdd', value: 'seams' },
       { key: 'release', value: 'command' },
     ],

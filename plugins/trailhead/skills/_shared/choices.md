@@ -68,7 +68,8 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 | Verify checkpoint (which fix / how to proceed) | Yes for the advisory sub-choice; accept/resolve stays the human's | No |
 | Prototype "want mockups?" | Yes | No |
 | Teamwork split shape / submodule split | Yes (the shape is advisory) | No |
-| Claim collision, isolation-mode suggestion | No (coordination stop) | No |
+| Claim collision | No (coordination stop) | No |
+| `auto` isolation work-start ask (concurrency) | Yes (an autonomous run takes it as the current checkout without asking) | No (now-or-never at work-start) |
 | Exhaustion "close the map?" | No (record the human owns) | No |
 | Out-of-scope routing (deferred line → seed/idea/todo) | No (routing the human owns) | This IS a defer already |
 
