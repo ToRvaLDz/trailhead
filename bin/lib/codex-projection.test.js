@@ -69,8 +69,10 @@ ok('codexSkillAdapterHeader §C states request_user_input only works in Plan Mod
   header.includes('only works in **Plan Mode**') && header.includes('Default mode') && header.includes('permanent, known constraint'));
 ok('codexSkillAdapterHeader §C makes the plain-text numbered list the guaranteed default path, not a rare exception',
   header.includes('guaranteed default path') && header.includes('not a rare exception'));
-ok('codexSkillAdapterHeader §C closes the loop: the user\'s next message resolves the pending question by number or label onto {id, label}',
-  header.includes("user's **next message**") && header.includes('{id, label}') && header.includes('number typed'));
+ok('codexSkillAdapterHeader §C closes the loop: the user\'s next message resolves the pending question by number typed or label text',
+  header.includes("user's **next message**") && header.includes('label text') && header.includes('number typed'));
+ok('codexSkillAdapterHeader §C uses the real AskUserQuestion {label, description} option shape, not a fictional per-option id',
+  header.includes('{label, description}') && !header.includes('{id, label}'));
 ok('codexSkillAdapterHeader §C never silently picks a default and proceeds',
   header.includes('Never silently pick a default and proceed'));
 ok('codexSkillAdapterHeader §C honours choices.md delegate/defer affordances as numbered options under the 4-option cap',
