@@ -2,6 +2,8 @@
 // Tests for codex-projection.js. Run: node codex-projection.test.js
 // No framework: plain asserts, mirrors the style of host-descriptor.test.js.
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {
   codexLayout,
   convertToCodex,
@@ -372,5 +374,29 @@ const agentsYaml = codexAgentsYaml();
 ok('codexAgentsYaml disallows implicit invocation', agentsYaml.includes('allow_implicit_invocation: false'));
 ok('codexAgentsYaml mentions $trailhead', agentsYaml.includes('$trailhead'));
 ok('codexAgentsYaml has the display name', agentsYaml.includes('display_name: "Trailhead"'));
+
+// --- host command forms anchor (#170) ---
+// The source load-first.md must carry a standing rule that anchors every
+// runtime-generated command (handoff, capture confirmation, etc.) to THIS
+// host's command forms, symmetric to the Codex adapter header's own anchor
+// (§A above). Regression for #170: without it, Codex vocabulary salient in
+// this repo's own source (the projection code and its tests) can bleed into
+// a Claude Code session's runtime prose.
+const loadFirstPath = path.join(__dirname, '../../plugins/trailhead/skills/_shared/load-first.md');
+const loadFirstSrc = fs.readFileSync(loadFirstPath, 'utf8');
+
+ok('load-first.md carries the host-command-forms anchor',
+  loadFirstSrc.includes('Host command forms') &&
+  loadFirstSrc.includes('/trailhead:work') &&
+  loadFirstSrc.includes('/clear'));
+
+ok('host-command-forms anchor is projection-safe (no literal Codex tokens in source)',
+  !loadFirstSrc.includes('$trailhead') && !/\/new\b/.test(loadFirstSrc));
+
+ok('convertToCodex projects the anchor positives to Codex forms', (() => {
+  const out = convertToCodex(loadFirstSrc);
+  return out.includes('$trailhead work') && out.includes('/new') &&
+    !out.includes('/trailhead:work') && !out.includes('/clear');
+})());
 
 console.log(`✓ codex-projection: ${passed} assertions passed`);
