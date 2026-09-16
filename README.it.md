@@ -290,7 +290,7 @@ Tre layer: **il più vicino vince**, chiave per chiave (una chiave non impostata
 - **Global**: `~/.claude/trailhead/config.json`: i tuoi default permanenti su ogni progetto.
 - **Defaults**: i valori integrati.
 
-`/trailhead:config` esegue un **setup guidato, a menu**: scegli lo scope, poi percorri ogni impostazione (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) come un menu con icone; niente editing manuale del JSON. Ogni passo è chiesto (nessuno saltato), e i **modelli plan ed execute sono sempre due scelte separate e version-pinned**. `config get` stampa la config effettiva unita; `config set <key> <value>` scrive una chiave.
+`/trailhead:config` esegue un **setup guidato, a menu**: scegli lo scope, poi percorri ogni impostazione (⚙️ modo di lavorare (git · release · isolation) · 🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) come un menu con icone; niente editing manuale del JSON. Ogni passo è chiesto (nessuno saltato), e i **modelli plan ed execute sono sempre due scelte separate e version-pinned**. `config get` stampa la config effettiva unita; `config set <key> <value>` scrive una chiave.
 
 `/trailhead:prune [map]` recupera gli slot di sub-issue di una mappa sotto il cap di 100 di GitHub (elimina gli edge chiusi/orfani, mantiene ogni riferimento). Offerto automaticamente quando una mappa è vicina o al cap, ed eseguibile anche su richiesta.
 

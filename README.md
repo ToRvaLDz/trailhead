@@ -290,7 +290,7 @@ Three layers: **nearest wins**, key by key (a key unset at one layer inherits th
 - **Global**: `~/.claude/trailhead/config.json`: your standing defaults across every project.
 - **Defaults**: the built-in values.
 
-`/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+`/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (⚙️ way of working (git · release · isolation) · 🌐 ticket language · 🧠 models · 🎨 design + approval · 🧪 TDD · 🖥️ acceptance testing · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
 `/trailhead:prune [map]` reclaims a map's sub-issue slots under GitHub's 100-cap (drops closed/orphan edges, keeps every reference). Offered automatically when a map is near or at the cap, and runnable on demand.
 
