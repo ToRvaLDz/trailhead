@@ -13,4 +13,6 @@ Before doing anything, read the shared core, in order:
 5. `../_shared/configuration.md`: the three config layers and the load contract.
 6. `../_shared/techniques.md`: the technique index and the subagent-type rule.
 
+**Host command forms (standing render rule).** Every trailhead command you write in prose you generate at runtime, the session handoff, a capture confirmation, any next-step suggestion, and not only where a doc example already shows one, uses **this host's command forms**: `/clear` to clear context, and the `/trailhead:<verb>` family (`/trailhead:work <n>`, `/trailhead:quick <n>`, `/trailhead:map`, `/trailhead:dashboard`). These literals are this host's surface. **Never emit a command form that belongs to a different host** (one you may have read elsewhere in this repository, such as in the projection code and its tests, or earlier in the session): the forms stated in this contract are the only ones correct for the host you are running on.
+
 Load the **effective config** (per `../_shared/configuration.md`) at session start, from the map's project root (`.trailhead/config.json` plus the global file), before any isolation workspace is set up.
