@@ -101,6 +101,10 @@ ok('codexSkillAdapterHeader §D makes background+poll the hard cross-host defaul
   header.includes('always run this way') && header.includes('hard cross-host default'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
+ok('codexSkillAdapterHeader §F does not list search-guard among the projected PreToolUse guards',
+  !header.includes('search-guard and body-guard') && !header.includes('search-guard, body-guard'));
+ok('codexSkillAdapterHeader §F explains search-guard is Claude-Code-specific and not projected to Codex',
+  header.includes('search-guard') && header.includes('not projected to Codex'));
 ok('codexSkillAdapterHeader §H maps plan-review external-CLI Bash timeout/background onto Codex shell',
   header.includes('## H.') && header.includes('Cross-AI plan review') && header.includes('run_in_background') && header.includes('shell/exec'));
 ok('codexSkillAdapterHeader §H distinguishes the external-CLI shell path from the §D subagent path',
@@ -155,15 +159,15 @@ ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', nul
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
-ok('codexHookEntries returns 8 entries', Array.isArray(entries) && entries.length === 8);
+ok('codexHookEntries returns 7 entries', Array.isArray(entries) && entries.length === 7);
 ok('codexHookEntries: commit-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-commit-guard.js') && e.command.includes('/h')));
 ok('codexHookEntries: secret-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-secret-guard.js')));
 ok('codexHookEntries: install-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-install-guard.js')));
-ok('codexHookEntries: search-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-search-guard.js')));
+ok('codexHookEntries: search-guard is absent (Claude-Code-only, not projected to Codex)',
+  entries.every((e) => !e.command.includes('trailhead-search-guard.js')));
 ok('codexHookEntries: body-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-body-guard.js')));
 ok('codexHookEntries: secret-read-guard is PreToolUse/Read|Bash', entries.some((e) =>

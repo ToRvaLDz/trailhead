@@ -271,6 +271,14 @@ ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-gua
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
 ok('codex: skills/trailhead/hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-subcommand.js')));
+// #169: search-guard is Claude-Code-specific (it only prevents arming
+// Claude's Read() deny rule under bypass permissions, a mechanism Codex
+// lacks), so it must neither be registered nor copied on a Codex install.
+ok('codex: hooks.json does NOT register search-guard under any event', !codexHooksJsonStr.includes('trailhead-search-guard.js'));
+ok('codex: skills/trailhead/hooks/trailhead-search-guard.js does NOT exist',
+  !fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-search-guard.js')));
+ok('codex: skills/trailhead/hooks/lib/shell-scan.js still exists (secret-read-guard require target)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'shell-scan.js')));
 
 const codexConfigTomlPath = path.join(codexDir, 'config.toml');
 ok('codex: config.toml exists', fs.existsSync(codexConfigTomlPath));

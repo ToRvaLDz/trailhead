@@ -232,7 +232,7 @@ const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcomma
 // live too, matching skills/commands. Never symlink the whole hooks/ dir: it is
 // shared with other plugins, so only the curated allowlist is touched. rmrf the
 // dest first so a reinstall over an existing file or symlink never hits EEXIST.
-function copyHookScripts(destHooksDir, { useSymlink = false } = {}) {
+function copyHookScripts(destHooksDir, { useSymlink = false, exclude = [] } = {}) {
   ensure(destHooksDir);
   const put = (src, dest) => {
     rmrf(dest);
@@ -243,7 +243,7 @@ function copyHookScripts(destHooksDir, { useSymlink = false } = {}) {
       fs.chmodSync(dest, 0o755);
     }
   };
-  for (const f of HOOK_FILES) put(path.join(SRC, 'hooks', f), path.join(destHooksDir, f));
+  for (const f of HOOK_FILES.filter((f) => !exclude.includes(f))) put(path.join(SRC, 'hooks', f), path.join(destHooksDir, f));
   if (HOOK_LIB_FILES.length) {
     const libDest = path.join(destHooksDir, 'lib');
     ensure(libDest);
@@ -575,9 +575,12 @@ function installCodex(configDir, { useSymlink }) {
   const pkgVersion = (readJSON(path.join(SRC, '.claude-plugin', 'plugin.json')).version || '').trim();
   if (pkgVersion) fs.writeFileSync(L.versionFile, pkgVersion + '\n');
 
-  // Hooks: copy the 4 guard scripts into the skill dir and register them in
-  // ~/.codex/hooks.json (same shape as Claude's settings.json hooks block).
-  copyHookScripts(L.hooksScriptsDir, { useSymlink });
+  // Hooks: copy the guard scripts this host actually uses into the skill dir
+  // and register them in ~/.codex/hooks.json (same shape as Claude's
+  // settings.json hooks block). search-guard is excluded: it is
+  // Claude-Code-specific (see codexHookEntries), so it is neither copied nor
+  // registered here.
+  copyHookScripts(L.hooksScriptsDir, { useSymlink, exclude: ['trailhead-search-guard.js'] });
   const h = readJSON(L.hooksJson);
   for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
   writeJSON(L.hooksJson, h);
@@ -682,6 +685,10 @@ function uninstallCodex(configDir) {
     stripHook(h, 'PreToolUse', 'trailhead-commit-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-secret-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-install-guard.js');
+    // search-guard is no longer projected to Codex (#169: it is
+    // Claude-Code-specific), so it is never registered by a current install;
+    // this strip is retained only to clean up a stale entry left by a
+    // pre-#169 install that did register it.
     stripHook(h, 'PreToolUse', 'trailhead-search-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-secret-read-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-body-guard.js');
