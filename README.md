@@ -205,7 +205,7 @@ When a map is open, a capture that produces a ticket (`todo`/`bug`/`seed`/a shar
 Deep in a map, something unrelated surfaces: a bug in another area, a chore, a quick idea you want to act on now. Forcing it onto the map's frontier pollutes the map; charting a whole new map for it is overkill. That is what the **whiteboard** is for, loose map-less work, and two moves keep you from getting stuck:
 
 - **Capture it aside.** A `todo`/`bug`/`seed`/sharp `idea` fired while a map is open asks *map or whiteboard?*. Send it to the whiteboard and it stays off the map: tracked, but out of the way, so the map's frontier keeps meaning "the way to this destination".
-- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting, the full discuss → plan → execute → verify engine (atomic commits, code review, the lot), except it **grills only if needed and never splits**, and skips every map book-keeping step. `/trailhead:quick <n>` does the same for a ticket that already exists.
+- **Do it on the fly.** `/trailhead:quick "<text>"` opens a whiteboard ticket and works it end to end in the same sitting, the full discuss → plan → execute → verify engine (atomic commits, code review, the lot), except it **grills only if needed and never splits**, and skips every map book-keeping step. On a small piece it size-triages and offers to skip the heavy steps (on an explicit yes only; the correctness spine always stays), so `quick` stays fast without setting `effort: lean`. `/trailhead:quick <n>` does the same for a ticket that already exists.
 
 See the whole whiteboard with `/trailhead:whiteboard`. Nothing about the map changes: you just stepped off it, did the thing, and step back on when you're ready.
 
@@ -311,7 +311,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
-| `effort` | **`standard`** \| `lean` | how hard the `build`/`bug`/`quick` engine works a change: `standard` runs every step, `lean` size-triages small changes and offers to skip the heavy ones (plan pass, TDD, cross-AI review, full code review, goal-backward verify) |
+| `effort` | **`standard`** \| `lean` | how hard the `build`/`bug` engine works a change: `standard` runs every step, `lean` size-triages small changes and offers to skip the heavy ones (plan pass, TDD, cross-AI review, full code review, goal-backward verify). Governs `build`/`bug` only: `quick` always size-triages small pieces regardless of this key |
 
 **Models.** Each key runs its activity as a **subagent** on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
 

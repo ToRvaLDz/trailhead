@@ -205,7 +205,7 @@ Quando una mappa è aperta, una capture che produce un ticket (`todo`/`bug`/`see
 In profondità dentro una mappa, emerge qualcosa di non correlato: un bug in un'altra area, una faccenda, un'idea veloce su cui vuoi agire adesso. Forzarla sulla frontier della mappa inquina la mappa; tracciare un'intera nuova mappa per essa è eccessivo. È a questo che serve la **whiteboard**, il lavoro sciolto senza mappa, e due mosse ti impediscono di restare bloccato:
 
 - **Mettila da parte.** Un `todo`/`bug`/`seed`/`idea` nitido lanciato mentre una mappa è aperta chiede *mappa o whiteboard?*. Mandala alla whiteboard e resta fuori dalla mappa: tracciata, ma fuori dai piedi, così la frontier della mappa continua a significare "la via verso questa destination".
-- **Fallo al volo.** `/trailhead:quick "<text>"` apre un ticket della whiteboard e lo lavora dall'inizio alla fine nella stessa seduta, il motore completo discuss → plan → execute → verify (commit atomici, code review, tutto quanto), tranne che **fa grilling solo se serve e non splitta mai**, e salta ogni passo di book-keeping della mappa. `/trailhead:quick <n>` fa lo stesso per un ticket che esiste già.
+- **Fallo al volo.** `/trailhead:quick "<text>"` apre un ticket della whiteboard e lo lavora dall'inizio alla fine nella stessa seduta, il motore completo discuss → plan → execute → verify (commit atomici, code review, tutto quanto), tranne che **fa grilling solo se serve e non splitta mai**, e salta ogni passo di book-keeping della mappa. Su un pezzo piccolo fa la triage di dimensione e offre di saltare gli step pesanti (solo su un sì esplicito; la colonna correttezza resta sempre), così `quick` resta veloce senza dover impostare `effort: lean`. `/trailhead:quick <n>` fa lo stesso per un ticket che esiste già.
 
 Vedi l'intera whiteboard con `/trailhead:whiteboard`. Niente cambia riguardo alla mappa: ne sei semplicemente sceso, hai fatto la cosa, e ci risali quando sei pronto.
 
@@ -311,7 +311,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |
 | `code_review.rounds` | integer (**`2`**) | numero massimo di round fix-and-re-review in Code review prima del checkpoint HITL di confine |
-| `effort` | **`standard`** \| `lean` | quanto lavora il motore `build`/`bug`/`quick` su una modifica: `standard` esegue ogni step, `lean` fa una triage di dimensione sulle modifiche piccole e offre di saltare quelli pesanti (plan, TDD, cross-AI review, code review completa, verify goal-backward) |
+| `effort` | **`standard`** \| `lean` | quanto lavora il motore `build`/`bug` su una modifica: `standard` esegue ogni step, `lean` fa una triage di dimensione sulle modifiche piccole e offre di saltare quelli pesanti (plan, TDD, cross-AI review, code review completa, verify goal-backward). Governa solo `build`/`bug`: `quick` fa sempre la triage di dimensione sui pezzi piccoli, a prescindere da questa chiave |
 
 **Models.** Ogni chiave esegue la sua attività come **subagent** sul modello che nomini, così l'intera suddivisione per-attività si applica dentro una singola sessione di lavoro, qualunque modello quella sessione esegua:
 
