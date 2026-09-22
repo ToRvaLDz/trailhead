@@ -46,6 +46,8 @@ This is the operational recipe every applicable call-site follows. It is **manda
 - Delegate -> "Let the agent pick (with rationale, then confirm)" (IT: "Lascia scegliere all'agente (con motivazione, poi conferma)", short "scegli tu").
 - Defer -> "Defer this decision" (IT: "Rimanda questa decisione", short "scelgo dopo").
 
+**Menu call-sites (an `AskUserQuestion` trailhead authors): the dedup pass.** A menu may batch several questions (the host tool accepts up to four), and nothing else collapses them. Before assembling the menu, dedup the batch: when two questions resolve the SAME underlying decision (one restates or subsumes the other), merge them into a single question instead of asking the same problem twice; keep genuinely distinct questions separate. The discriminator is "same decision", not merely "same topic": two questions that share a subject but settle different things stay separate. This pass runs once over the whole batch, before the per-question cap rule below.
+
 **Menu call-sites (an `AskUserQuestion` trailhead authors): the cap rule.** The host tool accepts only 2-4 real options (plus its own auto escape), so the affordances can be crowded out. The rule is deterministic: **fill up to the cap, then fall back to prose.**
 - If **(real options + applicable affordances) <= 4**, add each applicable affordance as an explicit extra option in the same menu.
 - If they **would exceed 4**, keep the real options in the menu and offer the affordance(s) that did not fit in **one line of prose immediately after the menu** (or as an immediate follow-up question). The cap never silently swallows them.
