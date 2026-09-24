@@ -370,7 +370,7 @@ ok('source: choices.md call-site table carries the drive-mode ask row', /\|[^\n]
 const configReferencePath = path.join(sourceSkillsDir, '_shared', 'configuration-reference.md');
 const configReferenceSource = fs.readFileSync(configReferencePath, 'utf8');
 ok('source: configuration-reference.md acceptance.browser explanation clarifies off still runs AI-driven checks via commands',
-  /\*\*acceptance\.browser\.\*\*[\s\S]{0,500}`off`[\s\S]{0,300}AI-driven[\s\S]{0,300}commands/.test(configReferenceSource));
+  /\*\*acceptance\.browser\.\*\*[\s\S]{0,1000}`off`[\s\S]{0,300}AI-driven[\s\S]{0,300}commands/.test(configReferenceSource));
 ok('source: configuration-reference.md guided-setup menu no longer labels the off option "Guided UAT only"',
   !configReferenceSource.includes('Guided UAT only'));
 ok('source: configuration-reference.md guided-setup menu relabels the off option "No browser"',
@@ -394,6 +394,27 @@ ok('README.it.md acceptance.browser row says off still runs AI-driven checks', /
 ok('site ticket-types.md build row frames acceptance testing as asking who drives', /`build`[\s\S]{0,400}who drives/.test(ticketTypesSource));
 ok('site workflow.md worked example frames the login-flow acceptance as AI-driven', /asked who drives[\s\S]{0,100}AI-driven/.test(workflowSource));
 ok('site configuration.mdx acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(configurationMdxSource));
+
+// --- #178 fix: keep the drive-mode ask ahead of URL resolution --------------
+// Code review found the acceptance.browser clause made the drive-mode ask
+// CONDITIONAL on URL resolution ("fall back to the drive-mode ask ... only
+// when none can be determined"), contradicting the single source
+// (acceptance-testing.md: the ask fires before any step runs, always) and
+// conflating it with the URL-not-found fallback (ask for the URL, or guided
+// UAT). The clause must instead state the ask always comes first and never
+// gate it on URL detection.
+ok('source: configuration-reference.md acceptance.browser clause does NOT make the drive-mode ask conditional on URL resolution',
+  !configReferenceSource.includes('fall back to the drive-mode ask'));
+ok('source: configuration-reference.md acceptance.browser clause states the drive-mode ask always comes first',
+  /\*\*acceptance\.browser\.\*\*[\s\S]{0,200}drive-mode ask[\s\S]{0,120}always comes first/.test(configReferenceSource));
+
+// The run-end summary's enumerated set-aside category list is missing the new
+// human-only-UAT-steps class (added by #178); it must be listed there too,
+// matching the wording already used for it at line 29 ("human-only steps").
+const runEndSummarySection = extractSection(autoSource, '## Run-end summary');
+ok('source: auto.md Run-end summary section exists', runEndSummarySection.length > 0);
+ok('source: auto.md Run-end summary "what remains" list includes human-only UAT steps',
+  /what remains[\s\S]{0,400}human-only UAT steps/.test(runEndSummarySection));
 
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');

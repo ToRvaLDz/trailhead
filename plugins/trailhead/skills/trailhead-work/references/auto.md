@@ -51,6 +51,6 @@ On the green path a ticket resolves and the loop continues. On a **Verify failur
 Whatever ends the run (frontier drained or human interrupt), auto emits **one run-end summary**, in **two places**: a **chat block** for the human, and the **same summary posted as a comment on the map issue** (the durable tracker record). The summary states:
 - **why it stopped** (auto-workable frontier exhausted, or human interrupt);
 - **what resolved** (the tickets auto closed this run);
-- **what remains**: the **set-aside** tickets (fog, `decision` convergences, out-of-scope rulings, HITL `task` checklists, and rail actions including any **ready-to-integrate branch / PR** under `git: pr`) and **why each needs the human**, the **paused / stuck** tickets from the failure budget, and any **blocked dependents** still waiting.
+- **what remains**: the **set-aside** tickets (fog, `decision` convergences, out-of-scope rulings, HITL `task` checklists, human-only UAT steps, and rail actions including any **ready-to-integrate branch / PR** under `git: pr`) and **why each needs the human**, the **paused / stuck** tickets from the failure budget, and any **blocked dependents** still waiting.
 
 Then hand back to the human with the normal session handoff framing (`../../_shared/session-handoff.md`): the human decides what to take next (dissolve fog, make a held decision, authorise a rail action, then re-invoke `/trailhead:auto` to drain more).
