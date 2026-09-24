@@ -17,5 +17,5 @@ The ticket engines call these by name. Each technique's full protocol lives in i
 | **Debug** | `techniques/debug.md` | scientific method: reproduce → localise → falsifiable hypotheses → confirm cause → verify |
 | **Code review** | `techniques/code-review.md` | review the diff on 4 axes, adversarially verify each finding before reporting |
 | **Goal-backward verification** | `techniques/verify.md` | check the change delivers what the ticket promised, working backward from its stated goal |
-| **Acceptance testing** | `techniques/acceptance-testing.md` | prove it does what the *user* wanted: automated → browser-drive → guided UAT |
+| **Acceptance testing** | `techniques/acceptance-testing.md` | prove it does what the *user* wanted: ask who drives (AI or human), then automated → browser-drive → guided UAT |
 | **Cross-AI plan review** | `techniques/plan-review.md` | send a PLAN to external AI CLIs, converge on their concerns (opt-in via `config.plan_review`) |

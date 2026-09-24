@@ -255,6 +255,69 @@ const ticketEnginesSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhea
 ok('source: ticket-engines.md resolved-close path does NOT drop the native sub-issue edge',
   !/drop (its|any) native sub-issue edge/.test(ticketEnginesSource));
 
+// --- #178: drive-mode ask (AI-driven vs human-driven) at every UAT start -----
+// Single-sourced in techniques/acceptance-testing.md as the "Drive mode" bullet;
+// every other call-site (ticket-engines.md, auto.md, choices.md) references it
+// by name ("drive-mode ask") rather than restating its clauses. Extract the
+// bullet's own span (its marker line through the end of its indented `  - `
+// sub-bullets) and pin each clause inside that span, mirroring the #139/#146
+// source-level anti-drift style.
+function extractBulletSpan(source, markerLine) {
+  const lines = source.split('\n');
+  const startIdx = lines.findIndex((l) => l.includes(markerLine));
+  if (startIdx === -1) return '';
+  let endIdx = startIdx + 1;
+  while (endIdx < lines.length && lines[endIdx].startsWith('  - ')) endIdx++;
+  return lines.slice(startIdx, endIdx).join('\n');
+}
+const driveModeMarker = '- **Drive mode: ask who drives the UAT.**';
+const acceptanceTestingSourcePath = path.join(sourceSkillsDir, '_shared', 'techniques', 'acceptance-testing.md');
+const acceptanceTestingSource = fs.readFileSync(acceptanceTestingSourcePath, 'utf8');
+const driveModeSpan = extractBulletSpan(acceptanceTestingSource, driveModeMarker);
+ok('source: acceptance-testing.md carries the Drive-mode bullet', driveModeSpan.length > 0);
+for (const phrase of [
+  '**before any step runs**',
+  '**wait for an explicit answer**',
+  '**silence or an ambiguous reply re-asks**',
+  '**One-path skip**',
+  '**state the reason in one line**',
+  'VERIFY',
+  'only for the steps it cannot perform',
+  'runs unchanged',
+  '**in both modes**',
+  'acceptance.browser: off',
+  'without the confirm gate',
+]) {
+  ok(`source: acceptance-testing.md Drive-mode span pins "${phrase}"`, driveModeSpan.includes(phrase));
+}
+// The three start paths.
+ok('source: Drive-mode span names build/bug Verify as a start path', driveModeSpan.includes('Verify'));
+ok("source: Drive-mode span names the Pending-UAT guard's option (a) as a start path", driveModeSpan.includes('Pending-UAT guard'));
+ok('source: Drive-mode span names a UAT follow-up (UAT of:) as a start path', driveModeSpan.includes('UAT of:'));
+// The three performability classes.
+ok('source: Drive-mode span names the physical-device/hardware performability class', driveModeSpan.includes('a physical device or hardware'));
+ok('source: Drive-mode span names the credentials/accounts performability class', driveModeSpan.includes('credentials or accounts it does not hold'));
+ok('source: Drive-mode span names the human sensory-judgement performability class', driveModeSpan.includes('a human sensory judgement'));
+
+// The "Pending UAT must stay tracked" bullet references the ask for BOTH (a)
+// run-now and (b) the follow-up (grouped: two mentions in the same bullet).
+const pendingUatBulletMarker = '**Pending UAT must stay tracked: a closed ticket is not tracking.**';
+const pendingUatLine = acceptanceTestingSource.split('\n').find((l) => l.includes(pendingUatBulletMarker)) || '';
+ok('source: Pending-UAT bullet exists', pendingUatLine.length > 0);
+ok('source: Pending-UAT bullet references the drive-mode ask for both (a) and the follow-up',
+  (pendingUatLine.match(/drive-mode ask/g) || []).length >= 2);
+
+// Single-source anti-drift: the bullet's own signature phrase appears in
+// exactly one file across the whole skills tree (mirrors #146).
+const driveModeSignature = 'ask who drives the UAT';
+const driveModeSignatureFiles = mdFilesUnder(sourceSkillsDir).filter((f) => fs.readFileSync(f, 'utf8').includes(driveModeSignature));
+ok('source: "ask who drives the UAT" signature appears in exactly one skills-tree file', driveModeSignatureFiles.length === 1);
+ok('source: that one file is techniques/acceptance-testing.md', driveModeSignatureFiles.length === 1 && driveModeSignatureFiles[0] === acceptanceTestingSourcePath);
+
+// The Codex install projects acceptance-testing.md with the Drive-mode bullet.
+ok('codex: skills/_shared/techniques/acceptance-testing.md is projected with the Drive-mode bullet',
+  fs.readFileSync(path.join(codexDir, 'skills', '_shared', 'techniques', 'acceptance-testing.md'), 'utf8').includes(driveModeMarker));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
