@@ -206,10 +206,35 @@ ok('source: trailhead-chart SKILL.md config-offer points at the next-step block'
 // (session-handoff.md legitimately offers /trailhead:quick <n> for the next loose ticket).
 const captureSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
 ok('source: capture.md confirmation anchors the next step to /trailhead:work', /[Aa]nchor the next step to `\/trailhead:work <n>`, always/.test(captureSource));
-ok('source: capture.md demotes /trailhead:quick to only the off-map / no-split alternative, after the work anchor',
-  /[Aa]nchor the next step to `\/trailhead:work <n>`[\s\S]{0,400}`\/trailhead:quick <n>` is \*\*only\*\* the off-map \/ no-split alternative/.test(captureSource));
+ok('source: capture.md demotes /trailhead:quick to only the no-split alternative, after the work anchor',
+  /[Aa]nchor the next step to `\/trailhead:work <n>`[\s\S]{0,400}`\/trailhead:quick <n>` is \*\*only\*\* the no-split alternative/.test(captureSource));
 ok('source: capture.md says quick is offered alongside work, never in its place', captureSource.includes('never in its place'));
 ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard capture', /whiteboard[\s\S]{0,200}the anchor stays `\/trailhead:work <n>`/.test(captureSource));
+
+// --- #179: `quick <n>` on a map ticket is never "off the map" ----------------
+// Source-level invariant: `quick <n>` on an EXISTING ticket does not leave the
+// map (it keeps its trailhead:map-<n> label and sub-issue edge, and dependent-
+// unblocking still runs); "off the map" describes only `quick "<text>"`, which
+// opens a NEW whiteboard ticket. capture.md, session-handoff.md, and
+// trailhead-work/SKILL.md must no longer carry the old "that same work done
+// off the map" phrasing, nor describe `quick <n>` itself as off the map.
+const sessionHandoffSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'session-handoff.md'), 'utf8');
+const workSkillSourceFor179 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'SKILL.md'), 'utf8');
+const offMapQuickN = /`?quick <n>`?[^.\n]{0,80}off the map/i;
+// The explicit "never describe ... as off the map" clause legitimately puts
+// `quick <n>` near "off the map" in the same sentence, so strip it before
+// running the negative proximity check below.
+const neverDescribeClause = /[Nn]ever describe `quick <n>`[^\n]*?off the map\.?/;
+const sessionHandoffMinusClause = sessionHandoffSource.replace(neverDescribeClause, '');
+ok('source: capture.md drops the old "that same work done off the map" phrasing', !captureSource.includes('that same work done off the map'));
+ok('source: session-handoff.md drops the old "that same work done off the map" phrasing', !sessionHandoffSource.includes('that same work done off the map'));
+ok('source: trailhead-work SKILL.md drops the old "that same work done off the map" phrasing', !workSkillSourceFor179.includes('that same work done off the map'));
+ok('source: capture.md never describes quick <n> as off the map', !offMapQuickN.test(captureSource));
+ok('source: session-handoff.md never describes quick <n> as off the map (outside the explicit never-clause)', !offMapQuickN.test(sessionHandoffMinusClause));
+ok('source: trailhead-work SKILL.md never describes quick <n> as off the map', !offMapQuickN.test(workSkillSourceFor179));
+ok('source: session-handoff.md explicitly says never to describe quick <n> on a map ticket as off the map',
+  neverDescribeClause.test(sessionHandoffSource));
+ok('source: capture.md says a map ticket stays on its map', /a map ticket stays on its map/.test(captureSource));
 
 // --- #151: eager edge drop at close (superseded / out-of-scope only) ---------
 // Source-level invariant: closing a ticket as trailhead:superseded or
