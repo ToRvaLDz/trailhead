@@ -15,7 +15,7 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:new [idea]` | chart a new map from a loose idea |
 | `/trailhead:adopt` | adopt an existing project (map the codebase once, then go lean) |
 | `/trailhead:work [ticket]` | work the next frontier ticket, or the one you name |
-| `/trailhead:quick [ticket \| "text"]` | work one ticket whole, off the map: opens a whiteboard ticket from `"text"` (or takes `<n>`), runs the full engine, grills only if needed, never splits |
+| `/trailhead:quick [ticket \| "text"]` | work one ticket whole, never splitting: `"text"` opens a whiteboard ticket off the map; `<n>` takes an existing ticket (a map ticket stays on its map), runs the full engine, grills only if needed |
 | `/trailhead:whiteboard` | show the whiteboard: the loose (map-less) tickets and their frontier |
 | `/trailhead:inbox [issue]` | triage issues opened by others and integrate the good ones into the map |
 | `/trailhead:resume [ticket]` | resume a paused ticket from its `PAUSED` checkpoint |

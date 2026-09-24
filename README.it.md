@@ -174,7 +174,7 @@ Ogni verbo è anche un comando con namespace (`/trailhead:new`, `/trailhead:work
 | `/trailhead:new [idea]` | traccia una nuova mappa da un'idea informe |
 | `/trailhead:adopt` | adotta un progetto esistente (mappa la codebase una volta, poi vai lean) |
 | `/trailhead:work [ticket]` | lavora il prossimo ticket della frontier, o quello che nomini |
-| `/trailhead:quick [ticket \| "text"]` | lavora un ticket per intero, fuori dalla mappa: apre un ticket della whiteboard da `"text"` (o prende `<n>`), esegue il motore completo, fa grilling solo se serve, non splitta mai |
+| `/trailhead:quick [ticket \| "text"]` | lavora un ticket per intero, senza mai splittare: `"text"` apre un ticket della whiteboard fuori dalla mappa; `<n>` prende un ticket esistente (un ticket di mappa resta sulla sua mappa), esegue il motore completo, fa grilling solo se serve |
 | `/trailhead:whiteboard` | mostra la whiteboard: i ticket sciolti (senza mappa) e la loro frontier |
 | `/trailhead:inbox [issue]` | fa il triage delle issue aperte da altri e integra quelle buone nella mappa |
 | `/trailhead:resume [ticket]` | riprende un ticket in pausa dal suo checkpoint `PAUSED` |
