@@ -318,6 +318,54 @@ ok('source: that one file is techniques/acceptance-testing.md', driveModeSignatu
 ok('codex: skills/_shared/techniques/acceptance-testing.md is projected with the Drive-mode bullet',
   fs.readFileSync(path.join(codexDir, 'skills', '_shared', 'techniques', 'acceptance-testing.md'), 'utf8').includes(driveModeMarker));
 
+// --- #178 (2/4): route UAT follow-ups by pointer, engines through the ask ----
+// A new type-independent section, keyed on the `UAT of:` pointer rather than
+// the ticket's type label, must sit before the first per-type `## `decision``
+// heading (work/quick/auto all dispatch through this file).
+function extractSection(source, headingMarker) {
+  const start = source.indexOf(headingMarker);
+  if (start === -1) return '';
+  const rest = source.slice(start + headingMarker.length);
+  const nextHeadingIdx = rest.search(/\n## /);
+  return headingMarker + (nextHeadingIdx === -1 ? rest : rest.slice(0, nextHeadingIdx));
+}
+const uatFollowupHeadingMarker = '## UAT follow-ups (any type)';
+const decisionHeadingMarker = '## `decision`';
+ok('source: ticket-engines.md has the "UAT follow-ups (any type)" section', ticketEnginesSource.includes(uatFollowupHeadingMarker));
+ok('source: the UAT follow-ups section precedes the first `decision` heading',
+  ticketEnginesSource.indexOf(uatFollowupHeadingMarker) !== -1 &&
+  ticketEnginesSource.indexOf(uatFollowupHeadingMarker) < ticketEnginesSource.indexOf(decisionHeadingMarker));
+const uatFollowupSection = extractSection(ticketEnginesSource, uatFollowupHeadingMarker);
+for (const phrase of ['UAT of:', 'whatever its type label', 'trailhead:seed', '`VERIFY` comment on the follow-up', 'acceptance-testing.md']) {
+  ok(`source: the UAT follow-ups section contains "${phrase}"`, uatFollowupSection.includes(phrase));
+}
+
+// Both the build and bug engines' Verify step, and both Resolve steps'
+// Pending-UAT guard, must route through the drive-mode ask by name (the
+// single source stays acceptance-testing.md; these reference it).
+const verifyStepLines = ticketEnginesSource.split('\n').filter((l) => l.trim().startsWith('4. **Verify**'));
+ok('source: ticket-engines.md carries both the build and bug Verify step lines', verifyStepLines.length === 2);
+ok('source: both Verify step lines reference the drive-mode ask', verifyStepLines.length === 2 && verifyStepLines.every((l) => l.includes('drive-mode ask')));
+
+const pendingUatGuardLines = ticketEnginesSource.split('\n').filter((l) => l.includes('Pending-UAT guard (before the close)'));
+ok('source: ticket-engines.md carries both build and bug Pending-UAT guard lines', pendingUatGuardLines.length === 2);
+ok('source: both Pending-UAT guard lines reference the drive-mode ask', pendingUatGuardLines.length === 2 && pendingUatGuardLines.every((l) => l.includes('drive-mode ask')));
+
+// auto.md mentions the ask, AND (plan-review addition) a single localized span
+// states its outcomes TOGETHER: takes it without the confirm gate, picks
+// AI-driven when any step is agent-performable, never fakes a human-only step,
+// and sets the ticket aside listing them in the run-end summary.
+const autoSourcePath = path.join(sourceSkillsDir, 'trailhead-work', 'references', 'auto.md');
+const autoSource = fs.readFileSync(autoSourcePath, 'utf8');
+ok('source: auto.md mentions the drive-mode ask', autoSource.includes('drive-mode ask'));
+ok('source: auto.md states the drive-mode-ask outcomes together (grouped, not scattered)',
+  /drive-mode ask[\s\S]{0,120}without the confirm gate[\s\S]{0,300}AI-driven[\s\S]{0,200}agent-performable[\s\S]{0,300}never fake[\s\S]{0,300}run-end summary/.test(autoSource));
+
+// choices.md carries the call-site row for the drive-mode ask.
+const choicesSourcePath = path.join(sourceSkillsDir, '_shared', 'choices.md');
+const choicesSource = fs.readFileSync(choicesSourcePath, 'utf8');
+ok('source: choices.md call-site table carries the drive-mode ask row', /\|[^\n]*[Dd]rive-mode ask[^\n]*\|/.test(choicesSource));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));

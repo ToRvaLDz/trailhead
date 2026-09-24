@@ -68,6 +68,7 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 | `/trailhead config` menus | Yes | No (no substrate) |
 | Cross-AI plan-review convergence | Yes | Sometimes (a concern blocked on a prerequisite) |
 | Verify checkpoint (which fix / how to proceed) | Yes for the advisory sub-choice; accept/resolve stays the human's | No |
+| Acceptance testing drive-mode ask (AI-driven vs human-driven) | Yes | No (now-or-never at UAT start) |
 | Prototype "want mockups?" | Yes | No |
 | Teamwork split shape / submodule split | Yes (the shape is advisory) | No |
 | Claim collision | No (coordination stop) | No |
