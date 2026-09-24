@@ -235,6 +235,8 @@ ok('source: trailhead-work SKILL.md never describes quick <n> as off the map', !
 ok('source: session-handoff.md explicitly says never to describe quick <n> on a map ticket as off the map',
   neverDescribeClause.test(sessionHandoffSource));
 ok('source: capture.md says a map ticket stays on its map', /a map ticket stays on its map/.test(captureSource));
+const ticketEnginesSourceFor179 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
+ok('source: ticket-engines.md never labels quick generically as off-map', !/`quick`[^.\n]{0,40}off-map/.test(ticketEnginesSourceFor179));
 
 // --- #151: eager edge drop at close (superseded / out-of-scope only) ---------
 // Source-level invariant: closing a ticket as trailhead:superseded or
