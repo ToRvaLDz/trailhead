@@ -2,6 +2,26 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.10.0 (2026-09-24)
+
+### Added
+- **UAT opens with a drive-mode ask (#178).** Every acceptance-testing start (build/bug Verify, the Pending-UAT guard's run-now option, or any ticket carrying `UAT of:`) now asks up front whether the UAT is AI-driven or human-driven. AI-driven runs the checks itself and hands the human only the steps it cannot perform; human-driven is the unchanged guided walkthrough. Skipped with a one-line reason when no step is agent-performable; an autonomous run takes it as delegate. A ticket whose body carries `UAT of: <parent>` resolves through acceptance testing whatever its type label.
+- **Run the UAT now, or open a UAT ticket? (#173).** The Pending-UAT guard no longer opens a follow-up ticket on its own: when acceptance testing would otherwise be deferred at Resolve, it asks whether to run the UAT now (no ticket) or open a UAT ticket, and waits for an explicit answer.
+- **`quick` always size-triages (#175).** Reaching for `quick` is itself the small-piece signal, so it now runs the size triage and the one consolidated ask-to-skip offer every time, independent of `config.effort` (`effort` governs the map cycle only). Lean only on an explicit yes, no offer on a large ticket, and the correctness spine is never skipped.
+- **Way-of-working step in the guided config (#171).** `/trailhead:config` now reaches `git:`, `release:` and `isolation:` through a new step that reads and writes the `trailhead:conventions` header, so the isolation question is no longer skipped on a project that already has a config.
+- **Assigned-ticket pre-check for `isolation: auto` (#163).** Before the work-start concurrency ask, other open tickets already assigned to you pre-bias the answer toward `worktree` / `clone`; the ask is skipped when the session is already inside the ticket's own worktree.
+
+### Changed / Fixed
+- **Pending follow-up guard (#176).** A follow-up surfaced while working a ticket is carried into the final recap and re-posed before the `/clear` block as an explicit choice (open a tracked ticket, or let it go / do it later as `quick`), instead of being dropped or offered only as `quick`.
+- **`work` and `quick` described correctly (#174, #179).** The next-step block and the capture confirmation no longer frame `work` as the split path or offer `quick` twice; `quick <n>` on an existing ticket is described as the same ticket worked whole via the lighter no-split path (a map ticket stays on its map), and "off the map" is kept only for `quick "<text>"` and whiteboard tickets.
+- **Host command forms (#170).** A standing rule in the shared load contract keeps runtime prose (handoff, capture confirmations) on the running host's own command forms, so a Claude Code session no longer emits Codex-style commands.
+- **Question menus deduplicate (#177).** Two questions that resolve the same decision are merged before a menu is shown; genuinely distinct questions stay separate.
+- **Grilling illustrates its options (#172).** Each option offered in a grilling round now comes with a concrete illustration, so the user does not have to ask what it means.
+- **Grill close asks map vs whiteboard (#164).** A standalone grill that surfaces build tickets now asks where they go instead of routing them to the whiteboard.
+- **Mockup fidelity is enforceable (#165).** An approved mockup must be reproduced with 100% fidelity: Execute records an enumerated fidelity checklist as a ticket comment, and Verify checks against it (goal-backward statically, acceptance testing visually).
+- **Codex choices are selectable (#161, #162).** The plain-text numbered list is now Codex's guaranteed choice path (`request_user_input` only works in Plan Mode), and the guided-setup scope step is a selectable choice rather than free text.
+- **Codex hook audit (#169).** The `search-guard` hook is no longer projected onto Codex, where it had no permission mechanism to protect and only blocked harmless commands; it stays Claude-only.
+
 ## 0.9.0 (2026-09-13)
 
 ### Added
