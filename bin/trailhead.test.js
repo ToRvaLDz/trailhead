@@ -366,6 +366,16 @@ const choicesSourcePath = path.join(sourceSkillsDir, '_shared', 'choices.md');
 const choicesSource = fs.readFileSync(choicesSourcePath, 'utf8');
 ok('source: choices.md call-site table carries the drive-mode ask row', /\|[^\n]*[Dd]rive-mode ask[^\n]*\|/.test(choicesSource));
 
+// --- #178 (3/4): acceptance.browser off keeps AI-driven UAT via commands ----
+const configReferencePath = path.join(sourceSkillsDir, '_shared', 'configuration-reference.md');
+const configReferenceSource = fs.readFileSync(configReferencePath, 'utf8');
+ok('source: configuration-reference.md acceptance.browser explanation clarifies off still runs AI-driven checks via commands',
+  /\*\*acceptance\.browser\.\*\*[\s\S]{0,500}`off`[\s\S]{0,300}AI-driven[\s\S]{0,300}commands/.test(configReferenceSource));
+ok('source: configuration-reference.md guided-setup menu no longer labels the off option "Guided UAT only"',
+  !configReferenceSource.includes('Guided UAT only'));
+ok('source: configuration-reference.md guided-setup menu relabels the off option "No browser"',
+  /Acceptance testing[\s\S]{0,200}No browser/.test(configReferenceSource));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
