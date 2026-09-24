@@ -131,7 +131,7 @@ Frontier iniziale = ①③④, tre persone possono partire in parallelo. Poi:
 - **② decision** → dirama le opzioni, grill per scegliere native vs custom, registra il perché.
 - **③ task** → l'agente ti consegna una checklist (servono i *tuoi* account Google/GitHub); tu registri le app, lui registra dove vivono le credenziali.
 - **④ prototype** → una schermata di login grezza (sul progetto claude.ai/design configurato), approvata prima del codice UI.
-- Con ②③④ chiusi, **⑤ build** si diploma → discuss → plan → execute (commit atomici, TDD ai seam dell'auth) → verify (test + code review + acceptance: l'agente guida il browser attraverso il vero flusso di login).
+- Con ②③④ chiusi, **⑤ build** si diploma → discuss → plan → execute (commit atomici, TDD ai seam dell'auth) → verify (test + code review + acceptance: chiesto chi guida, l'agente va AI-driven e guida il browser attraverso il vero flusso di login).
 - Dopo il rilascio noti un redirect sbagliato in prod → `/trailhead:bug --of ⑤ "GitHub redirect goes to localhost"` → un nuovo ticket che porta `Regression of: ⑤`, lavorato repro → diagnose → fix → verify. ⑤ resta chiuso.
 
 ```
@@ -230,7 +230,7 @@ Ogni tipo ha il proprio motore inline: nessuna skill esterna viene invocata.
 | 🧭 `decision` | una scelta | HITL | diverge le opzioni se non chiare, poi grill per convergere su una |
 | 🔬 `research` | un fatto | AFK | un subagent su un branch usa-e-getta (l'unico tipo eseguito in parallelo) |
 | 🎨 `prototype` | una direzione approvata | HITL | un artefatto grezzo usa-e-getta a cui reagire; le schermate UI passano da qui (disco, o un progetto claude.ai/design configurato) prima del codice UI |
-| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **prima un mockup per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + acceptance testing (browser-drive o UAT conversazionale passo-passo) |
+| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **prima un mockup per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + acceptance testing (chiede chi guida, AI o umano, poi browser-drive o UAT conversazionale passo-passo) |
 | 🐛 `bug` | codice corretto | HITL/AFK | `repro → diagnose → fix → verify`; un difetto in lavoro chiuso è un ticket *nuovo* (`Regression of:`), non una riapertura |
 | 🔧 `task` | un cambiamento di stato esterno | HITL/AFK | lavoro manuale che sblocca una decision (provisioning accessi, spostamento dati, iscrizioni) |
 
@@ -306,7 +306,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `design.surface` | **`canvas`** \| `design-system` | sotto `claude.ai/design` o `stitch`, quale superficie: un progetto canvas (default) o un progetto design-system via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
 | `tdd` | **`seams`** \| `on` \| `off` | come il motore `build` testa |
-| `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify, o ti accompagna in una UAT conversazionale (passo-passo in chat, non una checklist da fare da solo) |
+| `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify (dopo aver chiesto chi guida, AI o umano); `off` esegue comunque controlli AI-driven via comandi, e ti accompagna in una UAT conversazionale per ciò che solo tu puoi fare (passo-passo in chat, non una checklist da fare da solo) |
 | `testing.webapp` / `testing.url` | bool / URL | è browser-drivabile, e dove |
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |

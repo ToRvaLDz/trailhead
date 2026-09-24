@@ -376,6 +376,25 @@ ok('source: configuration-reference.md guided-setup menu no longer labels the of
 ok('source: configuration-reference.md guided-setup menu relabels the off option "No browser"',
   /Acceptance testing[\s\S]{0,200}No browser/.test(configReferenceSource));
 
+// --- #178 (4/4): mirror the UAT drive-mode ask in READMEs and /docs ---------
+const readmeSource = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+const readmeItSource = fs.readFileSync(path.join(repoRoot, 'README.it.md'), 'utf8');
+const ticketTypesSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'ticket-types.md'), 'utf8');
+const workflowSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'workflow.md'), 'utf8');
+const configurationMdxSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'configuration.mdx'), 'utf8');
+
+ok('README.md build row frames acceptance testing as asking who drives', /🔨 `build`[\s\S]{0,400}who drives/.test(readmeSource));
+ok('README.md worked example frames the login-flow acceptance as AI-driven', /asked who drives[\s\S]{0,100}AI-driven/.test(readmeSource));
+ok('README.md acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(readmeSource));
+
+ok('README.it.md build row frames acceptance testing as asking who drives (chi guida)', /🔨 `build`[\s\S]{0,400}chi guida/.test(readmeItSource));
+ok('README.it.md worked example frames the login-flow acceptance as AI-driven', /chi guida[\s\S]{0,100}AI-driven/.test(readmeItSource));
+ok('README.it.md acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(readmeItSource));
+
+ok('site ticket-types.md build row frames acceptance testing as asking who drives', /`build`[\s\S]{0,400}who drives/.test(ticketTypesSource));
+ok('site workflow.md worked example frames the login-flow acceptance as AI-driven', /asked who drives[\s\S]{0,100}AI-driven/.test(workflowSource));
+ok('site configuration.mdx acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(configurationMdxSource));
+
 // --- codex hooks (#29) --------------------------------------------------------
 const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));

@@ -131,7 +131,7 @@ Initial frontier = ①③④, three people can start in parallel. Then:
 - **② decision** → diverge the options, grill to choose native vs custom, record the why.
 - **③ task** → the agent hands you a checklist (it needs *your* Google/GitHub accounts); you register the apps, it records where the credentials live.
 - **④ prototype** → a rough login screen (on the configured claude.ai/design project), approved before UI code.
-- With ②③④ closed, **⑤ build** graduates → discuss → plan → execute (atomic commits, TDD at the auth seams) → verify (tests + code review + acceptance: the agent drives the browser through the real login flow).
+- With ②③④ closed, **⑤ build** graduates → discuss → plan → execute (atomic commits, TDD at the auth seams) → verify (tests + code review + acceptance: asked who drives, the agent goes AI-driven and drives the browser through the real login flow).
 - After it ships you spot a wrong redirect in prod → `/trailhead:bug --of ⑤ "GitHub redirect goes to localhost"` → a new ticket carrying `Regression of: ⑤`, worked repro → diagnose → fix → verify. ⑤ stays closed.
 
 ```
@@ -230,7 +230,7 @@ Each type has its own inline engine: no external skill is invoked.
 | 🧭 `decision` | a choice | HITL | diverge the options if unclear, then grill to converge on one |
 | 🔬 `research` | a fact | AFK | a subagent on a throwaway branch (the only type run in parallel) |
 | 🎨 `prototype` | an approved direction | HITL | a rough throwaway artifact to react to; UI screens go through this (disk, or a configured claude.ai/design project) before UI code |
-| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, **a mockup first for user-facing UI** (Prototype technique, gated by `design.approval`), code review + acceptance testing (browser-drive or conversational step-by-step UAT) |
+| 🔨 `build` | working code | HITL/AFK | `discuss → plan → execute → verify`: atomic commits, TDD at seams, **a mockup first for user-facing UI** (Prototype technique, gated by `design.approval`), code review + acceptance testing (asks who drives, AI or human, then browser-drive or conversational step-by-step UAT) |
 | 🐛 `bug` | corrected code | HITL/AFK | `repro → diagnose → fix → verify`; a defect in closed work is a *new* ticket (`Regression of:`), not a reopen |
 | 🔧 `task` | an external state change | HITL/AFK | manual work that unblocks a decision (provision access, move data, sign up) |
 
@@ -306,7 +306,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design` or `stitch`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
-| `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify, or walk you through a conversational UAT (step by step in chat, not a checklist to self-serve) |
+| `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify (after asking who drives, AI or human); `off` still runs AI-driven checks via commands, and walks you through a conversational UAT for anything only you can do (step by step in chat, not a checklist to self-serve) |
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |

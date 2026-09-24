@@ -51,7 +51,7 @@ Initial frontier = ①③④, three people can start in parallel. Then:
 - **② decision** → diverge the options, grill to choose native vs custom, record the why.
 - **③ task** → the agent hands you a checklist (it needs *your* Google/GitHub accounts); you register the apps, it records where the credentials live.
 - **④ prototype** → a rough login screen (on the configured design surface), approved before UI code.
-- With ②③④ closed, **⑤ build** graduates → discuss → plan → execute (atomic commits, TDD at the auth seams) → verify (tests + code review + acceptance: the agent drives the browser through the real login flow).
+- With ②③④ closed, **⑤ build** graduates → discuss → plan → execute (atomic commits, TDD at the auth seams) → verify (tests + code review + acceptance: asked who drives, the agent goes AI-driven and drives the browser through the real login flow).
 - After it ships you spot a wrong redirect in prod → `/trailhead:bug --of ⑤ "GitHub redirect goes to localhost"` → a new ticket carrying `Regression of: ⑤`, worked repro → diagnose → fix → verify. ⑤ stays closed.
 
 ```
