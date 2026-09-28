@@ -238,6 +238,163 @@ ok('source: capture.md says a map ticket stays on its map', /a map ticket stays 
 const ticketEnginesSourceFor179 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
 ok('source: ticket-engines.md never labels quick generically as off-map', !/`quick`[^.\n]{0,40}off-map/.test(ticketEnginesSourceFor179));
 
+// --- #181: scope code review and verify to the ticket's own commits ---------
+// Source-level invariant: Code review and Goal-backward verification scope to
+// the commits carrying this ticket's `Refs: #<n>` trailer (the "Ticket diff"
+// rule), never a `<base>...HEAD` range, which under `git: main` sweeps in
+// other tickets' interleaved commits. code-review.md is canonical; verify.md
+// restates the same pinned command inline. Also a behavioral pin: run the
+// extracted command against a scratch repo with decoys, an interleaved
+// foreign commit, and a conflicting trunk-sync merge.
+const codeReviewSourcePath181 = path.join(sourceSkillsDir, '_shared', 'techniques', 'code-review.md');
+const codeReviewSource181 = fs.readFileSync(codeReviewSourcePath181, 'utf8');
+const verifySourcePath181 = path.join(sourceSkillsDir, '_shared', 'techniques', 'verify.md');
+const verifySource181 = fs.readFileSync(verifySourcePath181, 'utf8');
+const techniquesSourcePath181 = path.join(sourceSkillsDir, '_shared', 'techniques.md');
+const techniquesSource181 = fs.readFileSync(techniquesSourcePath181, 'utf8');
+const ticketEnginesSource181 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
+
+ok("code-review.md states the Ticket diff heading sentence",
+  codeReviewSource181.includes("**Ticket diff: review the ticket's own commits, never a range.**"));
+ok('code-review.md contains the exact per-commit read form',
+  codeReviewSource181.includes('git -C <repo> show --remerge-diff <sha>'));
+ok('code-review.md does NOT contain the old range-scoped diff', !codeReviewSource181.includes('git diff <base>...HEAD'));
+ok('code-review.md does NOT contain the old "pin a fixed point" phrasing', !codeReviewSource181.includes('pin a fixed point'));
+ok('code-review.md states an empty set is an error', /\*\*An empty set is an error\*\*/.test(codeReviewSource181));
+ok('code-review.md says the set is recomputed every round and every verify run',
+  codeReviewSource181.includes('Recompute the set on every review round and every verify run'));
+ok('code-review.md says the set is never collapsed into one span',
+  codeReviewSource181.includes('Never collapse the set into one'));
+ok('code-review.md mentions git: pr', codeReviewSource181.includes('git: pr'));
+ok('code-review.md mentions trailhead/t<n>', codeReviewSource181.includes('trailhead/t<n>'));
+
+const ticketDiffLogCmdRegex = /git -C <repo> log [^\n`]*HEAD/;
+const codeReviewCmdMatch181 = codeReviewSource181.match(ticketDiffLogCmdRegex);
+ok('code-review.md contains the pinned Ticket diff log command', !!codeReviewCmdMatch181);
+const codeReviewLogCmd181 = codeReviewCmdMatch181 ? codeReviewCmdMatch181[0] : '';
+
+ok('verify.md contains the same per-commit read form as code-review.md',
+  verifySource181.includes('git -C <repo> show --remerge-diff <sha>'));
+ok('verify.md references the Ticket diff', verifySource181.includes('**Ticket diff**'));
+ok('verify.md references code-review.md as canonical', verifySource181.includes('code-review.md'));
+ok('verify.md does NOT contain the old range-scoped diff', !verifySource181.includes('git diff <base>...HEAD'));
+
+const verifyCmdMatch181 = verifySource181.match(ticketDiffLogCmdRegex);
+ok('verify.md contains the pinned Ticket diff log command', !!verifyCmdMatch181);
+const verifyLogCmd181 = verifyCmdMatch181 ? verifyCmdMatch181[0] : '';
+ok('code-review.md and verify.md state the exact same log command',
+  codeReviewLogCmd181 !== '' && codeReviewLogCmd181 === verifyLogCmd181);
+
+const verifyStepLines181 = ticketEnginesSource181.split('\n').filter((l) => l.trim().startsWith('4. **Verify**'));
+ok('ticket-engines.md has exactly two Verify (step 4) lines', verifyStepLines181.length === 2);
+ok('both Verify step lines reference the Ticket diff', verifyStepLines181.every((l) => l.includes('**Ticket diff**')));
+ok('ticket-engines.md does NOT contain the old range-scoped diff', !ticketEnginesSource181.includes('git diff <base>...HEAD'));
+
+ok("techniques.md index row updates Code review to the ticket's own commits",
+  techniquesSource181.includes("review the ticket's own commits (its `Refs: #<n>` set) on 4 axes"));
+
+for (const [label, src] of [
+  ['code-review.md', codeReviewSource181],
+  ['verify.md', verifySource181],
+  ['ticket-engines.md', ticketEnginesSource181],
+  ['techniques.md', techniquesSource181],
+]) {
+  ok(`${label} has no em-dash`, !src.includes('—'));
+}
+
+// --- #181 behavioral pin: build a scratch repo and run the extracted command -
+function gitEnv181(extra = {}) {
+  return {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 'Trailhead Test',
+    GIT_AUTHOR_EMAIL: 'trailhead-test@example.com',
+    GIT_COMMITTER_NAME: 'Trailhead Test',
+    GIT_COMMITTER_EMAIL: 'trailhead-test@example.com',
+    LC_ALL: 'C',
+    ...extra,
+  };
+}
+function git181(dir, args, extraEnv = {}) {
+  return execFileSync('git', ['-C', dir, ...args], { env: gitEnv181(extraEnv), stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+}
+function commit181(dir, message, dateStr) {
+  git181(dir, ['add', '-A']);
+  git181(dir, ['commit', '-m', message], { GIT_AUTHOR_DATE: dateStr, GIT_COMMITTER_DATE: dateStr });
+  return git181(dir, ['rev-parse', 'HEAD']).trim();
+}
+
+const t181Repo = mktmp();
+git181(t181Repo, ['init', '-b', 'main']);
+const fFile181 = path.join(t181Repo, 'f.txt');
+const D181 = (n) => `2026-01-01T00:00:${String(n).padStart(2, '0')}Z`;
+
+fs.writeFileSync(fFile181, 'a\n');
+const shaA181 = commit181(t181Repo, 'feat: a\n\nRefs: #18', D181(1));
+
+fs.writeFileSync(path.join(t181Repo, 'decoy-b.txt'), 'b\n');
+commit181(t181Repo, 'feat: b\n\nRefs: #181', D181(2));
+
+fs.writeFileSync(path.join(t181Repo, 'decoy-c.txt'), 'c\n');
+commit181(t181Repo, 'feat: c\n\nRefs: #1800', D181(3));
+
+fs.writeFileSync(path.join(t181Repo, 'decoy-d.txt'), 'd\n');
+commit181(t181Repo, 'feat: d\n\nmentions Refs: #18 inline\nRefs: #99', D181(4));
+
+fs.writeFileSync(fFile181, 'foreign\n');
+commit181(t181Repo, 'feat: foreign\n\nRefs: #99', D181(5));
+
+git181(t181Repo, ['checkout', '-b', 'side']);
+fs.writeFileSync(fFile181, 'side-edit\n');
+fs.writeFileSync(path.join(t181Repo, 'foreign.txt'), 'foreign-file\n');
+commit181(t181Repo, 'chore: side edit', D181(6));
+
+git181(t181Repo, ['checkout', 'main']);
+fs.writeFileSync(fFile181, 'main-edit\n');
+const shaF181 = commit181(t181Repo, 'fix: e\n\nRefs: #18', D181(7));
+
+let mergeConflicted181 = false;
+try {
+  git181(t181Repo, ['merge', 'side', '--no-commit', '--no-ff']);
+} catch {
+  mergeConflicted181 = true;
+}
+ok('#181 scratch repo: the trunk-sync merge actually conflicts on f.txt', mergeConflicted181);
+fs.writeFileSync(fFile181, 'RESOLVED\n');
+git181(t181Repo, ['add', 'f.txt', 'foreign.txt']);
+const shaMerge181 = commit181(t181Repo, 'merge: sync\n\nRefs: #18', D181(8));
+
+ok('#181 scratch repo: merge sha differs from the fix sha', shaMerge181 !== shaF181);
+
+function runShellGit181(cmd, extraEnv = {}) {
+  return execFileSync('sh', ['-c', cmd], { env: gitEnv181(extraEnv), stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+}
+
+const substituted181 = (cmd, n) => cmd.replace(/<repo>/g, JSON.stringify(t181Repo)).replace(/<n>/g, String(n));
+
+const fixedPatternTypeEnv181 = {
+  GIT_CONFIG_COUNT: '1',
+  GIT_CONFIG_KEY_0: 'grep.patternType',
+  GIT_CONFIG_VALUE_0: 'fixed',
+};
+
+const out18_181 = runShellGit181(substituted181(codeReviewLogCmd181, 18), fixedPatternTypeEnv181);
+const lines18_181 = out18_181.split('\n').filter((l) => l.length > 0);
+ok('#181 log command returns exactly [a, f, merge] oldest-first for #18, even under grep.patternType=fixed',
+  lines18_181.length === 3 && lines18_181[0] === shaA181 && lines18_181[1] === shaF181 && lines18_181[2] === shaMerge181);
+
+const out7_181 = runShellGit181(substituted181(codeReviewLogCmd181, 7), fixedPatternTypeEnv181);
+ok('#181 log command returns empty output for a ticket with no commits', out7_181.trim() === '');
+
+const remergeCmd181 = 'git -C <repo> show --remerge-diff <sha>'
+  .replace('<repo>', JSON.stringify(t181Repo))
+  .replace('<sha>', shaMerge181);
+const remergeOut181 = runShellGit181(remergeCmd181);
+ok('#181 --remerge-diff on the merge shows the resolution hunk', remergeOut181.includes('RESOLVED'));
+ok('#181 --remerge-diff on the merge does NOT show the foreign file the merge pulled in cleanly',
+  !remergeOut181.includes('foreign.txt'));
+
 // --- #151: eager edge drop at close (superseded / out-of-scope only) ---------
 // Source-level invariant: closing a ticket as trailhead:superseded or
 // trailhead:out-of-scope drops its native sub-issue edge at close (reusing the
