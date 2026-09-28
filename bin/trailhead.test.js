@@ -85,6 +85,12 @@ ok('codex: commit-msg template projected', fs.existsSync(codexTemplate));
 ok('codex: commit-msg template is verbatim (not converted)',
   fs.readFileSync(codexTemplate, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg'), 'utf8'));
 
+// #185: the commit-msg hook sync script ships wholesale with templates/ too.
+const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
+ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
+ok('codex: commit-msg-sync script is byte-identical to source',
+  fs.readFileSync(codexCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+
 ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
 // #46: per-verb discoverability now projects one Codex SKILL per verb
@@ -759,6 +765,12 @@ ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require targe
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude: hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-subcommand.js')));
+
+// #185: the commit-msg hook sync script ships wholesale with templates/ too.
+const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
+ok('claude: commit-msg-sync script projected', fs.existsSync(claudeCommitMsgSync));
+ok('claude: commit-msg-sync script is byte-identical to source',
+  fs.readFileSync(claudeCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
 // Regression: the commit-guard does require('./lib/commit-message-check.js'), so
 // it only loads if the lib was copied alongside it. Run it with a benign Bash
 // payload and assert it does not crash with a missing-module error.
