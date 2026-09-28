@@ -45,7 +45,7 @@
 // guards can never drift into two divergent tokenizers again.
 //
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
-// false positive — the container RUNTIME reads that file, not the agent. Only
+// false positive: the container RUNTIME reads that file, not the agent. Only
 // that flag's value is exempted, and only for docker/podman verbs; see
 // ENV_FILE_EXEMPT_VERBS below.
 //
@@ -105,7 +105,7 @@ const VALUE_FLAGS = new Set(['-f', '--file']);
 // environment; its contents never pass through the agent, so it is not a
 // secret READ by the agent (unlike a bare `cat .env`, which is). Scoped
 // narrowly: only the value of `--env-file` is exempt, and only for these
-// verbs — every other flag/positional in the same statement (image name,
+// verbs; every other flag/positional in the same statement (image name,
 // `-v`, trailing `cat .env`, etc.) is still scanned exactly as before.
 const ENV_FILE_EXEMPT_VERBS = new Set(['docker', 'podman', 'docker-compose', 'podman-compose']);
 const ENV_FILE_EXEMPT_FLAGS = new Set(['--env-file']);
