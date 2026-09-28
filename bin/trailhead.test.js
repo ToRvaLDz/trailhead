@@ -299,7 +299,7 @@ for (const [label, src] of [
   ['ticket-engines.md', ticketEnginesSource181],
   ['techniques.md', techniquesSource181],
 ]) {
-  ok(`${label} has no em-dash`, !src.includes('—'));
+  ok(`${label} has no em-dash`, !src.includes('\u2014'));
 }
 
 // --- #181 behavioral pin: build a scratch repo and run the extracted command -
