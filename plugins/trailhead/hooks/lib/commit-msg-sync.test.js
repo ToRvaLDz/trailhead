@@ -318,10 +318,10 @@ function assertSingleJsonLine(out, label) {
 {
   const dir = mktmp();
   execFileSync('git', ['init', '-q'], { cwd: dir, env: gitEnv() });
-  execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: init', '--no-verify',
-    '-c', 'user.name=t', '-c', 'user.email=t@t'], { cwd: dir, env: gitEnv() });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t',
+    'commit', '--allow-empty', '-m', 'chore: init', '--no-verify'], { cwd: dir, env: gitEnv() });
   const worktreeDir = path.join(dir, '..', path.basename(dir) + '-wt');
-  execFileSync('git', ['worktree', 'add', worktreeDir, '-b', 'trailhead-wt'], { cwd: dir, env: gitEnv() });
+  execFileSync('git', ['worktree', 'add', worktreeDir, '-b', 'trailhead-wt'], { cwd: dir, env: gitEnv(), stdio: 'pipe' });
   try {
     const out = runScript(['--repo', worktreeDir], { env: gitEnv() });
     const parsed = assertSingleJsonLine(out, 'e2e linked worktree');
@@ -330,7 +330,7 @@ function assertSingleJsonLine(out, label) {
     ok('e2e linked worktree: hook lands in the main repo .git/hooks', fs.existsSync(mainHookPath));
     ok('e2e linked worktree: reported hook path is the main repo one', parsed.hook === mainHookPath);
   } finally {
-    try { execFileSync('git', ['worktree', 'remove', '--force', worktreeDir], { cwd: dir, env: gitEnv() }); } catch { /* best effort cleanup */ }
+    try { execFileSync('git', ['worktree', 'remove', '--force', worktreeDir], { cwd: dir, env: gitEnv(), stdio: 'pipe' }); } catch { /* best effort cleanup */ }
     fs.rmSync(worktreeDir, { recursive: true, force: true });
     fs.rmSync(dir, { recursive: true, force: true });
   }
