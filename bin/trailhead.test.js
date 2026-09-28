@@ -1028,6 +1028,21 @@ try {
 ok('unknown flag after a valid flag: still rejected', unknownAfterValidRejected);
 ok('unknown flag after a valid flag: installs nothing', nothingInstalledUnder(unknownAfterValidDir));
 
+// --- #185: teamwork.md/substrate-commands.md/trailhead-work SKILL.md point at
+// the commit-msg-sync script instead of the old manual copy/chmod steps -------
+ok('source: teamwork.md no longer says an existing hook is never replaced',
+  !teamworkSource.includes('an existing hook is never replaced'));
+ok('source: teamwork.md no longer says reinstalled by hand',
+  !teamworkSource.includes("until it's reinstalled by hand"));
+for (const [label, src] of [
+  ['teamwork.md', teamworkSource],
+  ['substrate-commands.md', substrateCommandsSource],
+  ['trailhead-work/SKILL.md', workSkillSource],
+]) {
+  ok(`source: ${label} references trailhead-commit-msg-sync.js`, src.includes('trailhead-commit-msg-sync.js'));
+  ok(`source: ${label} has no em-dash`, !src.includes('—'));
+}
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
