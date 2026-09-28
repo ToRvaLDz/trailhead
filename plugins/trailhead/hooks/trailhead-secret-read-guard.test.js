@@ -75,6 +75,34 @@ ok('Bash cat .SECRETS is denied (case-insensitive)', !!detectSecretRead('Bash', 
 ok('Read ENV.SAMPLE (near-miss) is still allowed regardless of case', !detectSecretRead('Read', { file_path: 'ENV.SAMPLE' }));
 ok('Read .ENVIRONMENT (near-miss) is still allowed regardless of case', !detectSecretRead('Read', { file_path: '.ENVIRONMENT' }));
 
+// --- #180: docker/podman --env-file must not be treated as a secret read ---
+// The container runtime reads the file itself; its contents never reach the
+// agent, so `--env-file .env` (or `=`-glued) is not a secret READ by the
+// agent, unlike every other flag/positional in the same statement.
+ok('Bash docker run --env-file .env img is allowed (runtime reads it, not the agent)',
+  !detectSecretRead('Bash', { command: 'docker run --env-file .env img' }));
+ok('Bash docker compose --env-file .env.prod up is allowed',
+  !detectSecretRead('Bash', { command: 'docker compose --env-file .env.prod up' }));
+ok('Bash podman run --env-file=.env img is allowed (glued = form)',
+  !detectSecretRead('Bash', { command: 'podman run --env-file=.env img' }));
+ok('Bash docker-compose --env-file .env up is allowed (standalone binary)',
+  !detectSecretRead('Bash', { command: 'docker-compose --env-file .env up' }));
+ok('Bash bash -c "docker run --env-file .env img" is allowed (recursion into nested command)',
+  !detectSecretRead('Bash', { command: 'bash -c "docker run --env-file .env img"' }));
+
+// --- #180: everything else in a docker/podman statement is still scanned ---
+ok('Bash cat .env is still denied', !!detectSecretRead('Bash', { command: 'cat .env' }));
+ok('Bash foo --env-file .env is still denied (only docker/podman are exempt)',
+  !!detectSecretRead('Bash', { command: 'foo --env-file .env' }));
+ok('Bash foo --env-file=.env is still denied (only docker/podman are exempt)',
+  !!detectSecretRead('Bash', { command: 'foo --env-file=.env' }));
+ok('Bash docker run --env-file .env img && cat .env is still denied (second statement)',
+  !!detectSecretRead('Bash', { command: 'docker run --env-file .env img && cat .env' }));
+ok('Bash docker run -v x img cat .env is still denied (positional after image, conservative)',
+  !!detectSecretRead('Bash', { command: 'docker run -v x img cat .env' }));
+ok('Bash docker cp .env ctr:/x is still denied (plain positional, not --env-file)',
+  !!detectSecretRead('Bash', { command: 'docker cp .env ctr:/x' }));
+
 // --- end-to-end hook wire format ---
 const d1 = runHook('Read', { file_path: '.env' });
 ok('hook denies Read(.env) end-to-end (exit 2, block decision)', d1.code === 2 && /"decision":"block"/.test(d1.out));
@@ -87,6 +115,19 @@ ok('hook allows Read(src/app.ts) end-to-end (exit 0, no output)', a1.code === 0 
 
 const a2 = runHook('Bash', { command: 'cd app && grep x pubspec.yaml' });
 ok('hook allows Bash(cd app && grep x pubspec.yaml) end-to-end (exit 0, no output)', a2.code === 0 && a2.out.trim() === '');
+
+// --- #180 end-to-end ---
+const a3 = runHook('Bash', { command: 'docker run --env-file .env img' });
+ok('hook allows Bash(docker run --env-file .env img) end-to-end (exit 0, no output)', a3.code === 0 && a3.out.trim() === '');
+
+const a4 = runHook('Bash', { command: 'docker compose --env-file .env.prod up' });
+ok('hook allows Bash(docker compose --env-file .env.prod up) end-to-end (exit 0, no output)', a4.code === 0 && a4.out.trim() === '');
+
+const a5 = runHook('Bash', { command: 'podman run --env-file=.env img' });
+ok('hook allows Bash(podman run --env-file=.env img) end-to-end (exit 0, no output)', a5.code === 0 && a5.out.trim() === '');
+
+const d3 = runHook('Bash', { command: 'cat .env' });
+ok('hook still denies Bash(cat .env) end-to-end (exit 2, block decision)', d3.code === 2 && /"decision":"block"/.test(d3.out));
 
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
