@@ -6,19 +6,26 @@
 // hook bus; this git hook is how the commit-guard survives there). Decision #16.
 //
 // Self-contained by design: detached from the trailhead install, it inlines the
-// same two rules as plugins/trailhead/hooks/lib/commit-message-check.js. That
-// lib's test drives this hook end-to-end so the two copies cannot drift.
+// same rules as plugins/trailhead/hooks/lib/commit-message-check.js. That
+// lib's test drives this hook end-to-end so the copies cannot drift.
 //
 // git passes the commit-message file path as argv[2]. On a violation: print the
 // reason to stderr and exit 1 (git aborts the commit). Otherwise exit 0.
 // Crash-safe: any unexpected error exits 0 (never wedge a commit).
+//
+// Note: a merge/revert/fixup message already fails the conventional-subject
+// rule below, so it needs no special case; `git commit --amend` keeps whatever
+// trailer the original message carried; `git commit --no-verify` bypasses this
+// hook entirely, as before.
 
 const fs = require('fs');
+const path = require('path');
 
 const TYPES = 'feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert';
 const CONVENTIONAL = new RegExp(`^(${TYPES})(\\([^)]+\\))?!?:\\s.+`);
 const CO_AUTHORED = /co-authored-by\s*:/i;
 const SCISSORS = '# ------------------------ >8';
+const REFS_LINE = /^\s*refs\s*:(.*)$/i;
 
 function messageRegion(raw) {
   const text = String(raw == null ? '' : raw);
@@ -31,6 +38,40 @@ function subjectOf(raw) {
     return line.trim();
   }
   return '';
+}
+
+// Mirrors parseSessionTicket() in commit-message-check.js: parses the first
+// line of a .trailhead/session-ticket marker (`#<n> <title>`).
+function parseSessionTicket(text) {
+  const raw = String(text == null ? '' : text).replace(/^﻿/, '');
+  const firstLine = raw.split('\n')[0].replace(/\r$/, '');
+  const m = firstLine.match(/^#([1-9]\d*)(?:\s|$)/);
+  return m ? Number(m[1]) : null;
+}
+
+// Mirrors hasRefsFor() in commit-message-check.js.
+function hasRefsFor(message, n) {
+  const target = new RegExp('#' + n + '(?![\\w])');
+  for (const line of messageRegion(message).split('\n')) {
+    if (line.trim().startsWith('#')) continue;
+    const m = line.match(REFS_LINE);
+    if (m && target.test(m[1])) return true;
+  }
+  return false;
+}
+
+// Reads the session-ticket marker at the worktree top-level. git runs
+// commit-msg from the worktree top-level (linked worktrees included), so
+// process.cwd() is the right root here. Its own try/catch: a read error
+// (marker absent, unreadable, etc.) must never skip the other rules below,
+// it just leaves the Refs rule off.
+function readTicket() {
+  try {
+    const markerPath = path.join(process.cwd(), '.trailhead', 'session-ticket');
+    return parseSessionTicket(fs.readFileSync(markerPath, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 try {
@@ -49,6 +90,12 @@ try {
   }
   if (subject.length > 72) {
     process.stderr.write('trailhead: commit subject must be 72 characters or less.\n');
+    process.exit(1);
+  }
+
+  const ticket = readTicket();
+  if (Number.isInteger(ticket) && ticket > 0 && !hasRefsFor(raw, ticket)) {
+    process.stderr.write(`trailhead: this commit is on ticket #${ticket} (per .trailhead/session-ticket) but has no "Refs: #${ticket}" trailer. Add "Refs: #${ticket}" as the last line of the message and commit again. If this commit is not part of ticket #${ticket}, remove the stale .trailhead/session-ticket marker first.\n`);
     process.exit(1);
   }
 } catch {
