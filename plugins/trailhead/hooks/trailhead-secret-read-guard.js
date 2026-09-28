@@ -44,6 +44,11 @@
 // are shared with trailhead-search-guard.js via lib/shell-scan.js, so the two
 // guards can never drift into two divergent tokenizers again.
 //
+// #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
+// false positive — the container RUNTIME reads that file, not the agent. Only
+// that flag's value is exempted, and only for docker/podman verbs; see
+// ENV_FILE_EXEMPT_VERBS below.
+//
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
 // trailhead-search-guard.js's job) — it only asks "does any token here
@@ -94,6 +99,18 @@ function isSecretPathArg(t) {
 // every tool's flag surface, just the common file-value shapes.
 const VALUE_FLAGS = new Set(['-f', '--file']);
 
+// #180: `docker run --env-file .env img` / `docker compose --env-file
+// .env.prod up` / `podman run --env-file=.env img` are false positives. The
+// CONTAINER RUNTIME reads that file directly to populate the container's
+// environment; its contents never pass through the agent, so it is not a
+// secret READ by the agent (unlike a bare `cat .env`, which is). Scoped
+// narrowly: only the value of `--env-file` is exempt, and only for these
+// verbs — every other flag/positional in the same statement (image name,
+// `-v`, trailing `cat .env`, etc.) is still scanned exactly as before.
+const ENV_FILE_EXEMPT_VERBS = new Set(['docker', 'podman', 'docker-compose', 'podman-compose']);
+const ENV_FILE_EXEMPT_FLAGS = new Set(['--env-file']);
+const NO_EXEMPT_FLAGS = new Set();
+
 // The pattern-first search verbs (grep/rg/ag/sed/awk), shared with
 // trailhead-search-guard.js. Their first positional is a PATTERN, not a file
 // operand, so it must be skipped before scanning for a secret FILE argument
@@ -119,8 +136,11 @@ function stripTrailingPunct(t) {
 // Scan one already-tokenized statement's argument tokens (verb NOT stripped)
 // for a secret path used as a plain positional, an option value
 // (`--file=.env`, `-f .env`, glued `-f.env`), or a `<` (or glued `<file`)
-// redirect target. Returns the offending token or null.
-function scanTokensForSecretPath(tokens) {
+// redirect target. Returns the offending token or null. `exemptFlags` (#180)
+// names flags whose value must be skipped entirely rather than scanned, in
+// both the `--flag=value` and spaced `--flag value` forms.
+function scanTokensForSecretPath(tokens, exemptFlags) {
+  const exempt = exemptFlags || NO_EXEMPT_FLAGS;
   for (let i = 0; i < tokens.length; i++) {
     const t = stripTrailingPunct(tokens[i]);
     if (!t) continue;
@@ -143,10 +163,15 @@ function scanTokensForSecretPath(tokens) {
       // `--flag=value` form.
       const eq = t.indexOf('=');
       if (eq > 0) {
+        const flagName = t.slice(0, eq);
+        if (exempt.has(flagName)) continue; // #180: value never scanned
         const val = t.slice(eq + 1);
         if (isSecretPathArg(val)) return val;
         continue;
       }
+      // #180: exempt flag's separate-token value is skipped entirely, not
+      // scanned as a plain positional on the next loop iteration.
+      if (exempt.has(t)) { i++; continue; }
       // `-f value` / `--file value` (separate-token value).
       if (VALUE_FLAGS.has(t)) {
         const next = i + 1 < tokens.length ? stripTrailingPunct(tokens[i + 1]) : null;
@@ -214,7 +239,11 @@ function scanStatementForSecretPath(stmt) {
   if (SEARCH_VERBS.has(bin)) {
     return scanArgsSkippingPattern(tokens.slice(1), SEARCH_VERB_CONFIG[bin], isSecretPathArg);
   }
-  return scanTokensForSecretPath(tokens);
+  // #180: docker/podman (incl. `docker compose` as a subcommand, and the
+  // standalone docker-compose/podman-compose binaries) get --env-file's value
+  // exempted; every other verb keeps today's behaviour unchanged.
+  const exempt = ENV_FILE_EXEMPT_VERBS.has(bin) ? ENV_FILE_EXEMPT_FLAGS : NO_EXEMPT_FLAGS;
+  return scanTokensForSecretPath(tokens, exempt);
 }
 
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
