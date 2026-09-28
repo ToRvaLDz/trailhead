@@ -54,7 +54,7 @@ function fakeBinDir(names) {
 
 // --- codex install -----------------------------------------------------------
 const codexDir = mktmp();
-runInstaller([`--codex`, `--dir=${codexDir}`]);
+const codexInstallOut = String(runInstaller([`--codex`, `--dir=${codexDir}`]));
 
 const skillMainPath = path.join(codexDir, 'skills', 'trailhead', 'SKILL.md');
 ok('codex: SKILL.md exists', fs.existsSync(skillMainPath));
@@ -737,7 +737,7 @@ ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
 
 // --- claude regression --------------------------------------------------------
 const claudeDir = mktmp();
-runInstaller([`--claude`, `--dir=${claudeDir}`]);
+const claudeInstallOut = String(runInstaller([`--claude`, `--dir=${claudeDir}`]));
 
 const claudeSkillPath = path.join(claudeDir, 'skills', 'trailhead', 'SKILL.md');
 ok('claude: skills/trailhead/SKILL.md exists', fs.existsSync(claudeSkillPath));
@@ -1042,6 +1042,165 @@ for (const [label, src] of [
   ok(`source: ${label} references trailhead-commit-msg-sync.js`, src.includes('trailhead-commit-msg-sync.js'));
   ok(`source: ${label} has no em-dash`, !src.includes('—'));
 }
+
+// --- #182 ---------------------------------------------------------------------
+// A broken install fails loudly (verifyInstall names the gap and the run exits
+// non-zero, printing no "✓ trailhead installed"); a clean one still prints ✓.
+// brokenPkg copies bin/ + plugins/ into a fresh tmp root (so __dirname-relative
+// PKG/SRC resolution in trailhead.js still lines up) and applies a mutation
+// that breaks one source artifact; runPkg drives that copy (or the real repo)
+// through execFileSync without throwing on a non-zero exit.
+function brokenPkg(mutate) {
+  const pkgDir = mktmp();
+  fs.cpSync(path.join(repoRoot, 'bin'), path.join(pkgDir, 'bin'), { recursive: true });
+  fs.cpSync(path.join(repoRoot, 'plugins'), path.join(pkgDir, 'plugins'), { recursive: true });
+  if (mutate) mutate(pkgDir);
+  return pkgDir;
+}
+function runPkg(pkgDir, args, env) {
+  try {
+    const stdout = execFileSync(process.execPath, [path.join(pkgDir, 'bin', 'trailhead.js'), ...args], {
+      cwd: pkgDir, stdio: 'pipe', env: env || process.env,
+    });
+    return { status: 0, stdout: String(stdout), stderr: '' };
+  } catch (e) {
+    return { status: e.status, stdout: String(e.stdout || ''), stderr: String(e.stderr || '') };
+  }
+}
+
+// (a) no engine agents at all: both hosts refuse and print no success line.
+{
+  const noAgentsPkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', 'trailhead', 'agents'), { recursive: true, force: true }));
+  const claudeOut = runPkg(noAgentsPkg, ['--claude', `--dir=${mktmp()}`]);
+  ok('(a) claude, no agents: non-zero exit', claudeOut.status !== 0);
+  ok('(a) claude, no agents: stderr names agents', claudeOut.stderr.includes('agents'));
+  ok('(a) claude, no agents: stdout has no ✓ trailhead installed', !claudeOut.stdout.includes('✓ trailhead installed'));
+  const codexOut = runPkg(noAgentsPkg, ['--codex', `--dir=${mktmp()}`]);
+  ok('(a) codex, no agents: non-zero exit', codexOut.status !== 0);
+  ok('(a) codex, no agents: stderr names agents', codexOut.stderr.includes('agents'));
+  ok('(a) codex, no agents: stdout has no ✓ trailhead installed', !codexOut.stdout.includes('✓ trailhead installed'));
+}
+
+// (b) a cluster's SKILL.md is missing from the source.
+{
+  const pkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', 'trailhead', 'skills', 'trailhead-view', 'SKILL.md'), { force: true }));
+  const out = runPkg(pkg, ['--claude', `--dir=${mktmp()}`]);
+  ok('(b) missing cluster SKILL.md: non-zero exit', out.status !== 0);
+  ok('(b) missing cluster SKILL.md: stderr names trailhead-view/SKILL.md', out.stderr.includes('trailhead-view/SKILL.md'));
+}
+
+// (c) the shared core is missing a file.
+{
+  const pkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', 'trailhead', 'skills', '_shared', 'substrate.md'), { force: true }));
+  const out = runPkg(pkg, ['--claude', `--dir=${mktmp()}`]);
+  ok('(c) missing _shared/substrate.md: non-zero exit', out.status !== 0);
+  ok('(c) missing _shared/substrate.md: stderr names _shared/substrate.md', out.stderr.includes('_shared/substrate.md'));
+}
+
+// (d) a hook script source is missing, fresh dir: named cleanly, no ENOENT stack.
+const missingBodyGuardPkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', 'trailhead', 'hooks', 'trailhead-body-guard.js'), { force: true }));
+{
+  const out = runPkg(missingBodyGuardPkg, ['--claude', `--dir=${mktmp()}`]);
+  ok('(d) missing hook source, fresh dir: non-zero exit', out.status !== 0);
+  ok('(d) missing hook source, fresh dir: stderr names trailhead-body-guard.js', out.stderr.includes('trailhead-body-guard.js'));
+  ok('(d) missing hook source, fresh dir: no ENOENT stack', !out.stderr.includes('ENOENT'));
+}
+
+// (e) reinstalling that same broken package over a prior clean install removes
+// the stale hook file rather than leaving it behind, on both hosts.
+{
+  const xDir = mktmp();
+  runInstaller([`--claude`, `--dir=${xDir}`]);
+  const out = runPkg(missingBodyGuardPkg, ['--claude', `--dir=${xDir}`]);
+  ok('(e) claude reinstall over an old install: non-zero exit', out.status !== 0);
+  ok('(e) claude reinstall: stderr names trailhead-body-guard.js', out.stderr.includes('trailhead-body-guard.js'));
+  ok('(e) claude reinstall: the stale hook file is gone', !fs.existsSync(path.join(xDir, 'hooks', 'trailhead-body-guard.js')));
+
+  const wDir = mktmp();
+  runInstaller([`--codex`, `--dir=${wDir}`]);
+  const outCodex = runPkg(missingBodyGuardPkg, ['--codex', `--dir=${wDir}`]);
+  ok('(e) codex reinstall over an old install: non-zero exit', outCodex.status !== 0);
+  ok('(e) codex reinstall: stderr names trailhead-body-guard.js', outCodex.stderr.includes('trailhead-body-guard.js'));
+  ok('(e) codex reinstall: the stale hook file is gone', !fs.existsSync(path.join(wDir, 'skills', 'trailhead', 'hooks', 'trailhead-body-guard.js')));
+}
+
+// (f) a stale Claude registration in settings.json (target gone).
+{
+  const yDir = mktmp();
+  runInstaller([`--claude`, `--dir=${yDir}`]);
+  const settingsPath = path.join(yDir, 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  settings.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(yDir, 'hooks', 'trailhead-gone-guard.js')}"` },
+  ] });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  const out = runPkg(repoRoot, [`--claude`, `--dir=${yDir}`]);
+  ok('(f) stale Claude registration: non-zero exit', out.status !== 0);
+  ok('(f) stale Claude registration: stderr names the stale target', out.stderr.includes('trailhead-gone-guard.js'));
+}
+
+// (g) a stale generic Codex registration in hooks.json (target gone).
+{
+  const wgDir = mktmp();
+  runInstaller([`--codex`, `--dir=${wgDir}`]);
+  const hooksJsonPath = path.join(wgDir, 'hooks.json');
+  const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
+  hooksJson.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(wgDir, 'skills', 'trailhead', 'hooks', 'trailhead-gone-guard.js')}"` },
+  ] });
+  fs.writeFileSync(hooksJsonPath, JSON.stringify(hooksJson, null, 2));
+  const out = runPkg(repoRoot, [`--codex`, `--dir=${wgDir}`]);
+  ok('(g) stale Codex registration: non-zero exit', out.status !== 0);
+  ok('(g) stale Codex registration: stderr names the stale target', out.stderr.includes('trailhead-gone-guard.js'));
+  ok('(g) stale Codex registration: stderr names hooks.json', out.stderr.includes('hooks.json'));
+}
+
+// (h) the pre-#169 search-guard registration migrates away silently on reinstall.
+// May already pass before the installer wires verifyInstall in (no check exists
+// yet to trip on it); it stays here to pin the migration's intent regardless.
+{
+  const zDir = mktmp();
+  runInstaller([`--codex`, `--dir=${zDir}`]);
+  const hooksJsonPath = path.join(zDir, 'hooks.json');
+  const hooksJson = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
+  hooksJson.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(zDir, 'skills', 'trailhead', 'hooks', 'trailhead-search-guard.js')}"` },
+  ] });
+  fs.writeFileSync(hooksJsonPath, JSON.stringify(hooksJson, null, 2));
+  const out = runPkg(repoRoot, [`--codex`, `--dir=${zDir}`]);
+  ok('(h) pre-#169 search-guard migration: exit 0', out.status === 0);
+  ok('(h) pre-#169 search-guard migration: prints ✓', out.stdout.includes('✓'));
+  const afterHooksJson = fs.readFileSync(hooksJsonPath, 'utf8');
+  ok('(h) pre-#169 search-guard migration: the stale entry is gone', !afterHooksJson.includes('trailhead-search-guard.js'));
+}
+
+// (i) an unresolved env var on a registered target warns instead of failing.
+{
+  const vDir = mktmp();
+  runInstaller([`--claude`, `--dir=${vDir}`]);
+  const settingsPath = path.join(vDir, 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  settings.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: 'node "${TRAILHEAD_T182_UNSET}/hooks/trailhead-x-guard.js"' },
+  ] });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  // Delete the key outright (never set it to undefined), so the child process
+  // never receives a literal "undefined" string for it.
+  const envWithoutVar = { ...process.env };
+  delete envWithoutVar.TRAILHEAD_T182_UNSET;
+  const out = runPkg(repoRoot, [`--claude`, `--dir=${vDir}`], envWithoutVar);
+  ok('(i) unresolved env var: exit 0', out.status === 0);
+  ok('(i) unresolved env var: prints ✓', out.stdout.includes('✓'));
+  ok('(i) unresolved env var: stdout warns ⚠ unverified', out.stdout.includes('⚠ unverified'));
+  ok('(i) unresolved env var: stdout names the unresolved variable', out.stdout.includes('TRAILHEAD_T182_UNSET'));
+}
+
+// (j) regression: the existing clean installs at the top of this file still
+// print ✓ with no ⚠ unverified.
+ok('(j) claude clean install: prints ✓ trailhead installed', claudeInstallOut.includes('✓ trailhead installed'));
+ok('(j) claude clean install: no ⚠ unverified', !claudeInstallOut.includes('⚠ unverified'));
+ok('(j) codex clean install: prints ✓ trailhead installed', codexInstallOut.includes('✓ trailhead installed'));
+ok('(j) codex clean install: no ⚠ unverified', !codexInstallOut.includes('⚠ unverified'));
 
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
