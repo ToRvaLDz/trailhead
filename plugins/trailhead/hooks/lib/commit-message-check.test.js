@@ -165,7 +165,9 @@ ok('checkCommitMessage: numeric ticket + stripComments:false still finds Refs',
 // --- hasRefsFor unit checks ---
 ok('hasRefsFor: direct match', hasRefsFor('Refs: #184', 184) === true);
 ok('hasRefsFor: no match', hasRefsFor('Refs: #18', 184) === false);
-ok('hasRefsFor: comment line skipped by default', hasRefsFor('# Refs: #184', 184) === false);
-ok('hasRefsFor: comment line counted when stripComments:false', hasRefsFor('# Refs: #184', 184, { stripComments: false }) === true);
+ok('hasRefsFor: a "# Refs:" comment line never counts',
+  hasRefsFor('# Refs: #184', 184) === false);
+ok('hasRefsFor: a Refs line in a multi-line body counts',
+  hasRefsFor('feat: x\n\nbody\n\nRefs: #184', 184) === true);
 
 console.log(`✓ commit-message-check: ${passed} assertions passed`);

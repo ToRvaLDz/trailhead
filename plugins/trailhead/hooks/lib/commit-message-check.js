@@ -57,19 +57,16 @@ function parseSessionTicket(text) {
   return m ? Number(m[1]) : null;
 }
 
-// hasRefsFor(message, n, opts?) -> boolean
+// hasRefsFor(message, n) -> boolean
 // Scans the message region (see messageRegion) for a `Refs:` trailer line
 // whose value contains `#<n>` not immediately followed by another word
-// character (so `#184` matches but `#18` and `#184abc` do not). By default
-// `#`-leading git comment lines are skipped (file semantics); pass
-// `opts.stripComments: false` to also count a Refs trailer inside a comment
-// line (used when validating a literal `-m` string, where `#` is not a
-// comment marker).
-function hasRefsFor(message, n, opts = {}) {
-  const stripComments = opts.stripComments !== false;
+// character (so `#184` matches but `#18` and `#184abc` do not). A `#`-leading
+// line never counts: it is a git comment in a commit-msg file, and a
+// `# Refs: ...` line is not a trailer in a literal `-m` string either.
+function hasRefsFor(message, n) {
   const target = new RegExp('#' + n + '(?![\\w])');
   for (const line of messageRegion(message).split('\n')) {
-    if (stripComments && line.trim().startsWith('#')) continue;
+    if (line.trim().startsWith('#')) continue;
     const m = line.match(REFS_LINE);
     if (m && target.test(m[1])) return true;
   }
@@ -111,7 +108,7 @@ function checkCommitMessage(message, opts = {}) {
       reason: 'trailhead: commit subject must be 72 characters or less.',
     };
   }
-  if (ticketActive && !hasRefsFor(message, opts.ticket, opts)) {
+  if (ticketActive && !hasRefsFor(message, opts.ticket)) {
     return {
       ok: false,
       code: 'REFS_TRAILER_MISSING',
