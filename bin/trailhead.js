@@ -15,6 +15,13 @@
 // projection in bin/lib/codex-projection.js (engine text rewrites, prompt
 // generation). With no --codex/--claude flag the host is auto-detected from
 // the CLIs on $PATH; the interactive prompt only fires when that is ambiguous.
+//
+// Post-install check (#182): just before printing the final ✓, both
+// installers run bin/lib/install-verify.js's verifyInstall against what's
+// actually on disk (and, for the registered hook targets, what's actually in
+// the host's registry file). A gap fails the run loudly instead of a silent
+// ✓; a registered target that depends on an env var this process doesn't
+// have set prints as a ⚠ warning alongside the ✓, not a failure.
 
 const fs = require('fs');
 const os = require('os');
@@ -24,6 +31,7 @@ const { spawnSync } = require('child_process');
 
 const { getHost, configDirFor, codexVersionGate } = require('./lib/host-descriptor.js');
 const { codexLayout, convertToCodex, injectCodexAdapterHeader, codexAgentsYaml, codexClusterAgentsYaml, codexHookEntries, enableCodexHooksFeature, codexAgentTomlPlan, codexVerbSkillPlan, enableCodexMultiAgentV2Feature } = require('./lib/codex-projection.js');
+const { sharedCoreFiles, claudeVerifySpec, codexVerifySpec, verifyInstall, formatVerifyFailure, formatVerifyWarnings } = require('./lib/install-verify.js');
 
 const PKG = path.resolve(__dirname, '..');
 const SRC = path.join(PKG, 'plugins', 'trailhead');
@@ -40,6 +48,28 @@ function engineSkillDirs() {
     .map((e) => e.name)
     .filter((name) => name === '_shared' || fs.existsSync(path.join(skillsRoot, name, 'SKILL.md')))
     .sort();
+}
+
+// Every subdirectory shipped under plugins/trailhead/skills, with no SKILL.md
+// filter (unlike engineSkillDirs). This is the EXPECTED skill set the
+// post-install check verifies against, so a cluster whose SKILL.md failed to
+// copy is caught as missing rather than silently dropped from the set.
+function shippedSkillDirs() {
+  const skillsRoot = path.join(SRC, 'skills');
+  if (!fs.existsSync(skillsRoot)) return [];
+  return fs.readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+}
+
+// The shared-core file list, single-sourced from the source copy of
+// _shared/load-first.md (see install-verify.js's sharedCoreFiles). Read once
+// at require time since the source tree doesn't change during a run.
+function readSharedCoreFiles() {
+  let loadFirstText = '';
+  try { loadFirstText = fs.readFileSync(path.join(SRC, 'skills', '_shared', 'load-first.md'), 'utf8'); } catch { /* missing: falls back to just load-first.md */ }
+  return sharedCoreFiles(loadFirstText);
 }
 
 // Sweep every trailhead-owned skill dir under a skills root, by name: the
@@ -222,6 +252,10 @@ const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scan
 // recursive sweep: the Claude hooks/lib dir is shared with other plugins, so
 // we must not clobber a co-tenant's lib nor ship our own *.test.js files.
 const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js'];
+// search-guard is Claude-Code-specific (#169): excluded from both the Codex
+// hook copy and the Codex verify spec's expected hookFiles, so a healthy
+// Codex install is never flagged for a script it never ships.
+const CODEX_HOOK_EXCLUDE = ['trailhead-search-guard.js'];
 
 // Copy the hook scripts and their runtime libs into a destination hooks dir
 // (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
@@ -234,8 +268,12 @@ const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcomma
 // dest first so a reinstall over an existing file or symlink never hits EEXIST.
 function copyHookScripts(destHooksDir, { useSymlink = false, exclude = [] } = {}) {
   ensure(destHooksDir);
+  // rmrf the dest first, always: a reinstall that finds its source gone must
+  // still remove whatever an earlier install left behind, not just skip the
+  // copy and leave a stale file in place.
   const put = (src, dest) => {
     rmrf(dest);
+    if (!fs.existsSync(src)) return;
     if (useSymlink) {
       fs.symlinkSync(src, dest, 'file');
     } else {
@@ -384,6 +422,24 @@ function installClaude(configDir, { useSymlink }) {
   ].some(Boolean);
   writeJSON(P.settings, s);
 
+  // Verify the install actually landed before reporting success (#182): a
+  // filesystem-only check, run just before the ✓ line, that never trusts the
+  // copy/write calls above to have succeeded silently.
+  const spec = claudeVerifySpec(configDir, {
+    skillDirs: shippedSkillDirs(),
+    sharedFiles: readSharedCoreFiles(),
+    hookFiles: HOOK_FILES,
+    hookLibFiles: HOOK_LIB_FILES,
+    env: process.env,
+    home: os.homedir(),
+  });
+  const { missing, unverified } = verifyInstall(spec);
+  if (missing.length) {
+    console.error(formatVerifyFailure('Claude Code', configDir, { missing, unverified }));
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(`✓ trailhead installed for Claude Code → ${configDir}`);
   console.log(`  skills    → ${path.join(configDir, 'skills')}/  (${skillDirs.join(', ')})${useSymlink ? '  (symlink)' : ''}`);
   console.log(`  commands  → ${P.commands}  (/trailhead:*)`);
@@ -392,6 +448,7 @@ function installClaude(configDir, { useSymlink }) {
   console.log(`  templates → ${P.templates}`);
   console.log('\nRestart or reload your agent to pick up the commands, then run /trailhead to start.');
   console.log('Note: the commit guard now runs on every git commit (conventional + no Co-Authored-By).');
+  for (const w of formatVerifyWarnings(unverified)) console.log(w);
 }
 
 // --- Codex adapter -----------------------------------------------------------
@@ -580,8 +637,12 @@ function installCodex(configDir, { useSymlink }) {
   // settings.json hooks block). search-guard is excluded: it is
   // Claude-Code-specific (see codexHookEntries), so it is neither copied nor
   // registered here.
-  copyHookScripts(L.hooksScriptsDir, { useSymlink, exclude: ['trailhead-search-guard.js'] });
+  copyHookScripts(L.hooksScriptsDir, { useSymlink, exclude: CODEX_HOOK_EXCLUDE });
   const h = readJSON(L.hooksJson);
+  // Migration: strip a pre-#169 search-guard registration. Its target is
+  // always gone now (search-guard is never copied to Codex), so a prior
+  // install's stale entry would otherwise fail the post-install check below.
+  stripHook(h, 'PreToolUse', 'trailhead-search-guard.js');
   for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
   writeJSON(L.hooksJson, h);
 
@@ -632,6 +693,23 @@ function installCodex(configDir, { useSymlink }) {
     }
   }
 
+  // Verify the install actually landed before reporting success (#182),
+  // mirroring installClaude's check.
+  const spec = codexVerifySpec(configDir, {
+    skillDirs: shippedSkillDirs(),
+    sharedFiles: readSharedCoreFiles(),
+    hookFiles: HOOK_FILES.filter((f) => !CODEX_HOOK_EXCLUDE.includes(f)),
+    hookLibFiles: HOOK_LIB_FILES,
+    env: process.env,
+    home: os.homedir(),
+  });
+  const { missing, unverified } = verifyInstall(spec);
+  if (missing.length) {
+    console.error(formatVerifyFailure('Codex', configDir, { missing, unverified }));
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(`✓ trailhead installed for Codex → ${configDir}`);
   console.log(`  skill     → ${L.skillDir}/  (invoke $trailhead)`);
   console.log(`  templates → ${L.templatesDir}/`);
@@ -656,6 +734,7 @@ function installCodex(configDir, { useSymlink }) {
   if (featureManualV2) {
     console.log(`  ⚠ could not edit ${L.configToml} automatically, add \`features.multi_agent_v2 = true\` under [features] by hand to let Codex honour the projected model pins.`);
   }
+  for (const w of formatVerifyWarnings(unverified)) console.log(w);
 }
 
 function uninstallCodex(configDir) {
