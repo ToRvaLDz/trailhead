@@ -64,8 +64,8 @@ function shippedSkillDirs() {
 }
 
 // The shared-core file list, single-sourced from the source copy of
-// _shared/load-first.md (see install-verify.js's sharedCoreFiles). Read once
-// at require time since the source tree doesn't change during a run.
+// _shared/load-first.md (see install-verify.js's sharedCoreFiles). Read at
+// verify time by each installer; a missing file yields just load-first.md.
 function readSharedCoreFiles() {
   let loadFirstText = '';
   try { loadFirstText = fs.readFileSync(path.join(SRC, 'skills', '_shared', 'load-first.md'), 'utf8'); } catch { /* missing: falls back to just load-first.md */ }
