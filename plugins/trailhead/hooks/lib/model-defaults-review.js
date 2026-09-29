@@ -10,11 +10,16 @@
 // "check"/"ack" in fondo al file).
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const DATA_FILE = path.join(__dirname, 'model-defaults.json');
 const HOSTS = ['claude', 'codex'];
 const TIERS = ['strong', 'standard', 'fast'];
+
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
 
 function loadData() {
   try {
@@ -96,7 +101,9 @@ function stalePins(config, data) {
     if (result) out.push({ key: `models.${key}`, from: result.from, to: result.to });
   }
 
-  const codex = models.codex || {};
+  // Un models.codex malformato (non un oggetto piano) non produce pin: come
+  // se fosse assente, invece di iterare i suoi indici/caratteri.
+  const codex = isPlainObject(models.codex) ? models.codex : {};
   for (const key of Object.keys(codex)) {
     const raw = codex[key];
     const id = raw && typeof raw === 'object' ? raw.model : raw;
@@ -125,23 +132,87 @@ function applyUpdate(config, stale) {
   return next;
 }
 
-function reviewOffer({ config, data, ack }) {
+// Unisce piu' layer di config (dal piu' generico al piu' specifico, es.
+// [global, project]) in una config effettiva pura: nessun input viene
+// mutato. La precedenza e' per PRESENZA della chiave, mai per verita' del
+// valore: un layer piu' specifico che imposta una chiave (anche a null, ''
+// o "inherit session") vince sempre, e il valore del layer sotto non
+// riaffiora mai. models.codex e' unito chiave per chiave solo quando sia
+// l'accumulo corrente sia il valore in arrivo sono oggetti piani; altrimenti
+// il valore del layer piu' specifico rimpiazza l'intero models.codex (un
+// models.codex malformato nel progetto produce quindi zero pin codex, non
+// un fallback al globale). Ogni layer il cui `models` non e' un oggetto
+// piano (null, array, stringa) non contribuisce, come se fosse assente.
+// Ritorna { config, sources }, dove sources mappa ogni chiave vincente
+// (es. "models.plan", "models.codex.plan") a { layer, file } di chi l'ha
+// decisa, cosi' la notice puo' stampare il path reale.
+function effectiveModels(layers) {
+  let models = {};
+  let codex; // undefined finche' nessun layer tocca models.codex
+  const sources = {};
+
+  for (const layer of layers || []) {
+    const cfgModels = layer && layer.config && isPlainObject(layer.config.models) ? layer.config.models : null;
+    if (!cfgModels) continue;
+
+    for (const key of Object.keys(cfgModels)) {
+      if (key === 'codex') continue;
+      models = { ...models, [key]: cfgModels[key] };
+      sources[`models.${key}`] = { layer: layer.layer, file: layer.file };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(cfgModels, 'codex')) {
+      const incoming = cfgModels.codex;
+      if (isPlainObject(incoming) && isPlainObject(codex)) {
+        for (const k of Object.keys(incoming)) {
+          codex = { ...codex, [k]: incoming[k] };
+          sources[`models.codex.${k}`] = { layer: layer.layer, file: layer.file };
+        }
+      } else {
+        for (const k of Object.keys(sources)) {
+          if (k.startsWith('models.codex.')) delete sources[k];
+        }
+        codex = isPlainObject(incoming) ? { ...incoming } : incoming;
+        if (isPlainObject(codex)) {
+          for (const k of Object.keys(codex)) {
+            sources[`models.codex.${k}`] = { layer: layer.layer, file: layer.file };
+          }
+        }
+      }
+    }
+  }
+
+  const outModels = { ...models };
+  if (codex !== undefined) outModels.codex = codex;
+  return { config: { models: outModels }, sources };
+}
+
+function reviewOffer({ config, data, ack, sources }) {
   const current = currentEntry(data);
   if (!current) return null;
-  const stale = stalePins(config, data);
+  const stale = stalePins(config, data).map((s) => {
+    const source = sources && sources[s.key];
+    return source ? { ...s, source } : s;
+  });
   if (!stale.length) return null;
   if (ack && !semverLt(ack, current.since)) return null;
   return { since: current.since, stale, notice: reviewNotice(stale, current.since) };
 }
 
+function sourceSuffix(source) {
+  if (!source) return ' (new default)';
+  const layerName = source.layer === 'global' ? 'the global config' : 'the project config';
+  return ` (new default; from ${layerName}, ${source.file})`;
+}
+
 function reviewNotice(stale, since) {
-  const lines = stale.map((s) => `- ${s.key}: ${s.from} -> ${s.to} (new default)`);
+  const lines = stale.map((s) => `- ${s.key}: ${s.from} -> ${s.to}${sourceSuffix(s.source)}`);
   return [
     `trailhead's default models changed in ${since}. The following pinned model(s) are older than the new default:`,
     ...lines,
     '',
     'Offer the user, once, without blocking their current request, three choices:',
-    '1) update those keys to the new defaults (edit .trailhead/config.json with exactly the values above; keep any codex effort unchanged),',
+    '1) update those keys to the new defaults (edit each key in the config file it comes from, with exactly the values above; keep any codex effort unchanged),',
     '2) keep them as they are (nothing to do; trailhead will not ask again for these defaults once acknowledged),',
     '3) open /trailhead:config to pick per key.',
     'This offer reappears every time it is checked until acknowledged: run the ack instruction below only after the user has picked one of the three choices above.',
@@ -149,8 +220,9 @@ function reviewNotice(stale, since) {
 }
 
 // Paragrafo con l'istruzione pronta all'uso per acquisire l'ack, appesa alla
-// notice da check(). Nomina il path assoluto di questo lib e la root del
-// progetto trovata, cosi' l'agente puo' eseguirla cosi' com'e'.
+// notice da check(). Nomina il path assoluto di questo lib e la root (la
+// root del progetto trovata, oppure il cwd nel caso solo-globale), cosi'
+// l'agente puo' eseguirla cosi' com'e'.
 function ackInstruction(root) {
   return `Once the user has answered, run: node "${__filename}" ack "${root}"`;
 }
@@ -158,6 +230,31 @@ function ackInstruction(root) {
 // --- I/O ---------------------------------------------------------------
 const ACK_FILE = path.join('.trailhead', 'model-defaults-ack');
 const CONFIG_FILE = path.join('.trailhead', 'config.json');
+
+// Dir base della config globale: stessa risoluzione di trailhead-check-update.js.
+function globalConfigDir() {
+  return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+}
+
+function globalConfigFile() {
+  return path.join(globalConfigDir(), 'trailhead', 'config.json');
+}
+
+// L'ack globale vive accanto al config.json globale, senza nidificare
+// ".trailhead" (che e' una convenzione solo di progetto).
+function globalAckFile() {
+  return path.join(globalConfigDir(), 'trailhead', 'model-defaults-ack');
+}
+
+// Mancante o malformato -> {}: non deve mai bloccare la review di progetto.
+function loadGlobalConfig() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(globalConfigFile(), 'utf8'));
+    return isPlainObject(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
 
 function findProjectRoot(cwd) {
   let dir = path.resolve(cwd || '.');
@@ -169,16 +266,15 @@ function findProjectRoot(cwd) {
   }
 }
 
-function readAck(root) {
+function readAckFile(file) {
   try {
-    return fs.readFileSync(path.join(root, ACK_FILE), 'utf8').trim() || null;
+    return fs.readFileSync(file, 'utf8').trim() || null;
   } catch {
     return null;
   }
 }
 
-function writeAck(root, since) {
-  const file = path.join(root, ACK_FILE);
+function writeAckFile(file, since) {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(`${file}.tmp`, since);
@@ -188,41 +284,78 @@ function writeAck(root, since) {
   }
 }
 
+function readAck(root) {
+  return readAckFile(path.join(root, ACK_FILE));
+}
+
+function writeAck(root, since) {
+  writeAckFile(path.join(root, ACK_FILE), since);
+}
+
 // Di sola lettura: non scrive mai l'ack. Ripropone la stessa notice finche'
-// non arriva un ack esplicito via ack(cwd).
+// non arriva un ack esplicito via ack(cwd). Valuta i pin EFFETTIVI: la
+// config globale unita sotto quella di progetto (progetto vince chiave per
+// chiave); senza un progetto sopra cwd, valuta la sola config globale.
 function check(cwd) {
   try {
+    const resolvedCwd = path.resolve(cwd || '.');
     const root = findProjectRoot(cwd);
-    if (!root) return null;
-    let config;
-    try {
-      config = JSON.parse(fs.readFileSync(path.join(root, CONFIG_FILE), 'utf8'));
-    } catch {
-      return null;
-    }
     const data = loadData();
-    const ack = readAck(root);
-    const offer = reviewOffer({ config, data, ack });
+    const globalFile = globalConfigFile();
+    const globalLayer = { layer: 'global', file: globalFile, config: loadGlobalConfig() };
+
+    if (root) {
+      let projectConfig;
+      try {
+        projectConfig = JSON.parse(fs.readFileSync(path.join(root, CONFIG_FILE), 'utf8'));
+      } catch {
+        return null;
+      }
+      const projectLayer = {
+        layer: 'project',
+        file: path.join(root, CONFIG_FILE),
+        config: isPlainObject(projectConfig) ? projectConfig : {},
+      };
+      const { config, sources } = effectiveModels([globalLayer, projectLayer]);
+      const ack = readAck(root);
+      const offer = reviewOffer({ config, data, ack, sources });
+      if (!offer) return null;
+      return `${offer.notice}\n${ackInstruction(root)}`;
+    }
+
+    // Nessun progetto sopra cwd: valuta la sola config globale, se esiste.
+    if (!fs.existsSync(globalFile)) return null;
+    const { config, sources } = effectiveModels([globalLayer]);
+    const ack = readAckFile(globalAckFile());
+    const offer = reviewOffer({ config, data, ack, sources });
     if (!offer) return null;
-    return `${offer.notice}\n${ackInstruction(root)}`;
+    return `${offer.notice}\n${ackInstruction(resolvedCwd)}`;
   } catch {
     return null;
   }
 }
 
-// Scrive l'ack per il progetto trovato a partire da cwd, con il "since"
-// corrente dei default. Va chiamata SOLO dopo che l'utente ha risposto a una
-// delle tre scelte della notice. True se scritto, false se non trova un
-// progetto sopra cwd; non lancia mai eccezioni.
+// Scrive l'ack, con il "since" corrente dei default. Va chiamata SOLO dopo
+// che l'utente ha risposto a una delle tre scelte della notice. Progetto
+// trovato sopra cwd -> ack di progetto; altrimenti, se esiste una config
+// globale -> ack globale. True se un target e' stato trovato e la scrittura
+// tentata (un fallimento silenzioso non e' riportato, comportamento
+// invariato); false se nessun target esiste. Non lancia mai eccezioni.
 function ack(cwd) {
   try {
     const root = findProjectRoot(cwd);
-    if (!root) return false;
     const data = loadData();
     const current = currentEntry(data);
     if (!current) return false;
-    writeAck(root, current.since);
-    return true;
+    if (root) {
+      writeAck(root, current.since);
+      return true;
+    }
+    if (fs.existsSync(globalConfigFile())) {
+      writeAckFile(globalAckFile(), current.since);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -234,9 +367,15 @@ module.exports = {
   stalePins,
   applyUpdate,
   semverLt,
+  effectiveModels,
   reviewOffer,
   reviewNotice,
   findProjectRoot,
+  globalConfigDir,
+  globalConfigFile,
+  globalAckFile,
+  readAckFile,
+  writeAckFile,
   readAck,
   writeAck,
   check,
