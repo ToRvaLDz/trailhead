@@ -248,10 +248,12 @@ const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scan
 // require('./lib/commit-message-check.js'); trailhead-search-guard.js and
 // trailhead-secret-read-guard.js both do require('./lib/shell-scan.js'), #135
 // follow-up; trailhead-body-guard.js and trailhead-secret-guard.js both do
-// require('./lib/gh-subcommand.js'), #153 follow-up). Copied by name, never a
-// recursive sweep: the Claude hooks/lib dir is shared with other plugins, so
-// we must not clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js'];
+// require('./lib/gh-subcommand.js'), #153 follow-up; trailhead-check-update.js
+// does require('./lib/model-defaults-review.js'), which in turn reads the
+// sibling model-defaults.json, #186). Copied by name, never a recursive
+// sweep: the Claude hooks/lib dir is shared with other plugins, so we must
+// not clobber a co-tenant's lib nor ship our own *.test.js files.
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'model-defaults-review.js', 'model-defaults.json'];
 // search-guard is Claude-Code-specific (#169): excluded from both the Codex
 // hook copy and the Codex verify spec's expected hookFiles, so a healthy
 // Codex install is never flagged for a script it never ships.

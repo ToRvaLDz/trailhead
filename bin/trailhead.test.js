@@ -622,6 +622,10 @@ ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-gua
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
 ok('codex: skills/trailhead/hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-subcommand.js')));
+ok('codex: skills/trailhead/hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-defaults-review.js')));
+ok('codex: skills/trailhead/hooks/lib/model-defaults.json exists (#186)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-defaults.json')));
 // #169: search-guard is Claude-Code-specific (it only prevents arming
 // Claude's Read() deny rule under bypass permissions, a mechanism Codex
 // lacks), so it must neither be registered nor copied on a Codex install.
@@ -765,6 +769,10 @@ ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require targe
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude: hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-subcommand.js')));
+ok('claude: hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults-review.js')));
+ok('claude: hooks/lib/model-defaults.json exists (#186)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults.json')));
 
 // #185: the commit-msg hook sync script ships wholesale with templates/ too.
 const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
