@@ -325,7 +325,7 @@ The **main session stays the orchestrator**. It holds the interactive moments (a
 Example config file (the same shape works for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 
 ```json
-{ "ticket": { "language": "en" }, "models": { "plan": "claude-opus-4-8", "execute": "claude-sonnet-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
+{ "ticket": { "language": "en" }, "models": { "plan": "claude-opus-5-5", "execute": "claude-sonnet-5-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
 **Design mockups.** `design: disk` (the default) drops a throwaway static HTML mockup next to the code and links it from the ticket. `design: claude.ai/design` instead builds the mockup on claude.ai/design (canvas via the built-in `/design` skill or a hand-made web-app project; design-system via Anthropic's **official Claude Design MCP**, `claude mcp add --scope user --transport http claude-design https://api.anthropic.com/v1/design/mcp`, sign in with `/design-login`), where you refine it visually, and `design: stitch` uses the **Google Stitch MCP** (`claude mcp add --scope user --transport http stitch https://stitch.googleapis.com/mcp`), Google's Gemini-powered UI generator that runs on **both Claude Code and Codex** (the cross-host hosted option). Both honour `design.surface`:

@@ -1,11 +1,11 @@
 {
   "ticket": { "language": "en" },
   "models": {
-    "plan": "claude-opus-4-8",
-    "execute": "claude-sonnet-5",
-    "research": "claude-sonnet-5",
-    "review": "claude-sonnet-5",
-    "debug": "claude-sonnet-5",
+    "plan": "claude-opus-5-5",
+    "execute": "claude-sonnet-5-5",
+    "research": "claude-sonnet-5-5",
+    "review": "claude-sonnet-5-5",
+    "debug": "claude-sonnet-5-5",
     "codebase-map": "claude-haiku-4-5-20251001",
     "codex": {
       "plan": { "model": "gpt-5.6-sol", "effort": "high" },
