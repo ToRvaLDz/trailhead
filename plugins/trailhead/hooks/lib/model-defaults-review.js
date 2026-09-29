@@ -1,11 +1,13 @@
 'use strict';
 // model-defaults-review.js: quando un aggiornamento sposta i default dei
-// tier (plugins/trailhead/hooks/lib/model-defaults.json), offre una volta
-// sola per progetto la revisione dei models.* / models.codex.* pinnati che
-// sono rimasti ai vecchi default. Non lancia mai eccezioni dagli entry
-// point pubblici: ogni funzione degrada a null/[] in caso di dato mancante
+// tier (plugins/trailhead/hooks/lib/model-defaults.json), offre la revisione
+// dei models.* / models.codex.* pinnati che sono rimasti ai vecchi default.
+// check() e' di sola lettura: non scrive mai l'ack, quindi ripropone la
+// notice finche' qualcuno non chiama ack(cwd) (dopo che l'utente ha risposto
+// a una delle tre scelte). Non lancia mai eccezioni dagli entry point
+// pubblici: ogni funzione degrada a null/[]/false in caso di dato mancante
 // o malformato. Entry point condiviso anche dagli host senza hook bus (CLI
-// "check" in fondo al file).
+// "check"/"ack" in fondo al file).
 
 const fs = require('fs');
 const path = require('path');
@@ -140,10 +142,17 @@ function reviewNotice(stale, since) {
     '',
     'Offer the user, once, without blocking their current request, three choices:',
     '1) update those keys to the new defaults (edit .trailhead/config.json with exactly the values above; keep any codex effort unchanged),',
-    '2) keep them as they are (nothing to do; trailhead will not ask again for these defaults),',
+    '2) keep them as they are (nothing to do; trailhead will not ask again for these defaults once acknowledged),',
     '3) open /trailhead:config to pick per key.',
-    'This offer will not reappear once acknowledged.',
+    'This offer reappears every time it is checked until acknowledged: run the ack instruction below only after the user has picked one of the three choices above.',
   ].join('\n');
+}
+
+// Paragrafo con l'istruzione pronta all'uso per acquisire l'ack, appesa alla
+// notice da check(). Nomina il path assoluto di questo lib e la root del
+// progetto trovata, cosi' l'agente puo' eseguirla cosi' com'e'.
+function ackInstruction(root) {
+  return `Once the user has answered, run: node "${__filename}" ack "${root}"`;
 }
 
 // --- I/O ---------------------------------------------------------------
@@ -179,6 +188,8 @@ function writeAck(root, since) {
   }
 }
 
+// Di sola lettura: non scrive mai l'ack. Ripropone la stessa notice finche'
+// non arriva un ack esplicito via ack(cwd).
 function check(cwd) {
   try {
     const root = findProjectRoot(cwd);
@@ -193,10 +204,27 @@ function check(cwd) {
     const ack = readAck(root);
     const offer = reviewOffer({ config, data, ack });
     if (!offer) return null;
-    writeAck(root, offer.since);
-    return offer.notice;
+    return `${offer.notice}\n${ackInstruction(root)}`;
   } catch {
     return null;
+  }
+}
+
+// Scrive l'ack per il progetto trovato a partire da cwd, con il "since"
+// corrente dei default. Va chiamata SOLO dopo che l'utente ha risposto a una
+// delle tre scelte della notice. True se scritto, false se non trova un
+// progetto sopra cwd; non lancia mai eccezioni.
+function ack(cwd) {
+  try {
+    const root = findProjectRoot(cwd);
+    if (!root) return false;
+    const data = loadData();
+    const current = currentEntry(data);
+    if (!current) return false;
+    writeAck(root, current.since);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -212,18 +240,21 @@ module.exports = {
   readAck,
   writeAck,
   check,
+  ack,
 };
 
 // CLI: entry point condiviso per gli host senza hook bus.
 if (require.main === module) {
   const [cmd, cwdArg] = process.argv.slice(2);
-  if (cmd === 'check') {
-    try {
+  try {
+    if (cmd === 'check') {
       const notice = check(cwdArg || process.cwd());
       if (notice) process.stdout.write(notice + '\n');
-    } catch {
-      /* mai fallire da CLI */
+    } else if (cmd === 'ack') {
+      ack(cwdArg || process.cwd());
     }
+  } catch {
+    /* mai fallire da CLI */
   }
   process.exit(0);
 }

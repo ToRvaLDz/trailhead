@@ -19,7 +19,10 @@ const {
   readAck,
   writeAck,
   check,
+  ack,
 } = require('./model-defaults-review.js');
+
+const LIB_PATH = path.join(__dirname, 'model-defaults-review.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -105,9 +108,13 @@ ok('reviewOffer: no ack, no stale pins -> null',
   ok('reviewOffer notice mentions the since version', offer.notice.includes(cur.since));
   ok('reviewOffer notice lists the stale key with -> arrow', offer.notice.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
   ok('reviewNotice never contains an em-dash', !reviewNotice(offer.stale, cur.since).includes('—'));
+  ok('reviewNotice no longer claims the offer will not reappear once acknowledged',
+    !reviewNotice(offer.stale, cur.since).includes('This offer will not reappear once acknowledged.'));
+  ok('reviewNotice says the offer reappears until acknowledged',
+    reviewNotice(offer.stale, cur.since).includes('reappears') || reviewNotice(offer.stale, cur.since).toLowerCase().includes('until'));
 }
 
-// --- fs round trip -----------------------------------------------------------
+// --- fs round trip: check() is read-only --------------------------------------
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-'));
   fs.mkdirSync(path.join(tmp, '.trailhead'));
@@ -125,10 +132,35 @@ ok('reviewOffer: no ack, no stale pins -> null',
 
   const first = check(tmp);
   ok('check() returns a notice on first run', typeof first === 'string' && first.length > 0);
-  ok('check() writes the ack file with the current since', readAck(tmp) === cur.since);
+  ok('check() is read-only: writes no ack file', readAck(tmp) === null);
+  ok('check() is read-only: writes no ack file on disk either', !fs.existsSync(path.join(tmp, '.trailhead', 'model-defaults-ack')));
 
   const second = check(tmp);
-  ok('check() returns null on the second run (already acknowledged)', second === null);
+  ok('check() returns the same notice on a second run (still not acknowledged)', second === first);
+
+  ok('the notice carries a ready-to-run ack instruction naming this lib and the project root',
+    first.includes(`node "${LIB_PATH}" ack "${tmp}"`));
+}
+
+// --- ack(cwd) ------------------------------------------------------------------
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-ack-'));
+  fs.mkdirSync(path.join(tmp, '.trailhead'));
+  fs.writeFileSync(path.join(tmp, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  ok('check() returns a notice before ack()', typeof check(tmp) === 'string');
+
+  const result = ack(tmp);
+  ok('ack() returns true when it finds a project root', result === true);
+  ok('ack() writes the current since as the ack', readAck(tmp) === cur.since);
+  ok('check() returns null after ack()', check(tmp) === null);
+}
+
+{
+  const noProj = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-ack-noproj-'));
+  ok('ack() returns false with no project above cwd', ack(noProj) === false);
+  ok('ack() never throws and writes nothing with no project above cwd',
+    !fs.existsSync(path.join(noProj, '.trailhead')));
 }
 
 {
@@ -144,8 +176,29 @@ ok('reviewOffer: no ack, no stale pins -> null',
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-cli-'));
   fs.mkdirSync(path.join(tmp, '.trailhead'));
   fs.writeFileSync(path.join(tmp, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
-  const out = execFileSync('node', [path.join(__dirname, 'model-defaults-review.js'), 'check', tmp], { encoding: 'utf8' });
+
+  const out = execFileSync('node', [LIB_PATH, 'check', tmp], { encoding: 'utf8' });
   ok('CLI check prints the notice to stdout', out.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+  ok('CLI check writes no ack file', !fs.existsSync(path.join(tmp, '.trailhead', 'model-defaults-ack')));
+
+  const ackOut = execFileSync('node', [LIB_PATH, 'ack', tmp], { encoding: 'utf8' });
+  ok('CLI ack prints nothing', ackOut === '');
+  ok('CLI ack writes the ack file', readAck(tmp) === cur.since);
+
+  const outAfterAck = execFileSync('node', [LIB_PATH, 'check', tmp], { encoding: 'utf8' });
+  ok('CLI check prints nothing after CLI ack', outAfterAck === '');
+}
+
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-cli-unknown-'));
+  let status = null;
+  try {
+    execFileSync('node', [LIB_PATH, 'bogus', tmp], { encoding: 'utf8' });
+    status = 0;
+  } catch (e) {
+    status = e.status;
+  }
+  ok('CLI with an unknown subcommand still exits 0', status === 0);
 }
 
 // --- shipped data invariants ---------------------------------------------
