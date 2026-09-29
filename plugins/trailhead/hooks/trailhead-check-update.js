@@ -107,7 +107,7 @@ function latestGitHub() {
 
 // Calcola la notice dell'update (solo Codex, comportamento invariato).
 // Ritorna null se non c'è nulla da segnalare.
-function updateNotice(cwd) {
+function updateNotice() {
   const info = detect();
   if (!SEMVER.test(clean(info.version))) return null; // versione installata sconosciuta: non azzardare
   const out = cacheFile(info.host); // cache per-host: Codex non eredita il verdetto di Claude
@@ -160,13 +160,34 @@ function reviewNotice(cwd) {
   }
 }
 
-function main() {
-  let input = {};
-  try { input = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { input = {}; }
-  const cwd = (input && input.cwd) || process.cwd();
+// Legge il JSON di SessionStart da stdin in modo asincrono, con timeout, come
+// gli altri hook: una lettura sincrona di fd 0 si bloccherebbe per sempre su
+// un TTY o su una pipe mai chiusa. Su TTY o input assente si prosegue con {}.
+const STDIN_TIMEOUT_MS = 2000;
+function readInput(done) {
+  if (process.stdin.isTTY) return done({});
+  let data = '';
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    try { process.stdin.destroy(); } catch { /* ignore */ }
+    let input = {};
+    try { input = JSON.parse(data || '{}'); } catch { input = {}; }
+    done(input && typeof input === 'object' ? input : {});
+  };
+  const timer = setTimeout(finish, STDIN_TIMEOUT_MS);
+  process.stdin.on('data', (c) => (data += c));
+  process.stdin.on('end', finish);
+  process.stdin.on('error', finish);
+}
+
+function main(input) {
+  const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
 
   const review = reviewNotice(cwd);
-  const update = updateNotice(cwd);
+  const update = updateNotice();
 
   const parts = [review, update].filter(Boolean);
   if (!parts.length) return;
@@ -179,6 +200,8 @@ function main() {
   }));
 }
 
-// esegui in background: non blocca l'avvio della sessione.
-// L'hook stesso ritorna subito; il lavoro (rete) è dentro main() con timeout brevi.
-try { main(); } catch { /* mai far fallire SessionStart */ }
+// L'hook non deve MAI far fallire SessionStart: ogni errore degrada in silenzio.
+// Il lavoro (rete) è dentro main() con timeout brevi.
+try {
+  readInput((input) => { try { main(input); } catch { /* mai far fallire SessionStart */ } });
+} catch { /* mai far fallire SessionStart */ }
