@@ -1244,7 +1244,7 @@ for (const [label, src] of [
   ['code-review.md', codeReviewSource183],
   ['ticket-engines.md', ticketEnginesSource183],
 ]) {
-  ok(`${label} has no em-dash (#183)`, !src.includes('—'));
+  ok(`${label} has no em-dash (#183)`, !src.includes('\u2014'));
 }
 
 // --- cleanup -------------------------------------------------------------------
