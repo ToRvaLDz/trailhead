@@ -151,7 +151,10 @@ function updateNotice() {
 // Notice di revisione dei pin dei modelli (#186): calcolata PRIMA e a
 // prescindere dall'update check, cosi' un early-return di quest'ultimo
 // (versione ignota, rete assente) non la fa mai cadere. Il require è dentro
-// un try: una lib mancante non deve mai rompere SessionStart.
+// un try: una lib mancante non deve mai rompere SessionStart. check() è di
+// sola lettura (#187): non scrive l'ack, quindi ripropone la notice finche'
+// l'agente non chiama la subcommand "ack" della stessa lib, dopo che
+// l'utente ha risposto a una delle tre scelte della notice.
 function reviewNotice(cwd) {
   try {
     return require('./lib/model-defaults-review.js').check(cwd) || null;
