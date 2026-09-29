@@ -1202,6 +1202,51 @@ ok('(j) claude clean install: no ⚠ unverified', !claudeInstallOut.includes('�
 ok('(j) codex clean install: prints ✓ trailhead installed', codexInstallOut.includes('✓ trailhead installed'));
 ok('(j) codex clean install: no ⚠ unverified', !codexInstallOut.includes('⚠ unverified'));
 
+// --- #183: severity counts and per-finding disposition gate on Resolve -------
+// Code review classifies findings as Critical/Warning/Info, but only Criticals
+// gated resolution and Warnings/Info were never tracked to a decision. Pin the
+// counts line under `status:`, the disposition vocabulary, and the Resolve gate
+// that requires every counted finding to carry one before a ticket can close.
+const codeReviewSourcePath183 = path.join(sourceSkillsDir, '_shared', 'techniques', 'code-review.md');
+const codeReviewSource183 = fs.readFileSync(codeReviewSourcePath183, 'utf8');
+const ticketEnginesSource183 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
+
+ok('code-review.md states the counts format right under the status tag',
+  codeReviewSource183.includes('critical: <n> · warning: <n> · info: <n>'));
+ok('code-review.md says the counts line sits right under the status tag',
+  /right under[^.]*`status:`/.test(codeReviewSource183) || /`status:`[^.]*right under/.test(codeReviewSource183));
+
+ok('code-review.md names the fixed disposition', codeReviewSource183.includes('`fixed`'));
+ok('code-review.md names the deferred disposition', codeReviewSource183.includes('`deferred → <ticket>`'));
+ok('code-review.md names the accepted disposition', codeReviewSource183.includes('`accepted: <one-line reason>`'));
+ok('code-review.md names the transient open disposition', codeReviewSource183.includes('`open`'));
+
+ok('code-review.md says finding IDs are stable across rounds',
+  /stable/i.test(codeReviewSource183) && /across (every|fix-and-re-review) round/i.test(codeReviewSource183));
+ok('code-review.md says the counts are cumulative', codeReviewSource183.includes('cumulative'));
+ok('code-review.md says no finding reaches Resolve with open or without a disposition',
+  /no finding reaches Resolve with[^.]*`open`[^.]*without a disposition/.test(codeReviewSource183));
+
+ok('code-review.md no longer defers Warnings/Info as "noted for the caller to weigh"',
+  !codeReviewSource183.includes('noted for the caller to weigh'));
+
+const verifyStepLines183 = ticketEnginesSource183.split('\n').filter((l) => l.trim().startsWith('4. **Verify**'));
+ok('ticket-engines.md has exactly two Verify (step 4) lines', verifyStepLines183.length === 2);
+ok('both Verify step lines mention the counts line',
+  verifyStepLines183.every((l) => l.includes('counts line')));
+
+const resolveStepLines183 = ticketEnginesSource183.split('\n').filter((l) => l.trim().startsWith('5. **Resolve**'));
+ok('ticket-engines.md has exactly two Resolve (step 5) lines', resolveStepLines183.length === 2);
+ok('both Resolve step lines carry the Disposition gate',
+  resolveStepLines183.every((l) => l.includes('**Disposition gate (before the close)**')));
+
+for (const [label, src] of [
+  ['code-review.md', codeReviewSource183],
+  ['ticket-engines.md', ticketEnginesSource183],
+]) {
+  ok(`${label} has no em-dash (#183)`, !src.includes('—'));
+}
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
