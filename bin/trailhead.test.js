@@ -52,6 +52,39 @@ function fakeBinDir(names) {
   return dir;
 }
 
+// #187: the pinned-model review's documented lib path (see load-first.md) is
+// relative to a skills/_shared/ dir; assert it actually resolves on every
+// install layout, survives realpathSync, and its check/ack CLI round-trips.
+const MODEL_DEFAULTS_LIB_CANDIDATES = [
+  '../../hooks/lib/model-defaults-review.js',
+  '../trailhead/hooks/lib/model-defaults-review.js',
+];
+function assertModelDefaultsLibLayout(label, sharedDir) {
+  const resolved = MODEL_DEFAULTS_LIB_CANDIDATES
+    .map((c) => path.join(sharedDir, c))
+    .find((p) => fs.existsSync(p));
+  ok(`${label}: documented model-defaults-review.js lib path resolves`, !!resolved);
+  if (!resolved) return;
+  ok(`${label}: resolved lib path still resolves after realpathSync`,
+    fs.existsSync(fs.realpathSync(resolved)));
+
+  const tmpProject = mktmp();
+  fs.mkdirSync(path.join(tmpProject, '.trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(tmpProject, '.trailhead', 'config.json'),
+    JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const noticeOut = String(execFileSync(process.execPath, [resolved, 'check', tmpProject], { encoding: 'utf8' }));
+  ok(`${label}: CLI check prints a notice`, noticeOut.trim().length > 0 && noticeOut.includes('models.plan'));
+
+  execFileSync(process.execPath, [resolved, 'ack', tmpProject], { encoding: 'utf8' });
+  const afterAckOut = String(execFileSync(process.execPath, [resolved, 'check', tmpProject], { encoding: 'utf8' }));
+  ok(`${label}: CLI check prints nothing after CLI ack`, afterAckOut === '');
+}
+
+// Source/plugin layout itself (not an installed copy), so drift is caught
+// even before an install is exercised.
+assertModelDefaultsLibLayout('source', path.join(repoRoot, 'plugins', 'trailhead', 'skills', '_shared'));
+
 // --- codex install -----------------------------------------------------------
 const codexDir = mktmp();
 const codexInstallOut = String(runInstaller([`--codex`, `--dir=${codexDir}`]));
@@ -652,6 +685,8 @@ ok('codex: trailhead-codebase-map.toml is projected with no models.codex.* set',
 ok('codex: trailhead-fix.toml is pin-less (no model = line) with no models.codex.* set',
   fs.existsSync(noPinFixTomlPath) && !/^model = /m.test(fs.readFileSync(noPinFixTomlPath, 'utf8')));
 
+assertModelDefaultsLibLayout('codex copy', path.join(codexDir, 'skills', '_shared'));
+
 // --- codex --symlink: link verbatim artifacts (hooks + templates), keep skills projected ---
 const codexSymDir = mktmp();
 runInstaller([`--codex`, `--symlink`, `--dir=${codexSymDir}`]);
@@ -675,6 +710,8 @@ ok('codex copy: hooks are regular files (not symlinks)',
   !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
 ok('codex copy: templates is a regular dir (not a symlink)',
   !fs.lstatSync(path.join(codexDir, 'skills', 'trailhead', 'templates')).isSymbolicLink());
+
+assertModelDefaultsLibLayout('codex symlink', path.join(codexSymDir, 'skills', '_shared'));
 
 // --- codex agent TOML projection (#38, #88) -------------------------------------
 // With NO models.codex.* set, a codex install still projects all 8 agents
@@ -808,6 +845,8 @@ ok('claude: agent file registers its subagent name in frontmatter',
 ok('claude: agents are real files on a copy install (not symlinks)',
   !fs.lstatSync(path.join(claudeAgentsDir, 'trailhead-plan.md')).isSymbolicLink());
 
+assertModelDefaultsLibLayout('claude copy', path.join(claudeDir, 'skills', '_shared'));
+
 // --- claude --symlink: dev install links hooks live too (not just skills/commands) ---
 const symDir = mktmp();
 runInstaller([`--claude`, `--symlink`, `--dir=${symDir}`]);
@@ -840,6 +879,8 @@ ok('claude symlink: agent symlink resolves into the package source',
 // Default (copy) install keeps hooks as real files, not symlinks.
 ok('claude copy: hooks/trailhead-secret-guard.js is a regular file (not a symlink)',
   !fs.lstatSync(path.join(claudeDir, 'hooks', 'trailhead-secret-guard.js')).isSymbolicLink());
+
+assertModelDefaultsLibLayout('claude symlink', path.join(symDir, 'skills', '_shared'));
 
 // --- claude migration: reinstall over an old layout sweeps stale skill dirs ---
 // An old install may carry a pre-split monolith (skills/trailhead-monolith) or a
