@@ -119,7 +119,7 @@ ok('reviewOffer: no ack, no stale pins -> null',
     fs.mkdirSync(sub, { recursive: true });
     return findProjectRoot(sub) === tmp;
   })());
-  ok('findProjectRoot returns null with no project above', findProjectRoot(os.tmpdir()) === null || true); // ambient tmp dirs vary; smoke only
+  ok('findProjectRoot returns null with no project above', findProjectRoot(fs.mkdtempSync(path.join(os.tmpdir(), 'th-noproj-'))) === null);
 
   ok('readAck is null before any ack is written', readAck(tmp) === null);
 
@@ -162,6 +162,9 @@ ok('reviewOffer: no ack, no stale pins -> null',
   ok('shipped data: every entry is a complete snapshot (3 tiers x 2 hosts)', complete);
   ok('shipped data: last since <= package.json version',
     cur.since === pkg.version || semverLt(cur.since, pkg.version));
+  const plugin = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', '.claude-plugin', 'plugin.json'), 'utf8'));
+  ok('shipped data: last since <= plugin.json version',
+    cur.since === plugin.version || semverLt(cur.since, plugin.version));
 }
 
 {
