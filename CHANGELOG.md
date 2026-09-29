@@ -2,6 +2,19 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.11.0 (2026-09-29)
+
+### Added
+- **Code review records every finding's fate (#183).** Each finding gets a stable ID (`C1`, `W1`, `I1`) kept across review rounds; the `VERIFY` comment carries a cumulative `critical: <n> · warning: <n> · info: <n>` counts line under `status:` and a findings ledger with one disposition per finding (`fixed`, `deferred → <ticket>`, `accepted: <reason>`). A disposition gate in both the build and bug Resolve steps blocks the close while any finding is still `open`, so Warnings and Info no longer evaporate.
+- **Refs trailer enforced by the commit-msg hook (#184).** While `.trailhead/session-ticket` names a ticket, the git commit-msg hook rejects a commit without its `Refs: #<n>` trailer, with a clear message; commits made with no marker are unaffected and a malformed marker never blocks.
+- **commit-msg hook kept current (#185).** A self-contained sync script, run at chart/adopt and at every work/quick start, installs the hook when absent, upgrades an older trailhead hook in place, and never touches a foreign one (reported instead); it follows `core.hooksPath` and linked worktrees.
+- **The installer verifies the install (#182).** `--claude` and `--codex` installs check every cluster `SKILL.md`, the `_shared/` core, the hook scripts and targets, and the `trailhead-*` agents before printing `✓`; a broken install prints `✗ … missing: <entry>` and exits 1, and a reinstall no longer leaves a stale hook file behind.
+
+### Changed / Fixed
+- **Opus 5.5 and Sonnet 5.5 by default.** The strong model tier now resolves to `claude-opus-5-5` and the standard tier to `claude-sonnet-5-5`, so the Balanced profile plans on Opus 5.5 and executes on Sonnet 5.5; the Manual menus offer the two latest versions of each family.
+- **Review and verification scoped to the ticket's own commits (#181).** Code review and goal-backward verification read the commits carrying the ticket's `Refs: #<n>` trailer, one by one, instead of a `<base>...HEAD` range that swept in other tickets' commits; an empty set is an error and the set is recomputed each round.
+- **Secret-read guard allows `--env-file` (#180).** `docker`/`podman` (and their `compose` forms) may pass a `.env` via `--env-file`, since the container runtime reads it; every other `.env` read stays blocked.
+
 ## 0.10.0 (2026-09-24)
 
 ### Added
