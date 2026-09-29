@@ -105,9 +105,11 @@ function latestGitHub() {
   return '';
 }
 
-function main() {
+// Calcola la notice dell'update (solo Codex, comportamento invariato).
+// Ritorna null se non c'è nulla da segnalare.
+function updateNotice(cwd) {
   const info = detect();
-  if (!SEMVER.test(clean(info.version))) return; // versione installata sconosciuta: non azzardare
+  if (!SEMVER.test(clean(info.version))) return null; // versione installata sconosciuta: non azzardare
   const out = cacheFile(info.host); // cache per-host: Codex non eredita il verdetto di Claude
 
   // throttle: se la cache è fresca (<6h) riusa quel verdetto senza richiamare la rete
@@ -119,7 +121,7 @@ function main() {
     verdict = prev;
   } else {
     const latest = (info.channel === 'npm' || info.channel === 'codex') ? latestNpm() : latestGitHub();
-    if (!SEMVER.test(clean(latest))) return; // rete/fonte non disponibile: lascia la cache com'è
+    if (!SEMVER.test(clean(latest))) return null; // rete/fonte non disponibile: lascia la cache com'è
 
     verdict = {
       channel: info.channel,
@@ -138,16 +140,43 @@ function main() {
 
   // Codex non ha una statusline: l'hook stesso deve segnalare l'update
   // disponibile via additionalContext, su OGNI sessione (non solo quando la
-  // finestra di throttle si riapre). Su Claude (info.host è undefined) non
-  // scrive mai su stdout: comportamento invariato.
+  // finestra di throttle si riapre). Su Claude (info.host è undefined) resta
+  // sempre null: comportamento invariato.
   if (info.host === 'codex' && verdict && verdict.updateAvailable === true && SEMVER.test(clean(verdict.latest))) {
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'SessionStart',
-        additionalContext: `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`,
-      },
-    }));
+    return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`;
   }
+  return null;
+}
+
+// Notice di revisione dei pin dei modelli (#186): calcolata PRIMA e a
+// prescindere dall'update check, cosi' un early-return di quest'ultimo
+// (versione ignota, rete assente) non la fa mai cadere. Il require è dentro
+// un try: una lib mancante non deve mai rompere SessionStart.
+function reviewNotice(cwd) {
+  try {
+    return require('./lib/model-defaults-review.js').check(cwd) || null;
+  } catch {
+    return null;
+  }
+}
+
+function main() {
+  let input = {};
+  try { input = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { input = {}; }
+  const cwd = (input && input.cwd) || process.cwd();
+
+  const review = reviewNotice(cwd);
+  const update = updateNotice(cwd);
+
+  const parts = [review, update].filter(Boolean);
+  if (!parts.length) return;
+
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: parts.join('\n\n'),
+    },
+  }));
 }
 
 // esegui in background: non blocca l'avvio della sessione.
