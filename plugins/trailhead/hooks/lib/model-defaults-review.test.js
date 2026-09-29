@@ -7,6 +7,14 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Isola ogni caso dal vero CLAUDE_CONFIG_DIR dell'utente: senza questo, una
+// review "global" potrebbe leggere davvero ~/.claude/trailhead/config.json.
+// Ripristinato in fondo al file; i casi che puntano altrove salvano e
+// ripristinano il valore corrente attorno a se stessi.
+const PRIOR_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
+const BASE_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-globalcfg-'));
+process.env.CLAUDE_CONFIG_DIR = BASE_CONFIG_DIR;
+
 const {
   loadData,
   currentEntry,
@@ -20,6 +28,12 @@ const {
   writeAck,
   check,
   ack,
+  effectiveModels,
+  globalConfigDir,
+  globalConfigFile,
+  globalAckFile,
+  readAckFile,
+  writeAckFile,
 } = require('./model-defaults-review.js');
 
 const LIB_PATH = path.join(__dirname, 'model-defaults-review.js');
@@ -229,4 +243,195 @@ ok('reviewOffer: no ack, no stale pins -> null',
     refDoc.includes(cur.claude.standard));
 }
 
+// --- effectiveModels (pure merge, no mutation) --------------------------------
+{
+  const globalModels = { plan: 'g-plan', execute: 'g-exec', codex: { plan: { model: 'g-gpt', effort: 'high' } } };
+  const projectModels = { plan: 'p-plan', codex: { plan: { model: 'p-gpt' } } };
+  const layers = [
+    { layer: 'global', file: '/g/trailhead/config.json', config: { models: globalModels } },
+    { layer: 'project', file: '/p/.trailhead/config.json', config: { models: projectModels } },
+  ];
+  const { config, sources } = effectiveModels(layers);
+  ok('effectiveModels: a project key wins over the global one', config.models.plan === 'p-plan');
+  ok('effectiveModels: a global-only key survives when the project does not set it', config.models.execute === 'g-exec');
+  ok('effectiveModels: a project codex key replaces the global one atomically (no inherited effort)',
+    config.models.codex.plan.model === 'p-gpt' && config.models.codex.plan.effort === undefined);
+  ok('effectiveModels: sources tags models.plan as the project layer',
+    sources['models.plan'].layer === 'project' && sources['models.plan'].file === '/p/.trailhead/config.json');
+  ok('effectiveModels: sources tags models.execute as the global layer',
+    sources['models.execute'].layer === 'global' && sources['models.execute'].file === '/g/trailhead/config.json');
+  ok('effectiveModels: sources tags models.codex.plan as the project layer',
+    sources['models.codex.plan'].layer === 'project' && sources['models.codex.plan'].file === '/p/.trailhead/config.json');
+  ok('effectiveModels does not mutate the input layer configs',
+    globalModels.plan === 'g-plan' && projectModels.codex.plan.model === 'p-gpt' && !('effort' in projectModels.codex.plan));
+}
+
+{
+  const layers = [
+    { layer: 'global', file: '/g/config.json', config: { models: { plan: 'claude-opus-4-8' } } },
+    { layer: 'project', file: '/p/config.json', config: { models: { plan: null } } },
+  ];
+  const { config, sources } = effectiveModels(layers);
+  ok('effectiveModels: a project null value wins over global by own-key presence, not truthiness', config.models.plan === null);
+  ok('effectiveModels: source for plan is the project even though its value is null', sources['models.plan'].layer === 'project');
+}
+
+{
+  const layers = [
+    { layer: 'global', file: '/g/config.json', config: { models: { plan: 'claude-opus-4-8' } } },
+    { layer: 'project', file: '/p/config.json', config: { models: { plan: '' } } },
+  ];
+  const { config } = effectiveModels(layers);
+  ok('effectiveModels: a project empty-string value wins over global by own-key presence', config.models.plan === '');
+}
+
+{
+  const layers = [
+    { layer: 'global', file: '/g/config.json', config: { models: { codex: { plan: { model: 'g-gpt' } } } } },
+    { layer: 'project', file: '/p/config.json', config: { models: { codex: 'not-an-object' } } },
+  ];
+  const { config, sources } = effectiveModels(layers);
+  ok('effectiveModels: a malformed project codex wins wholesale, yielding no codex pins', config.models.codex === 'not-an-object');
+  ok('effectiveModels: a malformed project codex clears prior codex sources', !sources['models.codex.plan']);
+}
+
+{
+  const layers = [{ layer: 'global', file: '/g/config.json', config: { models: null } }];
+  const { config } = effectiveModels(layers);
+  ok('effectiveModels: a layer whose models is not a plain object contributes nothing', Object.keys(config.models).length === 0);
+}
+
+// --- stalePins with a malformed codex value -------------------------------
+ok('stalePins: a non-object models.codex yields no codex pins (not an exception)',
+  stalePins({ models: { codex: 'oops' } }, data).length === 0);
+
+// --- check()/ack(): global config merged under the project ---------------
+{
+  const savedEnv = process.env.CLAUDE_CONFIG_DIR;
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-global-'));
+  process.env.CLAUDE_CONFIG_DIR = globalDir;
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-proj-empty-'));
+  fs.mkdirSync(path.join(projectDir, '.trailhead'));
+  fs.writeFileSync(path.join(projectDir, '.trailhead', 'config.json'), JSON.stringify({}));
+
+  const notice = check(projectDir);
+  ok('check(): a project with an empty config still flags a stale global pin',
+    typeof notice === 'string' && notice.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+  ok('check(): the stale global pin line is tagged with the global config path',
+    notice.includes(path.join(globalDir, 'trailhead', 'config.json')));
+
+  process.env.CLAUDE_CONFIG_DIR = savedEnv;
+}
+
+{
+  const savedEnv = process.env.CLAUDE_CONFIG_DIR;
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-global2-'));
+  process.env.CLAUDE_CONFIG_DIR = globalDir;
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-proj-override-'));
+  fs.mkdirSync(path.join(projectDir, '.trailhead'));
+  fs.writeFileSync(path.join(projectDir, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-5-5' } }));
+
+  ok('check(): a project pin overriding a stale global pin is not flagged', check(projectDir) === null);
+
+  process.env.CLAUDE_CONFIG_DIR = savedEnv;
+}
+
+{
+  const savedEnv = process.env.CLAUDE_CONFIG_DIR;
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-global-only-'));
+  process.env.CLAUDE_CONFIG_DIR = globalDir;
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const noProjDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-noproj2-'));
+
+  const notice = check(noProjDir);
+  ok('check(): no project above cwd but a global config exists -> a notice',
+    typeof notice === 'string' && notice.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+  ok('check(): the global-only case writes nothing', !fs.existsSync(path.join(globalDir, 'trailhead', 'model-defaults-ack')));
+
+  const ackResult = ack(noProjDir);
+  ok('ack(): the global-only case writes the global ack and returns true',
+    ackResult === true && fs.existsSync(path.join(globalDir, 'trailhead', 'model-defaults-ack')));
+
+  ok('check(): the global-only case is silenced after the global ack', check(noProjDir) === null);
+
+  process.env.CLAUDE_CONFIG_DIR = savedEnv;
+}
+
+{
+  const savedEnv = process.env.CLAUDE_CONFIG_DIR;
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-global-bad-'));
+  process.env.CLAUDE_CONFIG_DIR = globalDir;
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), '{ not valid json');
+
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-proj-malformed-global-'));
+  fs.mkdirSync(path.join(projectDir, '.trailhead'));
+  fs.writeFileSync(path.join(projectDir, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const notice = check(projectDir);
+  ok('check(): a malformed global config does not block the project review',
+    typeof notice === 'string' && notice.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+
+  process.env.CLAUDE_CONFIG_DIR = savedEnv;
+}
+
+{
+  const savedEnv = process.env.CLAUDE_CONFIG_DIR;
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-global-mixed-'));
+  process.env.CLAUDE_CONFIG_DIR = globalDir;
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-proj-mixed-'));
+  fs.mkdirSync(path.join(projectDir, '.trailhead'));
+  fs.writeFileSync(path.join(projectDir, '.trailhead', 'config.json'), JSON.stringify({ models: { execute: 'claude-sonnet-5' } }));
+
+  const notice = check(projectDir);
+  const globalConfigPath = path.join(globalDir, 'trailhead', 'config.json');
+  const projectConfigPath = path.join(projectDir, '.trailhead', 'config.json');
+  ok('check(): mixed sources - the global stale key is tagged with the global config path',
+    notice.includes(`models.plan: claude-opus-4-8 -> claude-opus-5-5 (new default; from the global config, ${globalConfigPath})`));
+  ok('check(): mixed sources - the project stale key is tagged with the project config path',
+    notice.includes(`models.execute: claude-sonnet-5 -> claude-sonnet-5-5 (new default; from the project config, ${projectConfigPath})`));
+
+  process.env.CLAUDE_CONFIG_DIR = savedEnv;
+}
+
+// --- CLI check/ack honouring CLAUDE_CONFIG_DIR ----------------------------
+{
+  const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-cli-global-'));
+  fs.mkdirSync(path.join(globalDir, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+
+  const noProjDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-cli-noproj-'));
+
+  const out = execFileSync('node', [LIB_PATH, 'check', noProjDir], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_CONFIG_DIR: globalDir },
+  });
+  ok('CLI check with CLAUDE_CONFIG_DIR set flags a global-only stale pin',
+    out.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+
+  const ackOut = execFileSync('node', [LIB_PATH, 'ack', noProjDir], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_CONFIG_DIR: globalDir },
+  });
+  ok('CLI ack with CLAUDE_CONFIG_DIR set writes the global ack',
+    ackOut === '' && fs.existsSync(path.join(globalDir, 'trailhead', 'model-defaults-ack')));
+}
+
 console.log(`model-defaults-review.test.js: ${passed} assertions passed`);
+
+if (PRIOR_CLAUDE_CONFIG_DIR === undefined) {
+  delete process.env.CLAUDE_CONFIG_DIR;
+} else {
+  process.env.CLAUDE_CONFIG_DIR = PRIOR_CLAUDE_CONFIG_DIR;
+}
