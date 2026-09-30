@@ -1098,12 +1098,18 @@ ok('source: teamwork.md fallback resolves the hooks dir via rev-parse --git-path
   teamworkSource.includes('git -C <working-root> rev-parse --git-path hooks'));
 ok('source: teamwork.md fallback classifies by the trailhead header line',
   teamworkSource.includes('// trailhead commit-msg hook (git).'));
+ok('source: teamwork.md fallback checks the executable bit (test -x)',
+  teamworkSource.includes('test -x'));
+ok('source: teamwork.md fallback reads only the first 5 lines',
+  teamworkSource.includes('first 5 lines'));
+ok('source: teamwork.md fallback treats a symlinked commit-msg as foreign',
+  teamworkSource.includes('symlinked `commit-msg`'));
 for (const [label, src] of [
   ['trailhead-work/SKILL.md', workSkillSource],
   ['substrate-commands.md', substrateCommandsSource],
 ]) {
   ok(`source: ${label} mentions the missing-script hooks-dir fallback`,
-    src.includes('rev-parse --git-path hooks') && src.includes('teamwork.md'));
+    src.includes('rev-parse --git-path hooks') && /missing script or a node error|script is missing or node errors/.test(src));
   ok(`source: ${label} has no em-dash (#189)`, !src.includes('—'));
 }
 ok('source: teamwork.md has no em-dash (#189)', !teamworkSource.includes('—'));
