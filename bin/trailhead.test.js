@@ -1092,6 +1092,22 @@ for (const [label, src] of [
   ok(`source: ${label} has no em-dash`, !src.includes('—'));
 }
 
+// --- #189: script mancante / errore node -> fallback che ispeziona la hooks dir
+// invece di dichiarare alla cieca "git non applica le regole" ------------------
+ok('source: teamwork.md fallback resolves the hooks dir via rev-parse --git-path hooks',
+  teamworkSource.includes('git -C <working-root> rev-parse --git-path hooks'));
+ok('source: teamwork.md fallback classifies by the trailhead header line',
+  teamworkSource.includes('// trailhead commit-msg hook (git).'));
+for (const [label, src] of [
+  ['trailhead-work/SKILL.md', workSkillSource],
+  ['substrate-commands.md', substrateCommandsSource],
+]) {
+  ok(`source: ${label} mentions the missing-script hooks-dir fallback`,
+    src.includes('rev-parse --git-path hooks') && src.includes('teamwork.md'));
+  ok(`source: ${label} has no em-dash (#189)`, !src.includes('—'));
+}
+ok('source: teamwork.md has no em-dash (#189)', !teamworkSource.includes('—'));
+
 // --- #182 ---------------------------------------------------------------------
 // A broken install fails loudly (verifyInstall names the gap and the run exits
 // non-zero, printing no "✓ trailhead installed"); a clean one still prints ✓.
