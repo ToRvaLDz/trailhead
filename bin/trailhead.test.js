@@ -245,8 +245,8 @@ ok('source: trailhead-chart SKILL.md config-offer points at the next-step block'
 // (session-handoff.md legitimately offers /trailhead:quick <n> for the next loose ticket).
 const captureSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
 ok('source: capture.md confirmation anchors the next step to /trailhead:work', /[Aa]nchor the next step to `\/trailhead:work <n>`, always/.test(captureSource));
-ok('source: capture.md demotes /trailhead:quick to only the no-split alternative, after the work anchor',
-  /[Aa]nchor the next step to `\/trailhead:work <n>`[\s\S]{0,400}`\/trailhead:quick <n>` is \*\*only\*\* the no-split alternative/.test(captureSource));
+ok('source: capture.md offers /trailhead:quick as the lighter alternative, after the work anchor',
+  /[Aa]nchor the next step to `\/trailhead:work <n>`[\s\S]{0,400}`\/trailhead:quick <n>` is the \*\*lighter alternative\*\*/.test(captureSource));
 ok('source: capture.md says quick is offered alongside work, never in its place', captureSource.includes('never in its place'));
 ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard capture', /whiteboard[\s\S]{0,200}the anchor stays `\/trailhead:work <n>`/.test(captureSource));
 
@@ -276,6 +276,23 @@ ok('source: session-handoff.md explicitly says never to describe quick <n> on a 
 ok('source: capture.md says a map ticket stays on its map', /a map ticket stays on its map/.test(captureSource));
 const ticketEnginesSourceFor179 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
 ok('source: ticket-engines.md never labels quick generically as off-map', !/`quick`[^.\n]{0,40}off-map/.test(ticketEnginesSourceFor179));
+
+// --- quick is the lighter path, never "just without splitting" --------------
+// Source-level invariant: wherever a next-step suggestion characterizes quick,
+// it names what quick is for (the lighter path: always size-triaged, offers to
+// skip the heavy steps on a small change, no map book-keeping), with no-split
+// as a side note. The old "only the no-split alternative" / "same work as
+// work, without split" framing made agents tell users quick merely avoids
+// splitting.
+const dispatcherSourceForQuick = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead', 'SKILL.md'), 'utf8');
+ok('source: capture.md drops the "only the no-split alternative" framing', !/only\*\* the no-split alternative/.test(captureSource));
+ok('source: session-handoff.md drops the "as the no-split alternative" framing', !sessionHandoffSource.includes('as the no-split alternative'));
+ok('source: dispatcher SKILL.md drops the "as the no-split alternative" framing', !dispatcherSourceForQuick.includes('as the no-split alternative'));
+ok('source: session-handoff.md example drops "lo stesso lavoro di `work`, senza split"', !sessionHandoffSource.includes('lo stesso lavoro di `work`, senza split'));
+ok('source: capture.md says quick offers to skip the heavy steps on a small change', /quick <n>`[\s\S]{0,400}skip the heavy steps/.test(captureSource));
+ok('source: capture.md forbids describing quick as merely avoiding a split', /never as merely "without splitting"/.test(captureSource));
+ok('source: session-handoff.md forbids describing quick as merely avoiding a split', /never as merely "without splitting"/.test(sessionHandoffSource));
+ok('source: session-handoff.md example renders quick as the lighter path', /> - oppure `\/trailhead:quick[^\n]*percorso leggero/.test(sessionHandoffSource));
 
 // --- #181: scope code review and verify to the ticket's own commits ---------
 // Source-level invariant: Code review and Goal-backward verification scope to
