@@ -1345,6 +1345,16 @@ ok('plan-review.md converge option has a no-progress guard that returns to this 
   /run until it converges[\s\S]{0,600}no progress[\s\S]{0,300}back to this checkpoint/.test(planReviewStep4));
 ok('plan-review.md step 4 has no em-dash', !planReviewStep4.includes('\u2014'));
 
+// --- code-review: "run until it converges" option at the rounds-exhausted ask ---
+const codeReviewSourceConv = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'techniques', 'code-review.md'), 'utf8');
+const codeReviewBoundary = codeReviewSourceConv.split('\n').find((l) => l.startsWith('**Converge on the blockers')) || '';
+ok('code-review.md boundary ask still offers another 2 review rounds', codeReviewBoundary.includes('run another 2 review rounds'));
+ok('code-review.md boundary ask offers running until it converges', /\(c\) \*\*run until it converges\*\*/.test(codeReviewBoundary));
+ok('code-review.md converge option stops when no Critical remains', /run until it converges[\s\S]{0,400}no Critical remains/.test(codeReviewBoundary));
+ok('code-review.md converge option has a no-progress guard that returns to this checkpoint',
+  /run until it converges[\s\S]{0,600}no progress[\s\S]{0,300}back to this checkpoint/.test(codeReviewBoundary));
+ok('code-review.md boundary ask has no em-dash', !codeReviewBoundary.includes('\u2014'));
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
