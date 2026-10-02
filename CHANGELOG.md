@@ -2,6 +2,18 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.11.1 (2026-10-02)
+
+### Added
+- **Pinned-model review (#186, #187, #188).** When a `models.*` or `models.codex.*` value pinned in the config is older than the current tier default, trailhead offers to review it, once per project per defaults change. It reads the effective config (global merged under project, project wins key by key), names the config file each stale pin came from, and surfaces from both the SessionStart hook and the skill's config load. The offer stays until the user answers it: the check is read-only and an explicit ack records the choice.
+- **Run reviews until they converge.** When Cross-AI plan review or Code review exhausts its rounds with blocking findings still open, the checkpoint now also offers to keep the revise/fix and re-review loop going with no round cap until nothing blocking remains. A no-progress guard (the same blockers coming back unresolved) stops the loop and brings the choice back to the checkpoint.
+
+### Changed / Fixed
+- **SessionStart hook never hangs on stdin (#186).** The hook input is read asynchronously with a timeout and skipped on a TTY, instead of a synchronous read that could block forever.
+- **commit-msg hook fallback (#189).** When the hook sync script is missing, the work start inspects the hooks directory itself and accepts only an executable trailhead commit-msg hook.
+- **Mockup link next to the approval ask.** The prototype mockup link now sits in the same message that asks for approval.
+- **`quick` described as the lighter path.** Capture confirmations and the session handoff describe `quick <n>` by its purpose (always size-triaged, offers to skip the heavy steps on a small change, no map book-keeping), not just as the no-split alternative.
+
 ## 0.11.0 (2026-09-29)
 
 ### Added
