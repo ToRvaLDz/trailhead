@@ -1335,6 +1335,16 @@ for (const [label, src] of [
   ok(`${label} has no em-dash (#183)`, !src.includes('\u2014'));
 }
 
+// --- plan-review: "run until it converges" option at the rounds-exhausted ask ---
+const planReviewSourceConv = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'techniques', 'plan-review.md'), 'utf8');
+const planReviewStep4 = planReviewSourceConv.split('\n').find((l) => l.startsWith('4. **Record and decide.**')) || '';
+ok('plan-review.md step 4 still offers another bounded review cycle', planReviewStep4.includes('run another review cycle'));
+ok('plan-review.md step 4 offers running until the plan converges', /\(d\) \*\*run until it converges\*\*/.test(planReviewStep4));
+ok('plan-review.md converge option stops when no blocking concern remains', /run until it converges[\s\S]{0,400}no blocking concern remains/.test(planReviewStep4));
+ok('plan-review.md converge option has a no-progress guard that returns to this checkpoint',
+  /run until it converges[\s\S]{0,600}no progress[\s\S]{0,300}back to this checkpoint/.test(planReviewStep4));
+ok('plan-review.md step 4 has no em-dash', !planReviewStep4.includes('\u2014'));
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
