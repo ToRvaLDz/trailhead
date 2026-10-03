@@ -1355,6 +1355,22 @@ ok('code-review.md converge option has a no-progress guard that returns to this 
   /run until it converges[\s\S]{0,600}no progress[\s\S]{0,300}back to this checkpoint/.test(codeReviewBoundary));
 ok('code-review.md boundary ask has no em-dash', !codeReviewBoundary.includes('\u2014'));
 
+// --- ticket number always visible next to its name ------------------------------
+const principlesSourceNum = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'principles.md'), 'utf8');
+const referByName = principlesSourceNum.split('\n').find((l) => l.startsWith('- **Refer by name.**')) || '';
+ok('principles.md refer-by-name keeps the number visible next to the name', /number[^.]*visible/.test(referByName));
+ok('principles.md refer-by-name shows the name-plus-number form', referByName.includes('(#45)'));
+ok('principles.md no longer hides the id inside the name link', !referByName.includes('ride *inside* the name'));
+const captureSourceNum = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
+ok('capture.md confirmation names the ticket together with its number',
+  /\*\*Confirmation line\.\*\* Confirm the capture by the ticket's name and its number/.test(captureSourceNum));
+const handoffSourceNum = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'session-handoff.md'), 'utf8');
+ok('session-handoff.md resolution confirmation carries name and number',
+  /2\. \*\*A one-line confirmation\*\* the ticket is resolved, by name and number/.test(handoffSourceNum));
+for (const [label, src] of [['principles.md', referByName], ['capture.md', captureSourceNum], ['session-handoff.md', handoffSourceNum]]) {
+  ok(`${label} has no "not a bare #number" wording that hides the number`, !src.includes('(not a bare `#number`)'));
+}
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
