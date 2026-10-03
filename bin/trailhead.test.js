@@ -1371,6 +1371,14 @@ for (const [label, src] of [['principles.md', referByName], ['capture.md', captu
   ok(`${label} has no "not a bare #number" wording that hides the number`, !src.includes('(not a bare `#number`)'));
 }
 
+// --- mockup links in prose, approval picker carries only yes/no ------------------
+const prototypeSourceLinks = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'techniques', 'prototype.md'), 'utf8');
+const surfaceRule = prototypeSourceLinks.split('\n').find((l) => l.startsWith('**"Surface the mockup" means')) || '';
+ok('prototype.md no longer repeats mockup links inside the structured question', !surfaceRule.includes('repeat the link(s) inside the question text itself'));
+ok('prototype.md puts mockup links in the plain prose of the message', /plain (chat )?prose/.test(surfaceRule));
+ok('prototype.md keeps links out of a structured picker (not clickable on mobile)', /never[^.]*(option|picker)[^.]*link|link[^.]*never[^.]*(option|picker)/.test(surfaceRule) && /mobile/.test(surfaceRule));
+ok('prototype.md approval picker asks a plain yes/no on approving the mockup', /approve the mockup[^.]*yes\/no|yes\/no[^.]*approv/.test(surfaceRule));
+
 // --- cleanup -------------------------------------------------------------------
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
