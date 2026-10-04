@@ -1131,6 +1131,21 @@ for (const [label, src] of [
 }
 ok('source: teamwork.md has no em-dash (#189)', !teamworkSource.includes('—'));
 
+// --- script di sync "mancante" solo dopo aver provato tutti e tre i percorsi
+// (un CLAUDE_PLUGIN_ROOT non impostato non basta a dichiararlo assente) ------
+ok('source: teamwork.md tries all three template dirs in order',
+  teamworkSource.includes('try all three in order'));
+ok('source: teamwork.md skips an unset CLAUDE_PLUGIN_ROOT instead of stopping',
+  /CLAUDE_PLUGIN_ROOT[^.]{0,120}unset or empty/.test(teamworkSource));
+for (const [label, src] of [
+  ['teamwork.md', teamworkSource],
+  ['substrate-commands.md', substrateCommandsSource],
+  ['trailhead-work/SKILL.md', workSkillSource],
+]) {
+  ok(`source: ${label} calls the script missing only when none of the three has it`,
+    src.includes('none of the three'));
+}
+
 // --- #182 ---------------------------------------------------------------------
 // A broken install fails loudly (verifyInstall names the gap and the run exits
 // non-zero, printing no "✓ trailhead installed"); a clean one still prints ✓.
