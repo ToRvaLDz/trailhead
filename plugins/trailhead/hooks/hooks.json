@@ -34,6 +34,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-secret-read-guard.js\""
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-mockup-link-guard.js\""
+          }
+        ]
       }
     ],
     "PostToolUse": [

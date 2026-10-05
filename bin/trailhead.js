@@ -243,21 +243,27 @@ function claudePaths(configDir) {
     settings: path.join(configDir, 'settings.json'),
   };
 }
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-secret-read-guard.js', 'trailhead-body-guard.js', 'trailhead-check-update.js'];
+const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-secret-read-guard.js', 'trailhead-body-guard.js', 'trailhead-mockup-link-guard.js', 'trailhead-mockup-link-stop.js', 'trailhead-check-update.js'];
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
 // require('./lib/commit-message-check.js'); trailhead-search-guard.js and
 // trailhead-secret-read-guard.js both do require('./lib/shell-scan.js'), #135
 // follow-up; trailhead-body-guard.js and trailhead-secret-guard.js both do
 // require('./lib/gh-subcommand.js'), #153 follow-up; trailhead-check-update.js
 // does require('./lib/model-defaults-review.js'), which in turn reads the
-// sibling model-defaults.json, #186). Copied by name, never a recursive
+// sibling model-defaults.json, #186; both mockup-link hooks do
+// require('./lib/mockup-link.js')). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must
 // not clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'model-defaults-review.js', 'model-defaults.json'];
-// search-guard is Claude-Code-specific (#169): excluded from both the Codex
-// hook copy and the Codex verify spec's expected hookFiles, so a healthy
-// Codex install is never flagged for a script it never ships.
-const CODEX_HOOK_EXCLUDE = ['trailhead-search-guard.js'];
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'model-defaults-review.js', 'model-defaults.json', 'mockup-link.js'];
+// search-guard is Claude-Code-specific (#169), and so is mockup-link-guard
+// (it gates the AskUserQuestion tool, which Codex lacks): excluded from both
+// the Codex hook copy and the Codex verify spec's expected hookFiles, so a
+// healthy Codex install is never flagged for a script it never ships.
+const CODEX_HOOK_EXCLUDE = ['trailhead-search-guard.js', 'trailhead-mockup-link-guard.js'];
+// mockup-link-stop is its Codex twin (a Stop hook reading the final reply):
+// Claude Code gates the AskUserQuestion call instead, so it is neither copied
+// nor expected on a Claude install.
+const CLAUDE_HOOK_EXCLUDE = ['trailhead-mockup-link-stop.js'];
 
 // Copy the hook scripts and their runtime libs into a destination hooks dir
 // (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
@@ -371,6 +377,7 @@ function uninstallClaude(configDir) {
   stripHook(s, 'PreToolUse', 'trailhead-search-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-secret-read-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-body-guard.js');
+  stripHook(s, 'PreToolUse', 'trailhead-mockup-link-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
   stripHook(s, 'SessionStart', 'trailhead-check-update.js');
   writeJSON(P.settings, s);
@@ -395,7 +402,7 @@ function installClaude(configDir, { useSymlink }) {
   }
   place(path.join(SRC, 'commands'), P.commands, useSymlink);
   place(path.join(SRC, 'templates'), P.templates, useSymlink);
-  copyHookScripts(P.hooksDir, { useSymlink });
+  copyHookScripts(P.hooksDir, { useSymlink, exclude: CLAUDE_HOOK_EXCLUDE });
   // Register the engine agents as Claude subagents: sweep any stale
   // trailhead-*.md first (a removed/renamed agent), then place the current set
   // by name. This is what makes config.models.<key> take effect on the
@@ -419,6 +426,7 @@ function installClaude(configDir, { useSymlink }) {
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-search-guard.js')),
     addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-body-guard.js')),
     addHook(s, 'PreToolUse', 'Read|Bash', hookCmd('trailhead-secret-read-guard.js')),
+    addHook(s, 'PreToolUse', 'AskUserQuestion', hookCmd('trailhead-mockup-link-guard.js')),
     addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
     addHook(s, 'SessionStart', '', hookCmd('trailhead-check-update.js')),
   ].some(Boolean);
@@ -430,7 +438,7 @@ function installClaude(configDir, { useSymlink }) {
   const spec = claudeVerifySpec(configDir, {
     skillDirs: shippedSkillDirs(),
     sharedFiles: readSharedCoreFiles(),
-    hookFiles: HOOK_FILES,
+    hookFiles: HOOK_FILES.filter((f) => !CLAUDE_HOOK_EXCLUDE.includes(f)),
     hookLibFiles: HOOK_LIB_FILES,
     env: process.env,
     home: os.homedir(),
@@ -774,6 +782,7 @@ function uninstallCodex(configDir) {
     stripHook(h, 'PreToolUse', 'trailhead-secret-read-guard.js');
     stripHook(h, 'PreToolUse', 'trailhead-body-guard.js');
     stripHook(h, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
+    stripHook(h, 'Stop', 'trailhead-mockup-link-stop.js');
     stripHook(h, 'SessionStart', 'trailhead-check-update.js');
     writeJSON(L.hooksJson, h);
   }
