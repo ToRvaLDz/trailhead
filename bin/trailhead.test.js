@@ -682,6 +682,17 @@ ok('codex: skills/trailhead/hooks/lib/model-defaults.json exists (#186)',
 ok('codex: hooks.json does NOT register search-guard under any event', !codexHooksJsonStr.includes('trailhead-search-guard.js'));
 ok('codex: skills/trailhead/hooks/trailhead-search-guard.js does NOT exist',
   !fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-search-guard.js')));
+// mockup-link-guard gates the AskUserQuestion tool, which Codex lacks.
+ok('codex: hooks.json does NOT register mockup-link-guard', !codexHooksJsonStr.includes('trailhead-mockup-link-guard.js'));
+// Its Codex twin reads the final reply on Stop.
+ok('codex: hooks.json registers mockup-link-stop under Stop',
+  (JSON.parse(codexHooksJsonStr).hooks.Stop || []).some((m) => m.hooks.some((h) => h.command.includes('trailhead-mockup-link-stop.js'))));
+ok('codex: skills/trailhead/hooks/trailhead-mockup-link-stop.js exists',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-mockup-link-stop.js')));
+ok('codex: skills/trailhead/hooks/lib/mockup-link.js exists (mockup-link-stop require target)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'mockup-link.js')));
+ok('codex: skills/trailhead/hooks/trailhead-mockup-link-guard.js does NOT exist',
+  !fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-mockup-link-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/shell-scan.js still exists (secret-read-guard require target)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'shell-scan.js')));
 
@@ -971,6 +982,15 @@ const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
 ok('claude: settings.json references commit-guard', settingsContent.includes('trailhead-commit-guard.js'));
+// mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
+// Prototype "link in the same message as the approval ask" rule.
+ok('claude: hooks/trailhead-mockup-link-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-guard.js')));
+ok('claude: hooks/lib/mockup-link.js exists (mockup-link-guard require target)', fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'mockup-link.js')));
+ok('claude: hooks/trailhead-mockup-link-stop.js does NOT exist (Codex-only twin)', !fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-stop.js')));
+ok('claude: settings.json does NOT register mockup-link-stop', !settingsContent.includes('trailhead-mockup-link-stop.js'));
+ok('claude: settings.json registers mockup-link-guard under PreToolUse/AskUserQuestion',
+  (JSON.parse(settingsContent).hooks.PreToolUse || []).some((m) => m.matcher === 'AskUserQuestion'
+    && m.hooks.some((h) => h.command.includes('trailhead-mockup-link-guard.js'))));
 
 // --- auto-detect: exactly one CLI on $PATH -> install for it, no flag ----------
 // Only a fake `codex` on $PATH: the installer must pick codex on its own.

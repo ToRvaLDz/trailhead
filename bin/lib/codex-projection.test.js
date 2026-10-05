@@ -102,6 +102,7 @@ ok('codexSkillAdapterHeader §D offers a background-job fallback for a stalling 
 ok('codexSkillAdapterHeader §D makes background+poll the hard cross-host default for reviews',
   header.includes('always run this way') && header.includes('hard cross-host default'));
 ok('codexSkillAdapterHeader §F mentions real Codex hooks', header.includes('real Codex hooks'));
+ok('codexSkillAdapterHeader §F lists mockup-link-stop as a Stop hook', header.includes('mockup-link-stop as a `Stop` hook'));
 ok('codexSkillAdapterHeader §F no longer says Codex has no hook bus', !header.includes('Codex has no hook bus'));
 ok('codexSkillAdapterHeader §F does not list search-guard among the projected PreToolUse guards',
   !header.includes('search-guard and body-guard') && !header.includes('search-guard, body-guard'));
@@ -161,7 +162,7 @@ ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', nul
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
-ok('codexHookEntries returns 7 entries', Array.isArray(entries) && entries.length === 7);
+ok('codexHookEntries returns 8 entries', Array.isArray(entries) && entries.length === 8);
 ok('codexHookEntries: commit-guard is PreToolUse/Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-commit-guard.js') && e.command.includes('/h')));
 ok('codexHookEntries: secret-guard is PreToolUse/Bash', entries.some((e) =>
@@ -176,6 +177,8 @@ ok('codexHookEntries: secret-read-guard is PreToolUse/Read|Bash', entries.some((
   e.event === 'PreToolUse' && e.matcher === 'Read|Bash' && e.command.includes('trailhead-secret-read-guard.js')));
 ok('codexHookEntries: injection-scanner is PostToolUse/Bash', entries.some((e) =>
   e.event === 'PostToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-issue-injection-scanner.js')));
+ok('codexHookEntries: mockup-link-stop is Stop', entries.some((e) =>
+  e.event === 'Stop' && e.command.includes('trailhead-mockup-link-stop.js')));
 ok('codexHookEntries: check-update is SessionStart', entries.some((e) =>
   e.event === 'SessionStart' && e.command.includes('trailhead-check-update.js')));
 
