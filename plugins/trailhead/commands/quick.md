@@ -1,5 +1,5 @@
 ---
-description: Work one ticket whole, never splits: a new whiteboard ticket from text, or an existing one; grills only if needed
+description: "Work one ticket whole, never splits: a new whiteboard ticket from text, or an existing one; grills only if needed"
 argument-hint: "[ticket | \"text\"]"
 ---
 
