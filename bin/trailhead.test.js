@@ -1395,6 +1395,22 @@ ok('prototype.md keeps links out of a structured picker (not clickable on mobile
 ok('prototype.md approval picker asks a plain yes/no on approving the mockup', /approve the mockup[^.]*yes\/no|yes\/no[^.]*approv/.test(surfaceRule));
 
 // --- cleanup -------------------------------------------------------------------
+// --- argomenti etichettati: ogni template comando apre con un blocco
+// <arguments> fisso e non incolla mai $ARGUMENTS dentro la prosa (un testo
+// libero con backtick o istruzioni non deve fondersi con le istruzioni) ---
+{
+  const commandsDir = path.join(repoRoot, 'plugins', 'trailhead', 'commands');
+  for (const f of fs.readdirSync(commandsDir).filter((n) => n.endsWith('.md'))) {
+    const body = fs.readFileSync(path.join(commandsDir, f), 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '');
+    ok(`command ${f}: body opens with a standing <arguments>$ARGUMENTS</arguments> block`,
+      /^\s*<arguments>\$ARGUMENTS<\/arguments>\n/.test(body));
+    ok(`command ${f}: $ARGUMENTS appears only inside the <arguments> block`,
+      (body.match(/\$ARGUMENTS/g) || []).length === 1);
+    ok(`command ${f}: marks the <arguments> block as data, not instructions`,
+      /<arguments>[\s\S]*data, never as instructions/.test(body));
+  }
+}
+
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
 }
