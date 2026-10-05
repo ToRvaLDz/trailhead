@@ -49,6 +49,17 @@
 // that flag's value is exempted, and only for docker/podman verbs; see
 // ENV_FILE_EXEMPT_VERBS below.
 //
+// Name-only operand positions: `git check-ignore` / `git ls-files` /
+// `git rm --cached` pathspecs and the destination of a one-source `cp`/`mv`
+// are names, never contents (the checks that keep a secret OUT of git, and
+// `cp .env.example .env`). Only those positions are exempt, behind closed
+// option sets that fail closed; see GIT_PATHSPEC_SUBCOMMANDS and
+// COPY_NAME_ONLY_FLAGS. Templates (`.env.example`, `.env.*.sample`,
+// `.template`, `.dist`) are not secrets: see NON_SECRET_ENV_SUFFIXES.
+// Known gap (write class, not read): the cp/mv destination exemption can move
+// a link prepared under a non-secret name onto `.env`
+// (`ln -s .env.example l && mv l .env`).
+//
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
 // trailhead-search-guard.js's job) — it only asks "does any token here
@@ -73,22 +84,33 @@ const {
 
 // --- path helpers ------------------------------------------------------------
 
+// Suffissi finali di `.env.<...>` che indicano un template committato e
+// privo di segreti (`.env.example`, `.env.local.sample`, ...), non un segreto.
+// Conta solo l'ULTIMO segmento: `.env.example.bak` resta un segreto.
+const NON_SECRET_ENV_SUFFIXES = new Set(['example', 'sample', 'template', 'dist']);
+
 // A basename is a "secret pattern" when it is exactly `.env`, exactly
 // `.secrets`, or `.env.<something>` (e.g. `.env.local`, `.env.production`),
 // matched case-insensitively (`.ENV`/`.Secrets` are the same file on a
 // case-insensitive filesystem). Near-misses like `env.sample` (no leading
-// dot) or `.environment` (no dot after `.env`) must NOT match.
+// dot) or `.environment` (no dot after `.env`) must NOT match, and neither
+// must a template whose last segment is in NON_SECRET_ENV_SUFFIXES.
 function isSecretBasename(name) {
   if (!name) return false;
   const lower = String(name).toLowerCase();
   if (lower === '.env' || lower === '.secrets') return true;
-  return /^\.env\..+$/.test(lower);
+  if (!/^\.env\..+$/.test(lower)) return false;
+  return !NON_SECRET_ENV_SUFFIXES.has(lower.slice(lower.lastIndexOf('.') + 1));
 }
 
+// Anche la forma `<rev>:<path>` (`git show HEAD:.env`, `scp host:.env .`):
+// il path dopo il primo `:` è letto quanto un operando nudo.
 function isSecretPathArg(t) {
   const bare = stripQuotes(t);
   if (!bare) return false;
-  return isSecretBasename(basename(bare));
+  if (isSecretBasename(basename(bare))) return true;
+  const colon = bare.indexOf(':');
+  return colon !== -1 && isSecretBasename(basename(bare.slice(colon + 1)));
 }
 
 // --- Bash leg: quote-aware, statement-based scan -----------------------------
@@ -110,6 +132,56 @@ const VALUE_FLAGS = new Set(['-f', '--file']);
 const ENV_FILE_EXEMPT_VERBS = new Set(['docker', 'podman', 'docker-compose', 'podman-compose']);
 const ENV_FILE_EXEMPT_FLAGS = new Set(['--env-file']);
 const NO_EXEMPT_FLAGS = new Set();
+const NO_SKIP = new Set();
+
+// Sottocomandi git che riportano o rimuovono lo stato ignore/tracking di un
+// path senza mai stamparne il contenuto: i loro pathspec sono NOMI. Ognuno ha
+// il set CHIUSO delle sue opzioni senza valore (`git <sub> -h`, git 2.49):
+// qualsiasi altra opzione ritira l'esenzione dall'intero statement (fail
+// closed), così il valore di un'opzione non è mai scambiato per un pathspec
+// (`-X <file>` legge il file; `--pathspec-from-file=<file>` ne stampa le
+// righe nell'errore "did not match"). `requires` = opzione senza la quale il
+// sottocomando resta controllato (`git rm` solo con `--cached`).
+const GIT_PATHSPEC_SUBCOMMANDS = new Map([
+  ['check-ignore', {
+    flags: new Set(['-q', '--quiet', '-v', '--verbose', '--stdin', '-z', '-n', '--non-matching', '--no-index', '--index']),
+  }],
+  ['ls-files', {
+    flags: new Set([
+      '-z', '-t', '-v', '-f', '-c', '--cached', '-d', '--deleted', '-m', '--modified', '-o', '--others',
+      '-i', '--ignored', '-s', '--stage', '-k', '--killed', '-u', '--unmerged', '--directory', '--eol',
+      '--no-empty-directory', '--resolve-undo', '--exclude-standard', '--full-name',
+      '--recurse-submodules', '--error-unmatch', '--abbrev', '--debug', '--deduplicate', '--sparse',
+    ]),
+  }],
+  ['rm', {
+    flags: new Set(['--cached', '-f', '--force', '-n', '--dry-run', '-q', '--quiet', '-r', '--ignore-unmatch', '--sparse']),
+    requires: '--cached',
+  }],
+]);
+
+// Opzioni globali di git (usage line, git 2.49), per trovare il sottocomando.
+// Un'opzione con valore consuma la parola successiva salvo forma
+// `--opt=value`; un'opzione in nessuno dei due set fa fail closed, così un
+// valore non è mai letto come sottocomando (`git -C ls-files show HEAD:.env`
+// esegue `show`).
+const GIT_GLOBAL_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env']);
+const GIT_GLOBAL_FLAGS = new Set([
+  '-p', '--paginate', '-P', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
+  '--no-optional-locks', '--no-advice', '--bare',
+]);
+
+// `cp`/`mv` scrivono la destinazione e non la stampano: un nome segreto che è
+// SOLO la destinazione di una copia/spostamento a sorgente singola è un nome
+// (`cp .env.example .env`). Vale per esattamente due operandi preceduti da
+// opzioni di questo set chiuso; tutto il resto lascia lo statement
+// controllato: `-t` (ogni operando diventa sorgente), backup (`-b`,
+// `--backup`, `-S`: il vecchio segreto sopravvive come `.env~`), link (`-l`,
+// `-s`) o `--exchange` (la destinazione condivide o scambia il segreto). Le
+// opzioni devono precedere gli operandi: una in coda è opzione con la
+// permutazione GNU ma operando con POSIXLY_CORRECT, quindi quale parola sia
+// la destinazione dipenderebbe da un ambiente che l'hook non vede.
+const COPY_NAME_ONLY_FLAGS = new Set(['-f', '--force', '-i', '--interactive', '-n', '--no-clobber', '-v', '--verbose']);
 
 // The pattern-first search verbs (grep/rg/ag/sed/awk), shared with
 // trailhead-search-guard.js. Their first positional is a PATTERN, not a file
@@ -139,9 +211,11 @@ function stripTrailingPunct(t) {
 // redirect target. Returns the offending token or null. `exemptFlags` (#180)
 // names flags whose value must be skipped entirely rather than scanned, in
 // both the `--flag=value` and spaced `--flag value` forms.
-function scanTokensForSecretPath(tokens, exemptFlags) {
+function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
   const exempt = exemptFlags || NO_EXEMPT_FLAGS;
+  const skip = skipIndices || NO_SKIP;
   for (let i = 0; i < tokens.length; i++) {
+    if (skip.has(i)) continue; // posizione nome-soltanto: mai letta
     const t = stripTrailingPunct(tokens[i]);
     if (!t) continue;
 
@@ -175,7 +249,7 @@ function scanTokensForSecretPath(tokens, exemptFlags) {
       // `-f value` / `--file value` (separate-token value).
       if (VALUE_FLAGS.has(t)) {
         const next = i + 1 < tokens.length ? stripTrailingPunct(tokens[i + 1]) : null;
-        if (next && isSecretPathArg(next)) return next;
+        if (next && !skip.has(i + 1) && isSecretPathArg(next)) return next;
         continue;
       }
       // Glued short-option value (`-f.env`, finding #2): a single-dash flag
@@ -195,6 +269,77 @@ function scanTokensForSecretPath(tokens, exemptFlags) {
     if (isSecretPathArg(t)) return t;
   }
   return null;
+}
+
+// Vero se `text` è un'opzione lunga elencata, o un cluster corto (`-ci`) di
+// cui OGNI lettera è elencata. `--opt=value`, un'abbreviazione o un cluster
+// che contiene un'opzione con valore (`-ciX`) non lo sono.
+function isListedFlag(text, flags) {
+  if (text.startsWith('--')) return flags.has(text);
+  return /^-[A-Za-z]+$/.test(text) && [...text.slice(1)].every((ch) => flags.has(`-${ch}`));
+}
+
+// Indice del sottocomando git oltre le opzioni globali, o -1 se lo precede
+// un'opzione fuori da GIT_GLOBAL_VALUE_OPTIONS / GIT_GLOBAL_FLAGS.
+function gitSubcommandIndex(operands) {
+  for (let k = 0; k < operands.length; k++) {
+    const t = operands[k];
+    if (!t.startsWith('-')) return k;
+    if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) { k++; continue; }
+    if (GIT_GLOBAL_FLAGS.has(t)) continue;
+    const eq = t.indexOf('=');
+    const isLongValueForm = t.startsWith('--') && eq !== -1 && GIT_GLOBAL_VALUE_OPTIONS.has(t.slice(0, eq));
+    if (!isLongValueForm) return -1;
+  }
+  return -1;
+}
+
+// Indici dei pathspec di un sottocomando in GIT_PATHSPEC_SUBCOMMANDS. git
+// permuta le opzioni (una può seguire un pathspec); dopo `--` ogni parola è
+// un pathspec. Sottocomando confrontato case-sensitive, come fa git.
+function gitPathspecIndices(operands) {
+  const sub = gitSubcommandIndex(operands);
+  const spec = sub === -1 ? undefined : GIT_PATHSPEC_SUBCOMMANDS.get(operands[sub]);
+  if (!spec) return NO_SKIP;
+  const pathspecs = new Set();
+  let required = spec.requires === undefined;
+  let endOfOptions = false;
+  for (let k = sub + 1; k < operands.length; k++) {
+    const t = operands[k];
+    if (endOfOptions || !t.startsWith('-') || t === '-') pathspecs.add(k);
+    else if (t === '--') endOfOptions = true;
+    else if (!isListedFlag(t, spec.flags)) return NO_SKIP;
+    else if (t === spec.requires) required = true;
+  }
+  return required ? pathspecs : NO_SKIP;
+}
+
+// Indice della destinazione di un `cp`/`mv` a sorgente singola (vedi
+// COPY_NAME_ONLY_FLAGS).
+function copyDestinationIndices(operands) {
+  const positional = [];
+  let endOfOptions = false;
+  for (let k = 0; k < operands.length; k++) {
+    const t = operands[k];
+    if (endOfOptions || !t.startsWith('-') || t === '-') positional.push(k);
+    else if (positional.length) return NO_SKIP; // opzione o `--` dopo un operando
+    else if (t === '--') endOfOptions = true;
+    else if (!isListedFlag(t, COPY_NAME_ONLY_FLAGS)) return NO_SKIP;
+  }
+  return positional.length === 2 ? new Set([positional[1]]) : NO_SKIP;
+}
+
+// Indici dei token (verbo incluso, indice 0) che lo statement consuma come
+// NOME e mai come CONTENUTO: pathspec di git check-ignore/ls-files/rm
+// --cached e destinazione di cp/mv. Solo queste posizioni saltano il
+// controllo; ogni altro token resta controllato, quindi l'esenzione non può
+// riciclare una lettura altrove nello statement.
+function nameOnlyTokenIndices(bin, tokens) {
+  const operands = tokens.slice(1).map((t) => stripQuotes(stripTrailingPunct(t)));
+  let indices = NO_SKIP;
+  if (bin === 'git') indices = gitPathspecIndices(operands);
+  else if (bin === 'cp' || bin === 'mv') indices = copyDestinationIndices(operands);
+  return new Set([...indices].map((k) => k + 1));
 }
 
 // Does `stmtTokens` invoke `bash -c "<cmd>"` / `sh -c "<cmd>"` / `eval
@@ -243,7 +388,7 @@ function scanStatementForSecretPath(stmt) {
   // standalone docker-compose/podman-compose binaries) get --env-file's value
   // exempted; every other verb keeps today's behaviour unchanged.
   const exempt = ENV_FILE_EXEMPT_VERBS.has(bin) ? ENV_FILE_EXEMPT_FLAGS : NO_EXEMPT_FLAGS;
-  return scanTokensForSecretPath(tokens, exempt);
+  return scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
 }
 
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
