@@ -129,6 +129,62 @@ ok('hook allows Bash(podman run --env-file=.env img) end-to-end (exit 0, no outp
 const d3 = runHook('Bash', { command: 'cat .env' });
 ok('hook still denies Bash(cat .env) end-to-end (exit 2, block decision)', d3.code === 2 && /"decision":"block"/.test(d3.out));
 
+// --- template env files (.env.example/.sample/.template/.dist) are not secrets ---
+const allowCmd = (c) => ok(`Bash \`${c}\` is allowed`, !detectSecretRead('Bash', { command: c }));
+const denyCmd = (c) => ok(`Bash \`${c}\` is denied`, !!detectSecretRead('Bash', { command: c }));
+ok('Read .env.example is allowed', !detectSecretRead('Read', { file_path: '.env.example' }));
+ok('Read .env.local.example is allowed', !detectSecretRead('Read', { file_path: 'app/.env.local.example' }));
+ok('Read .ENV.SAMPLE is allowed', !detectSecretRead('Read', { file_path: '.ENV.SAMPLE' }));
+allowCmd('cat .env.template');
+allowCmd('cat .env.dist');
+ok('Read .env.example.bak is still denied', !!detectSecretRead('Read', { file_path: '.env.example.bak' }));
+ok('Read .env.examples is still denied', !!detectSecretRead('Read', { file_path: '.env.examples' }));
+
+// --- name-only operand positions: git pathspecs, cp/mv destination ---
+// Questi comandi non stampano mai il contenuto del file: sono i controlli che
+// tengono un segreto fuori da git, e il guard non deve bloccarli.
+allowCmd('git check-ignore -v .env');
+allowCmd('git check-ignore -q .env .secrets');
+allowCmd('git ls-files --error-unmatch .env');
+allowCmd('git ls-files -ci --exclude-standard -- .env');
+allowCmd('git rm --cached .env');
+allowCmd('git rm -r --cached -f .env');
+allowCmd('git -C app check-ignore .env');
+allowCmd('git --no-pager ls-files .env');
+allowCmd('cp .env.example .env');
+allowCmd('cp -f .env.example .env');
+allowCmd('mv .env.sample .env');
+allowCmd('cp -- .env.example .env');
+allowCmd('git check-ignore .env && cp .env.example .env');
+// Fail-closed: forme che leggono, o fuori dal set di opzioni chiuso.
+denyCmd('git show HEAD:.env');
+denyCmd('git rm .env');
+denyCmd('git rm -- --cached .env');
+denyCmd('git rm --cached --pathspec-from-file=.env');
+denyCmd('git ls-files -X .env');
+denyCmd('git ls-files -ciX .env');
+denyCmd('git -C ls-files show HEAD:.env');
+denyCmd('git --unknown check-ignore .env');
+denyCmd('git diff .env');
+denyCmd('cp .env /tmp/x');
+denyCmd('cp .env .env.bak');
+denyCmd('mv .env /tmp/x');
+denyCmd('cp -t /tmp .env.example .env');
+denyCmd('cp .env.example .env /tmp');
+denyCmd('cp -b .env.example .env');
+denyCmd('cp --backup .env.example .env');
+denyCmd('cp -l .env.example .env');
+denyCmd('cp -s .env.example .env');
+denyCmd('mv --exchange .env.example .env');
+denyCmd('cp .env.example .env -f');
+denyCmd('cp .env.example .env && cat .env');
+denyCmd('git check-ignore .env; cat .env');
+
+const a6 = runHook('Bash', { command: 'git check-ignore -v .env' });
+ok('hook allows Bash(git check-ignore -v .env) end-to-end (exit 0, no output)', a6.code === 0 && a6.out.trim() === '');
+const a7 = runHook('Bash', { command: 'cp .env.example .env' });
+ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.code === 0 && a7.out.trim() === '');
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
