@@ -1411,6 +1411,23 @@ ok('prototype.md approval picker asks a plain yes/no on approving the mockup', /
   }
 }
 
+// --- frontmatter YAML valido: un valore non quotato con `: ` interno rompe
+// il parsing YAML stretto (discovery che salta il file), quindi va quotato ---
+{
+  const pluginDir = path.join(repoRoot, 'plugins', 'trailhead');
+  const walkMd = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walkMd(path.join(d, e.name)) : e.name.endsWith('.md') ? [path.join(d, e.name)] : []);
+  for (const file of walkMd(pluginDir)) {
+    const fm = fs.readFileSync(file, 'utf8').match(/^---\n([\s\S]*?)\n---/);
+    if (!fm) continue;
+    for (const line of fm[1].split('\n')) {
+      const kv = line.match(/^([\w-]+):\s(.*)$/);
+      if (!kv || /^["']/.test(kv[2])) continue;
+      ok(`frontmatter ${path.relative(pluginDir, file)} ${kv[1]}: no unquoted colon-space`, !/: /.test(kv[2]));
+    }
+  }
+}
+
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
 }
