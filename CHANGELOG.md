@@ -2,6 +2,14 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+- **Mockup-link guard hook.** A `PreToolUse(AskUserQuestion)` hook blocks a mockup approval ask (or a pick between mockup variants) when the reply text right before it has no URL or file path, so the agent writes the clickable link and asks again. The prose rule alone was still skipped in practice (an approval asked with only the project's name). On Codex, where a question is a plain-text numbered list, its twin `mockup-link-stop` runs as a `Stop` hook: a final reply that asks for the approval without a link continues the turn so the agent adds it.
+
+### Changed
+- **Links before any menu.** `choices.md` now states, for every `AskUserQuestion` trailhead authors, that anything the user must open first has its clickable link in the reply text right before the menu; the Prototype rule adds that a project's name is not a link.
+
 ## 0.11.1 (2026-10-02)
 
 ### Added

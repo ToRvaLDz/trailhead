@@ -54,6 +54,8 @@ This is the operational recipe every applicable call-site follows. It is **manda
 
 Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 real options + delegate + defer = 5 -> the menu carries the 3 real options and delegate/defer are offered in the prose line right after it; 2 real options + delegate (defer not applicable) = 3 -> in the menu.
 
+**Menu call-sites (an `AskUserQuestion` trailhead authors): links live in the prose.** A picker renders its question and options as plain text, so nothing in it is clickable. When a question is about something the user has to open first (a mockup to approve or pick from, a published page, a PR, a ticket comment), write its clickable link(s) in the reply text **immediately before** the menu, in that same message, never only earlier in the conversation, never as a name in place of the URL, and never inside the picker. If there is no link to show yet, do not ask. For mockups the full rule is "Surface the mockup" in `techniques/prototype.md`, enforced by the mockup-link hooks (Claude Code and Codex).
+
 **Prose / conversational call-sites (grilling, or any choice put in words rather than a menu).** There is no cap: **state the applicable affordance(s) in words** in the same message that puts the choice (for example append "Oppure: scegli tu, propongo io / scelgo dopo se dipende da un prerequisito."). Grilling stays human-decides, so delegate is not offered there; **defer is offered in prose when the decision is genuinely blocked on a prerequisite.**
 
 `(Recommended)` on a real option is a separate, static hint that may coexist with the affordances; it is not the delegate option.
