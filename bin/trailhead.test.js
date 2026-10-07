@@ -1530,6 +1530,55 @@ for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'conten
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
 }
 
+// --- #192: audit for regressions with a fast unchanged-code path -------------------
+const step2Slice192 = (auditingSrc.match(/## 2\.[\s\S]*?(?=\n## 3\.)/) || [''])[0];
+const step4Slice192 = (auditingSrc.match(/## 4\.[\s\S]*?(?=\n## 5\.)/) || [''])[0];
+const step6Slice192 = (auditingSrc.match(/## 6\.[\s\S]*?(?=\n## 7\.)/) || [''])[0];
+const step8Slice192 = (auditingSrc.match(/## 8\.[\s\S]*?(?=\n## 9\.)/) || [''])[0];
+const notesSlice192 = (auditingSrc.match(/## Notes[\s\S]*$/) || [''])[0];
+ok('source: auditing.md states the regression purpose', /regression/i.test(auditingSrc.split('\n## 1.')[0]) && /still true against today's code/.test(auditingSrc));
+ok('source: auditing.md keeps steps 1 to 10 numbered',
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every((n) => new RegExp(`^## ${n}\\. `, 'm').test(auditingSrc)));
+ok('source: auditing.md step 4 is the fast path, light check and cost guard',
+  /^## 4\. Fast path, light check, and cost guard/m.test(auditingSrc) && /\*\*Fast path/.test(step4Slice192) && /\*\*Light check/.test(step4Slice192) && /\*\*Cost guard/.test(step4Slice192));
+ok('source: auditing.md fast path checks Refs commits without an agent via blame and git diff -U0',
+  /no agent/i.test(step4Slice192) && /Refs: #<n>/.test(step4Slice192) && /git blame/.test(step4Slice192) && /git diff -U0 <last>\.\.HEAD/.test(step4Slice192));
+ok('source: auditing.md fast path matches #<n> as a delimited token in the trailer (never #19 for #192)',
+  /Refs: #17, #192/.test(step4Slice192) && /#19\b[^\n]*never[^\n]*#192|never[^\n]*#19\b[^\n]*#192/.test(step4Slice192) && /HEAD-reachable/.test(step4Slice192));
+ok('source: auditing.md fast path classes untouched lines implemented (unchanged)', /\*\*implemented \(unchanged\)\*\*/.test(step4Slice192));
+ok('source: auditing.md sends no-Refs tickets and changed lines to the full agent',
+  /no `Refs:` commits/.test(step4Slice192) && /agent-bound/.test(step4Slice192) && /trailhead-verify/.test(auditingSrc));
+ok('source: auditing.md fast path defines pure-deletion anchors, non-linear sets, shallow clones and dirty trees',
+  /pure deletion/i.test(step4Slice192) && /anchor/.test(step4Slice192) && /non-linear/.test(step4Slice192) && /is-shallow-repository/.test(step4Slice192) && /git status --porcelain/.test(step4Slice192));
+ok('source: auditing.md light check covers decision/research/task/prototype inline, no agent',
+  /decision[^\n]*research[^\n]*task[^\n]*prototype|decision[^\n]*research[^\n]*prototype[^\n]*task/.test(step4Slice192 + step2Slice192) && /inline/.test(step4Slice192));
+ok('source: auditing.md no longer checks that code honours a recorded decision (D3)',
+  !/that the code honours it/.test(auditingSrc) && !/honours it/.test(step2Slice192));
+ok('source: auditing.md cost guard counts only the agent-bound set',
+  /exceeds 20/.test(step4Slice192) && /agent-bound set/.test(step4Slice192));
+ok('source: auditing.md step 5 brief asks for HEAD file:line ranges of unmet claims and absent deliverables',
+  /file:line/.test(step5Slice190) && /ranges/.test(step5Slice190) && /absent deliverable/.test(step5Slice190));
+ok('source: auditing.md classifies evolved by #m, reachable for unmet claims and a removed deliverable',
+  /\*\*evolved by #m\*\*/.test(step6Slice192) && /Deliverable absent/.test(step6Slice192) && /\*\*implemented wrong\*\*/.test(step6Slice192) && /\*\*not implemented\*\*/.test(step6Slice192));
+ok('source: auditing.md evolved attribution is a forward walk that requires every producer to carry another ticket Refs',
+  /forward walk/.test(step6Slice192) && /<last>/.test(step6Slice192) && /every\*\* producer/.test(step6Slice192) && /m != n/.test(step6Slice192) && /lineage/.test(step6Slice192));
+ok('source: auditing.md attribution guards merges and renames', /merge/.test(step6Slice192) && /rename/.test(step6Slice192) && /-L</.test(step6Slice192));
+ok('source: auditing.md a ticket with no Refs commits can never be evolved', /never be classed evolved|ineligible for evolved/.test(step4Slice192 + step6Slice192));
+ok('source: auditing.md report names unchanged (count) and evolved (listed with the evolving ticket)',
+  /unchanged/.test(step8Slice192) && /evolved/.test(step8Slice192) && /evolving ticket/.test(step8Slice192));
+ok('source: auditing.md evolved gets no regression-bug proposal', /\*\*Evolved\*\*[^\n]*no proposal|evolved[^\n]*no proposal/i.test(step9Slice190));
+ok('source: auditing.md unchanged and evolved never rewind the marker', /unchanged[^.]*evolved[^.]*never rewind|evolved[^.]*unchanged[^.]*never rewind/.test(step10Slice190));
+ok('source: auditing.md leaves implemented, unchanged and evolved tickets alone', /implemented\*\*, \*\*unchanged\*\*[^.]*\*\*evolved\*\*[^.]*left alone|left alone[^\n]*unchanged[^\n]*evolved/.test(notesSlice192));
+const auditDescLine192 = (auditCmdSrc.match(/^description: (.+)$/m) || [])[1] || '';
+ok('source: commands/audit.md description mentions regressions, starts "Audit and stays under 180 chars',
+  /^"Audit /.test(auditDescLine192) && /regression/i.test(auditDescLine192) && auditDescLine192.length < 180);
+ok('source: manage SKILL.md describes the regression audit', /regression/i.test((manageSkillSrc190.match(/^description: .+$/m) || [''])[0]) || /regression/i.test((manageSkillSrc190.match(/\*\*`audit[^\n]*/) || [''])[0]));
+for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
+  const docSrc192 = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
+  const auditPara192 = docSrc192.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
+  ok(`docs: ${doc} audit mention covers unchanged and evolved`, /unchanged|invariat/i.test(auditPara192) && /evolved|evolut/i.test(auditPara192));
+}
+
 // --- cleanup -------------------------------------------------------------------
 // --- argomenti etichettati: ogni template comando apre con un blocco
 // <arguments> fisso e non incolla mai $ARGUMENTS dentro la prosa (un testo
