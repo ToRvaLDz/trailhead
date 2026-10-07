@@ -42,7 +42,7 @@ Dispatch each ticket to a **`trailhead-verify`** agent (see `../../_shared/techn
 - Work goal-backward against the **current HEAD code** and the ticket's own Question / Outcome / PLAN criteria.
 - Use the ticket's `Refs: #<n>` commits as evidence when present. For the audit, this brief **overrides two rules of `techniques/verify.md`**: an **empty Refs set is evidence, not an error** (old or manually closed tickets carry none, so verify against HEAD and the recorded answer or outcome instead), and the agent **posts nothing** (it returns its verdict to the caller, never a `VERIFY` comment).
 - Return a result **per claim** (met / unmet / inconclusive, each inconclusive with its reason) **plus whether the type's deliverable is present**: code for `build` / `bug`, a recorded answer for `decision` / `research`, the artifact or recorded outcome for `prototype` / `task`.
-- Read-only: nothing is written to the ticket.
+- Read-only means **no writes of any kind** (no comments, edits, labels, or state changes), on the ticket or anywhere else. **Reading is expected**: the ticket and its comments, the map issue body (glossary, Decisions so far, Notes), linked or blocking tickets, and the repo code and history. A claim whose evidence lives in an issue must be evaluated by reading it, never left inconclusive for that reason.
 
 ## 6. Classify
 

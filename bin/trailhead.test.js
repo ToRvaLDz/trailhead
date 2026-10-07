@@ -1489,6 +1489,9 @@ ok('source: auditing.md treats any assignee or PAUSED as claimed, related only, 
 ok('source: auditing.md merged ticket carries Merged from provenance (I3)', mergeSlice190.includes('Merged from:'));
 ok('source: auditing.md verify brief overrides verify.md on empty Refs and posting (I1)',
   /overrides two rules of `techniques\/verify\.md`[\s\S]{0,400}empty Refs set[\s\S]{0,400}posts nothing|overrides two rules of `techniques\/verify\.md`[\s\S]{0,400}posts nothing[\s\S]{0,400}empty Refs/.test(auditingSrc));
+const step5Slice190 = (auditingSrc.match(/## 5\.[\s\S]*?(?=\n## 6\.)/) || [''])[0];
+ok('source: auditing.md brief says read-only means no writes while reading issues (map issue body) is expected',
+  /no writes of any kind/.test(step5Slice190) && /map issue body/.test(step5Slice190) && /reading is expected/i.test(step5Slice190) && /never (left )?inconclusive/.test(step5Slice190));
 ok('source: auditing.md keeps map-reshaping proposals human-owned, no delegate, in step 9 (I4)',
   /human-owned/.test(step9Slice190) && /never with the delegate option/i.test(step9Slice190) && /do not offer the delegate option/i.test(auditingSrc));
 ok('source: auditing.md removes a closed duplicate from the kept ticket blockers (I2)',
