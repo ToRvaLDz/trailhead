@@ -509,14 +509,15 @@ function readCommandVerbs() {
     .filter((f) => f.endsWith('.md'))
     .map((f) => {
       const raw = fs.readFileSync(path.join(dir, f), 'utf8');
-      return { verb: f.slice(0, -3), description: fmValue(raw, 'description'), argumentHint: fmValue(raw, 'argument-hint') };
+      return { verb: f.slice(0, -3), description: unquoteYamlScalar(fmValue(raw, 'description')), argumentHint: unquoteYamlScalar(fmValue(raw, 'argument-hint')) };
     })
     .sort((a, b) => a.verb.localeCompare(b.verb));
 }
 
-// Unquote a YAML double-quoted scalar (unlike commands/*.md, the agent .md
-// frontmatter wraps `description:` in double quotes). Leaves a plain/
-// unquoted scalar untouched, so this is safe to apply unconditionally.
+// Unquote a YAML double-quoted scalar. Applied to both the agent .md and the
+// commands/*.md frontmatter, since either may wrap values in double quotes.
+// Leaves a plain/unquoted scalar untouched, so this is safe to apply
+// unconditionally.
 function unquoteYamlScalar(v) {
   if (typeof v !== 'string' || v.length < 2 || v[0] !== '"' || v[v.length - 1] !== '"') return v;
   return v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');

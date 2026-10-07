@@ -143,6 +143,16 @@ ok('codex: per-verb skills/trailhead-audit/SKILL.md exists', fs.existsSync(codex
 ok('codex: trailhead-audit SKILL.md frontmatter is at byte 0', codexAuditSrc190.startsWith('---\nname: trailhead-audit\n'));
 ok('codex: trailhead-audit skill delegates to $trailhead audit', codexAuditSrc190.includes('$trailhead audit'));
 ok('codex: trailhead-audit carries the description from commands/audit.md', auditDesc190.length > 0 && codexAuditSrc190.includes(auditDesc190.replace(/^"|"$/g, '')));
+// #191: quoted frontmatter values in commands/*.md must not be double-quoted in the projection.
+ok('codex: trailhead-audit description is quoted exactly once', /^description: "Audit /m.test(codexAuditSrc190) && !codexAuditSrc190.includes('\\"Audit'));
+const codexAuditYamlPath191 = path.join(codexDir, 'skills', 'trailhead-audit', 'agents', 'openai.yaml');
+const codexAuditYaml191 = fs.existsSync(codexAuditYamlPath191) ? fs.readFileSync(codexAuditYamlPath191, 'utf8') : '';
+ok('codex: trailhead-audit openai.yaml short_description is not double-quoted', /short_description: "/.test(codexAuditYaml191) && !/short_description: "\\"/.test(codexAuditYaml191));
+const doubleQuoted191 = fs.readdirSync(path.join(codexDir, 'skills'))
+  .filter((d) => d.startsWith('trailhead-'))
+  .map((d) => path.join(codexDir, 'skills', d, 'SKILL.md'))
+  .filter((p) => fs.existsSync(p) && /^description: "\\"/m.test(fs.readFileSync(p, 'utf8')));
+ok('codex: no per-verb SKILL.md has a double-quoted description', doubleQuoted191.length === 0);
 ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
 // auto is a plain verb skill too: no trailhead-auto CLUSTER dir exists, so it
 // projects a thin per-verb skill exactly like bug/quick/pause.
