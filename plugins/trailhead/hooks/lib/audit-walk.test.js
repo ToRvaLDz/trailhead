@@ -768,6 +768,35 @@ function cli(args) {
   eq('gitDiffers: 1 -> true', walk.gitDiffers(dir, ['diff', '--quiet', 'HEAD~1', 'HEAD']), true);
 }
 
+// I3: the carry-forward branch of the anchor replay, in isolation. The later
+// ticket commit replaces lines 4-5 (which spans the anchor) with ONE line and
+// has no pure deletion of its own, so only a carried anchor sits after line 4.
+{
+  const mk = (editLine) => {
+    const { dir, f } = baseRepo();
+    const t = splice(f, 5, 2); // a1-a4, a7-a10; anchor after line 4
+    commit(dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+    const t2 = splice(t, 4, 2, 'T4'); // a1-a3, T4, a8-a10
+    commit(dir, { 'f.txt': t2 }, 'feat: replaces around the anchor', { refs: [1] });
+    commit(dir, { 'f.txt': splice(t2, editLine, 1, 'X') }, 'fix: later edit');
+    return fp(dir, 1);
+  };
+  eq('carried anchor: edit of the line after the span is changed', mk(5).reason, 'touching-hunk');
+  eq('carried anchor: edit far away is unchanged', mk(7).class, 'unchanged');
+}
+
+// I3: a merge hunk that replaces a tracked line: the side commit is the producer
+{
+  let s1;
+  const sc = mergeScenario((dir, t) => {
+    s1 = commit(dir, { 'f.txt': splice(t, 3, 1, 'S3') }, 'feat: side replaces a tracked line', { refs: [2] });
+  });
+  commit(sc.dir, { 'other.txt': 'main moves\n' }, 'chore: main moves');
+  const m = mergeBranch(sc.dir, 'side', {}, 'merge: side');
+  const c = att(sc.dir, 1, ['f.txt:3-3']).claims[0];
+  eq('attribute merge replacing a tracked line: the side commit, not the merge', [shas(c), c.attributed, c.evolvedBy], [[s1], true, [2]]);
+  ok('attribute merge replacing a tracked line: merge is not a producer', !shas(c).includes(m));
+}
 
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
