@@ -1547,7 +1547,7 @@ ok('source: auditing.md fast path matches #<n> as a delimited token in the trail
   /Refs: #17, #192/.test(step4Slice192) && /#19\b[^\n]*never[^\n]*#192|never[^\n]*#19\b[^\n]*#192/.test(step4Slice192) && /HEAD-reachable/.test(step4Slice192));
 ok('source: auditing.md fast path classes untouched lines implemented (unchanged)', /\*\*implemented \(unchanged\)\*\*/.test(step4Slice192));
 ok('source: auditing.md sends no-Refs tickets and changed lines to the full agent',
-  /no `Refs:` commits/.test(step4Slice192) && /agent-bound/.test(step4Slice192) && /trailhead-verify/.test(auditingSrc));
+  /no `Refs:` commits/.test(step4Slice192) && /agent-bound/.test(step4Slice192) && /Dispatch each agent-bound ticket to a \*\*`trailhead-verify`\*\* agent/.test(step5Slice190));
 ok('source: auditing.md fast path defines pure-deletion anchors, non-linear sets, shallow clones and dirty trees',
   /pure deletion/i.test(step4Slice192) && /anchor/.test(step4Slice192) && /non-linear/.test(step4Slice192) && /is-shallow-repository/.test(step4Slice192) && /git status --porcelain/.test(step4Slice192));
 ok('source: auditing.md light check covers decision/research/task/prototype inline, no agent',
@@ -1577,6 +1577,37 @@ for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'conten
   const docSrc192 = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
   const auditPara192 = docSrc192.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
   ok(`docs: ${doc} audit mention covers unchanged and evolved`, /unchanged|invariat/i.test(auditPara192) && /evolved|evolut/i.test(auditPara192));
+}
+
+// --- #192 fix round: pin the review findings -------------------------------------
+const bullet192 = (slice, re) => (slice.split('\n').find((l) => re.test(l)) || '');
+const inelig192 = step6Slice192.split('\n').find((l) => /ineligible|never be classed evolved/.test(l)) || '';
+ok('source: auditing.md orders non-linear sets with merge-base --is-ancestor', /git merge-base --is-ancestor <c_i> <last>/.test(step4Slice192));
+ok('source: auditing.md reads renames with a pathspec-free --name-status', /git diff -M --name-status p c`[^\n]*no pathspec/.test(step6Slice192));
+ok('source: auditing.md parses the Refs trailer with %(trailers:key=Refs once per audit',
+  /%\(trailers:key=Refs/.test(step4Slice192) && /once per audit/.test(step4Slice192) && /index/i.test(step4Slice192));
+ok('source: auditing.md anchors and touching insertions inherit lineage plus c',
+  /anchor[^\n]*inherit[^\n]*lineage[^\n]*plus `c`/.test(bullet192(step6Slice192, /^- \*\*Per commit/)) &&
+  /anchor[^\n]*inherit[^\n]*lineage[^\n]*plus `c`/.test(bullet192(step6Slice192, /^- \*\*Lineage/)) &&
+  /insertion[^\n]*inherit[^\n]*lineage[^\n]*plus `c`/.test(bullet192(step4Slice192, /^- \*\*Touching/)) &&
+  /insertion[^\n]*inherit[^\n]*lineage[^\n]*plus `c`/.test(bullet192(step6Slice192, /^- \*\*Lineage/)));
+ok('source: auditing.md absent deliverable is attributed over the returned HEAD ranges, not touched files',
+  /HEAD ranges the agent returned for the deliverable \(step 5\)/.test(step6Slice192) && !/over the ticket's touched files/.test(step6Slice192));
+ok('source: auditing.md pure-deletion anchor moves c_i to <last> along the step 6 chain and replay',
+  /c_i[^\n]*<last>[^\n]*chain[^\n]*replay/.test(bullet192(step4Slice192, /^- \*\*Pure deletions/)) && /non-ticket commit/.test(bullet192(step4Slice192, /^- \*\*Pure deletions/)));
+ok('source: auditing.md shallow and dirty tickets are ineligible for evolved',
+  /ineligible for evolved/.test(bullet192(step4Slice192, /^- \*\*Shallow/)) && /ineligible for evolved/.test(bullet192(step4Slice192, /^- \*\*Dirty/)) &&
+  /shallow/i.test(inelig192) && /dirty/i.test(inelig192));
+ok('source: auditing.md step 5 dispatches the agent-bound set and reads code at HEAD via git show',
+  /agent-bound/.test(step5Slice190) && /trailhead-verify/.test(step5Slice190) && /git show HEAD:<file>/.test(step5Slice190));
+ok('source: auditing.md step 8 counts sum to the audited set with the light-check share',
+  /light check/i.test(step8Slice192) && /light-check share/.test(step8Slice192) && /not implemented, unverifiable/.test(step8Slice192));
+ok('source: auditing.md step 10 flags unverifiable from step 4 or step 6', /\(step 4 or step 6\)/.test(step10Slice190));
+for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
+  const docSrc = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
+  const para = docSrc.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
+  ok(`docs: ${doc} audit mention names the Refs trailer fast path`, /Refs: #<n>/.test(para));
+  ok(`docs: ${doc} audit mention covers tasks and prototypes in the light check`, /task/i.test(para) && /prototyp/i.test(para));
 }
 
 // --- cleanup -------------------------------------------------------------------
