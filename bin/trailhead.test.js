@@ -1460,16 +1460,36 @@ ok('source: auditing.md captures the cutoff before enumerating and rewinds for u
   /cutoff/.test(auditingSrc) && /unverifiable/.test(auditingSrc) && /minus one second/.test(auditingSrc));
 ok('source: auditing.md enumerates exhaustively with --paginate', auditingSrc.includes('--paginate'));
 ok('source: auditing.md duplicate wiring transfer (re-point dependents, union blockers, all three views, --duplicate-of)',
-  auditingSrc.includes('--duplicate-of') && /re-point/.test(auditingSrc) && /union/.test(auditingSrc) && /all three views/.test(auditingSrc));
+  /--duplicate-of[^\n]*/.test(auditingSrc) && /Duplicate\*\*[^\n]*re-point/.test(auditingSrc) && /union/.test(auditingSrc) && /all three views/.test(auditingSrc));
+ok('source: auditing.md duplicate branch re-points dependents near --duplicate-of',
+  /re-pointed[\s\S]{0,900}--duplicate-of/.test(auditingSrc));
 ok('source: auditing.md merge excludes the group members', /minus the group's own members/.test(auditingSrc));
 ok('source: auditing.md dispatches trailhead-verify in batches of 5 with a >20 confirmation',
   auditingSrc.includes('trailhead-verify') && /batches of 5/.test(auditingSrc) && /more than 20|> ?20|exceeds 20/.test(auditingSrc));
 ok('source: auditing.md groups via supersede-and-merge', /supersede-and-merge/.test(auditingSrc));
-ok('source: auditing.md opens regression bugs with --of', auditingSrc.includes('--of'));
+ok('source: auditing.md opens regression bugs with bug --of', auditingSrc.includes('bug --of'));
 ok('source: auditing.md is read-only until an explicit yes', /read-only/.test(auditingSrc) && /explicit yes/.test(auditingSrc));
 
-ok('source: substrate-commands.md body generation preserves the last-audit marker line',
-  /Body generation[\s\S]*<!-- trailhead:last-audit[\s\S]*verbatim/.test(substrateCommandsSource));
+const bodyGen190 = (substrateCommandsSource.match(/\*\*Body generation\.\*\*[\s\S]*?(?=\n\*\*|\n#{2,6} |$)/) || [''])[0];
+ok('source: substrate-commands.md Body generation section preserves the last-audit marker verbatim',
+  bodyGen190.length > 0 && bodyGen190.includes('<!-- trailhead:last-audit') && /verbatim/.test(bodyGen190));
+const viewSkill190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-view', 'SKILL.md'), 'utf8');
+ok('source: trailhead-view SKILL.md preserves trailhead:last-audit', viewSkill190.includes('trailhead:last-audit'));
+ok('source: auditing.md covers closed maps with a repo-wide closed window (W1)',
+  /every `trailhead:ticket` closed in the window repo-wide/.test(auditingSrc) && /open or closed/.test(auditingSrc));
+ok('source: auditing.md checks total_count and incomplete_results and bisects (W2)',
+  auditingSrc.includes('total_count') && auditingSrc.includes('incomplete_results') && /bisect/.test(auditingSrc) && /1000/.test(auditingSrc));
+ok('source: auditing.md names stateReason versus state_reason casing (W2)',
+  auditingSrc.includes('`DUPLICATE`') && auditingSrc.includes('`duplicate`') && auditingSrc.includes('state_reason'));
+ok('source: auditing.md excludes tickets claimed by another assignee or PAUSED (W3)',
+  /assignee other than the current user/.test(auditingSrc) && auditingSrc.includes('PAUSED') && auditingSrc.includes('gh api user'));
+ok('source: auditing.md merged ticket carries Merged from provenance (I3)', auditingSrc.includes('Merged from:'));
+ok('source: auditing.md verify brief overrides verify.md on empty Refs and posting (I1)',
+  /overrides two rules of `techniques\/verify\.md`/.test(auditingSrc));
+ok('source: auditing.md keeps map-reshaping proposals human-owned, no delegate (I4)',
+  /human-owned/.test(auditingSrc) && /do not offer the delegate option/i.test(auditingSrc));
+ok('source: auditing.md removes a closed duplicate from the kept ticket blockers (I2)',
+  /drop `trailhead:blocked`/.test(auditingSrc) && /last open blocker/.test(auditingSrc));
 
 for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
