@@ -720,6 +720,31 @@ function cli(args) {
   eq('a well formed index still works', fastPath(dir, 1, good).class, 'unchanged');
 }
 
+// W2: fastpath and attribute agree when a foreign commit touches a deletion anchor
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 5, 2); // ticket deletes a5-a6: anchor after line 4
+  commit(dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+  const m = splice(t, 4, 1, 'X4');
+  commit(dir, { 'f.txt': m }, 'fix: foreign edit at the anchor', { refs: [6] });
+  commit(dir, { 'f.txt': splice(m, 8, 1, 'T8') }, 'feat: second', { refs: [1] });
+  const fpr = fp(dir, 1);
+  const atr = att(dir, 1, ['f.txt:4-4']);
+  eq('anchorGuard: fastpath guard, not evolved-eligible', [fpr.class, fpr.reason, fpr.evolvedEligible], ['changed', 'guard', false]);
+  eq('anchorGuard: attribute ineligible with the same reason', [atr.eligible, atr.reason], [false, 'guard']);
+  eq('anchorGuard: the two agree on eligibility', fpr.evolvedEligible, atr.eligible);
+}
+// a chain guard alone (no anchor involved) stays evolved-eligible in both
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 2, 1, 'T2');
+  commit(dir, { 'f.txt': t }, 'feat: first', { refs: [1] });
+  const mid = splice(t, 9, 1, 'X9');
+  commit(dir, { 'f.txt': mid }, 'fix: foreign edit in the same file', { refs: [6] });
+  commit(dir, { 'f.txt': splice(mid, 5, 1, 'T5') }, 'feat: second', { refs: [1] });
+  eq('chain guard only: evolved-eligible in both', [fp(dir, 1).evolvedEligible, att(dir, 1, ['f.txt:2-2']).eligible], [true, true]);
+}
+
 
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);

@@ -96,6 +96,14 @@ function gitStatus(repo, args) {
   }
 }
 
+// `git diff --quiet`-style calls: true when git reports a difference (exit 1),
+// false when it reports none (exit 0), an error for anything else (exit 128).
+function gitDiffers(repo, args) {
+  const status = gitStatus(repo, args);
+  if (status > 1) throw new Error(`git diff failed (${status})`);
+  return status === 1;
+}
+
 // Per-call context: the repo plus caches, so repeated ancestry and diff reads
 // during one audit cost one git call each.
 function makeCtx(repo) {
@@ -330,10 +338,14 @@ function ticketBaseline(ctx, n, index, { guard }) {
 
   // Guard: a non-ticket commit on the chain that touches a ticket file leaves
   // no trustworthy baseline (a side branch surfaces through its merge commit).
+  // The anchor check below still runs after a hit, so eligibility is computed
+  // the same way whether or not the chain guard fired.
+  let chainGuard = false;
   if (guard) {
     for (const { p, c } of chainBetween(ctx, order[0], last)) {
       if (!ticketSet.has(c) && gitStatus(ctx.repo, ['diff', '--quiet', p, c, '--', ...files]) === 1) {
-        return { ...known, reason: 'guard', anchorGuard: false };
+        chainGuard = true;
+        break;
       }
     }
   }
@@ -369,6 +381,7 @@ function ticketBaseline(ctx, n, index, { guard }) {
       }
     }
   }
+  if (chainGuard) return { ...known, files, reason: 'guard', anchorGuard: false };
   return { ...known, files, states, deleted };
 }
 
@@ -663,7 +676,7 @@ function main(argv, { cwd, stdout } = {}) {
   }
 }
 
-module.exports = { parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute, parseArgs, main };
+module.exports = { gitDiffers, parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute, parseArgs, main };
 
 if (require.main === module) {
   // exitCode, not process.exit(): a large index on a pipe must flush first.
