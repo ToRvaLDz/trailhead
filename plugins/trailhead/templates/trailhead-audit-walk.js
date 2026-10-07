@@ -344,7 +344,7 @@ function ticketBaseline(ctx, n, index, { guard }) {
   // No files, nothing to guard: an empty pathspec would diff the whole tree.
   if (guard && files.length) {
     for (const { p, c } of chainBetween(ctx, order[0], last)) {
-      if (!ticketSet.has(c) && gitStatus(ctx.repo, ['diff', '--quiet', p, c, '--', ...files]) === 1) {
+      if (!ticketSet.has(c) && gitDiffers(ctx.repo, ['diff', '--quiet', p, c, '--', ...files])) {
         chainGuard = true;
         break;
       }
@@ -411,7 +411,7 @@ function decideChange(ctx, base) {
     if (gone.some((e) => e.status === 'D' || e.status === 'R')) return 'deleted-or-renamed';
   }
   for (const [file, state] of base.states) {
-    if (gitStatus(ctx.repo, ['diff', '--quiet', base.last, 'HEAD', '--', file]) !== 1) continue;
+    if (!gitDiffers(ctx.repo, ['diff', '--quiet', base.last, 'HEAD', '--', file])) continue;
     if (git(ctx.repo, ['cat-file', '-s', `${base.last}:${file}`]).trim() === '0') return 'touching-hunk';
     const hunks = parseHunks(git(ctx.repo, ['diff', '-U0', '--no-color', '--no-ext-diff', base.last, 'HEAD', '--', file]));
     if (!hunks.length) return 'non-textual';

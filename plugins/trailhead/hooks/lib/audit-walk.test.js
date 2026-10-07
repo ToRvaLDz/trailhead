@@ -759,6 +759,15 @@ function cli(args) {
   eq('fastPath no files: no whole-tree guard hit', fp(base.dir, 1).class, 'unchanged');
 }
 
+// I2: a git exit status above 1 is an error, never "no difference"
+{
+  const { dir } = baseRepo();
+  assert.throws(() => walk.gitDiffers(dir, ['diff', '--quiet', 'no-such-rev', 'HEAD']), /git diff failed/); passed++;
+  eq('gitDiffers: 0 -> false', walk.gitDiffers(dir, ['diff', '--quiet', 'HEAD', 'HEAD']), false);
+  commit(dir, { 'other.txt': 'changed\n' }, 'chore: change');
+  eq('gitDiffers: 1 -> true', walk.gitDiffers(dir, ['diff', '--quiet', 'HEAD~1', 'HEAD']), true);
+}
+
 
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
