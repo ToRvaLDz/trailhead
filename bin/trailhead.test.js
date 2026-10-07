@@ -1445,7 +1445,7 @@ ok('source: manage SKILL.md routes audit to references/auditing.md', /\*\*`audit
 
 const dispatcherSrc190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead', 'SKILL.md'), 'utf8');
 ok('source: dispatcher argument-hint lists audit', /argument-hint: "[^"]*\|audit\|[^"]*"/.test(dispatcherSrc190));
-ok('source: dispatcher manage-cluster routing list includes audit', /manage cluster is built[^\n]*`prune`, and `audit`/.test(dispatcherSrc190) || /manage cluster is built[^\n]*`audit`/.test(dispatcherSrc190));
+ok('source: dispatcher manage-cluster routing list includes audit', /manage cluster is built[^\n]*`prune`, and `audit`/.test(dispatcherSrc190));
 
 const auditingPath190 = path.join(sourceSkillsDir, 'trailhead-manage', 'references', 'auditing.md');
 const auditingSrc = fs.existsSync(auditingPath190) ? fs.readFileSync(auditingPath190, 'utf8') : '';
@@ -1497,6 +1497,21 @@ ok('source: auditing.md excludes the pair on both dependents and blockers, edge 
   /dependent[\s\S]{0,300}excluding the pair itself/.test(dupSlice190) && /blockers[\s\S]{0,300}excluding the pair itself/.test(dupSlice190) && /removed[\s\S]{0,200}instead of transferred/.test(dupSlice190) && /re-evaluated only after/.test(dupSlice190));
 ok('source: auditing.md enumeration requires is:issue and drops pull_request items (I7)',
   /is:issue label:trailhead:ticket/.test(auditingSrc) && /`pull_request`/.test(auditingSrc));
+
+const step10Slice190 = (auditingSrc.match(/## 10\.[\s\S]*?(?=\n## Notes)/) || [''])[0];
+const implWrongSlice190 = (step9Slice190.match(/\*\*Implemented wrong\*\*[\s\S]*?(?=\n- \*\*Not implemented\*\*)/) || [''])[0];
+ok('source: auditing.md step 10 never advances the marker on a [map]-scoped run',
+  /`\[map\]`-scoped run never advances/.test(step10Slice190));
+ok('source: auditing.md step 10 never proposes an advance from an incomplete run',
+  /Never advance from an incomplete run/.test(step10Slice190));
+ok('source: auditing.md step 10 rewinds for any ticket unverifiable in whole or in part (I9)',
+  /in whole or in part/.test(step10Slice190));
+ok('source: auditing.md implemented-wrong checks for an existing Regression of ticket and reports already tracked (W4)',
+  /Regression of:/.test(implWrongSlice190) && /already tracked/.test(implWrongSlice190) && /exhaustive/.test(implWrongSlice190) && /closedAt/.test(implWrongSlice190));
+ok('source: auditing.md step 9 re-read repeats the existing-regression check (W4)',
+  /re-read[^\n]*Regression of:/.test(step9Slice190));
+ok('source: auditing.md any claimed member makes the whole pair or group related only (I8)',
+  /any member[^.]*claimed[^.]*whole pair or group[^.]*related only/.test(auditingSrc) && /any member[^.]*claimed/.test(step9Slice190));
 
 for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
