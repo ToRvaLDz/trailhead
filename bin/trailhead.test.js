@@ -1607,7 +1607,7 @@ for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'conten
   const docSrc = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
   const para = docSrc.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
   ok(`docs: ${doc} audit mention names the Refs trailer fast path`, /Refs: #<n>/.test(para));
-  ok(`docs: ${doc} audit mention covers tasks and prototypes in the light check`, /task/i.test(para) && /prototyp/i.test(para));
+  ok(`docs: ${doc} audit mention covers tasks and prototypes in the light check`, /task/i.test(para) && /prototyp|prototipi/i.test(para));
 }
 
 // --- cleanup -------------------------------------------------------------------
