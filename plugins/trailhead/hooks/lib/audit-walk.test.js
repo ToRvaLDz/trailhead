@@ -151,5 +151,291 @@ eq('parseRefs: whitespace delimited with a Refs: prefix', parseRefs('Refs: #5 an
   ok('hunkTouches: accepts Sets', hunkTouches(deletion, new Set([10]), new Set()));
 }
 
+// --- fast path ---------------------------------------------------------------
+const { buildTrailerIndex, fastPath } = walk;
+
+// 1-based splice on a text file: splice(text, 3, 2, 'x') replaces lines 3-4.
+function splice(text, start, del, ...ins) {
+  const arr = text.replace(/\n$/, '').split('\n');
+  arr.splice(start - 1, del, ...ins);
+  return arr.join('\n') + '\n';
+}
+
+// A repo with f.txt (10 lines) and other.txt; returns { dir, f, base }.
+function baseRepo() {
+  const dir = mkrepo();
+  const f = lines('a', 10);
+  const base = commit(dir, { 'f.txt': f, 'other.txt': lines('o', 3) }, 'chore: base');
+  return { dir, f, base };
+}
+
+function fp(dir, n) { return fastPath(dir, n, buildTrailerIndex(dir)); }
+
+// Merge `branch` into the current branch; `resolved` (files) settles conflicts.
+function mergeBranch(dir, branch, resolved, subject, opts = {}) {
+  try { git(dir, ['merge', '-q', '--no-ff', '--no-commit', branch]); } catch { /* conflict: resolved below */ }
+  for (const [rel, content] of Object.entries(resolved || {})) fs.writeFileSync(path.join(dir, rel), content);
+  git(dir, ['add', '-A']);
+  return finishCommit(dir, ['commit', '-q', '--allow-empty'], subject, opts);
+}
+
+// untouched ticket code is unchanged
+{
+  const { dir, f } = baseRepo();
+  const c2 = commit(dir, { 'f.txt': splice(f, 3, 2, 'T3', 'T4') }, 'feat: ticket', { refs: [1] });
+  commit(dir, { 'other.txt': lines('p', 3) }, 'chore: elsewhere');
+  const r = fp(dir, 1);
+  eq('fastPath untouched: class and reason', [r.class, r.reason], ['unchanged', null]);
+  eq('fastPath untouched: last, commits, files', [r.last, r.commits, r.files], [c2, [c2], ['f.txt']]);
+  eq('fastPath untouched: evolvedEligible', r.evolvedEligible, true);
+  eq('fastPath untouched: ticket field', r.ticket, 1);
+}
+
+// an edit of a ticket line is changed
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  commit(dir, { 'f.txt': splice(t, 3, 1, 'X3') }, 'fix: later edit');
+  const r = fp(dir, 1);
+  eq('fastPath edited line: changed/touching-hunk', [r.class, r.reason], ['changed', 'touching-hunk']);
+  eq('fastPath edited line: still evolved-eligible', r.evolvedEligible, true);
+}
+
+// an edit elsewhere in the same file is unchanged
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  commit(dir, { 'f.txt': splice(t, 9, 1, 'X9') }, 'fix: far edit');
+  eq('fastPath edit elsewhere: unchanged', fp(dir, 1).class, 'unchanged');
+}
+
+// pure deletion: the anchor decides
+{
+  const touched = baseRepo();
+  const t = splice(touched.f, 5, 2); // ticket deletes a5-a6 -> gap after line 4
+  commit(touched.dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+  commit(touched.dir, { 'f.txt': splice(t, 4, 1, 'X4') }, 'fix: edit at the anchor');
+  const r = fp(touched.dir, 1);
+  eq('fastPath deletion anchor touched: changed/touching-hunk', [r.class, r.reason], ['changed', 'touching-hunk']);
+
+  const gapEdge = baseRepo();
+  const t2 = splice(gapEdge.f, 5, 2);
+  commit(gapEdge.dir, { 'f.txt': t2 }, 'feat: delete', { refs: [1] });
+  commit(gapEdge.dir, { 'f.txt': splice(t2, 5, 1, 'X5') }, 'fix: edit after the anchor');
+  eq('fastPath deletion anchor edge (g+1): changed', fp(gapEdge.dir, 1).reason, 'touching-hunk');
+
+  const untouched = baseRepo();
+  const t3 = splice(untouched.f, 5, 2);
+  commit(untouched.dir, { 'f.txt': t3 }, 'feat: delete', { refs: [1] });
+  commit(untouched.dir, { 'f.txt': splice(t3, 8, 1, 'X8') }, 'fix: edit away from the anchor');
+  eq('fastPath deletion anchor untouched: unchanged', fp(untouched.dir, 1).class, 'unchanged');
+}
+
+// insertion inside, at the edge of, and away from the ticket span
+{
+  const mk = (insertAfter) => {
+    const { dir, f } = baseRepo();
+    const t = splice(f, 3, 4, 'T3', 'T4', 'T5', 'T6'); // ticket owns lines 3-6
+    commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+    commit(dir, { 'f.txt': splice(t, insertAfter + 1, 0, 'NEW') }, 'fix: insert');
+    return fp(dir, 1);
+  };
+  eq('fastPath insertion inside the span: changed', mk(4).reason, 'touching-hunk');
+  eq('fastPath insertion at the edge of the span: changed', mk(6).reason, 'touching-hunk');
+  eq('fastPath insertion far from the span: unchanged', mk(9).class, 'unchanged');
+}
+
+// rename or delete since is deleted-or-renamed
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  git(dir, ['mv', 'f.txt', 'g.txt']);
+  finishCommit(dir, ['commit', '-q'], 'refactor: rename', {});
+  const r = fp(dir, 1);
+  eq('fastPath rename since: deleted-or-renamed', [r.class, r.reason], ['changed', 'deleted-or-renamed']);
+}
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  commit(dir, { 'f.txt': null }, 'chore: drop file');
+  eq('fastPath delete since: deleted-or-renamed', fp(dir, 1).reason, 'deleted-or-renamed');
+}
+
+// a file the ticket deleted counts only if it exists again at HEAD
+{
+  const { dir } = baseRepo();
+  commit(dir, { 'f.txt': null }, 'chore: ticket deletes', { refs: [1] });
+  eq('fastPath ticket-deleted file stays gone: unchanged', fp(dir, 1).class, 'unchanged');
+  commit(dir, { 'f.txt': 'again\n' }, 'feat: recreated');
+  const r = fp(dir, 1);
+  eq('fastPath ticket-deleted file recreated: changed/recreated', [r.class, r.reason], ['changed', 'recreated']);
+}
+
+// a file that differs without a textual hunk is non-textual (mode-only, binary)
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  fs.chmodSync(path.join(dir, 'f.txt'), 0o755);
+  commit(dir, {}, 'chore: chmod');
+  const r = fp(dir, 1);
+  eq('fastPath mode-only change: non-textual', [r.class, r.reason], ['changed', 'non-textual']);
+}
+{
+  const dir = mkrepo();
+  commit(dir, { 'img.bin': Buffer.from([0, 1, 2, 3, 0, 4]).toString('latin1') }, 'chore: base');
+  fs.writeFileSync(path.join(dir, 'img.bin'), Buffer.from([0, 9, 9, 9, 0, 4]));
+  commit(dir, {}, 'feat: ticket binary', { refs: [1] });
+  fs.writeFileSync(path.join(dir, 'img.bin'), Buffer.from([0, 7, 7, 7, 0, 4]));
+  commit(dir, {}, 'fix: binary changes');
+  eq('fastPath binary change: non-textual', fp(dir, 1).reason, 'non-textual');
+}
+
+// an empty file at <last> that differs is changed
+{
+  const { dir } = baseRepo();
+  commit(dir, { 'e.txt': '' }, 'feat: empty file', { refs: [1] });
+  eq('fastPath empty file unchanged', fp(dir, 1).class, 'unchanged');
+  commit(dir, { 'e.txt': 'now has content\n' }, 'feat: fills it');
+  eq('fastPath empty file that differs: touching-hunk', fp(dir, 1).reason, 'touching-hunk');
+}
+
+// no Refs commits -> no-refs
+{
+  const { dir } = baseRepo();
+  const r = fp(dir, 99);
+  eq('fastPath no Refs: changed/no-refs', [r.class, r.reason], ['changed', 'no-refs']);
+  eq('fastPath no Refs: ineligible, empty commits', [r.evolvedEligible, r.commits, r.last], [false, [], null]);
+}
+
+// #19 never matches #192, prose Refs lines are ignored
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket 192', { refs: [17, 192], body: 'Refs: #19 is only prose here' });
+  eq('fastPath #19 does not match #192: no-refs', fp(dir, 19).reason, 'no-refs');
+  eq('fastPath #192 in a multi-ref trailer', fp(dir, 192).class, 'unchanged');
+  eq('fastPath #17 in the same trailer', fp(dir, 17).class, 'unchanged');
+}
+
+// non-linear: ticket commits on incomparable branches
+{
+  const { dir, f } = baseRepo();
+  git(dir, ['checkout', '-q', '-b', 'side']);
+  commit(dir, { 'f.txt': splice(f, 2, 1, 'S2') }, 'feat: side part', { refs: [1] });
+  git(dir, ['checkout', '-q', 'main']);
+  commit(dir, { 'f.txt': splice(f, 8, 1, 'M8') }, 'feat: main part', { refs: [1] });
+  mergeBranch(dir, 'side', {}, 'merge: side');
+  const r = fp(dir, 1);
+  eq('fastPath non-linear: changed/non-linear', [r.class, r.reason, r.evolvedEligible], ['changed', 'non-linear', false]);
+}
+
+// ticket commits ordered by ancestry, never by timestamp
+{
+  const { dir, f } = baseRepo();
+  const t1 = splice(f, 2, 1, 'T2');
+  const c2 = commit(dir, { 'f.txt': t1 }, 'feat: first', { refs: [1], date: '2030-01-01T00:00:00Z' });
+  const c3 = commit(dir, { 'f.txt': splice(t1, 8, 1, 'T8') }, 'feat: second', { refs: [1], date: '2001-01-01T00:00:00Z' });
+  const r = fp(dir, 1);
+  eq('fastPath out-of-order dates: ancestry picks last', [r.last, r.commits, r.class], [c3, [c2, c3], 'unchanged']);
+}
+
+// guard: a non-ticket commit on the chain touching a ticket file
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 2, 1, 'T2');
+  commit(dir, { 'f.txt': t }, 'feat: first', { refs: [1] });
+  const mid = splice(t, 9, 1, 'X9');
+  commit(dir, { 'f.txt': mid }, 'fix: foreign edit in the same file');
+  commit(dir, { 'f.txt': splice(mid, 5, 1, 'T5') }, 'feat: second', { refs: [1] });
+  const r = fp(dir, 1);
+  eq('fastPath guard on the chain: changed/guard', [r.class, r.reason, r.evolvedEligible], ['changed', 'guard', true]);
+}
+// a side branch that never joins the chain is not a guard hit
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 2, 1, 'T2');
+  commit(dir, { 'f.txt': t }, 'feat: first', { refs: [1] });
+  git(dir, ['checkout', '-q', '-b', 'side']);
+  commit(dir, { 'f.txt': splice(t, 9, 1, 'S9') }, 'fix: unmerged side edit');
+  git(dir, ['checkout', '-q', 'main']);
+  commit(dir, { 'f.txt': splice(t, 5, 1, 'T5') }, 'feat: second', { refs: [1] });
+  eq('fastPath unmerged side branch: not a guard hit', fp(dir, 1).class, 'unchanged');
+}
+
+// a later ticket commit around an earlier deletion keeps the anchor
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 5, 2); // a1-a4, a7-a10: anchor after line 4
+  commit(dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+  const t2 = splice(t, 5, 1); // ticket deletes a7 too: pure deletion at the anchor edge
+  commit(dir, { 'f.txt': t2 }, 'feat: delete more', { refs: [1] });
+  eq('fastPath anchor survives a later ticket deletion: unchanged', fp(dir, 1).class, 'unchanged');
+  commit(dir, { 'f.txt': splice(t2, 4, 1, 'X4') }, 'fix: edit at the carried anchor');
+  eq('fastPath carried anchor still detects an edit', fp(dir, 1).reason, 'touching-hunk');
+}
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 5, 2);
+  commit(dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+  const t2 = splice(t, 5, 1);
+  commit(dir, { 'f.txt': t2 }, 'feat: delete more', { refs: [1] });
+  commit(dir, { 'f.txt': splice(t2, 7, 1, 'X7') }, 'fix: edit far away');
+  eq('fastPath carried anchor, edit far away: unchanged', fp(dir, 1).class, 'unchanged');
+}
+
+// a ticket commit that is itself a merge: files, hunks and blame use the chosen parent
+{
+  const { dir, f } = baseRepo();
+  git(dir, ['checkout', '-q', '-b', 'side']);
+  commit(dir, { 'f.txt': splice(f, 5, 1, 'side5'), 's.txt': 'side file\n' }, 'feat: side work');
+  git(dir, ['checkout', '-q', 'main']);
+  const m1 = splice(f, 5, 1, 'main5');
+  commit(dir, { 'f.txt': m1 }, 'feat: main work');
+  const merged = splice(f, 5, 1, 'merged5');
+  const mc = mergeBranch(dir, 'side', { 'f.txt': merged }, 'merge: side, resolved', { refs: [1] });
+  let r = fp(dir, 1);
+  eq('fastPath ticket merge: last is the merge, files vs first parent',
+    [r.last, r.files, r.class], [mc, ['f.txt', 's.txt'], 'unchanged']);
+  commit(dir, { 'f.txt': splice(merged, 1, 1, 'X1') }, 'fix: far edit');
+  eq('fastPath ticket merge: far edit unchanged', fp(dir, 1).class, 'unchanged');
+  commit(dir, { 'f.txt': splice(splice(merged, 1, 1, 'X1'), 5, 1, 'X5') }, 'fix: edit the resolved line');
+  eq('fastPath ticket merge: edit of the resolved line', fp(dir, 1).reason, 'touching-hunk');
+}
+
+// a stale or malformed index is rejected, never silently used
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  const index = buildTrailerIndex(dir);
+  commit(dir, { 'other.txt': 'moved on\n' }, 'chore: moves HEAD');
+  assert.throws(() => fastPath(dir, 1, index), /stale/); passed++;
+  assert.throws(() => fastPath(dir, 1, { head: head(dir) }), /malformed/); passed++;
+  const fresh = buildTrailerIndex(dir);
+  eq('buildTrailerIndex: head, shallow, byTicket', [fresh.head, fresh.shallow, Object.keys(fresh.byTicket)], [head(dir), false, ['1']]);
+  eq('buildTrailerIndex: refsBySha lists only trailer commits', Object.values(fresh.refsBySha), [[1]]);
+}
+
+// dirty ticket files are reported without any effect on the class
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  fs.writeFileSync(path.join(dir, 'f.txt'), 'uncommitted\n');
+  const r = fp(dir, 1);
+  eq('fastPath dirty tree: class unaffected, file reported', [r.class, r.dirtyFiles], ['unchanged', ['f.txt']]);
+}
+
+// shallow clones send every ticket to the agent and are ineligible for evolved
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  const clone = path.join(os.tmpdir(), 'trailhead-audit-walk-shallow-' + process.pid);
+  tmpDirs.push(clone);
+  execFileSync('git', ['clone', '-q', '--depth', '1', '--no-local', 'file://' + dir, clone], { env: GIT_ENV, stdio: 'pipe' });
+  const index = buildTrailerIndex(clone);
+  const r = fastPath(clone, 1, index);
+  eq('fastPath shallow: changed/shallow, ineligible', [index.shallow, r.class, r.reason, r.evolvedEligible], [true, 'changed', 'shallow', false]);
+}
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
