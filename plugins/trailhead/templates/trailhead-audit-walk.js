@@ -17,6 +17,8 @@
 // Git is only ever run through execFileSync('git', ['-C', repo, ...]), never a
 // shell, with LC_ALL=C so output parsing is stable on localized machines.
 
+const fs = require('fs');
+const path = require('path');
 const { execFileSync } = require('child_process');
 
 // Tokens `#<digits>` delimited by start/end, comma or whitespace, so `#19`
@@ -579,4 +581,71 @@ function attribute(repo, n, claims, index) {
   }
 }
 
-module.exports = { parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute };
+// --- CLI ----------------------------------------------------------------------------------
+class UsageError extends Error {}
+
+function parseArgs(argv) {
+  const [command, ...rest] = argv;
+  if (!['index', 'fastpath', 'attribute'].includes(command)) {
+    throw new UsageError('usage: trailhead-audit-walk.js <index|fastpath|attribute> --repo <dir> ...');
+  }
+  const opts = { command, repo: null, index: null, ticket: null, claims: [], tickets: [] };
+  const value = (flag, i) => {
+    if (i >= rest.length) throw new UsageError(`usage: ${flag} requires a value`);
+    return rest[i];
+  };
+  const number = (text, what) => {
+    if (!/^\d+$/.test(text)) throw new UsageError(`usage: ${what} must be a ticket number, got: ${text}`);
+    return Number(text);
+  };
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    if (arg === '--repo') opts.repo = value(arg, ++i);
+    else if (arg === '--index') opts.index = value(arg, ++i);
+    else if (arg === '--ticket' && command === 'attribute') opts.ticket = number(value(arg, ++i), '--ticket');
+    else if (arg === '--claim' && command === 'attribute') opts.claims.push(value(arg, ++i));
+    else if (command === 'fastpath' && !arg.startsWith('--')) opts.tickets.push(number(arg, 'ticket'));
+    else throw new UsageError(`usage: unknown argument: ${arg}`);
+  }
+  if (command === 'fastpath' && !opts.tickets.length) throw new UsageError('usage: fastpath needs at least one ticket number');
+  if (command === 'attribute' && opts.ticket === null) throw new UsageError('usage: attribute needs --ticket <n>');
+  if (command === 'attribute' && !opts.claims.length) throw new UsageError('usage: attribute needs at least one --claim <spec>');
+  return opts;
+}
+
+function readIndexFile(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new Error(`malformed index file ${file}: ${err.message}`);
+  }
+}
+
+function run(opts, repo) {
+  if (opts.command === 'index') return buildTrailerIndex(repo);
+  const index = opts.index ? readIndexFile(opts.index) : buildTrailerIndex(repo);
+  if (opts.command === 'attribute') return attribute(repo, opts.ticket, opts.claims, index);
+  return { shallow: index.shallow === true, tickets: opts.tickets.map((n) => fastPath(repo, n, index)) };
+}
+
+// Exit 0 with the result as one JSON document; exit 2 with {"error":...} on a
+// usage error or any fatal failure (not a repo, stale or malformed index, bad claim).
+function main(argv, { cwd, stdout } = {}) {
+  const out = stdout || process.stdout;
+  try {
+    const opts = parseArgs(argv || []);
+    const repo = path.resolve(cwd || process.cwd(), opts.repo || '.');
+    out.write(JSON.stringify(run(opts, repo)) + '\n');
+    return 0;
+  } catch (err) {
+    out.write(JSON.stringify({ error: err && err.message ? err.message : String(err) }) + '\n');
+    return 2;
+  }
+}
+
+module.exports = { parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute, parseArgs, main };
+
+if (require.main === module) {
+  // exitCode, not process.exit(): a large index on a pipe must flush first.
+  process.exitCode = main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout });
+}

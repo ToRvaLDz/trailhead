@@ -634,5 +634,65 @@ function mergeScenario(sideSetup) {
   eq('attribute non-linear: ineligible, not attributed', [r.eligible, r.reason, r.claims[0].attributed], [false, 'non-linear', false]);
 }
 
+// --- end-to-end: the CLI ---------------------------------------------------------
+function cli(args) {
+  try {
+    const stdout = execFileSync(process.execPath, [scriptPath, ...args], { env: GIT_ENV, stdio: 'pipe', encoding: 'utf8' });
+    return { code: 0, json: JSON.parse(stdout) };
+  } catch (e) {
+    return { code: e.status, json: JSON.parse(String(e.stdout)) };
+  }
+}
+
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': splice(t, 3, 1, 'M3') }, 'feat: later ticket', { refs: [2] });
+  const indexFile = path.join(dir, '..', path.basename(dir) + '-index.json');
+  tmpDirs.push(indexFile);
+
+  const idx = cli(['index', '--repo', dir]);
+  fs.writeFileSync(indexFile, JSON.stringify(idx.json));
+  eq('cli index: exit 0, head and ticket map', [idx.code, idx.json.head, Object.keys(idx.json.byTicket).sort()], [0, head(dir), ['1', '2']]);
+
+  const fpRun = cli(['fastpath', '--repo', dir, '--index', indexFile, '1', '2']);
+  eq('cli fastpath --index: one entry per ticket', [fpRun.code, fpRun.json.shallow, fpRun.json.tickets.map((x) => [x.ticket, x.class, x.reason])],
+    [0, false, [[1, 'changed', 'touching-hunk'], [2, 'unchanged', null]]]);
+
+  const noIndex = cli(['fastpath', '--repo', dir, '1']);
+  eq('cli fastpath without --index scans itself', noIndex.json.tickets[0].reason, 'touching-hunk');
+
+  const attRun = cli(['attribute', '--repo', dir, '--index', indexFile, '--ticket', '1', '--claim', 'f.txt:3-3', '--claim', 'f.txt:9-10']);
+  eq('cli attribute --index: claims in order', [attRun.code, attRun.json.eligible, attRun.json.claims.map((x) => [x.spec, x.attributed, x.evolvedBy])],
+    [0, true, [['f.txt:3-3', true, [2]], ['f.txt:9-10', false, []]]]);
+  eq('cli attribute: producer carries sha and refs', attRun.json.claims[0].producers, [{ sha: c3, refs: [2] }]);
+
+  commit(dir, { 'other.txt': 'moves HEAD\n' }, 'chore: moves HEAD');
+  const stale = cli(['fastpath', '--repo', dir, '--index', indexFile, '1']);
+  eq('cli stale --index: exit 2 with an error', [stale.code, /stale/.test(stale.json.error)], [2, true]);
+  const staleAtt = cli(['attribute', '--repo', dir, '--index', indexFile, '--ticket', '1', '--claim', 'f.txt:3-3']);
+  eq('cli attribute stale --index: exit 2', staleAtt.code, 2);
+
+  fs.writeFileSync(indexFile, '{not json');
+  eq('cli malformed --index file: exit 2', cli(['fastpath', '--repo', dir, '--index', indexFile, '1']).code, 2);
+}
+
+// usage errors exit 2 with a JSON error
+{
+  const { dir } = baseRepo();
+  eq('cli no subcommand: exit 2', cli([]).code, 2);
+  eq('cli unknown subcommand: exit 2', cli(['bogus', '--repo', dir]).code, 2);
+  eq('cli fastpath without tickets: exit 2', cli(['fastpath', '--repo', dir]).code, 2);
+  eq('cli fastpath non-numeric ticket: exit 2', cli(['fastpath', '--repo', dir, 'abc']).code, 2);
+  eq('cli attribute without --ticket: exit 2', cli(['attribute', '--repo', dir, '--claim', 'f.txt:1-1']).code, 2);
+  eq('cli attribute bad claim: exit 2', cli(['attribute', '--repo', dir, '--ticket', '1', '--claim', 'nope']).code, 2);
+  eq('cli unknown flag: exit 2', cli(['index', '--repo', dir, '--bogus']).code, 2);
+  eq('cli --repo without a value: exit 2', cli(['index', '--repo']).code, 2);
+  const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-audit-walk-norepo-'));
+  tmpDirs.push(notRepo);
+  eq('cli not a repo: exit 2', cli(['index', '--repo', notRepo]).code, 2);
+}
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
