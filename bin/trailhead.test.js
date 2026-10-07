@@ -134,6 +134,15 @@ ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.
 ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md')));
 ok('codex: trailhead-bug SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-bug\n'));
 ok('codex: trailhead-bug skill delegates to $trailhead bug', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').includes('$trailhead bug'));
+// #190: audit verb projected per-verb on Codex, description from commands/audit.md.
+const auditCmdSrc190 = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'audit.md'), 'utf8');
+const codexAuditPath190 = path.join(codexDir, 'skills', 'trailhead-audit', 'SKILL.md');
+const codexAuditSrc190 = fs.existsSync(codexAuditPath190) ? fs.readFileSync(codexAuditPath190, 'utf8') : '';
+const auditDesc190 = (auditCmdSrc190.match(/^description: (.+)$/m) || [])[1] || '';
+ok('codex: per-verb skills/trailhead-audit/SKILL.md exists', fs.existsSync(codexAuditPath190));
+ok('codex: trailhead-audit SKILL.md frontmatter is at byte 0', codexAuditSrc190.startsWith('---\nname: trailhead-audit\n'));
+ok('codex: trailhead-audit skill delegates to $trailhead audit', codexAuditSrc190.includes('$trailhead audit'));
+ok('codex: trailhead-audit carries the description from commands/audit.md', auditDesc190.length > 0 && codexAuditSrc190.includes(auditDesc190.replace(/^"|"$/g, '')));
 ok('codex: per-verb skill is explicit-only', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'agents', 'openai.yaml'), 'utf8').includes('allow_implicit_invocation: false'));
 // auto is a plain verb skill too: no trailhead-auto CLUSTER dir exists, so it
 // projects a thin per-verb skill exactly like bug/quick/pause.
@@ -828,6 +837,7 @@ ok('claude: skills/_shared/ticket-language.md exists', fs.existsSync(path.join(c
 ok('claude: trailhead-work/../_shared/ticket-language.md resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'ticket-language.md')));
 
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
+ok('claude: commands/trailhead/audit.md projected', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'audit.md')));
 ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
@@ -1460,15 +1470,6 @@ ok('source: auditing.md is read-only until an explicit yes', /read-only/.test(au
 
 ok('source: substrate-commands.md body generation preserves the last-audit marker line',
   /Body generation[\s\S]*<!-- trailhead:last-audit[\s\S]*verbatim/.test(substrateCommandsSource));
-
-ok('claude: commands/trailhead/audit.md projected', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'audit.md')));
-const codexAuditPath190 = path.join(codexDir, 'skills', 'trailhead-audit', 'SKILL.md');
-const codexAuditSrc190 = fs.existsSync(codexAuditPath190) ? fs.readFileSync(codexAuditPath190, 'utf8') : '';
-const auditDesc190 = (auditCmdSrc.match(/^description: (.+)$/m) || [])[1] || '';
-ok('codex: per-verb skills/trailhead-audit/SKILL.md exists', fs.existsSync(codexAuditPath190));
-ok('codex: trailhead-audit SKILL.md frontmatter is at byte 0', codexAuditSrc190.startsWith('---\nname: trailhead-audit\n'));
-ok('codex: trailhead-audit skill delegates to $trailhead audit', codexAuditSrc190.includes('$trailhead audit'));
-ok('codex: trailhead-audit carries the description from commands/audit.md', auditDesc190.length > 0 && codexAuditSrc190.includes(auditDesc190.replace(/^"|"$/g, '')));
 
 for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));

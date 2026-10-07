@@ -173,6 +173,13 @@ These renders create and pin only when missing; they never rewrite the body.
 - **per open map, also flag GitHub's 100 sub-issue cap**: read `sub_issues_summary.total` (below) and flag `near cap · <total>/100` (total >= 90) or `at cap` (total >= 100). For only the (rare) at/near-cap maps, run one bounded native sub-issue list (see `## Sub-issue cap and pruning` above) to check for closed edges, exactly like the bounded fog-confirm above, and append `· prunable` when any are found. The render offers `/trailhead:prune` for such a map, never auto-prunes;
 - the whiteboard as a section, or a link to the `/trailhead:whiteboard` view;
 - dynamic counts: untriaged inbox size and whiteboard frontier size.
+- **the last-audit marker, carried through untouched.** If the existing body holds a hidden line `<!-- trailhead:last-audit <ISO-8601 UTC> -->` (written by `/trailhead:audit`, see `../trailhead-manage/references/auditing.md`), copy that line **verbatim** into every regenerated body, never dropped, reformatted, or re-dated. Only `/trailhead:audit` changes its value, and only on a confirmed marker advance, through the same fail-safe read-modify-write:
+```bash
+# read the marker (empty output = no audit yet); the body was already read non-empty per the fail-safe rule
+gh issue view <dashboard> --json body --jq .body | grep -o '<!-- trailhead:last-audit [^ ]* -->'
+# write: replace the marker line if present, else append it, in the body-file you then pass to `gh issue edit <dashboard> --body-file`
+sed -i -E 's|<!-- trailhead:last-audit [^ ]* -->|<!-- trailhead:last-audit <ISO-8601 UTC> -->|' <body-file>   # or append the line when absent
+```
 
 Count queries, `--json ... --jq 'length'` style:
 ```bash
