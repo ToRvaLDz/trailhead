@@ -413,4 +413,170 @@ function fastPath(repo, n, index) {
   }
 }
 
-module.exports = { parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath };
+// --- attribution walk (auditing.md step 6) ---------------------------------------------
+// Claim spec -> [{ path, start, end } | { path, gap }]. A comma list unions its
+// parts (so a path containing a comma cannot be claimed).
+function parseClaim(spec) {
+  return String(spec).split(',').map((part) => {
+    const m = /^(.+):(?:@(\d+)|(\d+)-(\d+))$/.exec(part);
+    if (!m) throw new Error(`invalid claim spec: ${part} (expected <path>:<s>-<e> or <path>:@<g>)`);
+    return m[2] !== undefined
+      ? { path: m[1], gap: Number(m[2]) }
+      : { path: m[1], start: Number(m[3]), end: Number(m[4]) };
+  });
+}
+
+function union(...lists) {
+  return [...new Set(lists.flat())];
+}
+
+// Producers of a merge commit's hunk, in c's coordinates: the commits `git log
+// -L` lists over p..c (intermediate overwritten ones included, plus c itself
+// when the merge resolved a conflict on those lines). Trusted only on a simple
+// side history, checked without any pathspec: no nested merge in p..c, no rename
+// of the file on either side. Anything else, or a failure, or an empty result,
+// returns c itself (conservative).
+function mergeProducers(ctx, p, c, entryPaths, hunk) {
+  try {
+    const range = `${p}..${c}`;
+    const merges = git(ctx.repo, ['rev-list', '--merges', range]).split('\n').filter(Boolean);
+    if (merges.some((m) => m !== c)) return [c];
+    const renamed = parseNameStatusZ(git(ctx.repo, ['log', '-M', '--name-status', '-z', '--format=', range]))
+      .some((e) => e.status === 'R' && (entryPaths.includes(e.oldPath) || entryPaths.includes(e.newPath)));
+    if (renamed) return [c];
+    const newPath = entryPaths[entryPaths.length - 1];
+    const out = git(ctx.repo, [
+      'log', '--no-patch', '--format=%H', `-L${hunk.newStart},${hunk.newStart + hunk.newLen - 1}:${newPath}`, range,
+    ]);
+    const listed = out.split('\n').filter((line) => /^[0-9a-f]{40,64}$/.test(line));
+    return listed.length ? listed : [c];
+  } catch (err) {
+    return [c];
+  }
+}
+
+// Applies one commit's hunks to a file state. A touching hunk makes its
+// producers part of the lineage: new-side lines become tracked and inherit the
+// lineage of the tracked lines and anchors they replace (or sit next to) plus
+// the producers; a pure deletion leaves an anchor at the new-side gap with the
+// same lineage. Everything else shifts by the summed delta of the hunks before.
+function applyHunks(state, hunks, producersFor) {
+  const lines = new Set(state.tracked.keys());
+  const gaps = new Set(state.anchors.keys());
+  const consumedLines = new Set();
+  const consumedGaps = new Set();
+  const additions = [];
+  for (const hunk of hunks) {
+    if (!hunkTouches(hunk, lines, gaps)) continue;
+    const inherited = [];
+    if (hunk.oldLen === 0) {
+      const b = hunk.oldStart;
+      for (const l of [b, b + 1]) if (state.tracked.has(l)) inherited.push(state.tracked.get(l));
+      if (state.anchors.has(b)) { inherited.push(state.anchors.get(b)); consumedGaps.add(b); }
+    } else {
+      const end = hunk.oldStart + hunk.oldLen - 1;
+      for (const [l, lineage] of state.tracked) {
+        if (l >= hunk.oldStart && l <= end) { inherited.push(lineage); consumedLines.add(l); }
+      }
+      for (const [g, lineage] of state.anchors) {
+        if (g >= hunk.oldStart - 1 && g <= end) { inherited.push(lineage); consumedGaps.add(g); }
+      }
+    }
+    const lineage = union(...inherited, producersFor(hunk));
+    if (hunk.newLen > 0) {
+      for (let i = 0; i < hunk.newLen; i++) additions.push({ line: hunk.newStart + i, lineage });
+    } else {
+      additions.push({ gap: hunk.newStart, lineage });
+    }
+  }
+  const tracked = new Map();
+  const anchors = new Map();
+  for (const [l, lineage] of state.tracked) {
+    if (!consumedLines.has(l)) tracked.set(l + shiftBy(hunks, l), lineage);
+  }
+  for (const [g, lineage] of state.anchors) {
+    if (!consumedGaps.has(g)) anchors.set(g + shiftBy(hunks, g), lineage);
+  }
+  for (const add of additions) {
+    const target = add.line === undefined ? anchors : tracked;
+    const key = add.line === undefined ? add.gap : add.line;
+    target.set(key, union(target.get(key) || [], add.lineage));
+  }
+  return { ...state, tracked, anchors };
+}
+
+// Walks every ticket file from <last> to HEAD along the single chain, keeping
+// each file's current path (renames re-key the state). Returns Map<HEAD path, state>.
+function walkToHead(ctx, base, head) {
+  let states = new Map([...base.states].map(([file, s]) => [file, { ...s, deleted: false, lineage: [] }]));
+  for (const { p, c } of chainBetween(ctx, base.last, head)) {
+    const byOld = new Map(readNameStatus(ctx, p, c).map((e) => [e.oldPath, e]));
+    const isMerge = parentsOf(ctx, c).length > 1;
+    const next = new Map();
+    for (const [file, state] of states) {
+      const entry = byOld.get(file);
+      if (state.deleted || !entry) { next.set(file, state); continue; }
+      if (entry.status === 'D') {
+        const every = union(...state.tracked.values(), ...state.anchors.values());
+        next.set(file, { tracked: new Map(), anchors: new Map(), deleted: true, lineage: union(every, [c]) });
+        continue;
+      }
+      if (entry.status !== 'M' && entry.status !== 'T' && entry.status !== 'R') { next.set(file, state); continue; }
+      const entryPaths = entry.status === 'R' ? [entry.oldPath, entry.newPath] : [file];
+      const hunks = readHunks(ctx, p, c, entryPaths);
+      const producersFor = (hunk) => (isMerge && hunk.newLen > 0 ? mergeProducers(ctx, p, c, entryPaths, hunk) : [c]);
+      next.set(entry.newPath, hunks.length ? applyHunks(state, hunks, producersFor) : state);
+    }
+    states = next;
+  }
+  return states;
+}
+
+// Lineage of the tracked lines and anchors one claim part overlaps in HEAD.
+function lineageOf(finalStates, part) {
+  const state = finalStates.get(part.path);
+  if (!state) return [];
+  if (state.deleted) return state.lineage;
+  const found = [];
+  if (part.gap !== undefined) {
+    if (state.anchors.has(part.gap)) found.push(state.anchors.get(part.gap));
+    for (const l of [part.gap, part.gap + 1]) if (state.tracked.has(l)) found.push(state.tracked.get(l));
+  } else {
+    for (const [l, lineage] of state.tracked) if (l >= part.start && l <= part.end) found.push(lineage);
+    for (const [g, lineage] of state.anchors) if (g >= part.start - 1 && g <= part.end) found.push(lineage);
+  }
+  return union(...found);
+}
+
+function emptyClaim(spec) {
+  return { spec, attributed: false, evolvedBy: [], producers: [] };
+}
+
+// Attribution for one ticket. `claims` are spec strings. Returns { ticket,
+// eligible, reason, claims: [{ spec, attributed, evolvedBy, producers }] }.
+// Attributed when the claim's lineage holds a producer and every producer's
+// parsed `Refs:` names some #m other than n.
+function attribute(repo, n, claims, index) {
+  const parsed = (claims || []).map((spec) => ({ spec, parts: parseClaim(spec) }));
+  const idx = resolveIndex(repo, index);
+  const ctx = makeCtx(repo);
+  const ineligible = (reason) => ({ ticket: n, eligible: false, reason, claims: parsed.map((c) => emptyClaim(c.spec)) });
+  try {
+    const base = ticketBaseline(ctx, n, idx, { guard: false });
+    if (base.reason) return ineligible(base.reason);
+    const finalStates = walkToHead(ctx, base, idx.head);
+    const results = parsed.map(({ spec, parts }) => {
+      const shaList = union(...parts.map((part) => lineageOf(finalStates, part))).sort();
+      const producers = shaList.map((sha) => ({ sha, refs: idx.refsBySha[sha] || [] }));
+      const evolving = (p) => p.refs.filter((m) => m !== n);
+      const attributed = producers.length > 0 && producers.every((p) => evolving(p).length > 0);
+      const evolvedBy = attributed ? union(...producers.map(evolving)).sort((a, b) => a - b) : [];
+      return { spec, attributed, evolvedBy, producers };
+    });
+    return { ticket: n, eligible: true, reason: null, claims: results };
+  } catch (err) {
+    return ineligible('git-error');
+  }
+}
+
+module.exports = { parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute };

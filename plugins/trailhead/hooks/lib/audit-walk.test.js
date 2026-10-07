@@ -437,5 +437,202 @@ function mergeBranch(dir, branch, resolved, subject, opts = {}) {
   eq('fastPath shallow: changed/shallow, ineligible', [index.shallow, r.class, r.reason, r.evolvedEligible], [true, 'changed', 'shallow', false]);
 }
 
+// --- attribution walk ----------------------------------------------------------
+const { attribute } = walk;
+
+function att(dir, n, specs) { return attribute(dir, n, specs, buildTrailerIndex(dir)); }
+function shas(claim) { return claim.producers.map((p) => p.sha).sort(); }
+
+// edit by a #m commit -> attributed, evolvedBy m
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': splice(t, 3, 1, 'M3') }, 'feat: later ticket', { refs: [2] });
+  const r = att(dir, 1, ['f.txt:3-4', 'f.txt:9-10']);
+  eq('attribute edit by #2: eligible', [r.ticket, r.eligible, r.reason], [1, true, null]);
+  eq('attribute edit by #2: claim 3-4', r.claims[0], {
+    spec: 'f.txt:3-4', attributed: true, evolvedBy: [2], producers: [{ sha: c3, refs: [2] }],
+  });
+  eq('attribute untouched range: not attributed, no producers', r.claims[1],
+    { spec: 'f.txt:9-10', attributed: false, evolvedBy: [], producers: [] });
+  const multi = att(dir, 1, ['f.txt:9-9,f.txt:3-3']);
+  eq('attribute comma list: union of its ranges', [multi.claims[0].attributed, shas(multi.claims[0])], [true, [c3]]);
+  assert.throws(() => att(dir, 1, ['f.txt:nonsense']), /invalid claim/); passed++;
+}
+
+// an edit with no trailer is not attributed
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': splice(t, 3, 1, 'M3') }, 'fix: untracked edit');
+  const c = att(dir, 1, ['f.txt:3-3']).claims[0];
+  eq('attribute no trailer: not attributed', [c.attributed, c.evolvedBy, c.producers], [false, [], [{ sha: c3, refs: [] }]]);
+}
+
+// an unrelated edit elsewhere in the file never attributes the claim
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  commit(dir, { 'f.txt': splice(t, 8, 1, 'M8') }, 'feat: elsewhere', { refs: [2] });
+  const c = att(dir, 1, ['f.txt:3-4']).claims[0];
+  eq('attribute unrelated edit elsewhere: no producers', [c.attributed, c.producers], [false, []]);
+}
+
+// a deletion by #m, claimed as a gap
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': splice(t, 3, 2) }, 'refactor: remove them', { refs: [2] });
+  const c = att(dir, 1, ['f.txt:@2']).claims[0];
+  eq('attribute deletion by #2 (@g claim)', [c.attributed, c.evolvedBy, shas(c)], [true, [2], [c3]]);
+}
+
+// the ticket's own deletion anchor, later edited around by #m
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 5, 2);
+  commit(dir, { 'f.txt': t }, 'feat: delete', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': splice(t, 4, 1, 'X4') }, 'fix: edit at the anchor', { refs: [2] });
+  const c = att(dir, 1, ['f.txt:@4']).claims[0];
+  eq('attribute own anchor edited by #2', [c.attributed, c.evolvedBy, shas(c)], [true, [2], [c3]]);
+}
+
+// a file deleted by #m: the claim naming that path is attributed
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  const c3 = commit(dir, { 'f.txt': null }, 'chore: drop file', { refs: [2] });
+  const c = att(dir, 1, ['f.txt:1-10']).claims[0];
+  eq('attribute file deleted by #2', [c.attributed, c.evolvedBy, shas(c)], [true, [2], [c3]]);
+}
+
+// rename, then an edit: the claim is on the new HEAD path
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  git(dir, ['mv', 'f.txt', 'g.txt']);
+  finishCommit(dir, ['commit', '-q'], 'refactor: rename', {});
+  const c4 = commit(dir, { 'g.txt': splice(t, 3, 1, 'M3') }, 'feat: edit after rename', { refs: [3] });
+  const r = att(dir, 1, ['g.txt:3-3', 'f.txt:3-3']);
+  eq('attribute rename then edit: claim on the new path', [r.claims[0].attributed, r.claims[0].evolvedBy, shas(r.claims[0])], [true, [3], [c4]]);
+  eq('attribute rename then edit: the old path no longer matches', [r.claims[1].attributed, r.claims[1].producers], [false, []]);
+}
+
+// coordinates shift above the claim; matching happens in HEAD coordinates only
+{
+  const { dir, f } = baseRepo();
+  const t = splice(f, 6, 2, 'T6', 'T7'); // ticket owns 6-7
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  const t3 = splice(t, 2, 0, 'I1', 'I2'); // non-touching insertion above: ticket now 8-9
+  commit(dir, { 'f.txt': t3 }, 'feat: insert above', { refs: [2] });
+  const t4 = splice(t3, 1, 1); // non-touching deletion above: ticket now 7-8
+  commit(dir, { 'f.txt': t4 }, 'refactor: drop first line', { refs: [3] });
+  const c5 = commit(dir, { 'f.txt': splice(t4, 7, 1, 'X') }, 'fix: edit the shifted line', { refs: [2] });
+  const r = att(dir, 1, ['f.txt:7-7', 'f.txt:6-6', 'f.txt:8-8']);
+  eq('attribute shift: HEAD line 7 is the ticket line', [r.claims[0].attributed, r.claims[0].evolvedBy, shas(r.claims[0])], [true, [2], [c5]]);
+  eq('attribute shift: HEAD line 6 is not the ticket line', r.claims[1].producers, []);
+  eq('attribute shift: untouched ticket line has no producers', r.claims[2].producers, []);
+}
+
+// merges: a simple side history is expanded to the exact side commits
+function mergeScenario(sideSetup) {
+  const { dir, f } = baseRepo();
+  const t = splice(f, 3, 2, 'T3', 'T4');
+  commit(dir, { 'f.txt': t }, 'feat: ticket', { refs: [1] });
+  git(dir, ['checkout', '-q', '-b', 'side']);
+  const side = sideSetup(dir, t);
+  git(dir, ['checkout', '-q', 'main']);
+  return { dir, t, f, side };
+}
+{
+  let s1; let s2;
+  const sc = mergeScenario((dir, t) => {
+    s1 = commit(dir, { 'f.txt': splice(t, 3, 1, 'S1_3') }, 'feat: side one', { refs: [2] });
+    s2 = commit(dir, { 'f.txt': splice(t, 3, 1, 'S2_3') }, 'feat: side two', { refs: [3] });
+  });
+  commit(sc.dir, { 'other.txt': 'main moves\n' }, 'chore: main moves');
+  const m = mergeBranch(sc.dir, 'side', {}, 'merge: side');
+  const c = att(sc.dir, 1, ['f.txt:3-3']).claims[0];
+  eq('attribute simple merge: exact producers {s1, s2}', [shas(c), c.attributed, c.evolvedBy], [[s1, s2].sort(), true, [2, 3]]);
+  ok('attribute simple merge: the merge itself is not a producer', !shas(c).includes(m));
+}
+
+// a conflict-resolved merge is a producer next to the side commit
+{
+  let s1;
+  const sc = mergeScenario((dir, t) => {
+    s1 = commit(dir, { 'f.txt': splice(t, 4, 1, 'S4') }, 'feat: side edit of line 4', { refs: [2] });
+  });
+  commit(sc.dir, { 'f.txt': splice(sc.t, 3, 1, 'M3') }, 'feat: main edit of line 3', { refs: [4] });
+  const resolved = splice(splice(sc.t, 3, 1, 'M3'), 4, 1, 'R4');
+  const m = mergeBranch(sc.dir, 'side', { 'f.txt': resolved }, 'merge: resolved', { refs: [5] });
+  const c = att(sc.dir, 1, ['f.txt:4-4']).claims[0];
+  eq('attribute conflict-resolved merge: {merge, side commit}', [shas(c), c.attributed, c.evolvedBy], [[m, s1].sort(), true, [2, 5]]);
+}
+
+// a nested merge falls back to the merge commit itself
+{
+  const sc = mergeScenario((dir, t) => {
+    commit(dir, { 'f.txt': splice(t, 4, 1, 'S4') }, 'feat: side edit', { refs: [2] });
+    git(dir, ['checkout', '-q', '-b', 'sub']);
+    commit(dir, { 'u.txt': 'sub\n' }, 'feat: sub work', { refs: [3] });
+    git(dir, ['checkout', '-q', 'side']);
+    commit(dir, { 'v.txt': 'side\n' }, 'feat: side work', { refs: [4] });
+    mergeBranch(dir, 'sub', {}, 'merge: sub into side');
+  });
+  commit(sc.dir, { 'other.txt': 'main moves\n' }, 'chore: main moves');
+  const m = mergeBranch(sc.dir, 'side', {}, 'merge: side');
+  const c = att(sc.dir, 1, ['f.txt:4-4']).claims[0];
+  eq('attribute nested merge: falls back to the merge, no trailer', [c.attributed, c.producers], [false, [{ sha: m, refs: [] }]]);
+}
+
+// a rename on the side falls back to the merge commit itself
+{
+  const sc = mergeScenario((dir, t) => {
+    commit(dir, { 'f.txt': splice(t, 4, 1, 'S4') }, 'feat: side edit', { refs: [2] });
+    git(dir, ['mv', 'f.txt', 'h.txt']);
+    finishCommit(dir, ['commit', '-q'], 'refactor: side rename', { refs: [3] });
+  });
+  commit(sc.dir, { 'other.txt': 'main moves\n' }, 'chore: main moves');
+  const m = mergeBranch(sc.dir, 'side', {}, 'merge: side');
+  const c = att(sc.dir, 1, ['h.txt:4-4']).claims[0];
+  eq('attribute rename on side: falls back to the merge', [c.attributed, c.producers], [false, [{ sha: m, refs: [] }]]);
+}
+
+// old-side tracked lines a merge deletes: the merge itself is the producer
+{
+  const sc = mergeScenario((dir, t) => {
+    commit(dir, { 'f.txt': splice(t, 3, 2) }, 'refactor: side deletes the lines', { refs: [2] });
+  });
+  commit(sc.dir, { 'other.txt': 'main moves\n' }, 'chore: main moves');
+  const m = mergeBranch(sc.dir, 'side', {}, 'merge: side');
+  const c = att(sc.dir, 1, ['f.txt:@2']).claims[0];
+  eq('attribute merge deleting tracked lines: producer is the merge', [c.attributed, c.producers], [false, [{ sha: m, refs: [] }]]);
+}
+
+// ineligible tickets are never attributed
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'M3') }, 'feat: someone', { refs: [2] });
+  const r = att(dir, 99, ['f.txt:3-3']);
+  eq('attribute no-refs: ineligible', [r.eligible, r.reason], [false, 'no-refs']);
+  eq('attribute no-refs: claims not attributed', r.claims, [{ spec: 'f.txt:3-3', attributed: false, evolvedBy: [], producers: [] }]);
+}
+{
+  const { dir, f } = baseRepo();
+  git(dir, ['checkout', '-q', '-b', 'side']);
+  commit(dir, { 'f.txt': splice(f, 2, 1, 'S2') }, 'feat: side part', { refs: [1] });
+  git(dir, ['checkout', '-q', 'main']);
+  commit(dir, { 'f.txt': splice(f, 8, 1, 'M8') }, 'feat: main part', { refs: [1] });
+  mergeBranch(dir, 'side', {}, 'merge: side');
+  const r = att(dir, 1, ['f.txt:2-2']);
+  eq('attribute non-linear: ineligible, not attributed', [r.eligible, r.reason, r.claims[0].attributed], [false, 'non-linear', false]);
+}
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
