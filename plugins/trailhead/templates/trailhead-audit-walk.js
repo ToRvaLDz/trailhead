@@ -102,7 +102,16 @@ function makeCtx(repo) {
   return { repo, ancestors: new Map(), nameStatus: new Map(), emptyTree: null };
 }
 
+// A rev that is not a full object id never reaches git as an argument, where it
+// could be read as an option.
+function assertSha(rev) {
+  if (!SHA_RE.test(rev)) throw new Error(`not a full object id: ${rev}`);
+  return rev;
+}
+
 function isAncestor(ctx, a, b) {
+  assertSha(a);
+  assertSha(b);
   if (a === b) return true;
   const key = `${a}>${b}`;
   if (!ctx.ancestors.has(key)) {
@@ -156,7 +165,7 @@ function readHunks(ctx, p, c, paths) {
 
 // Parents of c, in order ([] for a root commit).
 function parentsOf(ctx, c) {
-  return git(ctx.repo, ['rev-list', '--parents', '-n', '1', c]).trim().split(' ').slice(1);
+  return git(ctx.repo, ['rev-list', '--parents', '-n', '1', '--end-of-options', assertSha(c)]).trim().split(' ').slice(1);
 }
 
 // The one parent a ticket commit is diffed against: its first parent that
@@ -205,6 +214,9 @@ function buildTrailerIndex(repo) {
   return { head, shallow, byTicket, refsBySha };
 }
 
+// Full object ids (sha-1 or sha-256), the only form allowed into git's argv.
+const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
 // A saved index is only ever used when it is well formed and was taken at the
 // repo's current HEAD; otherwise it is rejected, never silently trusted.
 function validateIndex(repo, index) {
@@ -213,6 +225,14 @@ function validateIndex(repo, index) {
     && index.byTicket && typeof index.byTicket === 'object'
     && index.refsBySha && typeof index.refsBySha === 'object';
   if (!shapeOk) throw new Error('malformed index: expected {head, shallow, byTicket, refsBySha}');
+  // Everything in the index ends up in git's argv, so it must look exactly like
+  // what buildTrailerIndex writes: full hex shas and decimal ticket numbers.
+  const numbers = (list) => Array.isArray(list) && list.every((n) => Number.isInteger(n) && n >= 0);
+  const wellFormed = SHA_RE.test(index.head)
+    && Object.entries(index.byTicket).every(([n, list]) => /^\d+$/.test(n)
+      && Array.isArray(list) && list.every((sha) => typeof sha === 'string' && SHA_RE.test(sha)))
+    && Object.entries(index.refsBySha).every(([sha, refs]) => SHA_RE.test(sha) && numbers(refs));
+  if (!wellFormed) throw new Error('malformed index: shas must be full hex and ticket numbers decimal');
   const current = git(repo, ['rev-parse', 'HEAD']).trim();
   if (index.head !== current) {
     throw new Error(`stale index: taken at ${index.head}, HEAD is ${current}; rebuild it with the index command`);

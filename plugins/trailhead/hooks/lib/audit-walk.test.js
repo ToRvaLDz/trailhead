@@ -694,5 +694,32 @@ function cli(args) {
   eq('cli not a repo: exit 2', cli(['index', '--repo', notRepo]).code, 2);
 }
 
+// --- review fixes -----------------------------------------------------------------
+// W1: a saved index feeds git argv, so every sha and number in it is validated.
+{
+  const { dir, f } = baseRepo();
+  commit(dir, { 'f.txt': splice(f, 3, 1, 'T3') }, 'feat: ticket', { refs: [1] });
+  const good = buildTrailerIndex(dir);
+  const victim = path.join(dir, 'victim.txt');
+  fs.writeFileSync(victim, 'keep me\n');
+  const sha = good.byTicket['1'][0];
+  const bad = {
+    'option-like sha in byTicket': { ...good, byTicket: { 5: ['--output=' + victim] } },
+    'option-like sha in refsBySha': { ...good, refsBySha: { ['--output=' + victim]: [5] } },
+    'non-numeric ticket key': { ...good, byTicket: { 'x': [sha] } },
+    'non-numeric refs value': { ...good, refsBySha: { [sha]: ['--oops'] } },
+    'short sha in byTicket': { ...good, byTicket: { 1: [sha.slice(0, 12)] } },
+    'byTicket value not an array': { ...good, byTicket: { 1: sha } },
+  };
+  for (const [name, index] of Object.entries(bad)) {
+    assert.throws(() => fastPath(dir, 5, index), /malformed/, name); passed++;
+    assert.throws(() => attribute(dir, 5, ['f.txt:1-1'], index), /malformed/, name); passed++;
+  }
+  assert.throws(() => fastPath(dir, 1, { ...good, head: '--output=' + victim }), /malformed/); passed++;
+  eq('malformed index never reaches git: victim intact', fs.readFileSync(victim, 'utf8'), 'keep me\n');
+  eq('a well formed index still works', fastPath(dir, 1, good).class, 'unchanged');
+}
+
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
