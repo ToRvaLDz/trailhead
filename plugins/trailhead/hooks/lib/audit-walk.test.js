@@ -745,6 +745,20 @@ function cli(args) {
   eq('chain guard only: evolved-eligible in both', [fp(dir, 1).evolvedEligible, att(dir, 1, ['f.txt:2-2']).eligible], [true, true]);
 }
 
+// I1: a ticket whose commits touch no files is vacuously unchanged
+{
+  const { dir } = baseRepo();
+  commit(dir, {}, 'chore: empty ticket commit', { refs: [1] });
+  commit(dir, { 'other.txt': 'later\n' }, 'chore: unrelated work');
+  const r = fp(dir, 1);
+  eq('fastPath no files: unchanged, files empty', [r.class, r.reason, r.files], ['unchanged', null, []]);
+  const base = baseRepo();
+  commit(base.dir, {}, 'chore: first', { refs: [1] });
+  commit(base.dir, { 'f.txt': splice(base.f, 3, 1, 'X') }, 'fix: foreign', { refs: [6] });
+  commit(base.dir, {}, 'chore: second', { refs: [1] });
+  eq('fastPath no files: no whole-tree guard hit', fp(base.dir, 1).class, 'unchanged');
+}
+
 
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);

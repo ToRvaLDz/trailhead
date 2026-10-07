@@ -341,7 +341,8 @@ function ticketBaseline(ctx, n, index, { guard }) {
   // The anchor check below still runs after a hit, so eligibility is computed
   // the same way whether or not the chain guard fired.
   let chainGuard = false;
-  if (guard) {
+  // No files, nothing to guard: an empty pathspec would diff the whole tree.
+  if (guard && files.length) {
     for (const { p, c } of chainBetween(ctx, order[0], last)) {
       if (!ticketSet.has(c) && gitStatus(ctx.repo, ['diff', '--quiet', p, c, '--', ...files]) === 1) {
         chainGuard = true;
