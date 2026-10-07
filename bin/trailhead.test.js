@@ -1459,16 +1459,19 @@ ok('source: auditing.md names the three classes',
 ok('source: auditing.md captures the cutoff before enumerating and rewinds for unverifiable',
   /cutoff/.test(auditingSrc) && /unverifiable/.test(auditingSrc) && /minus one second/.test(auditingSrc));
 ok('source: auditing.md enumerates exhaustively with --paginate', auditingSrc.includes('--paginate'));
+const step9Slice190 = (auditingSrc.match(/## 9\.[\s\S]*?(?=\n## 10\.)/) || [''])[0];
+const dupSlice190 = (step9Slice190.match(/\*\*Duplicate\*\*[\s\S]*?(?=\n- \*\*Groupable\*\*)/) || [''])[0];
+const mergeSlice190 = (step9Slice190.match(/\*\*Groupable\*\*[\s\S]*$/) || [''])[0];
 ok('source: auditing.md duplicate wiring transfer (re-point dependents, union blockers, all three views, --duplicate-of)',
-  /--duplicate-of[^\n]*/.test(auditingSrc) && /Duplicate\*\*[^\n]*re-point/.test(auditingSrc) && /union/.test(auditingSrc) && /all three views/.test(auditingSrc));
-ok('source: auditing.md duplicate branch re-points dependents near --duplicate-of',
-  /re-pointed[\s\S]{0,900}--duplicate-of/.test(auditingSrc));
-ok('source: auditing.md merge excludes the group members', /minus the group's own members/.test(auditingSrc));
+  /\*\*Duplicate\*\*[\s\S]{0,1500}--duplicate-of/.test(step9Slice190) && /re-pointed/.test(dupSlice190) && /union/.test(dupSlice190) && /all three views/.test(dupSlice190) && dupSlice190.includes('--duplicate-of'));
+ok('source: auditing.md duplicate branch re-points dependents before --duplicate-of',
+  /re-pointed[\s\S]{0,900}--duplicate-of/.test(dupSlice190));
+ok('source: auditing.md merge excludes the group members', /minus the group's own members/.test(mergeSlice190));
 ok('source: auditing.md dispatches trailhead-verify in batches of 5 with a >20 confirmation',
   auditingSrc.includes('trailhead-verify') && /batches of 5/.test(auditingSrc) && /more than 20|> ?20|exceeds 20/.test(auditingSrc));
 ok('source: auditing.md groups via supersede-and-merge', /supersede-and-merge/.test(auditingSrc));
 ok('source: auditing.md opens regression bugs with bug --of', auditingSrc.includes('bug --of'));
-ok('source: auditing.md is read-only until an explicit yes', /read-only/.test(auditingSrc) && /explicit yes/.test(auditingSrc));
+ok('source: auditing.md read-only until an explicit yes', /\*\*read-only until you confirm\*\*/.test(auditingSrc) && /applied only on an explicit yes/.test(auditingSrc));
 
 const bodyGen190 = (substrateCommandsSource.match(/\*\*Body generation\.\*\*[\s\S]*?(?=\n\*\*|\n#{2,6} |$)/) || [''])[0];
 ok('source: substrate-commands.md Body generation section preserves the last-audit marker verbatim',
@@ -1481,15 +1484,19 @@ ok('source: auditing.md checks total_count and incomplete_results and bisects (W
   auditingSrc.includes('total_count') && auditingSrc.includes('incomplete_results') && /bisect/.test(auditingSrc) && /1000/.test(auditingSrc));
 ok('source: auditing.md names stateReason versus state_reason casing (W2)',
   auditingSrc.includes('`DUPLICATE`') && auditingSrc.includes('`duplicate`') && auditingSrc.includes('state_reason'));
-ok('source: auditing.md excludes tickets claimed by another assignee or PAUSED (W3)',
-  /assignee other than the current user/.test(auditingSrc) && auditingSrc.includes('PAUSED') && auditingSrc.includes('gh api user'));
-ok('source: auditing.md merged ticket carries Merged from provenance (I3)', auditingSrc.includes('Merged from:'));
+ok('source: auditing.md treats any assignee or PAUSED as claimed, related only, in proposal and re-read (W3)',
+  /any open ticket with any assignee/.test(auditingSrc) && auditingSrc.includes('PAUSED') && !auditingSrc.includes('gh api user') && /related only/.test(auditingSrc) && /any assignee/.test(step9Slice190) && /PAUSED/.test(step9Slice190));
+ok('source: auditing.md merged ticket carries Merged from provenance (I3)', mergeSlice190.includes('Merged from:'));
 ok('source: auditing.md verify brief overrides verify.md on empty Refs and posting (I1)',
-  /overrides two rules of `techniques\/verify\.md`/.test(auditingSrc));
-ok('source: auditing.md keeps map-reshaping proposals human-owned, no delegate (I4)',
-  /human-owned/.test(auditingSrc) && /do not offer the delegate option/i.test(auditingSrc));
+  /overrides two rules of `techniques\/verify\.md`[\s\S]{0,400}empty Refs set[\s\S]{0,400}posts nothing|overrides two rules of `techniques\/verify\.md`[\s\S]{0,400}posts nothing[\s\S]{0,400}empty Refs/.test(auditingSrc));
+ok('source: auditing.md keeps map-reshaping proposals human-owned, no delegate, in step 9 (I4)',
+  /human-owned/.test(step9Slice190) && /never with the delegate option/i.test(step9Slice190) && /do not offer the delegate option/i.test(auditingSrc));
 ok('source: auditing.md removes a closed duplicate from the kept ticket blockers (I2)',
-  /drop `trailhead:blocked`/.test(auditingSrc) && /last open blocker/.test(auditingSrc));
+  /drop `trailhead:blocked`/.test(dupSlice190) && /last open blocker/.test(dupSlice190));
+ok('source: auditing.md excludes the pair on both dependents and blockers, edge removed not transferred, label re-evaluated after (I6)',
+  /dependent[\s\S]{0,300}excluding the pair itself/.test(dupSlice190) && /blockers[\s\S]{0,300}excluding the pair itself/.test(dupSlice190) && /removed[\s\S]{0,200}instead of transferred/.test(dupSlice190) && /re-evaluated only after/.test(dupSlice190));
+ok('source: auditing.md enumeration requires is:issue and drops pull_request items (I7)',
+  /is:issue label:trailhead:ticket/.test(auditingSrc) && /`pull_request`/.test(auditingSrc));
 
 for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
