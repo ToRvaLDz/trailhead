@@ -1595,9 +1595,18 @@ ok('source: auditing.md absent deliverable is attributed over the returned HEAD 
   /HEAD ranges the agent returned for the deliverable \(step 5\)/.test(step6Slice192) && !/over the ticket's touched files/.test(step6Slice192));
 ok('source: auditing.md pure-deletion anchor moves c_i to <last> along the step 6 chain and replay',
   /c_i[^\n]*<last>[^\n]*chain[^\n]*replay/.test(bullet192(step4Slice192, /^- \*\*Pure deletions/)) && /non-ticket commit/.test(bullet192(step4Slice192, /^- \*\*Pure deletions/)));
-ok('source: auditing.md shallow and dirty tickets are ineligible for evolved',
-  /ineligible for evolved/.test(bullet192(step4Slice192, /^- \*\*Shallow/)) && /ineligible for evolved/.test(bullet192(step4Slice192, /^- \*\*Dirty/)) &&
-  /shallow/i.test(inelig192) && /dirty/i.test(inelig192));
+ok('source: auditing.md shallow tickets are ineligible for evolved', /ineligible for evolved/.test(bullet192(step4Slice192, /^- \*\*Shallow/)) && /shallow/i.test(inelig192));
+const dirty192 = bullet192(step4Slice192, /^- \*\*Dirty/);
+ok('source: auditing.md dirty tree: the audit judges HEAD, notes the touched dirty files, no agent-bound or evolved effect',
+  /judges HEAD/.test(dirty192) && /ignores uncommitted/.test(dirty192) && /git status --porcelain/.test(dirty192) && /report notes/.test(dirty192) &&
+  !/ineligible/.test(dirty192) && !/is agent-bound/.test(dirty192) && !/dirty/i.test(inelig192));
+const baseline192 = bullet192(step4Slice192, /^- \*\*Baseline/);
+ok('source: auditing.md states the delivered-at-<last> baseline assumption (I7)',
+  /assumed delivered at `<last>`/.test(baseline192) && /blame attributes to its commits/.test(baseline192));
+ok('source: auditing.md baseline guard: a non-ticket commit touching the ticket files between first ticket commit and <last> makes it agent-bound (I7)',
+  /non-ticket commit[^\n]*between the first ticket commit and `<last>`[^\n]*touches[^\n]*agent-bound/.test(baseline192));
+ok('source: auditing.md step 8 counts each ticket once by primary class and lists unverifiable-in-part outside the sum (W3)',
+  /once by its primary class/.test(step8Slice192) && /also unverifiable in part/.test(step8Slice192) && /outside the sum/.test(step8Slice192));
 ok('source: auditing.md step 5 dispatches the agent-bound set and reads code at HEAD via git show',
   /agent-bound/.test(step5Slice190) && /trailhead-verify/.test(step5Slice190) && /git show HEAD:<file>/.test(step5Slice190));
 ok('source: auditing.md step 8 counts sum to the audited set with the light-check share',
