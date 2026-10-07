@@ -1414,6 +1414,66 @@ ok('prototype.md puts mockup links in the plain prose of the message', /plain (c
 ok('prototype.md keeps links out of a structured picker (not clickable on mobile)', /never[^.]*(option|picker)[^.]*link|link[^.]*never[^.]*(option|picker)/.test(surfaceRule) && /mobile/.test(surfaceRule));
 ok('prototype.md approval picker asks a plain yes/no on approving the mockup', /approve the mockup[^.]*yes\/no|yes\/no[^.]*approv/.test(surfaceRule));
 
+// --- #190: /trailhead:audit verb surface ------------------------------------------
+// Pin the audit verb: command wrapper, manage routing, dispatcher routing, the
+// auditing.md invariants, marker preservation in dashboard regeneration, both
+// install projections, and the docs mentions.
+const auditCmdPath = path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'audit.md');
+const auditCmdSrc = fs.existsSync(auditCmdPath) ? fs.readFileSync(auditCmdPath, 'utf8') : '';
+ok('source: commands/audit.md exists', fs.existsSync(auditCmdPath));
+ok('source: commands/audit.md has a description', /^description: .+/m.test(auditCmdSrc));
+ok('source: commands/audit.md argument-hint is "[map] [--all]"', auditCmdSrc.includes('argument-hint: "[map] [--all]"'));
+ok('source: commands/audit.md delegates to trailhead-manage with audit',
+  auditCmdSrc.includes('`trailhead-manage`') && /arguments `audit`/.test(auditCmdSrc));
+ok('source: commands/audit.md points at references/auditing.md', auditCmdSrc.includes('references/auditing.md'));
+
+const manageSkillSrc190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-manage', 'SKILL.md'), 'utf8');
+const manageFront190 = manageSkillSrc190.split('\n---\n')[0];
+ok('source: manage SKILL.md description names audit', /description: [^\n]*\(audit\)/.test(manageFront190));
+ok('source: manage SKILL.md argument-hint lists audit', /argument-hint: "[^"]*\baudit\b[^"]*"/.test(manageFront190));
+ok('source: manage SKILL.md routes audit to references/auditing.md', /\*\*`audit[^`]*`\*\* to \*\*`references\/auditing\.md`\*\*/.test(manageSkillSrc190));
+
+const dispatcherSrc190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead', 'SKILL.md'), 'utf8');
+ok('source: dispatcher argument-hint lists audit', /argument-hint: "[^"]*\|audit\|[^"]*"/.test(dispatcherSrc190));
+ok('source: dispatcher manage-cluster routing list includes audit', /manage cluster is built[^\n]*`prune`, and `audit`/.test(dispatcherSrc190) || /manage cluster is built[^\n]*`audit`/.test(dispatcherSrc190));
+
+const auditingPath190 = path.join(sourceSkillsDir, 'trailhead-manage', 'references', 'auditing.md');
+const auditingSrc = fs.existsSync(auditingPath190) ? fs.readFileSync(auditingPath190, 'utf8') : '';
+ok('source: references/auditing.md exists', fs.existsSync(auditingPath190));
+ok('source: auditing.md names the last-audit marker', auditingSrc.includes('<!-- trailhead:last-audit'));
+ok('source: auditing.md documents --all', auditingSrc.includes('--all'));
+ok('source: auditing.md skips superseded and out-of-scope', auditingSrc.includes('trailhead:superseded') && auditingSrc.includes('trailhead:out-of-scope'));
+ok('source: auditing.md skips native DUPLICATE closes via stateReason', auditingSrc.includes('DUPLICATE') && auditingSrc.includes('stateReason'));
+ok('source: auditing.md names the three classes',
+  /\*\*implemented\*\*/.test(auditingSrc) && /\*\*implemented wrong\*\*/.test(auditingSrc) && /\*\*not implemented\*\*/.test(auditingSrc));
+ok('source: auditing.md captures the cutoff before enumerating and rewinds for unverifiable',
+  /cutoff/.test(auditingSrc) && /unverifiable/.test(auditingSrc) && /minus one second/.test(auditingSrc));
+ok('source: auditing.md enumerates exhaustively with --paginate', auditingSrc.includes('--paginate'));
+ok('source: auditing.md duplicate wiring transfer (re-point dependents, union blockers, all three views, --duplicate-of)',
+  auditingSrc.includes('--duplicate-of') && /re-point/.test(auditingSrc) && /union/.test(auditingSrc) && /all three views/.test(auditingSrc));
+ok('source: auditing.md merge excludes the group members', /minus the group's own members/.test(auditingSrc));
+ok('source: auditing.md dispatches trailhead-verify in batches of 5 with a >20 confirmation',
+  auditingSrc.includes('trailhead-verify') && /batches of 5/.test(auditingSrc) && /more than 20|> ?20|exceeds 20/.test(auditingSrc));
+ok('source: auditing.md groups via supersede-and-merge', /supersede-and-merge/.test(auditingSrc));
+ok('source: auditing.md opens regression bugs with --of', auditingSrc.includes('--of'));
+ok('source: auditing.md is read-only until an explicit yes', /read-only/.test(auditingSrc) && /explicit yes/.test(auditingSrc));
+
+ok('source: substrate-commands.md body generation preserves the last-audit marker line',
+  /Body generation[\s\S]*<!-- trailhead:last-audit[\s\S]*verbatim/.test(substrateCommandsSource));
+
+ok('claude: commands/trailhead/audit.md projected', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'audit.md')));
+const codexAuditPath190 = path.join(codexDir, 'skills', 'trailhead-audit', 'SKILL.md');
+const codexAuditSrc190 = fs.existsSync(codexAuditPath190) ? fs.readFileSync(codexAuditPath190, 'utf8') : '';
+const auditDesc190 = (auditCmdSrc.match(/^description: (.+)$/m) || [])[1] || '';
+ok('codex: per-verb skills/trailhead-audit/SKILL.md exists', fs.existsSync(codexAuditPath190));
+ok('codex: trailhead-audit SKILL.md frontmatter is at byte 0', codexAuditSrc190.startsWith('---\nname: trailhead-audit\n'));
+ok('codex: trailhead-audit skill delegates to $trailhead audit', codexAuditSrc190.includes('$trailhead audit'));
+ok('codex: trailhead-audit carries the description from commands/audit.md', auditDesc190.length > 0 && codexAuditSrc190.includes(auditDesc190.replace(/^"|"$/g, '')));
+
+for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
+  ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
+}
+
 // --- cleanup -------------------------------------------------------------------
 // --- argomenti etichettati: ogni template comando apre con un blocco
 // <arguments> fisso e non incolla mai $ARGUMENTS dentro la prosa (un testo
