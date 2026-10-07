@@ -123,6 +123,12 @@ const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates
 ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
 ok('codex: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(codexCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+// #193: the audit fast path / attribution walk script rides in templates/ on Codex too.
+const codexAuditWalk = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-audit-walk.js');
+ok('codex: audit-walk script projected', fs.existsSync(codexAuditWalk));
+ok('codex: audit-walk script is byte-identical to source',
+  fs.readFileSync(codexAuditWalk, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-audit-walk.js'), 'utf8'));
+ok('codex: audit-walk script keeps its executable bit', (fs.statSync(codexAuditWalk).mode & 0o111) !== 0);
 
 ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
@@ -864,6 +870,10 @@ const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trai
 ok('claude: commit-msg-sync script projected', fs.existsSync(claudeCommitMsgSync));
 ok('claude: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(claudeCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+const claudeAuditWalk = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-audit-walk.js');
+ok('claude: audit-walk script projected', fs.existsSync(claudeAuditWalk));
+ok('claude: audit-walk script is byte-identical to source',
+  fs.readFileSync(claudeAuditWalk, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-audit-walk.js'), 'utf8'));
 // Regression: the commit-guard does require('./lib/commit-message-check.js'), so
 // it only loads if the lib was copied alongside it. Run it with a benign Bash
 // payload and assert it does not crash with a missing-module error.
