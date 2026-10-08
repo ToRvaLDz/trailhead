@@ -145,7 +145,7 @@ function sessionNotice({ repoDir, templateText, scriptPath, fs: fsMod = fs }) {
     const cmd = `node "${scriptPath}" --repo "${repoDir}"`;
     return [
       `trailhead's label guard in this repo (${GUARD_REL}) is outdated: it has no job-level \`if:\`, so every \`issues: labeled\` event starts a GitHub Actions runner billed at least one minute, even for labels it ignores.`,
-      'Offer the user, once, without blocking their current request, two choices:',
+      'Offer the user, once, without blocking their current request, two choices, and put the reason in the question itself, in plain words, not just the choices. Say that the workflow currently starts a GitHub Actions run every time any label is added to an issue, that GitHub bills each run at least one minute even when the workflow then does nothing, that trailhead adds labels all the time so this can reach thousands of billed runs a month and use up the Actions minutes, and that the updated version skips irrelevant label events before a runner starts (skipped runs are free) while keeping the same protection.',
       `1) upgrade it: run \`${cmd} --apply\`, then commit the file (\`fix: skip trailhead label guard job for irrelevant label events\`) and push (a workflow file needs the \`workflow\` token scope: run \`gh auth refresh -s workflow\` if the push is rejected);`,
       '2) keep it as it is.',
       `This offer reappears every session until answered: once the user has picked either choice, run: ${cmd} --ack`,

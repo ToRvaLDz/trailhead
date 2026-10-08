@@ -101,6 +101,7 @@ for (const [label, text] of [['custom', templateText + '# local\n'], ['foreign',
   const file = writeGuard(repo, oldText);
   const notice = sessionNotice({ repoDir: repo, templateText, scriptPath: scriptPath });
   ok('notice: outdated guard -> offer', notice !== null && notice.includes('--apply') && notice.includes('--ack') && notice.includes('job-level'));
+ok('notice: asks the agent to explain why (billed minutes) in the question', notice.includes('put the reason in the question') && notice.includes('at least one minute') && notice.includes('skipped runs are free'));
   ok('notice: read-only (no ack written)', !fs.existsSync(path.join(repo, ACK_REL)));
   ok('notice: still offered on the next session', sessionNotice({ repoDir: repo, templateText, scriptPath }) !== null);
   ok('ack: records the answer', ackGuard({ repoDir: repo }) === true && fs.existsSync(path.join(repo, ACK_REL)));
