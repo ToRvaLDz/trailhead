@@ -1598,9 +1598,16 @@ const auditDescLine192 = (auditCmdSrc.match(/^description: (.+)$/m) || [])[1] ||
 ok('source: commands/audit.md description mentions regressions, starts "Audit and stays under 180 chars',
   /^"Audit /.test(auditDescLine192) && /regression/i.test(auditDescLine192) && auditDescLine192.length < 180);
 ok('source: manage SKILL.md describes the regression audit', /regression/i.test((manageSkillSrc190.match(/^description: .+$/m) || [''])[0]) || /regression/i.test((manageSkillSrc190.match(/\*\*`audit[^\n]*/) || [''])[0]));
-for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
-  const docSrc192 = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
-  const auditPara192 = docSrc192.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
+// Il sito è diviso: commands.md è solo l'indice, il dettaglio di audit vive
+// nella sezione `### /trailhead:audit` della guida manage.
+const siteManageDoc = path.join('site', 'src', 'content', 'docs', 'docs', 'commands', 'manage.md');
+const auditMention = (doc) => {
+  const src = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
+  if (doc === siteManageDoc) return (src.match(/### \/trailhead:audit[\s\S]*?(?=\n### |\nNext:|$)/) || [''])[0];
+  return src.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
+};
+for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
+  const auditPara192 = auditMention(doc);
   ok(`docs: ${doc} audit mention covers unchanged and evolved`, /unchanged|invariat/i.test(auditPara192) && /evolved|evolut/i.test(auditPara192));
 }
 
@@ -1637,9 +1644,8 @@ ok('source: auditing.md step 5 dispatches the agent-bound set and reads code at 
 ok('source: auditing.md step 8 counts sum to the audited set with the light-check share',
   /light check/i.test(step8Slice192) && /light-check share/.test(step8Slice192) && /not implemented, unverifiable/.test(step8Slice192));
 ok('source: auditing.md step 10 flags unverifiable from step 4 or step 6', /\(step 4 or step 6\)/.test(step10Slice190));
-for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
-  const docSrc = fs.readFileSync(path.join(repoRoot, doc), 'utf8');
-  const para = docSrc.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
+for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
+  const para = auditMention(doc);
   ok(`docs: ${doc} audit mention names the Refs trailer fast path`, /Refs: #<n>/.test(para));
   ok(`docs: ${doc} audit mention covers tasks and prototypes in the light check`, /task/i.test(para) && /prototyp|prototipi/i.test(para));
 }
