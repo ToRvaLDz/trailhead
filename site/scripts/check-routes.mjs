@@ -18,12 +18,23 @@ import path from 'node:path';
 const siteRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dist = path.join(siteRoot, 'dist');
 
+// #196: the verb guides, one page per engine cluster, each verb a section
+// with a stable explicit anchor. The union is the 23 verbs of the index.
+const commandClusters = {
+  chart: ['new', 'adopt', 'ticket', 'inbox', 'grill'],
+  work: ['work', 'quick', 'pause', 'resume', 'split', 'auto'],
+  view: ['map', 'dashboard', 'whiteboard'],
+  capture: ['todo', 'seed', 'idea', 'note', 'bug'],
+  manage: ['config', 'update', 'prune', 'audit'],
+};
+
 const docsSlugs = [
   'getting-started',
   'concepts',
   'workflow',
   'ticket-types',
   'commands',
+  ...Object.keys(commandClusters).map((cluster) => `commands/${cluster}`),
   'captures',
   'teamwork',
   'configuration',
@@ -122,18 +133,24 @@ const cfBeaconToken = '9d745984ddba48329691930072aea137';
 // key -> its built HTML file, so a missing file is a hard failure rather
 // than a silently skipped assertion (the `existsSync`-gated blocks above
 // intentionally skip when a file is absent; these must not).
-const heroCardsByKey = {
-  overview: path.join(dist, 'docs', 'index.html'),
-  'getting-started': path.join(dist, 'docs', 'getting-started', 'index.html'),
-  concepts: path.join(dist, 'docs', 'concepts', 'index.html'),
-  workflow: path.join(dist, 'docs', 'workflow', 'index.html'),
-  'ticket-types': path.join(dist, 'docs', 'ticket-types', 'index.html'),
-  commands: path.join(dist, 'docs', 'commands', 'index.html'),
-  captures: path.join(dist, 'docs', 'captures', 'index.html'),
-  teamwork: path.join(dist, 'docs', 'teamwork', 'index.html'),
-  configuration: path.join(dist, 'docs', 'configuration', 'index.html'),
-  hooks: path.join(dist, 'docs', 'hooks', 'index.html'),
-};
+const docsPage = (...segments) => path.join(dist, 'docs', ...segments, 'index.html');
+const heroRoutes = [
+  { file: path.join(dist, 'docs', 'index.html'), expectedKey: 'overview' },
+  { file: docsPage('getting-started'), expectedKey: 'getting-started' },
+  { file: docsPage('concepts'), expectedKey: 'concepts' },
+  { file: docsPage('workflow'), expectedKey: 'workflow' },
+  { file: docsPage('ticket-types'), expectedKey: 'ticket-types' },
+  { file: docsPage('commands'), expectedKey: 'commands' },
+  // #196: the cluster guides reuse the approved commands banner.
+  ...Object.keys(commandClusters).map((cluster) => ({
+    file: docsPage('commands', cluster),
+    expectedKey: 'commands',
+  })),
+  { file: docsPage('captures'), expectedKey: 'captures' },
+  { file: docsPage('teamwork'), expectedKey: 'teamwork' },
+  { file: docsPage('configuration'), expectedKey: 'configuration' },
+  { file: docsPage('hooks'), expectedKey: 'hooks' },
+];
 
 const heroMarkerAttr = 'data-docs-hero';
 // Robust to either attribute order on the hero root element.
@@ -198,6 +215,154 @@ if (existsSync(commandsIndex)) {
   }
 }
 
+// #196: the verb guides. Slice the raw built HTML of the article body only
+// (never the Starlight TOC/sidebar, which repeat the heading labels), then cut
+// it at each verb's explicit `<h3 id="<verb>"` heading.
+const guideLabels = ['Syntax', 'Arguments', 'What it does', 'What it writes', 'Example'];
+
+function articleHtml(file) {
+  const html = readFileSync(file, 'utf8');
+  const start = html.indexOf('sl-markdown-content');
+  if (start === -1) {
+    return '';
+  }
+  const end = html.indexOf('</main>', start);
+  return html.slice(start, end === -1 ? undefined : end);
+}
+
+function normalizeHtml(html) {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Normalized text of every table row of a built page (same-row assertions).
+function tableRows(file) {
+  const html = readFileSync(file, 'utf8');
+  return (html.match(/<tr\b[\s\S]*?<\/tr>/g) || []).map(normalizeHtml);
+}
+
+const idsOnPage = new Map();
+for (const [cluster, verbs] of Object.entries(commandClusters)) {
+  const file = docsPage('commands', cluster);
+  const label = `docs/commands/${cluster}`;
+  if (!existsSync(file)) {
+    continue;
+  }
+  const text = normalizedText(file);
+  const article = articleHtml(file);
+  idsOnPage.set(cluster, new Set([...readFileSync(file, 'utf8').matchAll(/\bid="([^"]+)"/g)].map((m) => m[1])));
+  for (const verb of verbs) {
+    if (!text.includes(`/trailhead:${verb}`)) {
+      failures.push(`${label} missing verb: /trailhead:${verb}`);
+    }
+  }
+  const headings = verbs.map((verb) => ({ verb, at: article.indexOf(`<h3 id="${verb}"`) }));
+  headings.forEach(({ verb, at }, i) => {
+    if (at === -1) {
+      failures.push(`${label}: no explicit <h3 id="${verb}"> heading in the article body`);
+      return;
+    }
+    const nextAt = headings.slice(i + 1).map((h) => h.at).find((x) => x > at);
+    const section = normalizeHtml(article.slice(at, nextAt === undefined ? undefined : nextAt));
+    for (const guideLabel of guideLabels) {
+      if (!section.includes(guideLabel)) {
+        failures.push(`${label} #${verb}: section missing "${guideLabel}"`);
+      }
+    }
+  });
+}
+
+// Every verb on the index links to /docs/commands/<cluster>#<verb>, and the
+// anchor resolves to an id actually built on the target page.
+if (existsSync(commandsIndex)) {
+  const indexHtml = readFileSync(commandsIndex, 'utf8');
+  for (const [cluster, verbs] of Object.entries(commandClusters)) {
+    for (const verb of verbs) {
+      const href = `/docs/commands/${cluster}#${verb}`;
+      if (!indexHtml.includes(`href="${href}"`)) {
+        failures.push(`docs/commands index missing link: ${href}`);
+      }
+      const ids = idsOnPage.get(cluster);
+      if (ids && !ids.has(verb)) {
+        failures.push(`docs/commands/${cluster} has no id="${verb}" for the index link`);
+      }
+    }
+  }
+}
+
+// Configuration page semantics (#196): tiers, profiles, Codex defaults and the
+// pinned model review, asserted on table rows rather than loose keywords.
+const configurationIndex = docsPage('configuration');
+if (existsSync(configurationIndex)) {
+  const rows = tableRows(configurationIndex);
+  const hasRow = (pattern) => rows.some((row) => pattern.test(row));
+  const tierRows = [
+    ['strong', 'claude-opus-5-5', 'gpt-5\\.6-sol', 'high'],
+    ['standard', 'claude-sonnet-5-5', 'gpt-5\\.6-terra', 'medium'],
+    ['fast', 'claude-haiku-5-5', 'gpt-5\\.6-luna', 'low'],
+  ];
+  for (const [tier, claude, codex, effort] of tierRows) {
+    if (!hasRow(new RegExp(`^${tier} .*${claude}.*${codex}.*\\b${effort}\\b`))) {
+      failures.push(`docs/configuration: no tier row pairing ${tier} with ${claude}, ${codex}, ${effort}`);
+    }
+  }
+  const profileRows = {
+    High: /^High strong strong standard strong strong strong standard$/,
+    Balanced: /^Balanced( \(default\))? strong standard standard standard standard standard fast$/,
+    Low: /^Low standard standard fast fast standard fast fast$/,
+  };
+  for (const [name, pattern] of Object.entries(profileRows)) {
+    if (!hasRow(pattern)) {
+      failures.push(`docs/configuration: profile row for ${name} missing or wrong tiers`);
+    }
+  }
+  const text = normalizedText(configurationIndex);
+  for (const needle of [
+    'Manual',
+    'inherit session',
+    'Pinned model review',
+    'model-defaults-ack',
+    'models.codex',
+    '/trailhead:config',
+  ]) {
+    if (!text.includes(needle)) {
+      failures.push(`docs/configuration missing expected content: ${needle}`);
+    }
+  }
+}
+
+// Hooks page (#196): the commit-msg hook, the session-start update check, and
+// the Codex mockup-link twin; teamwork links to the commit-msg section.
+const hooksIndex = docsPage('hooks');
+if (existsSync(hooksIndex)) {
+  const text = normalizedText(hooksIndex);
+  for (const needle of [
+    'mockup-link-stop',
+    'Commit-msg hook',
+    'Refs: #<n>',
+    'core.hooksPath',
+    'Session-start update check',
+    'model-defaults-ack',
+  ]) {
+    if (!text.includes(needle)) {
+      failures.push(`docs/hooks missing expected content: ${needle}`);
+    }
+  }
+}
+const teamworkIndex = docsPage('teamwork');
+if (existsSync(teamworkIndex)) {
+  if (!readFileSync(teamworkIndex, 'utf8').includes('href="/docs/hooks#commit-msg-hook"')) {
+    failures.push('docs/teamwork does not link to /docs/hooks#commit-msg-hook');
+  }
+}
+
 for (const file of [docsBrandIndex, docsBrandInnerPage]) {
   if (existsSync(file)) {
     const html = readFileSync(file, 'utf8');
@@ -221,9 +386,11 @@ for (const slug of ['index', ...docsSlugs]) {
   }
 }
 
-for (const [key, file] of Object.entries(heroCardsByKey)) {
+for (const { file, expectedKey: key } of heroRoutes) {
   if (!existsSync(file)) {
-    failures.push(`docs hero (${key}): missing expected build output: ${path.relative(siteRoot, file)}`);
+    failures.push(
+      `docs hero (${key}): missing expected build output: ${path.relative(siteRoot, file)}`
+    );
     continue;
   }
   const html = readFileSync(file, 'utf8');
@@ -398,6 +565,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 10 /docs/* pages resolved, no /en prefix, install/verb facts present, no placeholder copy left, all 10 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 10 /docs/* pages, and 404).'
+  'check-routes: OK — landing and all 15 /docs/* pages resolved, every verb guide section complete, config/hooks semantics asserted, no /en prefix, install/verb facts present, no placeholder copy left, all 15 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 15 /docs/* pages, and 404).'
 );
 process.exit(0);
