@@ -419,6 +419,28 @@ for (const slug of ['index', ...docsSlugs]) {
   }
 }
 
+// #197: the prose "Next:" line must lead with the same page as Starlight's
+// Next pager button (sidebar order), so the two never point different ways.
+// Pages without a pager Next (the last one) may suggest anything.
+const pagerNextPattern = /<a href="([^"]+)" rel="next"/;
+const proseNextPattern = /<p>Next: [^<]*<a href="([^"#]+)/;
+const normalizeHref = (href) => href.replace(/\/$/, '');
+
+for (const slug of ['index', ...docsSlugs]) {
+  const file = path.join(dist, 'docs', ...(slug === 'index' ? [] : [slug]), 'index.html');
+  if (!existsSync(file)) {
+    continue;
+  }
+  const html = readFileSync(file, 'utf8');
+  const pagerNext = html.match(pagerNextPattern);
+  const proseNext = html.match(proseNextPattern);
+  if (pagerNext && proseNext && normalizeHref(pagerNext[1]) !== normalizeHref(proseNext[1])) {
+    failures.push(
+      `docs/${slug}: prose "Next:" leads to ${proseNext[1]} but the pager Next goes to ${pagerNext[1]}`
+    );
+  }
+}
+
 for (const { file, expectedKey: key } of heroRoutes) {
   if (!existsSync(file)) {
     failures.push(
