@@ -215,6 +215,20 @@ ok('reviewOffer: no ack, no stale pins -> null',
   ok('CLI with an unknown subcommand still exits 0', status === 0);
 }
 
+// --- helper test-only: compatibilita' del `since` con la versione ------------
+// Vero se base e' esattamente il prossimo bump patch, minor o major di current.
+function isNextBump(current, since) {
+  const [a, b, c] = current.split('.').map(Number);
+  return [`${a}.${b}.${c + 1}`, `${a}.${b + 1}.0`, `${a + 1}.0.0`].includes(since);
+}
+function sinceCompatible(since, version) {
+  return since === version || semverLt(since, version) || isNextBump(version, since);
+}
+ok('isNextBump accepts the next patch, minor and major of 0.11.1',
+  ['0.11.2', '0.12.0', '1.0.0'].every((v) => isNextBump('0.11.1', v)));
+ok('isNextBump rejects skipped bumps of 0.11.1',
+  ['0.13.0', '1.12.0', '0.11.3', '0.12.1'].every((v) => !isNextBump('0.11.1', v)));
+
 // --- shipped data invariants ---------------------------------------------
 {
   const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'package.json'), 'utf8'));
@@ -227,11 +241,13 @@ ok('reviewOffer: no ack, no stale pins -> null',
   const complete = data.history.every((e) => ['claude', 'codex'].every((h) =>
     ['strong', 'standard', 'fast'].every((t) => typeof e[h][t] === 'string' && e[h][t].length > 0)));
   ok('shipped data: every entry is a complete snapshot (3 tiers x 2 hosts)', complete);
-  ok('shipped data: last since <= package.json version',
-    cur.since === pkg.version || semverLt(cur.since, pkg.version));
+  // Il `since` dell'ultima entry puo' anticipare la release: uguale, piu' vecchio
+  // o esattamente il prossimo bump patch/minor/major della versione corrente.
+  ok('shipped data: last since matches or precedes package.json version (or is its next bump)',
+    sinceCompatible(cur.since, pkg.version));
   const plugin = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', '.claude-plugin', 'plugin.json'), 'utf8'));
-  ok('shipped data: last since <= plugin.json version',
-    cur.since === plugin.version || semverLt(cur.since, plugin.version));
+  ok('shipped data: last since matches or precedes plugin.json version (or is its next bump)',
+    sinceCompatible(cur.since, plugin.version));
 }
 
 {
@@ -241,6 +257,42 @@ ok('reviewOffer: no ack, no stale pins -> null',
     refDoc.includes(cur.claude.strong));
   ok('drift guard: current claude standard id appears in the Tier-class -> id section',
     refDoc.includes(cur.claude.standard));
+  ok('drift guard: current claude fast id appears in the Tier-class -> id section',
+    refDoc.includes(cur.claude.fast));
+}
+
+// --- default fast Haiku 5.5 dalla 0.12.0 -----------------------------------
+ok('current claude fast default is claude-haiku-5-5', cur.claude.fast === 'claude-haiku-5-5');
+ok('current opus/sonnet and codex tiers are unchanged',
+  cur.claude.strong === 'claude-opus-5-5' && cur.claude.standard === 'claude-sonnet-5-5' &&
+  cur.codex.strong === 'gpt-5.6-sol' && cur.codex.standard === 'gpt-5.6-terra' && cur.codex.fast === 'gpt-5.6-luna');
+
+for (const old of ['claude-haiku-4-5-20251001', 'claude-haiku-4-5']) {
+  const stale = stalePins({ models: { 'codebase-map': old } }, data);
+  ok(`stale haiku pin ${old} detected`, stale.length === 1 &&
+    stale[0].key === 'models.codebase-map' && stale[0].from === old && stale[0].to === 'claude-haiku-5-5');
+}
+ok('claude-haiku-5-5 itself is not stale',
+  stalePins({ models: { 'codebase-map': 'claude-haiku-5-5' } }, data).length === 0);
+
+{
+  const config = { models: { 'codebase-map': 'claude-haiku-4-5-20251001' } };
+  const offer = reviewOffer({ config, data, ack: '0.11.0' });
+  ok('reviewOffer: ack 0.11.0 with a Haiku 4.5 pin -> offer naming 0.12.0 and the line',
+    offer !== null && offer.notice.includes('0.12.0') &&
+    offer.notice.includes('models.codebase-map: claude-haiku-4-5-20251001 -> claude-haiku-5-5'));
+  ok('reviewOffer: ack 0.12.0 with a Haiku 4.5 pin -> null', reviewOffer({ config, data, ack: '0.12.0' }) === null);
+}
+
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-haiku-'));
+  fs.mkdirSync(path.join(tmp, '.trailhead'));
+  const cfgPath = path.join(tmp, '.trailhead', 'config.json');
+  fs.writeFileSync(cfgPath, JSON.stringify({ models: { 'codebase-map': 'claude-haiku-4-5-20251001' } }));
+  const notice = check(tmp);
+  ok('check(): a Haiku 4.5 project pin is listed with its project-config source',
+    typeof notice === 'string' && notice.includes(
+      `models.codebase-map: claude-haiku-4-5-20251001 -> claude-haiku-5-5 (new default; from the project config, ${cfgPath})`));
 }
 
 // --- effectiveModels (pure merge, no mutation) --------------------------------
