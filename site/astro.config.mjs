@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
+import rehypeVerbIds from './src/lib/rehype-verb-ids.mjs';
 
 // Custom Expressive Code theme for the /docs/ code blocks, matching the
 // landing page's `.code` treatment (see src/styles/landing.css): dim
@@ -73,6 +74,7 @@ const trailheadCodeTheme = {
 export default defineConfig({
   output: 'static',
   site: 'https://trailhead.marcomigozzi.it',
+  markdown: { rehypePlugins: [rehypeVerbIds] },
   integrations: [
     starlight({
       title: 'trailhead',

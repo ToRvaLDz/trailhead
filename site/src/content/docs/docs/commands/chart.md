@@ -5,7 +5,7 @@ description: "new, adopt, ticket, inbox, and grill: the verbs that give a map it
 
 The chart verbs give a map its start or bring outside work into it. `/trailhead <verb>` and `/trailhead:<verb>` are equivalent. Everything these verbs write lands on GitHub Issues; the repo itself holds code only. Back to the [command index](/docs/commands).
 
-<h3 id="new">/trailhead:new</h3>
+### /trailhead:new
 
 Chart a new map from a loose idea.
 
@@ -44,7 +44,7 @@ Chart a new map from a loose idea.
 
 trailhead grills the destination, shows the fog and the first tickets, then closes with: clear the context, run `/trailhead:work <n>` on the first frontier ticket (or `/trailhead:map` to look first).
 
-<h3 id="adopt">/trailhead:adopt</h3>
+### /trailhead:adopt
 
 Adopt an existing project: map the codebase once, then go lean.
 
@@ -80,7 +80,7 @@ None.
 
 After the mapping fan-out, trailhead proposes the conventions it inferred (for example a monorepo with `isolation: auto`), asks you to confirm or correct them, then lists the frontier.
 
-<h3 id="ticket">/trailhead:ticket</h3>
+### /trailhead:ticket
 
 Open a ticket of any type on the fly.
 
@@ -115,7 +115,7 @@ The zero-friction captures (`bug`, `todo`, `idea`, `seed`, `note`) skip the dive
 
 trailhead points out that a `research` ticket comparing providers should come first, creates both, and shows the research on the frontier with the decision blocked behind it.
 
-<h3 id="inbox">/trailhead:inbox</h3>
+### /trailhead:inbox
 
 Triage issues opened by others and integrate the worthwhile ones into the map.
 
@@ -151,7 +151,7 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 
 trailhead lists, for example, two incoming issues, one fog item that just got new comments, and one deferred out-of-scope line, and walks you through each.
 
-<h3 id="grill">/trailhead:grill</h3>
+### /trailhead:grill
 
 Run a standalone grilling session on a decision or topic.
 

@@ -5,7 +5,7 @@ description: "map, dashboard, and whiteboard: the renders that show where the wo
 
 The view verbs present state. They change nothing on the tracker, with a few exceptions noted per verb: the dashboard's create-and-pin self-heal, and a map close that only happens on your explicit yes. No isolation workspace is set up for them. Back to the [command index](/docs/commands).
 
-<h3 id="map">/trailhead:map</h3>
+### /trailhead:map
 
 Show the low-res map: destination, decisions, frontier, fog.
 
@@ -40,7 +40,7 @@ Show the low-res map: destination, decisions, frontier, fog.
 
 trailhead prints the destination, the frontier tickets you could take now, who holds what, the blocked ones, the settled decisions and the numbered fog.
 
-<h3 id="dashboard">/trailhead:dashboard</h3>
+### /trailhead:dashboard
 
 Show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts.
 
@@ -73,7 +73,7 @@ None.
 
 trailhead refreshes the pinned index and shows two open maps, the whiteboard with three loose tickets, and a note that one map is `exhausted · closeable`, with an offer to close it.
 
-<h3 id="whiteboard">/trailhead:whiteboard</h3>
+### /trailhead:whiteboard
 
 Show the whiteboard: loose, map-less tickets, their frontier and who holds each.
 

@@ -12,7 +12,7 @@ Rules shared by all five:
 - **Dashboard.** When a capture creates a whiteboard ticket, the pinned dashboard is refreshed; a capture landing on a map is not (the map's native progress bar tracks it).
 - **Confirmation line.** The capture is confirmed by the ticket's name and number and where it landed. If it points at working the ticket later, it leads with `/clear`, then `/trailhead:work <n>`, with `/trailhead:quick <n>` as the lighter alternative.
 
-<h3 id="todo">/trailhead:todo</h3>
+### /trailhead:todo
 
 Capture a small build ticket: defined work you will do now.
 
@@ -45,7 +45,7 @@ Capture a small build ticket: defined work you will do now.
 
 trailhead confirms: *Add login rate limit* (#45) is on the frontier. To work it later: `/clear`, then `/trailhead:work 45`.
 
-<h3 id="seed">/trailhead:seed</h3>
+### /trailhead:seed
 
 Capture a seed: work gated on a future trigger.
 
@@ -78,7 +78,7 @@ Capture a seed: work gated on a future trigger.
 
 trailhead files a parked ticket with the trigger "1k users" and tells you it will wait there until then.
 
-<h3 id="idea">/trailhead:idea</h3>
+### /trailhead:idea
 
 Capture an idea into the fog (Not yet specified).
 
@@ -109,7 +109,7 @@ Capture an idea into the fog (Not yet specified).
 
 trailhead confirms the idea is parked in the map's fog and not yet a ticket.
 
-<h3 id="note">/trailhead:note</h3>
+### /trailhead:note
 
 Capture a verbatim note.
 
@@ -140,7 +140,7 @@ Capture a verbatim note.
 
 trailhead confirms the line is stored in the map's fog exactly as typed.
 
-<h3 id="bug">/trailhead:bug</h3>
+### /trailhead:bug
 
 Capture a bug ticket; use `--of` for a regression.
 

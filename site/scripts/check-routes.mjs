@@ -76,6 +76,7 @@ function normalizedText(file) {
   const html = readFileSync(file, 'utf8');
   return html
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x3C;/gi, '<')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -222,17 +223,29 @@ const guideLabels = ['Syntax', 'Arguments', 'What it does', 'What it writes', 'E
 
 function articleHtml(file) {
   const html = readFileSync(file, 'utf8');
-  const start = html.indexOf('sl-markdown-content');
-  if (start === -1) {
+  const marker = html.indexOf('sl-markdown-content');
+  if (marker === -1) {
     return '';
   }
-  const end = html.indexOf('</main>', start);
-  return html.slice(start, end === -1 ? undefined : end);
+  // Walk the <div> nesting from the wrapper's open tag to its matching close,
+  // so the last verb's slice ends where the article content ends.
+  const start = html.lastIndexOf('<div', marker);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let m = tags.exec(html); m; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) {
+      return html.slice(start, m.index);
+    }
+  }
+  return html.slice(start);
 }
 
 function normalizeHtml(html) {
   return html
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x3C;/gi, '<')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -263,17 +276,31 @@ for (const [cluster, verbs] of Object.entries(commandClusters)) {
       failures.push(`${label} missing verb: /trailhead:${verb}`);
     }
   }
+  // "On this page": every verb heading is listed in the TOC (outside the article).
+  const outsideArticle = readFileSync(file, 'utf8').replace(article, '');
+  for (const verb of verbs) {
+    if (!outsideArticle.includes(`href="#${verb}"`)) {
+      failures.push(`${label}: "On this page" TOC does not list #${verb}`);
+    }
+  }
   const headings = verbs.map((verb) => ({ verb, at: article.indexOf(`<h3 id="${verb}"`) }));
   headings.forEach(({ verb, at }, i) => {
     if (at === -1) {
-      failures.push(`${label}: no explicit <h3 id="${verb}"> heading in the article body`);
+      failures.push(`${label}: no <h3 id="${verb}"> heading in the article body`);
       return;
     }
     const nextAt = headings.slice(i + 1).map((h) => h.at).find((x) => x > at);
-    const section = normalizeHtml(article.slice(at, nextAt === undefined ? undefined : nextAt));
+    const section = article.slice(at, nextAt === undefined ? undefined : nextAt);
+    // The bold labels, in this exact order, inside this verb's own section.
+    let previousAt = -1;
     for (const guideLabel of guideLabels) {
-      if (!section.includes(guideLabel)) {
-        failures.push(`${label} #${verb}: section missing "${guideLabel}"`);
+      const labelAt = section.indexOf(`<strong>${guideLabel}</strong>`);
+      if (labelAt === -1) {
+        failures.push(`${label} #${verb}: section missing bold "${guideLabel}"`);
+      } else if (labelAt < previousAt) {
+        failures.push(`${label} #${verb}: "${guideLabel}" is out of order`);
+      } else {
+        previousAt = labelAt;
       }
     }
   });
@@ -323,11 +350,13 @@ if (existsSync(configurationIndex)) {
       failures.push(`docs/configuration: profile row for ${name} missing or wrong tiers`);
     }
   }
+  if (!readFileSync(configurationIndex, 'utf8').includes('id="pinned-model-review"')) {
+    failures.push('docs/configuration has no id="pinned-model-review" (anchor other pages link to)');
+  }
   const text = normalizedText(configurationIndex);
   for (const needle of [
     'Manual',
     'inherit session',
-    'Pinned model review',
     'model-defaults-ack',
     'models.codex',
     '/trailhead:config',
@@ -345,14 +374,18 @@ if (existsSync(hooksIndex)) {
   const text = normalizedText(hooksIndex);
   for (const needle of [
     'mockup-link-stop',
-    'Commit-msg hook',
     'Refs: #<n>',
     'core.hooksPath',
-    'Session-start update check',
     'model-defaults-ack',
   ]) {
     if (!text.includes(needle)) {
       failures.push(`docs/hooks missing expected content: ${needle}`);
+    }
+  }
+  const hooksHtml = readFileSync(hooksIndex, 'utf8');
+  for (const id of ['commit-msg-hook', 'session-start-update-check']) {
+    if (!hooksHtml.includes(`id="${id}"`)) {
+      failures.push(`docs/hooks has no id="${id}" (anchor other pages link to)`);
     }
   }
 }

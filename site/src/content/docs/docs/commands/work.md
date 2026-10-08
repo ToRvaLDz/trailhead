@@ -5,7 +5,7 @@ description: "work, quick, pause, resume, split, and auto: the verbs that resolv
 
 The work verbs resolve tickets and manage a ticket's lifecycle. A ticket is resolved by the engine for its type (decision, research, prototype, build, bug, task); see [Workflow](/docs/workflow) and [Ticket types](/docs/ticket-types). Back to the [command index](/docs/commands).
 
-<h3 id="work">/trailhead:work</h3>
+### /trailhead:work
 
 Work the next frontier ticket, or the one you name.
 
@@ -45,7 +45,7 @@ Work the next frontier ticket, or the one you name.
 
 trailhead confirms #42 is open, claims it, summarises the plan of attack, and waits for your go before running the engine.
 
-<h3 id="quick">/trailhead:quick</h3>
+### /trailhead:quick
 
 Work one ticket whole, never splitting.
 
@@ -83,7 +83,7 @@ Work one ticket whole, never splitting.
 
 trailhead opens a whiteboard ticket, offers to skip the heavy steps because the change is small, and on your yes plans, commits and verifies in one sitting.
 
-<h3 id="pause">/trailhead:pause</h3>
+### /trailhead:pause
 
 Checkpoint the ticket in play so anyone can resume it.
 
@@ -117,7 +117,7 @@ Checkpoint the ticket in play so anyone can resume it.
 
 trailhead commits what exists, posts the checkpoint with your note, and asks whether to keep or release the claim.
 
-<h3 id="resume">/trailhead:resume</h3>
+### /trailhead:resume
 
 Resume a paused ticket from its checkpoint.
 
@@ -150,7 +150,7 @@ Resume a paused ticket from its checkpoint.
 
 trailhead reads the checkpoint on #42, tells you where it left off, and continues from the recorded next step.
 
-<h3 id="split">/trailhead:split</h3>
+### /trailhead:split
 
 Split an oversized ticket into children and supersede the original.
 
@@ -184,7 +184,7 @@ Split an oversized ticket into children and supersede the original.
 
 trailhead proposes three children (schema, API, UI) with the blocking between them, and creates them after you confirm.
 
-<h3 id="auto">/trailhead:auto</h3>
+### /trailhead:auto
 
 Run the frontier autonomously until a stop condition or exhaustion.
 

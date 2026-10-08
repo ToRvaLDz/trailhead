@@ -5,7 +5,7 @@ description: "config, update, prune, and audit: the admin verbs that keep a trai
 
 The manage verbs keep an install healthy. They resolve no ticket and set up no isolation workspace. Back to the [command index](/docs/commands).
 
-<h3 id="config">/trailhead:config</h3>
+### /trailhead:config
 
 Guided menu setup, or get and set trailhead config.
 
@@ -42,7 +42,7 @@ Guided menu setup, or get and set trailhead config.
 
 trailhead writes `tdd: seams` to the project config and confirms. `/trailhead:config get` then shows it as coming from the project layer.
 
-<h3 id="update">/trailhead:update</h3>
+### /trailhead:update
 
 Check for a newer trailhead and install it.
 
@@ -79,7 +79,7 @@ None.
 
 trailhead reports `0.11.1 -> 0.12.0`, asks to proceed, installs, and finishes with `now on 0.12.0` plus the integrity result.
 
-<h3 id="prune">/trailhead:prune</h3>
+### /trailhead:prune
 
 Reclaim a map's sub-issue slots under GitHub's 100-cap, keeping every reference.
 
@@ -114,7 +114,7 @@ Reclaim a map's sub-issue slots under GitHub's 100-cap, keeping every reference.
 
 trailhead previews removing 34 closed edges (total 96 to 62) and re-adding 2 missing ones, and applies it on your yes.
 
-<h3 id="audit">/trailhead:audit</h3>
+### /trailhead:audit
 
 Hunt regressions in closed work, and find duplicate or groupable open tickets.
 
