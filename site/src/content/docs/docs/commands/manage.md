@@ -153,4 +153,4 @@ Hunt regressions in closed work, and find duplicate or groupable open tickets.
 
 trailhead audits map #3 only, reports for example 14 implemented (11 unchanged), 1 evolved by #52 and 1 implemented wrong, then proposes a new regression `bug` for the wrong one and waits for your yes.
 
-Back to the [command index](/docs/commands), or on to [Configuration](/docs/configuration).
+Next: [Captures & the whiteboard](/docs/captures) for the commitment spectrum, or back to the [command index](/docs/commands), or on to [Configuration](/docs/configuration) for the keys `config` sets.

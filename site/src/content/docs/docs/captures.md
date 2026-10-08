@@ -38,4 +38,4 @@ Tickets that spin off from other work carry a lineage pointer in their body, so 
 | `Regression of:` | a bug in the work of a closed ticket |
 | `Surfaced from:` | an idea/ticket that came up while working another ticket |
 
-Next: [Commands](/docs/commands) for the exact capture syntax, or [Workflow](/docs/workflow) for how a capture fits into the lifecycle loop.
+Next: [Working as a team](/docs/teamwork) for how captures and claims behave with several contributors, or [capture commands](/docs/commands/capture) for the exact capture syntax, or [Workflow](/docs/workflow) for how a capture fits into the lifecycle loop.

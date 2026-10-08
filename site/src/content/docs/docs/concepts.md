@@ -47,4 +47,4 @@ Everything the map needs is expressed as GitHub labels, so state is queryable in
 
 The frontier is then a single query (open, unassigned, not `trailhead:blocked`), no body-parsing needed.
 
-Next: [Ticket types](/docs/ticket-types) for how each type is resolved, or [Commands](/docs/commands) for the full verb list.
+Next: [Workflow](/docs/workflow) for the lifecycle loop these pieces move through, or [Ticket types](/docs/ticket-types) for how each type is resolved, or [Commands](/docs/commands) for the full verb list.

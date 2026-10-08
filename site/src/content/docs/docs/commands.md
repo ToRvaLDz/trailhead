@@ -81,4 +81,4 @@ Keep the install and the maps healthy. [Full guide](/docs/commands/manage).
 | [`/trailhead:prune [map]`](/docs/commands/manage#prune) | reclaim a map's native sub-issue slots under GitHub's 100 sub-issue cap by dropping the edges of closed and orphan tickets (every reference kept); offered automatically when a map is near or at the cap |
 | [`/trailhead:audit [map] [--all]`](/docs/commands/manage#audit) | hunt regressions by checking that the tickets closed since the last audit are still true against the current code, and compare the open ones for duplicates and groupable clusters; read-only until you confirm, and every fix is a proposal applied only on an explicit yes |
 
-Next: [Captures & the whiteboard](/docs/captures) for the commitment spectrum, or [Working as a team](/docs/teamwork) for how these commands behave with multiple contributors.
+Next: [chart commands](/docs/commands/chart), the first of the five guides, or jump to [Captures & the whiteboard](/docs/captures) for the commitment spectrum and [Working as a team](/docs/teamwork) for how these commands behave with multiple contributors.
