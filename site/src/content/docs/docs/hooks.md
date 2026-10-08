@@ -1,6 +1,6 @@
 ---
 title: Hooks
-description: The commit guard, secret guard, install guard, search guard, body guard, secret-read guard, mockup-link guard, and injection scanner that enforce trailhead's discipline.
+description: The commit guard, secret guard, install guard, search guard, body guard, secret-read guard, mockup-link guard, injection scanner, the session-start update check, and the git commit-msg hook that enforce trailhead's discipline.
 ---
 
 Beyond the skill's instructions, trailhead ships eight of its own hooks (self-contained, installed alongside the plugin) that *enforce* the parts of the discipline the model shouldn't be trusted to remember:
@@ -17,5 +17,38 @@ Beyond the skill's instructions, trailhead ships eight of its own hooks (self-co
 All eight are crash-safe (any error → allow) and active whenever the plugin is installed. The commit, secret, install, search, body, and secret-read guards therefore apply in **every** repo, not only trailhead projects: intentional, since conventional commits, no `Co-Authored-By`, no leaked secrets, no unvetted installs, no `cd`-then-relative-read, no clobbered issue bodies, and no readable `.env`/`.secrets` are trailhead's standing rules.
 
 To opt out, disable the plugin's hooks in your Claude Code settings.
+
+Two more pieces round out the picture: a session-start check that tells you about updates and stale pinned models, and a plain git hook that backs the commit rules up on every host.
+
+## Session-start update check
+
+The `trailhead-check-update.js` hook runs at `SessionStart`. It never fails or delays a session: every error degrades silently, it reads its input with a short timeout, and the network lookups have their own short timeouts. It does two things:
+
+- **Update check.** It detects how trailhead was installed (plugin, npm, dev-symlink, or Codex), compares the installed version with the latest from the matching source (the npm registry for npm and Codex installs, GitHub for plugin and dev), and writes the verdict to a cache file under your cache directory (`trailhead/update-check.json`, and a separate `update-check-codex.json` for Codex). It checks the network at most every 6 hours. On Claude Code the statusline reads that cache and shows a `⬆ trailhead <version>` flag, and `/trailhead:update` reads it too. Codex has no statusline, so on Codex the hook itself adds a one-line heads-up to the session context whenever an update is available.
+- **Pinned-model review notice.** It runs the read-only pinned-model check and, when a model you pinned in config is older than its tier's new default, adds the review offer (update, keep, or open `/trailhead:config`) to the session. It keeps coming back until you answer, because the check never records an acknowledgement by itself; the answer is stored in the gitignored `.trailhead/model-defaults-ack`. The full behaviour is described under [Pinned model review](/docs/configuration#pinned-model-review).
+
+On a host with no hook bus, trailhead does the same two checks inline at the start of a session instead, so nothing depends on the hook being present.
+
+## Commit-msg hook
+
+Alongside the host hooks, trailhead installs a plain git `commit-msg` hook, so the commit rules hold on every host and for every `git commit`, including Codex, which has no hook bus. On each commit it enforces:
+
+- a [Conventional Commits](https://www.conventionalcommits.org) subject of at most 72 characters;
+- no `Co-Authored-By` trailer;
+- while a `.trailhead/session-ticket` marker is present at the working root, a `Refs: #<n>` trailer matching the ticket number in that marker. A commit missing it is rejected with a message naming the ticket and the fix. A marker that cannot be parsed never blocks a commit, and with no marker the trailer is not required.
+
+The hook never wedges a commit: an unexpected error lets the commit through. `git commit --no-verify` skips it, as with any git hook. Commits made while a stale marker is lying around would wrongly demand the trailer, which is why trailhead removes the marker at the handoff; see [Working as a team](/docs/teamwork).
+
+**Keeping it installed.** trailhead runs a small sync script at chart or adopt time and at the start of every `work` and `quick`. It reports one of these outcomes:
+
+- **installed**: no hook was there, so the trailhead one was added.
+- **upgraded**: an older trailhead hook (recognised by its own header line, not by filename) was replaced in place with the current one.
+- **current**: already up to date, left alone.
+- **foreign**: a commit-msg hook that is not trailhead's (a symlink counts) was found. It is never touched, and git does not enforce trailhead's rules there; trailhead tells you so.
+- **skipped**: nothing was set up, because the directory is not a git repo or `core.hooksPath` is set and holds no commit-msg hook.
+
+It follows `core.hooksPath` and works in linked worktrees (they share one hooks directory). The one `core.hooksPath` rule worth knowing: if you point `core.hooksPath` at your own directory, trailhead will upgrade a trailhead hook already sitting there, but it will not add a new file to that directory. In that case it reports skipped ("not set up"), and you copy the hook there yourself if you want it. The hook lives in `.git/hooks`, which is not version-controlled, so it is a per-clone local install with nothing to commit.
+
+If the sync script itself cannot be found (an outdated install), trailhead inspects the hooks directory instead and reports what it finds: a trailhead hook that is present and executable is enforcing (only its freshness is unchecked), one that is not executable is skipped by git, a foreign hook is left alone, and no hook means nothing is enforced; in each case it suggests updating the install where that helps.
 
 Next: [Getting started](/docs/getting-started) for the install steps that register these hooks, or [Configuration](/docs/configuration) for the rest of trailhead's settings.
