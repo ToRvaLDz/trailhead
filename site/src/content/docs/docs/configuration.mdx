@@ -72,7 +72,7 @@ A profile assigns a tier to each of the seven keys. In `/trailhead:config`, pick
 | Balanced (default) | strong | standard | standard | standard | standard | standard | fast |
 | Low | standard | standard | fast | fast | standard | fast | fast |
 
-Balanced is the default profile. A key you leave unset resolves to its Balanced tier at load time, so a project with no config still gets sensible models without anyone choosing. To use the session model instead for a key, set it explicitly to `inherit session`. An unknown id is never fatal: trailhead warns and inherits the session model.
+Balanced is the default profile. On Claude, a `models.*` key you leave unset resolves to its Balanced tier at load time, so a project with no config still gets sensible models without anyone choosing. A `models.codex.*` key is different: left unset, it inherits the session model, and only a profile or a pin gives it a Codex tier. To use the session model for a Claude key instead of its Balanced default, set it explicitly to `inherit session`. An unknown id is never fatal: trailhead warns and inherits the session model.
 
 On Codex, picking a profile seeds `models.codex.*` instead. Re-run the installer afterwards (the same `--host=codex` install command) so the pins are re-projected into `~/.codex/agents/trailhead-*.toml`; the menu updates the config, the installer regenerates those files. The Claude `models.*` keys cannot run on Codex and are ignored there (they stay in your config untouched for when you work on Claude Code).
 
