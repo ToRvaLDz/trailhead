@@ -80,7 +80,7 @@ export interface Card {
   foot?: { stackAvatars?: Array<{ initials: string; key: 'mm' | 'al' | 'rs' }>; caption: string };
 }
 
-export const cards: Record<string, Card> = {
+const pageCards: Record<string, Card> = {
   docs: {
     key: 'overview',
     title: 'checkout map',
@@ -303,4 +303,15 @@ export const cards: Record<string, Card> = {
       },
     ],
   },
+};
+
+// #196: the five verb guides (one per engine cluster) reuse the approved
+// commands banner, so every docs page keeps exactly one hero.
+const commandGuideClusters = ['chart', 'work', 'view', 'capture', 'manage'];
+
+export const cards: Record<string, Card> = {
+  ...pageCards,
+  ...Object.fromEntries(
+    commandGuideClusters.map((cluster) => [`docs/commands/${cluster}`, pageCards['docs/commands']])
+  ),
 };

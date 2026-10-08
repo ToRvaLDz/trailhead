@@ -138,7 +138,17 @@ export default defineConfig({
             { label: 'Core concepts', link: '/docs/concepts' },
             { label: 'Workflow', link: '/docs/workflow' },
             { label: 'Ticket types', link: '/docs/ticket-types' },
-            { label: 'Commands', link: '/docs/commands' },
+            {
+              label: 'Commands',
+              items: [
+                { label: 'Overview', link: '/docs/commands' },
+                { label: 'Chart', link: '/docs/commands/chart' },
+                { label: 'Work', link: '/docs/commands/work' },
+                { label: 'View', link: '/docs/commands/view' },
+                { label: 'Capture', link: '/docs/commands/capture' },
+                { label: 'Manage', link: '/docs/commands/manage' },
+              ],
+            },
             { label: 'Captures & the whiteboard', link: '/docs/captures' },
             { label: 'Working as a team', link: '/docs/teamwork' },
             { label: 'Configuration', link: '/docs/configuration' },
