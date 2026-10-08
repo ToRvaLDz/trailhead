@@ -13,7 +13,7 @@ Three layers, nearest wins, key by key (a key unset at one layer inherits the ne
 
 ## Guided setup
 
-`/trailhead:config` runs a guided, menu-driven setup: pick the scope, then walk each setting (way of working (git, release, isolation), ticket language, models, design + approval, TDD, effort, acceptance testing, plan review, statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and plan and execute models are always two separate, version-pinned choices. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+`/trailhead:config` runs a guided, menu-driven setup: pick the scope, then walk each setting (way of working (git, release, isolation), ticket language, models, design + approval, TDD, effort, acceptance testing, plan review, statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped). In the models step you pick a profile (High, Balanced, Low) that sets every model key at once, or Manual to choose each key yourself (see [Models](#models)). `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
 The statusline step offers to install trailhead's Claude Code status bar: one line with model · project · branch · plan usage (`5h %` · reset · `7d %`) · a context-window bar, plus a second line with the active ticket (`▸ #N Title`) whenever you're working one, and a `⬆ trailhead <version>` flag when a newer trailhead is available (run `/trailhead:update`). The project is always the main repo's name even from an isolated checkout, and the branch carries a `(WT)` tag in a worktree or `(C)` in a per-ticket clone (nothing on the original checkout). It's a global Claude Code setting; if you already run a statusline the setup asks before replacing it, and the script also exposes `--ticket-only` / `--context-only` / `--usage-only` segments to slot into an existing tool.
 
@@ -26,7 +26,8 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead writes its GitHub prose & commit descriptions in, decoupled from the language it converses in |
-| `models.{plan,execute,research,review,debug,verify,codebase-map}` | a full versioned model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
+| `models.{plan,execute,research,review,debug,verify,codebase-map}` | a full versioned model id (**the Balanced profile's tier default**) | which model runs each activity; `plan` and `execute` are always set separately. Set a key to `inherit session` to use the session model instead; see [Models](#models) |
+| `models.codex.{plan,execute,research,review,debug,verify,codebase-map}` | an OpenAI model id, or `{model, effort}` (**inherit session**) | the same per-activity split on Codex, which cannot run Claude ids; see [Models](#models) |
 | `design` | **`disk`** \| `claude.ai/design` \| `stitch` | where UI mockups go: local throwaway HTML, claude.ai/design via Anthropic's official Claude Design MCP, or Google Stitch (cross-host, via the Stitch MCP) |
 | `design.surface` | **`canvas`** \| `design-system` | under `claude.ai/design` or `stitch`, which surface: a canvas project (default) or a design-system project via `/design-sync` |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
@@ -45,17 +46,52 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 Each key runs its activity as a subagent on the model you name, so the whole per-activity split applies within a single work session, whatever model that session runs on:
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
-- `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and the codebase-map fan-out each run on their own key.
-
-Choose `plan` and `execute` separately, each by full versioned id (never a bare `opus` or `sonnet`). A key that is unset, or equal to the session model, simply runs inline.
+- `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and `codebase-map` (the codebase-map reader fan-out) each run on their own key.
 
 The main session stays the orchestrator. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting, grilling, and ticket-writing on its own model. No key governs ticket quality, so run charting sessions on your strong model.
+
+### Tiers and their defaults
+
+Rather than pinning ids by hand, trailhead thinks in three tiers and resolves each to a concrete model id when you set up. The current defaults:
+
+| Tier | Claude (`models.*`) | Codex (`models.codex.*`) |
+|---|---|---|
+| strong | `claude-opus-5-5` | `gpt-5.6-sol`, effort `high` |
+| standard | `claude-sonnet-5-5` | `gpt-5.6-terra`, effort `medium` |
+| fast | `claude-haiku-5-5` | `gpt-5.6-luna`, effort `low` |
+
+Claude keys take an id only. Codex keys take a bare OpenAI model id or a `{model, effort}` pair, where the effort is projected as the model's reasoning effort. Always store a full versioned id, never a bare `opus` or `sonnet`.
+
+### Profiles
+
+A profile assigns a tier to each of the seven keys. In `/trailhead:config`, picking High, Balanced or Low applies it whole (no further per-key questions); Manual asks each key yourself, and `plan` and `execute` are always two separate questions. The idea behind all three is smart at every level: research is never the strongest tier, and execute and debug are never the fastest.
+
+| Profile | plan | execute | research | review | debug | verify | codebase-map |
+|---|---|---|---|---|---|---|---|
+| High | strong | strong | standard | strong | strong | strong | standard |
+| Balanced (default) | strong | standard | standard | standard | standard | standard | fast |
+| Low | standard | standard | fast | fast | standard | fast | fast |
+
+Balanced is the default profile. A key you leave unset resolves to its Balanced tier at load time, so a project with no config still gets sensible models without anyone choosing. To use the session model instead for a key, set it explicitly to `inherit session`. An unknown id is never fatal: trailhead warns and inherits the session model.
+
+On Codex, picking a profile seeds `models.codex.*` instead. Re-run the installer afterwards (the same `--host=codex` install command) so the pins are re-projected into `~/.codex/agents/trailhead-*.toml`; the menu updates the config, the installer regenerates those files. The Claude `models.*` keys cannot run on Codex and are ignored there (they stay in your config untouched for when you work on Claude Code).
 
 Example config file (the same shape works for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
 
 ```json
 { "ticket": { "language": "en" }, "models": { "plan": "claude-opus-5-5", "execute": "claude-sonnet-5-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
+
+### Pinned model review
+
+When a release moves a tier's default (for example fast went from Haiku 4.5 to `claude-haiku-5-5`), a key you pinned to the old default would silently stay behind. trailhead notices and offers a review:
+
+- **When it triggers.** A pinned `models.*` or `models.codex.*` id is older than the new default of the tier it belonged to. Unset keys already follow the new default and are never flagged; ids trailhead does not recognise (custom ones) are never flagged either.
+- **Where you see it.** At the start of a session, from the SessionStart hook (see [Hooks](/docs/hooks#session-start-update-check)) and again when a trailhead skill loads its config, once per session either way. On hosts without a hook bus the same check runs inline at session start.
+- **What it lists.** Each stale pin as `key: old -> new`, naming the config file it actually came from. The review looks at your effective config: the global file merged under the project file, the project winning key by key, so a stale pin inherited from the global file is flagged even in a project that pins nothing itself.
+- **Three choices.** Update (write the new ids; a Codex effort is left as it was), keep (change nothing; you are not asked again for these defaults), or open `/trailhead:config` to pick per key.
+
+The check itself is read-only: showing the notice never records anything, so it keeps coming back until you actually answer one of the three choices. Only then is the answer recorded in `.trailhead/model-defaults-ack`, a gitignored file. If no project is found above the working directory, the review runs on the global config alone and its acknowledgement is stored next to it, in the `trailhead/model-defaults-ack` file under your Claude config directory.
 
 ## Design mockups
 
