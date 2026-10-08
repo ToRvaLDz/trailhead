@@ -51,4 +51,8 @@ After the cache refresh, run a **lightweight integrity check** (fs existence plu
 
 The check is lightweight and degrades silently: a probe that can't run (an unreadable path, a host detail absent) is reported as unchecked, never a hard failure of the update.
 
+## 6. Realign this repo's label guard
+
+An update can change the shipped label guard, but a guard already committed to a repo is not touched by the install. If the current directory is a repo with `.github/workflows/trailhead-label-guard.yml`, run the label guard sync script check-only (see `../../_shared/teamwork.md`, Trust & provenance → Keeping the guard current) and, on `outdated`, offer the upgrade (`--apply`, then commit and push); `current`, `custom` and `foreign` need no action. Skip silently when there is no guard or no repo.
+
 Never edit `package.json`/`plugin.json` versions here: this command **consumes** releases, it does not cut them.

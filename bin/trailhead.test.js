@@ -123,6 +123,10 @@ const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates
 ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
 ok('codex: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(codexCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+// Il sync del label guard (migrazione all'if a livello di job) viaggia con templates/.
+const codexLabelGuardSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
+ok('codex: label-guard-sync script is byte-identical to source', fs.existsSync(codexLabelGuardSync) &&
+  fs.readFileSync(codexLabelGuardSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-label-guard-sync.js'), 'utf8'));
 // #193: the audit fast path / attribution walk script rides in templates/ on Codex too.
 const codexAuditWalk = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-audit-walk.js');
 ok('codex: audit-walk script projected', fs.existsSync(codexAuditWalk));
@@ -870,6 +874,9 @@ const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trai
 ok('claude: commit-msg-sync script projected', fs.existsSync(claudeCommitMsgSync));
 ok('claude: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(claudeCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+const claudeLabelGuardSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
+ok('claude: label-guard-sync script is byte-identical to source', fs.existsSync(claudeLabelGuardSync) &&
+  fs.readFileSync(claudeLabelGuardSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-label-guard-sync.js'), 'utf8'));
 const claudeAuditWalk = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-audit-walk.js');
 ok('claude: audit-walk script projected', fs.existsSync(claudeAuditWalk));
 ok('claude: audit-walk script is byte-identical to source',
@@ -1158,6 +1165,12 @@ for (const [label, src] of [
   ok(`source: ${label} references trailhead-commit-msg-sync.js`, src.includes('trailhead-commit-msg-sync.js'));
   ok(`source: ${label} has no em-dash`, !src.includes('—'));
 }
+
+// --- label guard: setup e update rilevano/migrano un guard senza if a livello di job
+ok('source: teamwork.md references trailhead-label-guard-sync.js', teamworkSource.includes('trailhead-label-guard-sync.js'));
+ok('source: substrate-commands.md references trailhead-label-guard-sync.js', substrateCommandsSource.includes('trailhead-label-guard-sync.js'));
+ok('source: updating.md realigns the repo label guard',
+  fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'skills', 'trailhead-manage', 'references', 'updating.md'), 'utf8').includes('label guard sync script'));
 
 // --- #189: script mancante / errore node -> fallback che ispeziona la hooks dir
 // invece di dichiarare alla cieca "git non applica le regole" ------------------
