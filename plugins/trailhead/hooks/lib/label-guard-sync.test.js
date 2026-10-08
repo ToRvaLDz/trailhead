@@ -15,7 +15,7 @@ const oldFixturePath = path.join(__dirname, 'fixtures', 'label-guard-0.12.0.yml'
 const repoGuardPath = path.resolve(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'trailhead-label-guard.yml');
 
 const {
-  isTrailheadGuard, jobGuardIf, hasJobLevelFilter, classify, syncLabelGuard, parseArgs, GUARD_REL,
+  isTrailheadGuard, jobGuardIf, hasJobLevelFilter, classify, syncLabelGuard, sessionNotice, ackGuard, parseArgs, GUARD_REL, ACK_REL,
 } = require(scriptPath);
 
 let passed = 0;
@@ -95,9 +95,32 @@ for (const [label, text] of [['custom', templateText + '# local\n'], ['foreign',
   ok(`sync apply: ${label} left untouched`, a.status === label && fs.readFileSync(file, 'utf8') === text);
 }
 
+// --- offerta di sessione + ack ----------------------------------------------
+{
+  const repo = mktmp();
+  const file = writeGuard(repo, oldText);
+  const notice = sessionNotice({ repoDir: repo, templateText, scriptPath: scriptPath });
+  ok('notice: outdated guard -> offer', notice !== null && notice.includes('--apply') && notice.includes('--ack') && notice.includes('job-level'));
+  ok('notice: read-only (no ack written)', !fs.existsSync(path.join(repo, ACK_REL)));
+  ok('notice: still offered on the next session', sessionNotice({ repoDir: repo, templateText, scriptPath }) !== null);
+  ok('ack: records the answer', ackGuard({ repoDir: repo }) === true && fs.existsSync(path.join(repo, ACK_REL)));
+  ok('notice: acked guard -> null', sessionNotice({ repoDir: repo, templateText, scriptPath }) === null);
+  fs.writeFileSync(file, oldText + '# edited\n');
+  ok('notice: comes back when the guard file changes', sessionNotice({ repoDir: repo, templateText, scriptPath }) !== null);
+}
+for (const [label, text] of [['current', templateText], ['custom', templateText + '# x\n'], ['foreign', 'name: x\n']]) {
+  const repo = mktmp();
+  writeGuard(repo, text);
+  ok(`notice: ${label} guard -> null`, sessionNotice({ repoDir: repo, templateText, scriptPath }) === null);
+}
+ok('notice: no guard -> null', sessionNotice({ repoDir: mktmp(), templateText, scriptPath }) === null);
+ok('ack: no guard -> false', ackGuard({ repoDir: mktmp() }) === false);
+
 // --- CLI ---------------------------------------------------------------------
 ok('parseArgs: --repo needs a value', Boolean(parseArgs(['--repo']).error));
 ok('parseArgs: unknown flag rejected', Boolean(parseArgs(['--nope']).error));
+ok('parseArgs: --apply with --notice rejected', Boolean(parseArgs(['--notice', '--apply']).error));
+ok('parseArgs: --notice with --ack rejected', Boolean(parseArgs(['--notice', '--ack']).error));
 {
   const repo = mktmp();
   writeGuard(repo, oldText);
@@ -105,6 +128,28 @@ ok('parseArgs: unknown flag rejected', Boolean(parseArgs(['--nope']).error));
   ok('cli: outdated reported as JSON', out.status === 'outdated');
   const applied = JSON.parse(execFileSync('node', [scriptPath, '--repo', repo, '--apply'], { encoding: 'utf8' }));
   ok('cli: --apply upgrades', applied.status === 'upgraded');
+}
+{
+  const repo = mktmp();
+  writeGuard(repo, oldText);
+  ok('cli: --notice prints the offer', execFileSync('node', [scriptPath, '--repo', repo, '--notice'], { encoding: 'utf8' }).includes('outdated'));
+  execFileSync('node', [scriptPath, '--repo', repo, '--ack']);
+  ok('cli: --notice silent after --ack', execFileSync('node', [scriptPath, '--repo', repo, '--notice'], { encoding: 'utf8' }) === '');
+}
+// L'hook SessionStart porta l'offerta nel contesto della sessione.
+{
+  const repo = mktmp();
+  execFileSync('git', ['init', '-q', repo]);
+  writeGuard(repo, oldText);
+  const hookPath = path.resolve(__dirname, '..', 'trailhead-check-update.js');
+  const run = () => execFileSync('node', [hookPath], {
+    input: JSON.stringify({ cwd: repo }), encoding: 'utf8',
+    env: { ...process.env, XDG_CACHE_HOME: path.join(repo, '.cache'), CLAUDE_CONFIG_DIR: path.join(repo, '.cfg') },
+  });
+  const ctx = (s) => (s ? JSON.parse(s).hookSpecificOutput.additionalContext : '');
+  ok('hook: SessionStart surfaces the label guard offer', ctx(run()).includes('label guard in this repo'));
+  ackGuard({ repoDir: repo });
+  ok('hook: no offer once acked', !ctx(run()).includes('label guard in this repo'));
 }
 
 console.log(`label-guard-sync: ${passed} passed`);

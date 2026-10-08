@@ -377,6 +377,7 @@ if (existsSync(hooksIndex)) {
     'Refs: #<n>',
     'core.hooksPath',
     'model-defaults-ack',
+    'label-guard-ack',
   ]) {
     if (!text.includes(needle)) {
       failures.push(`docs/hooks missing expected content: ${needle}`);

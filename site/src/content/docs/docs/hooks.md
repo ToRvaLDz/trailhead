@@ -18,16 +18,17 @@ All eight are crash-safe (any error → allow) and active whenever the plugin is
 
 To opt out, disable the plugin's hooks in your Claude Code settings.
 
-Two more pieces round out the picture: a session-start check that tells you about updates and stale pinned models, and a plain git hook that backs the commit rules up on every host.
+Two more pieces round out the picture: a session-start check that tells you about updates, stale pinned models, and an outdated label guard, and a plain git hook that backs the commit rules up on every host.
 
 ## Session-start update check
 
-The `trailhead-check-update.js` hook runs at `SessionStart`. It never fails or delays a session: every error degrades silently, it reads its input with a short timeout, and the network lookups have their own short timeouts. It does two things:
+The `trailhead-check-update.js` hook runs at `SessionStart`. It never fails or delays a session: every error degrades silently, it reads its input with a short timeout, and the network lookups have their own short timeouts. It does three things:
 
 - **Update check.** It detects how trailhead was installed (plugin, npm, dev-symlink, or Codex), compares the installed version with the latest from the matching source (the npm registry for npm and Codex installs, GitHub for plugin and dev), and writes the verdict to a cache file under your cache directory (`trailhead/update-check.json`, and a separate `update-check-codex.json` for Codex). It checks the network at most every 6 hours. On Claude Code the statusline reads that cache and shows a `⬆ trailhead <version>` flag, and `/trailhead:update` reads it too. Codex has no statusline, so on Codex the hook itself adds a one-line heads-up to the session context whenever an update is available.
 - **Pinned-model review notice.** It runs the read-only pinned-model check and, when a model you pinned in config is older than its tier's new default, adds the review offer (update, keep, or open `/trailhead:config`) to the session. It keeps coming back until you answer, because the check never records an acknowledgement by itself; the answer is stored in the gitignored `.trailhead/model-defaults-ack`. The full behaviour is described under [Pinned model review](/docs/configuration#pinned-model-review).
+- **Label guard check.** When the repo's committed `.github/workflows/trailhead-label-guard.yml` is the old version with no job-level `if:` (every `issues: labeled` event then starts a GitHub Actions runner billed at least one minute), it adds an offer to upgrade it from the current template (then commit and push) or keep it. Like the model review it keeps coming back until you answer; the answer is stored in the gitignored `.trailhead/label-guard-ack` and the offer returns only if the guard file changes. A current, customised, or non-trailhead workflow is never flagged.
 
-On a host with no hook bus, trailhead does the same two checks inline at the start of a session instead, so nothing depends on the hook being present.
+On a host with no hook bus, trailhead does the same checks inline at the start of a session instead, so nothing depends on the hook being present.
 
 ## Commit-msg hook
 

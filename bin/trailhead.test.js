@@ -1169,6 +1169,8 @@ for (const [label, src] of [
 // --- label guard: setup e update rilevano/migrano un guard senza if a livello di job
 ok('source: teamwork.md references trailhead-label-guard-sync.js', teamworkSource.includes('trailhead-label-guard-sync.js'));
 ok('source: substrate-commands.md references trailhead-label-guard-sync.js', substrateCommandsSource.includes('trailhead-label-guard-sync.js'));
+ok('source: load-first.md runs the label guard check with --notice',
+  fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'skills', '_shared', 'load-first.md'), 'utf8').includes('trailhead-label-guard-sync.js --repo <project root> --notice'));
 ok('source: updating.md realigns the repo label guard',
   fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'skills', 'trailhead-manage', 'references', 'updating.md'), 'utf8').includes('label guard sync script'));
 

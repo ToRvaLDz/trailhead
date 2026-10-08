@@ -7,6 +7,7 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 ### Changed / Fixed
 - **Label guard filters at job level.** The shipped `trailhead-label-guard.yml` now skips the job with a job-level `if:` (a `trailhead:` label, a sender other than the repo owner, not in `TRAILHEAD_LABEL_ALLOWLIST`) instead of returning early from the script. A skipped job is not billed, while every started one costs at least one Actions minute, so the old guard ran into thousands of billed runs a month on a repo trailhead labels all the time. The in-script permission check is unchanged and stays the real defence.
 - **Outdated guards are migrated.** A new `templates/trailhead-label-guard-sync.js` classifies a repo's guard (`absent` / `current` / `outdated` / `custom` / `foreign`) and, with `--apply`, installs or upgrades it from the template, never touching a foreign or customised workflow. The first-use setup (chart/adopt) and `/trailhead:update` run it and offer the upgrade when the committed guard lacks the job-level `if:`.
+- **Session-start label guard check.** Like the pinned-model review, the SessionStart hook (or the load-first check on a host with no hook bus) offers to upgrade an outdated guard in the current repo, every session until you answer; the answer is stored in the gitignored `.trailhead/label-guard-ack` and the offer returns only if the guard file changes.
 
 ## 0.12.0 (2026-10-08)
 

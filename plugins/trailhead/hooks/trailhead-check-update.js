@@ -163,6 +163,29 @@ function reviewNotice(cwd) {
   }
 }
 
+// Offerta di upgrade del label guard del repo (stesso schema della review dei
+// modelli): solo quando il guard committato è la versione senza `if:` a
+// livello di job e l'utente non ha già risposto per quel file. Lo script di
+// sync vive in templates/: ../templates per plugin, dev e Codex, la copia npm
+// sotto <configDir>/trailhead/templates. Sola lettura; ogni errore -> null.
+function labelGuardNotice(cwd) {
+  try {
+    const candidates = [
+      path.join(__dirname, '..', 'templates'),
+      path.join(configDir(), 'trailhead', 'templates'),
+    ];
+    const dir = candidates.find((d) => fs.existsSync(path.join(d, 'trailhead-label-guard-sync.js')));
+    if (!dir) return null;
+    const repoDir = run('git', ['-C', cwd, 'rev-parse', '--show-toplevel']);
+    if (!repoDir) return null;
+    const scriptPath = path.join(dir, 'trailhead-label-guard-sync.js');
+    const templateText = fs.readFileSync(path.join(dir, 'trailhead-label-guard.yml'), 'utf8');
+    return require(scriptPath).sessionNotice({ repoDir, templateText, scriptPath }) || null;
+  } catch {
+    return null;
+  }
+}
+
 // Legge il JSON di SessionStart da stdin in modo asincrono, con timeout, come
 // gli altri hook: una lettura sincrona di fd 0 si bloccherebbe per sempre su
 // un TTY o su una pipe mai chiusa. Su TTY o input assente si prosegue con {}.
@@ -190,9 +213,10 @@ function main(input) {
   const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
 
   const review = reviewNotice(cwd);
+  const guard = labelGuardNotice(cwd);
   const update = updateNotice();
 
-  const parts = [review, update].filter(Boolean);
+  const parts = [review, guard, update].filter(Boolean);
   if (!parts.length) return;
 
   process.stdout.write(JSON.stringify({
