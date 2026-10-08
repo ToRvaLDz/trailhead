@@ -287,7 +287,7 @@ const pageCards: Record<string, Card> = {
         kind: 'tag',
         struck: true,
         leadingTag: { variant: 'bug', label: 'blocked' },
-        title: 'git commit — secret in diff',
+        title: 'git commit: secret in diff',
       },
       {
         kind: 'tag',

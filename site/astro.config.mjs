@@ -5,7 +5,7 @@ import sitemap from '@astrojs/sitemap';
 // Custom Expressive Code theme for the /docs/ code blocks, matching the
 // landing page's `.code` treatment (see src/styles/landing.css): dim
 // comments, orange keyword/tag accents, green string accents. Colors here
-// are literal hex values rather than `var(--brand-token)` references —
+// are literal hex values rather than `var(--brand-token)` references,
 // Expressive Code resolves theme colors at build time with a JS color
 // library (for contrast checks, alpha blending, etc.) that cannot parse
 // CSS custom properties, so brand CSS vars are only safe to use inside

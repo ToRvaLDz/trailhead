@@ -122,7 +122,7 @@ const commandsMustContain = [
 
 const docsPlaceholder = 'Skeleton placeholder';
 
-// #117: Cloudflare Web Analytics beacon — cookieless, consent-free — must
+// #117: Cloudflare Web Analytics beacon, cookieless, consent-free, must
 // load on every published route (landing, every /docs/* page, and the 404).
 const cfBeaconSrc = 'static.cloudflareinsights.com/beacon.min.js';
 const cfBeaconToken = '9d745984ddba48329691930072aea137';
@@ -159,7 +159,7 @@ const heroAriaHiddenPattern =
 const notFoundIndex = path.join(dist, '404.html');
 
 // Docs-brand assertions: the /docs/ section must be themed to the landing
-// brand (dark-only) — the header renders the same wordmark as the landing
+// brand (dark-only), the header renders the same wordmark as the landing
 // nav, and Starlight's light/dark/auto theme picker is gone (the custom
 // element it registers itself as must not appear in the markup).
 const docsBrandIndex = path.join(dist, 'docs', 'index.html');
@@ -413,7 +413,7 @@ for (const { file, expectedKey: key } of heroRoutes) {
     failures.push(`docs hero (${key}): expected exactly one <h1 id="_top"> occurrence, found ${h1Count}`);
   }
   // #112: the hero is decorative and must never be announced before the
-  // real title — assert it self-hides via aria-hidden.
+  // real title, assert it self-hides via aria-hidden.
   if (!heroAriaHiddenPattern.test(html)) {
     failures.push(`docs hero (${key}): missing aria-hidden="true" on the hero element`);
   }
@@ -565,6 +565,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK — landing and all 15 /docs/* pages resolved, every verb guide section complete, config/hooks semantics asserted, no /en prefix, install/verb facts present, no placeholder copy left, all 15 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 15 /docs/* pages, and 404).'
+  'check-routes: OK: landing and all 15 /docs/* pages resolved, every verb guide section complete, config/hooks semantics asserted, no /en prefix, install/verb facts present, no placeholder copy left, all 15 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 15 /docs/* pages, and 404).'
 );
 process.exit(0);
