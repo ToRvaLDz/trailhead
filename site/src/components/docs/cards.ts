@@ -201,7 +201,7 @@ export const cards: Record<string, Card> = {
   'docs/commands': {
     key: 'commands',
     title: 'commands',
-    count: '20 verbs',
+    count: '23 verbs',
     barPercent: 100,
     chips: [
       { prefix: '/trailhead:', key: 'new' },
