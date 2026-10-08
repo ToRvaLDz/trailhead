@@ -31,3 +31,7 @@ include_mail = false
 # matching id on the target page), so a renamed/removed anchor fails CI too,
 # not just a missing page. `anchor-only` skips #:~:text= fragments.
 include_fragments = "anchor-only"
+
+# Cross-page fragment links (e.g. /docs/hooks#commit-msg-hook) resolve to a
+# built directory; naming the index file lets lychee open it and find the id.
+index_files = ["index.html"]
