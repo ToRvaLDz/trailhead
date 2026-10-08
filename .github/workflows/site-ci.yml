@@ -52,10 +52,15 @@ jobs:
         # `defaults.run.working-directory` above only applies to `run:`
         # steps, not `uses:` steps, so paths here are repo-root-relative.
         # `--root-dir` must be an absolute path, hence $GITHUB_WORKSPACE.
+        # `--remap` checks the site's own canonical/sitemap URLs against the
+        # fresh build, so pages not yet deployed do not 404; 404.html's
+        # canonical (/404/) is not a built route, hence the exclude.
         uses: lycheeverse/lychee-action@v2
         with:
           args: >-
             --root-dir "$GITHUB_WORKSPACE/site/dist"
             --config site/lychee.toml
+            --remap "https://trailhead.marcomigozzi.it/ file://$GITHUB_WORKSPACE/site/dist/"
+            --exclude "/404/$"
             site/dist
           fail: true
