@@ -18,6 +18,11 @@ permissions:
 
 jobs:
   guard:
+    # Filtro a livello di job: un job saltato non consuma minuti Actions.
+    if: >-
+      startsWith(github.event.label.name, 'trailhead:') &&
+      github.event.sender.login != github.repository_owner &&
+      !contains(format(',{0},', vars.TRAILHEAD_LABEL_ALLOWLIST), format(',{0},', github.event.sender.login))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
