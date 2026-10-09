@@ -634,6 +634,11 @@ ok('source: auto.md states the drive-mode-ask outcomes together (grouped, not sc
 const choicesSourcePath = path.join(sourceSkillsDir, '_shared', 'choices.md');
 const choicesSource = fs.readFileSync(choicesSourcePath, 'utf8');
 ok('source: choices.md call-site table carries the drive-mode ask row', /\|[^\n]*[Dd]rive-mode ask[^\n]*\|/.test(choicesSource));
+// Formato della scelta: fino a 4 opzioni reali -> menu; oltre -> lista a lettere in prosa.
+ok('source: choices.md routes a choice of up to 4 real options to the AskUserQuestion menu',
+  /\*\*Which format\.\*\*[\s\S]{0,400}up to 4 real options[\s\S]{0,200}`AskUserQuestion` menu/.test(choicesSource));
+ok('source: choices.md routes a choice of more than 4 real options to a lettered prose list',
+  /\*\*Which format\.\*\*[\s\S]{0,800}more than 4 real options[\s\S]{0,200}lettered list/.test(choicesSource));
 
 // --- #178 (3/4): acceptance.browser off keeps AI-driven UAT via commands ----
 const configReferencePath = path.join(sourceSkillsDir, '_shared', 'configuration-reference.md');

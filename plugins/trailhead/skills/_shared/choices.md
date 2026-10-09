@@ -4,6 +4,8 @@ When trailhead must put a **forced choice** to the human (any `AskUserQuestion`-
 
 **Host constraint.** These options exist only inside questions **trailhead itself authors**. The host `AskUserQuestion` tool is not ours to change; we add the options as extra choices in the prompts we build.
 
+**Which format.** Count the **real options** (the delegate/defer affordances never count). A forced choice with **up to 4 real options** is always put as an `AskUserQuestion` menu, never as a prose list: the menu rules below apply (dedup, cap, links in the prose). A forced choice with **more than 4 real options** cannot fit the menu, so put it as a **lettered list** in prose, one option per line (**(a)**, **(b)**, ...), with any applicable affordance appended as its own letter, then wait for the user's pick (a letter or the option's text). The lettered `(a)/(b)/(c)` options written in these instructions name the options to offer, not the format: render them per this rule. Conversational call-sites (grilling) stay in prose. On Codex, which has no `AskUserQuestion`, the plain-text numbered list of its adapter replaces the menu.
+
 ## The one-line test: whose choice is it?
 
 Before offering the delegate option, ask: **is the answer itself a project decision (a `decision`-ticket's answer, or a change to the map's destination or scope), as opposed to a process choice that merely gets folded into some ticket's ordinary resolution summary?**
