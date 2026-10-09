@@ -154,6 +154,7 @@ export default defineConfig({
             { label: 'Captures & the whiteboard', link: '/docs/captures' },
             { label: 'Working as a team', link: '/docs/teamwork' },
             { label: 'Configuration', link: '/docs/configuration' },
+            { label: 'Design mockups', link: '/docs/design' },
             { label: 'Hooks', link: '/docs/hooks' },
           ],
         },

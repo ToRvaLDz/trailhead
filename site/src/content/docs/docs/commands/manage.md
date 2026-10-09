@@ -24,7 +24,7 @@ Guided menu setup, or get and set trailhead config.
 **What it does**
 
 1. Walks every step in order, as an icon-labelled menu with the current value pre-selected. No step is skipped, and no default is taken silently.
-2. The steps are: scope (this project or global); way of working (`git`, `release`, `isolation`); ticket language; models (a profile, or Manual); design (mode, surface, mockup approval); TDD; effort; acceptance testing; plan review (the menu is built from the external AI CLIs actually found on your PATH, never including the host's own); and the statusline offer.
+2. The steps are: scope (this project or global); way of working (`git`, `release`, `isolation`); ticket language; models (a profile, or Manual); design (mode; the Stitch surface or the Artifacts design system; mockup approval, see [Design mockups](/docs/design)); TDD; effort; acceptance testing; plan review (the menu is built from the external AI CLIs actually found on your PATH, never including the host's own); and the statusline offer.
 3. In the Models step you pick a profile (High, Balanced, Low) that seeds all the model keys at once, or Manual to choose each one (plan and execute are always asked separately). See [Configuration](/docs/configuration#models).
 4. Writes the answers and shows a summary. On Codex, after you set `models.codex.*`, you are told to re-run the installer so the pins are re-projected.
 
