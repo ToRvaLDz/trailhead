@@ -10,7 +10,7 @@ The ticket engines call these by name. Each technique's full protocol lives in i
 |---|---|---|
 | **Grilling** | `techniques/grilling.md` | interrogate the human, one question at a time, to converge on a decision |
 | **Domain vocabulary** | `techniques/domain-vocabulary.md` | build a precise shared glossary so each term means one thing |
-| **Prototype** | `techniques/prototype.md` | throwaway artifact for "how should it look/behave"; routes UI mockups (disk / claude.ai/design / stitch) |
+| **Prototype** | `techniques/prototype.md` | throwaway artifact for "how should it look/behave"; routes UI mockups (disk / artifacts / stitch) |
 | **Research** | `techniques/research.md` | a focused subagent gathers a decision-ready fact from primary sources |
 | **TDD** | `techniques/tdd.md` | RED → GREEN → REFACTOR at the seams; no implementation before a failing test |
 | **Codebase map** | `techniques/codebase-map.md` | one-time fan-out of 5 read-only readers, distilled into the repo's `trailhead:codebase` issue |

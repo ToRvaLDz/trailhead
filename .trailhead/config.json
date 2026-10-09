@@ -18,10 +18,10 @@
     }
   },
   "design": {
-    "mode": "claude.ai/design",
-    "surface": "design-system",
+    "mode": "artifacts",
     "approval": "explicit",
-    "project": "ec2ac5d8-bbcf-4d86-b69e-91747fb79009"
+    "project": "https://claude.ai/artifact/JJYUnUqxymHmPMpbXx1n2e",
+    "system": "https://claude.ai/artifact/TAoupo3XPqfLezNBXSunFh"
   },
   "tdd": "seams",
   "acceptance": { "browser": "auto" },

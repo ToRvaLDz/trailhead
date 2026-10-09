@@ -52,7 +52,7 @@ ok('mockup offer whose option description mentions approval is NOT an approval a
     header: 'Scope',
     options: [
       { label: 'Va bene così', description: 'Procedo con lo scope descritto' },
-      { label: 'Prima un mockup', description: 'Disegno la pagina su claude.ai/design e attendo approvazione prima di scriverla' },
+      { label: 'Prima un mockup', description: 'Disegno la pagina su un canvas Artifacts e attendo approvazione prima di scriverla' },
     ],
   }],
 }));
@@ -68,7 +68,7 @@ ok('unrelated ask is not detected', !isMockupApprovalAsk({
 ok('malformed input is not detected', !isMockupApprovalAsk({}) && !isMockupApprovalAsk(null));
 
 // --- hasLink ---
-ok('https URL counts as a link', hasLink('Ecco: https://claude.ai/design/p/abc?file=faq.html'));
+ok('https URL counts as a link', hasLink('Ecco: https://claude.ai/artifact/AbC123xyz'));
 ok('absolute html path counts as a link', hasLink('Mockup in /home/u/app/mockups/faq.html'));
 ok('relative html path counts as a link', hasLink('apri `mockups/faq.html`'));
 ok('markdown link to a file counts', hasLink('[faq](mockups/faq.html)'));
@@ -88,7 +88,7 @@ ok('prose right before the ask is collected', /pronto su MyApp/.test(proseBefore
 
 const linkBeforeTools = [
   userPrompt('lavora #12'),
-  text('Mockup: https://claude.ai/design/p/abc'),
+  text('Mockup: https://claude.ai/artifact/AbC123xyz'),
   toolUse('Bash'),
   toolResult('ok'),
   text('Pronto.'),
@@ -125,7 +125,7 @@ function runHook(payload) {
 const r1 = runHook({ tool_name: 'AskUserQuestion', tool_input: approvalInput, transcript_path: writeTranscript(failing) });
 ok('approval ask without a link in the prose is blocked (exit 2)', r1.code === 2 && /MOCKUP_LINK_MISSING/.test(r1.out));
 
-const withLink = [...failing.slice(0, 4), text('Mockup: https://claude.ai/design/p/abc?file=faq.html'), failing[5]];
+const withLink = [...failing.slice(0, 4), text('Mockup: https://claude.ai/artifact/AbC123xyz'), failing[5]];
 const r2 = runHook({ tool_name: 'AskUserQuestion', tool_input: approvalInput, transcript_path: writeTranscript(withLink) });
 ok('approval ask with a link in the prose is allowed', r2.code === 0 && r2.out.trim() === '');
 

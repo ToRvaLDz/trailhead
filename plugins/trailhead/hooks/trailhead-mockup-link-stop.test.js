@@ -19,7 +19,7 @@ const noLink = [
   '1. Approvo',
   '2. Chiedo modifiche',
 ].join('\n');
-const withLink = noLink.replace('pronto su MyApp', 'pronto: https://claude.ai/design/p/abc?file=faq.html');
+const withLink = noLink.replace('pronto su MyApp', 'pronto: https://claude.ai/artifact/AbC123xyz');
 
 // --- isMockupApprovalMessage ---
 ok('IT approval reply is detected', isMockupApprovalMessage(noLink));

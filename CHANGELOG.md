@@ -2,6 +2,13 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+- **UI mockups move to Claude Artifacts.** The standalone Claude Design site (claude.ai/design) closes on 2026-12-14 and its designs now live in Claude as Artifacts, so the hosted mockup mode is now `design: artifacts`: the Prototype technique builds each mockup as a Design canvas Artifact through Claude Code's built-in `Artifact` tool (no MCP to install, no `/design-login`), one artboard per screen or variant grouped in a canvas page per ticket, with the design system named by the new `design.system` key (or the account's default) installed on the canvas. Approval asks carry the canvas URL plus each artboard's name, and the approved artboards are re-read before UI code. Screens are never pushed into a design system any more, so the DesignSync path, its MCP install offer and its manifest rules are gone; `design.surface` now applies to `stitch` only.
+- **Legacy `claude.ai/design` config keeps working.** It is read as `artifacts` with a one-time notice and an offer to rewrite the key; a cached claude.ai/design project id can't be reused (standalone projects don't migrate on their own), so trailhead says so and attaches a new canvas. Where the `Artifact` tool is missing (Codex, API-key sessions) it offers `stitch` before falling to local disk.
+- **Website (site only; not part of the npm package).** A new [Design mockups](https://trailhead.marcomigozzi.it/docs/design) guide explains the Artifacts, Stitch and disk flows, the fallbacks, and the step-by-step migration from claude.ai/design; the Configuration page now summarises the `design` keys and links to it.
+
 ## 0.12.1 (2026-10-08)
 
 ### Changed / Fixed
