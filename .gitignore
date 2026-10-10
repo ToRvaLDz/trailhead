@@ -2,6 +2,7 @@ node_modules/
 .DS_Store
 *.log
 .trailhead/session-ticket
+.trailhead/work-state.json
 .trailhead/active-map
 .trailhead/models-collapse-notice
 .trailhead/model-defaults-ack
