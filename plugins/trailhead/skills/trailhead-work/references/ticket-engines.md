@@ -6,6 +6,8 @@ Every ticket is **HITL** (human in the loop, speaking for themselves) or **AFK**
 
 Technique names below (**Grilling**, **Domain vocabulary**, **Prototype**, **Research**, **TDD**, **Code review**, **Acceptance testing**, **Debug**) are indexed in `../../_shared/techniques.md`; their full protocols live in `_shared/`, read from `../../_shared/techniques/<name>.md`.
 
+**Work state (every type).** Keep `.trailhead/work-state.json` current with the `set --step` call in the **Work state file** paragraph of `../../_shared/teamwork.md`: `build` Discuss/Plan/Execute/Verify/Resolve set `discuss`/`plan`/`execute`/`verify`/`resolve`; `bug` Repro and Diagnose set `discuss`, Fix `execute`, Verify `verify`, Resolve `resolve`; `decision`, `prototype` and `task` stay `discuss` until `resolve`. A loop back from Verify to Execute (or Fix) sets `execute` again, and a UAT follow-up (`UAT of:`) sets `verify`. `research` tickets never write it: they run AFK and possibly in parallel, and the single file tracks only the one ticket in play.
+
 ## UAT follow-ups (any type)
 A ticket whose body carries `UAT of: <parent>` is a UAT follow-up, **whatever its type label**, including a graduated seed (a `trailhead:seed` that dropped `trailhead:seed` + `trailhead:blocked` on graduating, keeping whatever type label it had, or none). `work`, `quick`, and `auto` all dispatch through this file, so this check runs **before** the per-type engines below. It resolves via the **Acceptance testing** technique (`../../_shared/techniques/acceptance-testing.md`), starting with the drive-mode ask; the record is a `VERIFY` comment on the follow-up itself, never on the parent. It closes only on a confirmed pass, with a resolution comment linking back to the parent.
 
