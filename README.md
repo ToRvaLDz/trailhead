@@ -217,6 +217,15 @@ The three that trip people up are **idea, seed, todo**, so here they are spelled
 
 The two cuts that matter: **idea vs seed** is waiting on *clarity* vs waiting on a *condition* (both land "later", for different reasons); **seed vs todo** is committed *later* vs committed *now*. Below all three sits **`note`** (raw text to remember, maybe never work), and off to the side is **`bug`** (a defect, not a commitment tier). The test for idea vs ticket is always: **can you phrase the question precisely now?** Yes → a ticket (`todo` if takeable, `seed` if gated); no → the fog (`idea`).
 
+### Manage: keep the install and the maps healthy
+
+| Command | What it does |
+|---|---|
+| `/trailhead:config [get\|set …]` | guided menu setup; `get` prints the effective config, `set <key> <value>` writes one key (see Configuration below) |
+| `/trailhead:update` | check for a newer trailhead and install it where that is safe |
+| `/trailhead:prune [map]` | reclaim a map's sub-issue slots under GitHub's 100-cap (drops closed/orphan edges, keeps references) |
+| `/trailhead:audit [map] [--all]` | audit closed tickets for regressions against today's code, plus duplicate and groupable open ones; read-only until you confirm |
+
 ---
 
 ## 🎫 Ticket types and their engines
