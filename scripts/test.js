@@ -35,7 +35,15 @@ const run = (label, cmd, args) => {
   results.push({ label, status: r.status === 0 ? 'pass' : 'FAIL' });
 };
 
-const files = [...findTests(path.join(root, 'bin')), ...findTests(path.join(pluginDir, 'hooks'))];
+const TEST_ROOTS = [path.join(root, 'bin'), path.join(pluginDir, 'hooks')];
+const perRoot = TEST_ROOTS.map(findTests);
+// A root with no suites means it moved or was renamed: fail rather than pass on nothing.
+const emptyRoot = TEST_ROOTS.find((_, i) => perRoot[i].length === 0);
+if (emptyRoot) {
+  console.error(`no *.test.js found under ${path.relative(root, emptyRoot)}`);
+  process.exit(1);
+}
+const files = perRoot.flat();
 for (const f of files) {
   console.log(`\n== node ${path.relative(root, f)}`);
   run(path.relative(root, f), process.execPath, [f]);
