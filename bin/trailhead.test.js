@@ -701,6 +701,18 @@ ok('codex: hooks.json registers secret-guard under PreToolUse', (codexHooksJson.
 ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
 
+// #202: the mod (hooks/mod/register.ts + the "modules" key) is Claude Code only;
+// the Codex projection must carry neither.
+function listFilesRecursive(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    return e.isDirectory() ? listFilesRecursive(full) : [full];
+  });
+}
+ok('codex: hooks.json has no "modules" key (mod is Claude-only, #202)', !('modules' in codexHooksJson));
+ok('codex: no register.ts under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => path.basename(f) === 'register.ts'));
+ok('codex: no .ts file anywhere under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => f.endsWith('.ts')));
+
 ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
@@ -874,6 +886,9 @@ ok('claude: hooks/lib/model-defaults-review.js exists (check-update require targ
 ok('claude: hooks/lib/model-defaults.json exists (#186)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults.json')));
 
+// #202: the mod is not delivered by the npm installer yet.
+ok('claude: no hooks/mod/ dir in the npm install (#202)', !fs.existsSync(path.join(claudeDir, 'hooks', 'mod')));
+
 // #185: the commit-msg hook sync script ships wholesale with templates/ too.
 const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
 ok('claude: commit-msg-sync script projected', fs.existsSync(claudeCommitMsgSync));
@@ -1023,6 +1038,7 @@ for (const nm of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
+ok('claude: settings.json has no "modules" key (#202)', !('modules' in JSON.parse(settingsContent)));
 ok('claude: settings.json references commit-guard', settingsContent.includes('trailhead-commit-guard.js'));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
@@ -1688,6 +1704,12 @@ for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
     }
   }
 }
+
+// #202: the plugin's own hooks.json declares exactly one mod module, and it exists.
+const pluginHooksJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'hooks', 'hooks.json'), 'utf8'));
+ok('source: hooks.json declares exactly one module (#202)', Array.isArray(pluginHooksJson.modules) && pluginHooksJson.modules.length === 1);
+ok('source: the declared module file exists, relative to hooks.json (#202)',
+  fs.existsSync(path.resolve(repoRoot, 'plugins', 'trailhead', 'hooks', pluginHooksJson.modules[0])));
 
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
