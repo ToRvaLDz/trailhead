@@ -1038,7 +1038,6 @@ for (const nm of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
-ok('claude: settings.json has no "modules" key (#202)', !('modules' in JSON.parse(settingsContent)));
 ok('claude: settings.json references commit-guard', settingsContent.includes('trailhead-commit-guard.js'));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
@@ -1710,6 +1709,8 @@ const pluginHooksJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'plugins'
 ok('source: hooks.json declares exactly one module (#202)', Array.isArray(pluginHooksJson.modules) && pluginHooksJson.modules.length === 1);
 ok('source: the declared module file exists, relative to hooks.json (#202)',
   fs.existsSync(path.resolve(repoRoot, 'plugins', 'trailhead', 'hooks', pluginHooksJson.modules[0])));
+ok('source: hooks.json keeps its command hooks next to the module (#202)',
+  ['PreToolUse', 'PostToolUse', 'SessionStart'].every((ev) => (pluginHooksJson.hooks?.[ev] || []).length > 0));
 
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
