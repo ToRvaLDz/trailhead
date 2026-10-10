@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-test('session.start passes through unchanged', async ($, on) => {
+// Fails when the module does not load; a passthrough leaves session.start as raised.
+test('the module loads and leaves session.start unchanged', async ($, on) => {
   const seen: unknown[] = []
   on('session.start', ($, e) => {
     seen.push(e)
