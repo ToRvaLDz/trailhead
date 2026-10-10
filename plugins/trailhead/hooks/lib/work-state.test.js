@@ -101,7 +101,7 @@ const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs
   run(['set', '--map', '12', '--ticket', '205', '--title', 'Old', '--step', 'verify', '--auto', 'true'], { cwd: dir });
   run(['set', '--ticket', '300', '--step', 'discuss'], { cwd: dir });
   const s = readState(dir);
-  ok('new ticket: no carry-over of title/map/auto', s.ticket === 300 && s.title === '' && s.map === null && s.auto === false);
+  ok('new ticket: no carry-over of title/map/auto', s.ticket === 300 && s.title === null && s.map === null && s.auto === false);
 }
 
 // --- none map ----------------------------------------------------------------
@@ -157,7 +157,7 @@ for (const argv of [
   const r = run(['set', '--step', 'execute'], { cwd: dir });
   const s = readState(dir);
   ok('malformed fields dropped, valid kept', r.code === 0 && s.ticket === 9 && s.step === 'execute');
-  ok('malformed fields normalised', s.map === null && s.title === '' && s.auto === false);
+  ok('malformed fields normalised', s.map === null && s.title === null && s.auto === false);
 }
 {
   const dir = mktmp();

@@ -66,7 +66,7 @@ function mergeState(existing, patch, { session = null, now = new Date() } = {}) 
   return {
     map: merged.map === undefined ? null : merged.map,
     ticket: merged.ticket,
-    title: merged.title === undefined ? '' : merged.title,
+    title: merged.title === undefined || merged.title === '' ? null : merged.title,
     step: merged.step,
     auto: merged.auto === undefined ? false : merged.auto,
     session,
