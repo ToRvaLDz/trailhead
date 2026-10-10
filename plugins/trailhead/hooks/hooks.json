@@ -66,5 +66,6 @@
         ]
       }
     ]
-  }
+  },
+  "modules": ["./mod/register.ts"]
 }

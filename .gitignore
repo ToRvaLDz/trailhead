@@ -7,3 +7,5 @@ node_modules/
 .trailhead/model-defaults-ack
 .trailhead/label-guard-ack
 .trailhead/tmp-*
+plugins/trailhead/.claude-plugin/types/
+plugins/trailhead/tsconfig.json
