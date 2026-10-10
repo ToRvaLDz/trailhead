@@ -24,5 +24,6 @@
     "./skills/trailhead-capture",
     "./skills/trailhead-manage"
   ],
-  "hooks": "./hooks/hooks.json"
+  "hooks": "./hooks/hooks.json",
+  "types": "./types/index.d.ts"
 }
