@@ -123,6 +123,12 @@ const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates
 ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
 ok('codex: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(codexCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+// #205: the work state helper rides in templates/ on Codex too, executable.
+const codexWorkState = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-work-state.js');
+ok('codex: work-state helper projected', fs.existsSync(codexWorkState));
+ok('codex: work-state helper is byte-identical to source',
+  fs.readFileSync(codexWorkState, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-work-state.js'), 'utf8'));
+ok('codex: work-state helper keeps its executable bit', (fs.statSync(codexWorkState).mode & 0o111) !== 0);
 // Il sync del label guard (migrazione all'if a livello di job) viaggia con templates/.
 const codexLabelGuardSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
 ok('codex: label-guard-sync script is byte-identical to source', fs.existsSync(codexLabelGuardSync) &&

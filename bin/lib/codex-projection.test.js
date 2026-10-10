@@ -402,4 +402,23 @@ ok('convertToCodex projects the anchor positives to Codex forms', (() => {
     !out.includes('/trailhead:work') && !out.includes('/clear');
 })());
 
+// #205: the work state helper and its session env var survive the projection;
+// the projected work skill and handoff carry the set/clear calls.
+ok('convertToCodex keeps the trailhead-work-state.js filename',
+  convertToCodex('node <templates>/trailhead-work-state.js set').includes('<templates>/trailhead-work-state.js set'));
+ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
+  convertToCodex('session from CLAUDE_CODE_SESSION_ID when set').includes('CLAUDE_CODE_SESSION_ID'));
+{
+  const skillsDir = path.join(__dirname, '../../plugins/trailhead/skills');
+  const workSkill = convertToCodex(fs.readFileSync(path.join(skillsDir, 'trailhead-work', 'SKILL.md'), 'utf8'));
+  ok('projected work skill carries the work-start set call',
+    workSkill.includes('trailhead-work-state.js set --repo <working-root> --map <n> --ticket <n> --title "<title>" --step discuss'));
+  const handoff = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'session-handoff.md'), 'utf8'));
+  ok('projected session handoff carries the work state clear call',
+    handoff.includes('trailhead-work-state.js clear --repo <working-root>'));
+  const teamwork = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'teamwork.md'), 'utf8'));
+  ok('projected teamwork carries the step change call',
+    teamwork.includes('trailhead-work-state.js set --repo <working-root> --step <step>'));
+}
+
 console.log(`✓ codex-projection: ${passed} assertions passed`);
