@@ -314,6 +314,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead **writes** its GitHub prose & commit descriptions in, decoupled from the language it converses in |
 | `models.{plan,execute,research,review,debug,verify,codebase-map}` | a full **versioned** model id (**inherit session**) | which model runs each activity; `plan` and `execute` are always set separately |
 | `design` | **`disk`** \| `artifacts` \| `stitch` | where UI mockups go: local throwaway HTML, a Design canvas **Artifact** on claude.ai (Claude Code only), or Google Stitch (cross-host, via the Stitch MCP). The legacy `claude.ai/design` value is read as `artifacts` |
+| `design.project` | canvas Artifact URL / Stitch project id | `artifacts` and `stitch` only: the canvas or Stitch project the mockups land on; set at the first UI screen (pick, paste or create), not by hand. A leftover claude.ai/design project is not reused |
 | `design.surface` | **`canvas`** \| `design-system` | `stitch` only: a Stitch project of screens (default) or a shared Stitch design system |
 | `design.system` | Design System Artifact URL | `artifacts` only: the design system installed on the mockup canvas (asked at the first screen if unset) |
 | `design.approval` | **`explicit`** \| `auto` | wait for mockup approval before UI code, or proceed without blocking |
