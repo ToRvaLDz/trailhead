@@ -285,6 +285,8 @@ const INLINE_PRODUCERS = new Set(['echo', 'printf', 'true', ':']);
 // arguments) needs no item: the whole command is scanned.
 
 const unresolvedItem = (reason) => [{ unresolved: reason }];
+// An unresolvable expansion in inline text (not a file path): the caller words its block differently.
+const inlineUnresolved = (reason) => [{ unresolved: reason, inline: true }];
 
 // Items for a file named by a shell word, as seen from statement `rec`.
 function wordItems(word, rec, ctx) {
@@ -409,7 +411,7 @@ function valueItems(raw, rec, ctx, literalQuotes = false) {
   rest += raw.slice(at);
   if (/[$`]/.test(rest)) {
     const r = literalQuotes ? expandPlain(rest, rec.vars, ctx.env) : expandWord(rest, rec.vars, ctx.env);
-    items.push(...(r.unresolved ? unresolvedItem(r.unresolved) : [{ text: r.value }]));
+    items.push(...(r.unresolved ? inlineUnresolved(r.unresolved) : [{ text: r.value }]));
   }
   return items;
 }
@@ -421,7 +423,7 @@ function substitutionItems(inner, rec, ctx) {
   if (h) return h[1] ? [] : heredocItems(rec, ctx); // a quoted delimiter is literal text
   const m = /^cat\s+(\S+)$/.exec(t) || /^<\s*(\S+)$/.exec(t);
   if (m) return wordItems(m[1], rec, ctx);
-  return unresolvedItem('command substitution in the body');
+  return inlineUnresolved('command substitution in the body');
 }
 
 // Items for the unquoted heredoc bodies of a statement (the shell expands them).

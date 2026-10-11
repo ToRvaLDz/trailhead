@@ -156,7 +156,10 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
     kinds(`sh -c "${W}"`) === '["opaque"]' && kinds(`zsh -c "${W}"`) === '["opaque"]' &&
     kinds(`eval ${W}`) === '["opaque"]' && kinds(`echo 1 | xargs ${W}`) === '["opaque"]');
   ok('bash -c with a gh api body write is opaque', kinds('bash -c "gh api repos/o/r/issues/1/comments -f body=x"') === '["opaque"]');
-  ok('a command substitution holding a write is opaque', kinds(`echo $(${W})`) === '["opaque"]');
+  ok('a command substitution holding a write is analysed as that write', kinds(`echo $(${W})`) === '["issue"]');
+  ok('a backtick substitution holding a write is analysed as that write', kinds(`echo \`${W}\``) === '["issue"]');
+  ok('an assignment from a substitution holding a write is analysed', kinds(`URL=$(${W})`) === '["issue"]');
+  ok('a nested bash -c inside a substitution is still opaque', kinds(`echo $(bash -c '${W}')`) === '["opaque"]');
   ok('bash -c with a read stays no write', kinds('bash -c "gh issue list"') === '[]' && kinds('bash -c "gh issue view 3 --comments"') === '[]');
   ok('bash -c without gh stays no write', kinds('bash -c "ls && echo hi"') === '[]');
   ok('prose about gh next to an unrelated substitution is not a write', kinds('echo "gh pr create" $(date)') === '[]');
@@ -485,6 +488,38 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   ok('unquoted heredoc with $(date) blocks as unresolved', unres(runHook(`${G} -F - <<EOF\n$(date)\nEOF`)));
   ok('herestring "$UNSET" blocks as unresolved', unres(runHook(`${G} -F - <<< "$SG_UNSET_VAR_210"`)));
 
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// --- end-to-end: writes inside substitutions are evaluated, not blocked (#210 round 2, W6/W7) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210w6-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const cleanFile = path.join(dir, 'clean.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  fs.writeFileSync(cleanFile, 'all good\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  ok('URL=$(gh issue create ... clean) passes', passes(runHook(`URL=$(gh issue create --title t --body-file ${cleanFile})`)));
+  ok('echo "$(gh issue create ... clean)" passes', passes(runHook(`echo "$(gh issue create --title t --body-file ${cleanFile})"`)));
+  ok('a backtick substitution with a clean write passes', passes(runHook(`echo \`gh issue create --title t --body-file ${cleanFile}\``)));
+  ok('URL=$(gh issue create ... leak) blocks on the body', leaks(runHook(`URL=$(gh issue create --title t --body-file ${leakFile})`)));
+  ok('echo "$(gh issue create ... leak)" blocks on the body', leaks(runHook(`echo "$(gh issue create --title t --body-file ${leakFile})"`)));
+  ok('a variable set before is visible inside the substitution',
+    leaks(runHook(`D=${dir}; X=$(gh issue create --title t --body-file $D/leak.md)`)));
+  ok('an unresolvable body inside a substitution still blocks as unresolved',
+    runHook('X=$(gh issue create --title t --body-file "$SG_UNSET_VAR_210")').out.includes('SECRET_GUARD_UNRESOLVED_BODY_FILE'));
+
+  // W7: the inline-body block tells the agent how to post literal text.
+  const inl = runHook('gh issue comment 1 --body "$(date)"');
+  ok('inline body block says to use single quotes or a file',
+    inl.code === 2 && /single quotes/.test(inl.out) && /--body-file/.test(inl.out));
+  const dollar = runHook('gh issue comment 1 --body "costs $5"');
+  ok('a $5 in an inline body gets the inline message', dollar.code === 2 && /single quotes/.test(dollar.out));
+  const fileCase = runHook('gh issue comment 1 --body-file "$SG_UNSET_VAR_210/x.md"');
+  ok('the body-file block keeps the file message, without the quoting hint',
+    fileCase.code === 2 && /separate Bash call/.test(fileCase.out) && !/single quotes/.test(fileCase.out));
+  ok('the inline message is distinct from the file message', !/separate Bash call/.test(inl.out));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 

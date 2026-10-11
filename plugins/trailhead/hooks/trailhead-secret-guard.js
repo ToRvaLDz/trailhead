@@ -186,12 +186,18 @@ function changesDir(text) {
 // subshell); an inline `NAME=v gh ...` prefix is the child's environment only.
 // `cwdKnown` turns false after a cd/pushd/popd.
 function ghWrites(cmd, env = process.env) {
+  return collectWrites(cmd, env, { vars: {}, cwdKnown: true });
+}
+
+// ghWrites from a given starting state (a command substitution starts with the
+// variables and working directory of the statement that holds it).
+function collectWrites(cmd, env, start) {
   const writes = [];
   const history = []; // every statement: { text, sep, vars, cwdKnown, index, heredocs }
   const bodies = heredocBodies(cmd);
   let nextBody = 0;
-  let vars = {};
-  let cwdKnown = true;
+  let vars = start.vars;
+  let cwdKnown = start.cwdKnown;
   let prevSep = null;
   for (const { text: raw, sep } of splitStatementsWithSeparators(cmd)) {
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
@@ -206,14 +212,15 @@ function ghWrites(cmd, env = process.env) {
       writes.push({ kind, text, vars, cwdKnown, index, history });
       continue;
     }
-    // A shell/eval/xargs line, or a command substitution, that holds a gh write
-    // cannot be analysed: report it as an opaque write.
-    const holdsWrite = runner
-      ? OPAQUE_WRITE_RE.test(/<<-?/.test(text) ? cmd : text)
-      : substitutionSpans(text).some((sp) => OPAQUE_WRITE_RE.test(sp.inner));
-    if (holdsWrite) {
-      writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
-      continue;
+    // A shell/eval/xargs line that holds a gh write cannot be analysed (opaque). A
+    // command substitution is analysed like any other command, from this state.
+    if (runner) {
+      if (OPAQUE_WRITE_RE.test(/<<-?/.test(text) ? cmd : text)) {
+        writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
+        continue;
+      }
+    } else {
+      for (const sp of substitutionSpans(text)) writes.push(...collectWrites(sp.inner, env, { vars, cwdKnown }));
     }
     const assigns = parseAssignments(text);
     if (assigns) {
@@ -297,6 +304,17 @@ function bodyFileBlock(code, kind, detail) {
   };
 }
 
+// A block verdict for inline body text (--body, echo, heredoc) with an expansion the
+// guard cannot resolve.
+function inlineBodyBlock(kind, detail) {
+  return blockVerdict(
+    'SECRET_GUARD_UNRESOLVED_BODY_FILE',
+    `trailhead: this gh ${kind} write has body text the secret-guard ${detail}, so it cannot verify the body is ` +
+      "secret-free. To post literal text, put it in single quotes ('...') so the shell does not expand it, " +
+      'or write it to a file and pass its literal absolute path (`--body-file /tmp/body.md`).',
+  );
+}
+
 function blockVerdict(code, reason) {
   return { kind: 'block', payload: { decision: 'block', code, reason } };
 }
@@ -327,7 +345,8 @@ function gatherText(cmd, writes, env, cwd) {
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {
       if (item.unresolved) {
-        return { block: bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${item.unresolved})`) };
+        const detail = `cannot resolve statically (${item.unresolved})`;
+        return { block: item.inline ? inlineBodyBlock(w.kind, detail) : bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, detail) };
       }
       if (item.text !== undefined) { text += '\n' + item.text; continue; }
       try {
