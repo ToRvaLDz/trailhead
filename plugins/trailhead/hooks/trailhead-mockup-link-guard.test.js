@@ -194,6 +194,22 @@ const otherPending = [userPrompt('x'), text('Niente link'), toolUse('AskUserQues
 const rd = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript(otherPending) });
 ok('(d) transcript ending in a different pending ask fails open', rd.code === 0 && rd.out.trim() === '');
 
+// Testo e tool_use nella STESSA riga di transcript
+const sameEntry = (t) => ({ type: 'assistant', isSidechain: false, message: { content: [{ type: 'text', text: t }, { type: 'tool_use', id: 'ask1', name: 'AskUserQuestion', input: approvalInput }] } });
+ok('text before the tool_use in the same entry counts as prose', hasLink(proseBeforeAsk([userPrompt('x'), sameEntry('Vedi https://a.b/c')], 1)));
+ok('same-entry text is also read from the tail', hasLink(proseBeforeAsk([userPrompt('x'), sameEntry('Vedi https://a.b/c')])));
+const rs1 = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript([userPrompt('x'), sameEntry('Vedi https://a.b/c')]) });
+ok('same-entry text with a link is allowed', rs1.code === 0 && rs1.out.trim() === '');
+const rs2 = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript([userPrompt('x'), sameEntry('Mockup pronto su MyApp')]) });
+ok('same-entry text without a link is blocked', rs2.code === 2 && /MOCKUP_LINK_MISSING/.test(rs2.out));
+
+// Senza tool_use_id: ask in coda identico a tool_input (fallback per uguaglianza)
+const ri1 = runHook({ tool_name: 'AskUserQuestion', tool_input: approvalInput, transcript_path: writeTranscript(flushedNoLink) });
+ok('no id, identical tail ask, no link in the prose is blocked', ri1.code === 2 && /MOCKUP_LINK_MISSING/.test(ri1.out));
+const flushedLink = [...failing.slice(0, 4), text('Mockup: https://claude.ai/artifact/AbC123xyz'), toolUse('AskUserQuestion', approvalInput, 'ask1')];
+const ri2 = runHook({ tool_name: 'AskUserQuestion', tool_input: approvalInput, transcript_path: writeTranscript(flushedLink) });
+ok('no id, identical tail ask, link in the prose is allowed', ri2.code === 0 && ri2.out.trim() === '');
+
 let r6;
 try { execFileSync('node', [HOOK], { input: 'not json' }); r6 = 0; } catch (e) { r6 = e.status; }
 ok('unparseable input fails open', r6 === 0);

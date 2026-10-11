@@ -53,13 +53,20 @@ function pendingAskIndex(entries, toolUseId, toolInput) {
 
 // The assistant prose right before the ask: walk the main-chain entries back
 // from the anchor entry (default: the end), skip the pending AskUserQuestion
-// entries, and collect text blocks until anything else (a user turn, a tool
+// entries (keeping the text that precedes the tool_use inside the anchor
+// entry itself), and collect text blocks until anything else (a user turn, a tool
 // result, another tool call).
 function proseBeforeAsk(entries, anchor) {
   const main = mainChain(entries);
   let i = anchor === undefined ? main.length - 1 : anchor;
-  while (i >= 0 && isPendingAsk(main[i])) i--;
   const texts = [];
+  // Text blocks in the same entry, before its tool_use, are prose too.
+  if (i >= 0 && main[i] && isPendingAsk(main[i])) {
+    const blocks = blocksOf(main[i]);
+    const firstTool = blocks.findIndex((b) => b.type === 'tool_use');
+    blocks.slice(0, firstTool).filter((b) => b.type === 'text').forEach((b) => texts.push(b.text || ''));
+  }
+  while (i >= 0 && isPendingAsk(main[i])) i--;
   for (; i >= 0; i--) {
     const e = main[i];
     if (e.type !== 'assistant') break;
