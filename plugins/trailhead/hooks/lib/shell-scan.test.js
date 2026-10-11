@@ -179,6 +179,22 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('text after a closed $(..) in dq is quoted again', splitStatements('echo "$(a) ; b"').length === 1);
 }
 
+// --- a heredoc body starts after the LOGICAL line (#212) ---
+{
+  const J = JSON.stringify;
+  ok('a quote opened after <<E runs the heredoc body past its close',
+    J(splitStatements("cat <<E 'a\nb'; cat .env\nbody\nE")) === J(["cat <<E 'a\nb'", 'cat .env']));
+  ok('same with a double-quoted newline', J(splitStatements('cat <<E "a\nb"; cat .env\nbody\nE')) === J(['cat <<E "a\nb"', 'cat .env']));
+  ok('same with an ANSI-C quoted newline', J(splitStatements("cat <<E $'a\nb'; cat .env\nbody\nE")) === J(["cat <<E $'a\nb'", 'cat .env']));
+  ok('1<<2 is no heredoc even before a multi-line quote',
+    J(splitStatements("echo 1<<2 ; echo 'a\nb'; cat .env")) === J(['echo 1<<2', "echo 'a\nb'", 'cat .env']));
+  ok('an ordinary heredoc body still starts on the next line',
+    J(splitStatements('cat <<E\nx; y\nE\ncat .env')) === J(['cat <<E', 'cat .env']));
+  ok('the $(cat <<EOF) idiom inside "..." keeps its body on the next line',
+    heredocBodies('x "$(cat <<\'EOF\'\nhi; there\nEOF\n)"; cat .env')[0].body === 'hi; there' &&
+    splitStatements('x "$(cat <<\'EOF\'\nhi; there\nEOF\n)"; cat .env').pop() === 'cat .env');
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===

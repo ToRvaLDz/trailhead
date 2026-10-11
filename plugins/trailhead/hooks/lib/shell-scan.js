@@ -192,8 +192,10 @@ function scanHeredocs(cmd) {
     const found = scanLine(lines[i], st, seps[i]);
     nl[i] = !st.cont && splittable(st.stack);
     // A line ending in a backslash continues on the next: that is ONE logical
-    // line, and any heredoc body starts after its last physical line.
-    while (st.cont && i + 1 < lines.length) {
+    // line, and any heredoc body starts after its last physical line. So does a
+    // quote opened after the introducer (`cat <<E 'a<nl>b'`): bash starts the
+    // body after the logical line, which ends only when the quote closes.
+    while ((st.cont || (found.length > 0 && !splittable(st.stack))) && i + 1 < lines.length) {
       i++;
       found.push(...scanLine(lines[i], st, seps[i]));
       nl[i] = !st.cont && splittable(st.stack);
