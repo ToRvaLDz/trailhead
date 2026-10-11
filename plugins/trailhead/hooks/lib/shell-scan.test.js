@@ -100,11 +100,11 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   const cont = 'true <<EOF \\\n; echo REACHED\nbody\nEOF\ncat .env';
   ok('a backslash-newline joins the lines: the continuation stays visible, the body starts after it',
     stripHeredocBodies(cont) === 'true <<EOF \\\n; echo REACHED\ncat .env' && heredocBodies(cont)[0].body === 'body' &&
-    JSON.stringify(splitStatements(cont)) === JSON.stringify(['true <<EOF', 'echo REACHED', 'cat .env']));
+    JSON.stringify(splitStatements(cont)) === JSON.stringify(['true <<EOF \\', 'echo REACHED', 'cat .env']));
   ok('an escaped space is not a word boundary, so \\ #x <<EOF is a real heredoc',
     stripHeredocBodies('echo \\ #x <<EOF\nx\nEOF\ncat .env') === 'echo \\ #x <<EOF\ncat .env' &&
     countHeredocs('echo \\ #x <<EOF') === 1);
-  ok('a comment ending in a backslash does not continue', stripHeredocBodies('echo hi # c \\\n<<EOF\ncat .env') === 'echo hi # c \\\n<<EOF\ncat .env');
+  ok('a comment ending in a backslash does not continue', stripHeredocBodies('echo hi # <<A \\\n<<EOF\nx\nEOF\ncat .env') === 'echo hi # <<A \\\n<<EOF\ncat .env');
   ok('countHeredocs ignores a quoted or arithmetic << but counts a real one',
     countHeredocs('echo "<<A" $((1<<2)) <<B') === 1);
 }

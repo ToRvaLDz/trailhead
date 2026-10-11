@@ -55,8 +55,9 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // line with the shell context a bare regex lacks: a `<<` inside quotes, a
 // comment, `$((..))`, `$[..]`, `((..))` or after a backslash is not an
 // introducer, and `<<<` is a herestring. `st.stack` holds the open contexts
-// ('sq', 'dq', a `$(..)` substitution { sub, n }, an arithmetic span { ar,
-// ... }); it is mutated and carried to the next line, so a quote or arithmetic
+// ('sq', 'dq', 'ansi' for `$'..'`, a `${..}` { br }, a `$(..)` substitution
+// { sub, n }, an arithmetic span { ar, ... }); `st.cont` is set when the line
+// ends in a backslash-newline continuation. It is mutated and carried to the next line, so a quote or arithmetic
 // span that runs across lines keeps suppressing introducers. A `$(..)` is code
 // again, even inside double quotes, so its heredocs count. Returns
 // [{ dash, tag, quoted }]. When `seps` is given, the statement separators found
@@ -68,27 +69,44 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 function scanLine(line, st, seps) {
   const found = [];
   const stack = st.stack;
+  const cont0 = st.cont; // the previous line ended in a backslash: this one continues it
+  let escAt = -2; // index of the last escaped char
+  st.cont = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     const top = stack[stack.length - 1];
     if (top === 'sq') { if (c === "'") stack.pop(); continue; }
+    if (top === 'ansi') { // $'..': a backslash escapes the next char, even a quote
+      if (c === '\\') i++;
+      else if (c === "'") stack.pop();
+      continue;
+    }
     if (top && top.ar) {
       if (top.ar === 'bracket') { if (c === ']') stack.pop(); continue; }
       if (c === '(') top.depth++;
       else if (c === ')' && --top.depth === 0) stack.pop();
       continue;
     }
-    if (c === '\\') { i++; continue; } // escaped char stays literal
+    if (c === '\\') { // escaped char stays literal
+      if (i + 1 >= line.length) st.cont = true; // backslash-newline: the line continues
+      i++;
+      escAt = i;
+      continue;
+    }
     if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ ar: 'paren', depth: 2 }); i += 2; continue; }
     if (c === '$' && line[i + 1] === '(') { stack.push({ sub: true, n: 0 }); i++; continue; }
+    if (c === '$' && line[i + 1] === '{') { stack.push({ br: true }); i++; continue; }
     if (top === 'dq') {
       if (c === '"') stack.pop();
       continue;
     }
+    if (c === '$' && line[i + 1] === "'") { stack.push('ansi'); i++; continue; }
     if (c === "'") { stack.push('sq'); continue; }
     if (c === '"') { stack.push('dq'); continue; }
     if (c === '$' && line[i + 1] === '[') { stack.push({ ar: 'bracket' }); i++; continue; }
-    const wordStart = i === 0 || WORD_START_PREV_RE.test(line[i - 1]);
+    if (top && top.br) { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
+    // An escaped char (`\ #x`) is not a word boundary.
+    const wordStart = i === 0 ? !cont0 : WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1;
     if (c === '#' && wordStart) break; // comment to end of line
     if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ ar: 'paren', depth: 2 }); i++; continue; }
     if (top && top.sub) {
@@ -139,7 +157,14 @@ function scanHeredocs(cmd) {
   const st = { stack: [] };
   for (let i = 0; i < lines.length; i++) {
     const found = scanLine(lines[i], st, seps[i]);
-    nl[i] = splittable(st.stack);
+    nl[i] = !st.cont && splittable(st.stack);
+    // A line ending in a backslash continues on the next: that is ONE logical
+    // line, and any heredoc body starts after its last physical line.
+    while (st.cont && i + 1 < lines.length) {
+      i++;
+      found.push(...scanLine(lines[i], st, seps[i]));
+      nl[i] = !st.cont && splittable(st.stack);
+    }
     // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
     // bodies follow in order.
     for (const { dash, tag, quoted } of found) {
