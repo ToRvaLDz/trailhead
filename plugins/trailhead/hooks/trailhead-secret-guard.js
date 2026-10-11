@@ -217,6 +217,38 @@ const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xar
 const OPAQUE_WRITE_RE =
   /\bgh\b[\s\S]*?\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bgh\b[\s\S]*?\bapi\b[\s\S]*?(?:\bbody=|--input)/;
 
+// The inner text of every command/process substitution ($(...), `...`, <(...),
+// >(...)) in a statement, ignoring single-quoted text. Prose around them is not
+// part of what would run.
+function substitutionSpans(s) {
+  const out = [];
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inSingle) { if (c === "'") inSingle = false; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === "'") { inSingle = true; continue; }
+    if (c === '"') { inDouble = !inDouble; continue; }
+    if (s[i + 1] === '(' && (c === '$' || (!inDouble && (c === '<' || c === '>')))) {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < s.length; j++) {
+        if (s[j] === '(') depth++;
+        else if (s[j] === ')' && --depth === 0) break;
+      }
+      out.push(s.slice(i + 2, j));
+      i = j;
+    } else if (c === '`') {
+      const close = s.indexOf('`', i + 1);
+      const end = close === -1 ? s.length : close;
+      out.push(s.slice(i + 1, end));
+      i = end;
+    }
+  }
+  return out;
+}
+
 // Strip what stands between a statement and the command it runs: reserved words
 // (do, then, else, !, time, ...), subshell/group openers, and wrapper commands
 // (env, command, builtin, nohup, exec). Returns { text, runner } where `runner` is
@@ -390,8 +422,10 @@ function ghWrites(cmd, env = process.env) {
     }
     // A shell/eval/xargs line, or a command substitution, that holds a gh write
     // cannot be analysed: report it as an opaque write.
-    const nested = runner ? (/<<-?/.test(text) ? cmd : text) : /\$\(|`|<\(|>\(/.test(text) ? text : '';
-    if (nested && OPAQUE_WRITE_RE.test(nested)) {
+    const holdsWrite = runner
+      ? OPAQUE_WRITE_RE.test(/<<-?/.test(text) ? cmd : text)
+      : substitutionSpans(text).some((inner) => OPAQUE_WRITE_RE.test(inner));
+    if (holdsWrite) {
       writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
@@ -483,10 +517,74 @@ function wordItems(word, rec, ctx) {
   return r.unresolved ? unresolvedItem(r.unresolved) : fileItems(r.path, rec.index, ctx);
 }
 
-// Items for reading the file `p` as of statement `before` (extended for files the
-// same command writes first).
-function fileItems(p) {
-  return [{ path: p }];
+// Items for reading the file `p` as of statement index `before`. A file an earlier
+// statement of the same command writes (and that is recognised: a redirect fed by
+// inline content or by cat, tee, cp) has the content of its source, not whatever is
+// (or is not) on disk now; unrecognised writers are not counted, so the file must
+// exist and is read.
+function fileItems(p, before, ctx) {
+  const writers = [];
+  for (let i = 0; i < before; i++) {
+    const rec = ctx.history[i];
+    if (rec.sep === '&') continue; // backgrounded: may not have run yet
+    for (const t of writerTargets(rec, ctx)) if (t.path === p) writers.push(t);
+  }
+  if (writers.length === 0) return [{ path: p }];
+  const items = writers.flatMap((t) => t.content);
+  if (writers.some((t) => t.append)) items.push({ path: p, optional: true }); // keeps what was there
+  return items;
+}
+
+// Content a `cmd > file` redirect puts in the file, or null when not recognised.
+function redirectContent(cmd0, rest, rec, ctx) {
+  if (!cmd0 || INLINE_PRODUCERS.has(cmd0)) return [];
+  if (cmd0 === 'cat') {
+    const files = rest.filter((a) => !a.startsWith('-'));
+    return files.length ? files.flatMap((f) => wordItems(f, rec, ctx)) : stdinContent(rec, ctx);
+  }
+  return null;
+}
+
+// The files a statement writes and what it writes into them:
+// [{ path, append, content: items }]. Only the recognised shapes: a stdout
+// redirect of cat/echo/printf (or nothing), `tee [-a] path`, and `cp src dst`.
+function writerTargets(rec, ctx) {
+  const red = parseRedirects(words(rec.text));
+  let k = 0;
+  while (k < red.args.length && ASSIGN_TOKEN_RE.test(red.args[k])) k++;
+  const cmd0 = basenameOf(red.args[k]);
+  const rest = red.args.slice(k + 1);
+  const cwd = rec.cwdKnown ? ctx.cwd : null;
+  const target = (word) => {
+    const r = resolveWord(word, rec.vars, ctx.env, cwd);
+    return r.unresolved ? null : r.path;
+  };
+  const out = [];
+  if (red.outs.length) {
+    const content = redirectContent(cmd0, rest, rec, ctx);
+    if (content) {
+      for (const o of red.outs) {
+        const t = target(o.word);
+        if (t) out.push({ path: t, append: o.append, content });
+      }
+    }
+  }
+  if (cmd0 === 'tee') {
+    const content = stdinContent(rec, ctx);
+    if (content) {
+      const append = rest.includes('-a') || rest.includes('--append');
+      for (const f of rest.filter((a) => !a.startsWith('-'))) {
+        const t = target(f);
+        if (t) out.push({ path: t, append, content });
+      }
+    }
+  }
+  if (cmd0 === 'cp') {
+    const operands = rest.filter((a) => !a.startsWith('-'));
+    const dst = operands.length === 2 ? target(operands[1]) : null;
+    if (dst) out.push({ path: dst, append: false, content: wordItems(operands[0], rec, ctx) });
+  }
+  return out;
 }
 
 // What a statement feeds to its stdin: items, or null when there is no stdin source.
@@ -576,9 +674,11 @@ function bodyFileBlock(code, kind, detail) {
       decision: 'block',
       code,
       reason:
-        `trailhead: this gh ${kind} write reads its body from a file the secret-guard ${detail}, ` +
-        'so it cannot verify the body is secret-free. Write the body to a file and pass its literal absolute path ' +
-        '(e.g. `--body-file /tmp/body.md`), with no variables, `~` or command substitution in the path, and post again.',
+        `trailhead: this gh ${kind} write reads its body from a source the secret-guard ${detail}, ` +
+        'so it cannot verify the body is secret-free. Write the body file in a separate Bash call first ' +
+        "(or with a heredoc redirect in the same command: `cat > /tmp/body.md <<'EOF' ... EOF`), " +
+        'then pass its literal absolute path (`--body-file /tmp/body.md`). Paths built with `$(mktemp)` ' +
+        'or any other command substitution cannot be resolved.',
     },
   };
 }

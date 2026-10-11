@@ -159,6 +159,9 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
   ok('a command substitution holding a write is opaque', kinds(`echo $(${W})`) === '["opaque"]');
   ok('bash -c with a read stays no write', kinds('bash -c "gh issue list"') === '[]' && kinds('bash -c "gh issue view 3 --comments"') === '[]');
   ok('bash -c without gh stays no write', kinds('bash -c "ls && echo hi"') === '[]');
+  ok('prose about gh next to an unrelated substitution is not a write', kinds('echo "gh pr create" $(date)') === '[]');
+  ok('a commit message heredoc mentioning gh issue comment is not a write',
+    kinds("git commit -m \"$(cat <<'EOF'\nuse gh issue comment here\nEOF\n)\"") === '[]');
   ok('git commit message mentioning gh stays no write', kinds('git commit -m "docs: gh issue comment helper"') === '[]');
 }
 
@@ -383,6 +386,60 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   ok('api -f body=@leak.md is a raw field: literal, passes', passes(runHook(`${A} -f body=@${leakFile}`)));
   ok('api -f body=hi passes', passes(runHook(`${A} -f body=hi`)));
   ok('api read without body or --input is not a write', passes(runHook('gh api repos/o/r/issues/1')));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// --- end-to-end: a body file written in the same command (#210 review W3) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210w3-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const cleanFile = path.join(dir, 'clean.md');
+  const N = path.join(dir, 'new.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  fs.writeFileSync(cleanFile, 'all good, nothing sensitive here\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const code = (r, c) => r.code === 2 && r.out.includes(`"code":"${c}"`);
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  const G = `gh issue comment 1 --body-file ${N}`;
+
+  ok('heredoc redirect then gh in the same command passes',
+    passes(runHook(`cat > ${N} <<'EOF'\nhello world\nEOF\n${G}`)));
+  ok('a secret in that heredoc blocks with SECRET_IN_ISSUE_WRITE',
+    code(runHook(`cat > ${N} <<'EOF'\nAKIAIOSFODNN7EXAMPLE\nEOF\n${G}`), 'SECRET_IN_ISSUE_WRITE'));
+  ok('a variable directory in the redirect path passes',
+    passes(runHook(`S=${dir}; cat > $S/new.md <<'EOF'\nhello\nEOF\ngh issue comment 1 --body-file $S/new.md`)));
+  ok('echo > path && gh passes', passes(runHook(`echo hello > ${N} && ${G}`)));
+  ok('printf >> path; gh passes', passes(runHook(`printf '%s' hello >> ${N}; ${G}`)));
+  ok('herestring redirect passes', passes(runHook(`cat > ${N} <<< "hello"\n${G}`)));
+  ok('echo | tee path; gh passes', passes(runHook(`echo hello | tee ${N}; ${G}`)));
+  ok('echo | tee -a path; gh passes', passes(runHook(`echo hello | tee -a ${N}; ${G}`)));
+  ok('cat clean > path passes', passes(runHook(`cat ${cleanFile} > ${N} && ${G}`)));
+  ok('cat leak > path blocks on the source', leaks(runHook(`cat ${leakFile} > ${N} && ${G}`)));
+  ok('cp leak path blocks on the source', leaks(runHook(`cp ${leakFile} ${N} && ${G}`)));
+  ok('cp clean path passes', passes(runHook(`cp ${cleanFile} ${N} && ${G}`)));
+  ok('cat leak | tee path blocks on the source', leaks(runHook(`cat ${leakFile} | tee ${N}; ${G}`)));
+  ok('a two-step copy chain blocks on the original source',
+    leaks(runHook(`cat ${leakFile} > ${dir}/a.md; cp ${dir}/a.md ${N}; ${G}`)));
+  ok('a redirect appended to an existing leaking file still scans the file',
+    leaks(runHook(`echo hello >> ${leakFile}; gh issue comment 1 --body-file ${leakFile}`)));
+  ok('a source that does not exist and is written by nobody blocks as unreadable',
+    code(runHook(`cp ${dir}/nope.md ${N} && ${G}`), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+
+  // Not recognised as a writer: keep blocking.
+  ok('an unrecognised producer does not excuse a missing file',
+    code(runHook(`curl -so ${N} http://x/y; ${G}`), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+  ok('a write AFTER the gh statement does not count',
+    code(runHook(`${G}; echo hello > ${N}`), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+  ok('a backgrounded writer does not count',
+    code(runHook(`echo hello > ${N} & ${G}`), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+  ok('a different path does not count',
+    code(runHook(`echo hello > ${dir}/other.md; ${G}`), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+  const mk = runHook('f=$(mktemp); echo hi > $f; gh issue comment 1 --body-file $f');
+  ok('a $(mktemp) path blocks as unresolved', code(mk, 'SECRET_GUARD_UNRESOLVED_BODY_FILE'));
+  ok('the block reasons tell the agent how to proceed',
+    /separate Bash call/.test(mk.out) && /mktemp/.test(mk.out) && /heredoc/.test(mk.out));
+  ok('the unreadable reason does too', /separate Bash call/.test(runHook(`${G}`).out));
 
   fs.rmSync(dir, { recursive: true, force: true });
 }
