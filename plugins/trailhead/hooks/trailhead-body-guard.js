@@ -25,7 +25,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { words, parseRedirects, flagValues, expandWord } = require('./lib/body-sources.js');
+const { words, parseRedirects, flagValues, expandWord, STDIN_PATHS } = require('./lib/body-sources.js');
 
 // Is the resolved body text clearly empty or whitespace-only?
 function isEmptyBody(text) {
@@ -102,7 +102,7 @@ function resolveEditBody(cmd, cwdKnown = true) {
   if (filePath !== undefined && bodies.length) return undefined; // gh errors, nothing is written
 
   if (filePath !== undefined) {
-    if (filePath === '-' || filePath.startsWith('<')) return { body: null }; // stdin / process substitution
+    if (STDIN_PATHS.has(filePath) || filePath.startsWith('<')) return { body: null }; // stdin / process substitution
     try {
       return { body: readBodyFile(filePath, cwdKnown) };
     } catch {

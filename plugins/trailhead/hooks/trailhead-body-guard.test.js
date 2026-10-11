@@ -304,7 +304,7 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
   const { words } = require('./lib/body-sources.js');
   ok('words: unindented continuation joins (a\\<nl>b -> ab)', JSON.stringify(words('a\\\nb')) === '["ab"]');
   ok('words: spaced continuation keeps two words', JSON.stringify(words('a \\\nb')) === '["a","b"]');
-  ok('words: continuation inside double quotes is removed', JSON.stringify(words('"a\\\nb"')) === '["\"ab\""]');
+  ok('words: continuation inside double quotes is removed', JSON.stringify(words('"a\\\nb"')) === JSON.stringify(['"ab"']));
   ok('words: continuation inside single quotes is literal', JSON.stringify(words("'a\\\nb'")) === JSON.stringify(["'a\\\nb'"]));
   ok('#213 blocks --title t \\<nl>--body ""', blk('gh issue edit 5 --title t \\\n--body ""'));
   ok('#213 blocks edit 5 \\<nl>--body ""', blk('gh issue edit 5 \\\n--body ""'));
