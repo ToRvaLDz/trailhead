@@ -314,6 +314,22 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
     const r = ghBodyWrite(`gh issue edit 5 --body-file ${f}`);
     ok(`#213 --body-file ${f} is unknowable`, r && r.body === null);
   }
+  // Run only this guard as a real hook process behind a shell pipe (stdin is a consumed pipe, like in production).
+  const bodyGuardOnly = (c) => {
+    try {
+      execFileSync('sh', ['-c', 'printf %s "$TH_IN" | node "$TH_HOOK"'], {
+        env: { ...process.env, TH_IN: JSON.stringify({ tool_input: { command: c } }), TH_HOOK: path.join(__dirname, 'trailhead-body-guard.js') },
+      });
+      return true;
+    } catch { return false; }
+  };
+  for (const f of ['/dev//stdin', '/dev/fd//0', '/dev/./stdin']) {
+    ok(`#213 allows --body-file ${f} (non-canonical stdin spelling)`, bodyGuardOnly(`gh issue edit 5 --body-file ${f}`)); // the secret-guard judges these spellings on its own
+  }
+  ok('#213 pins: an escaped backslash before the newline is not a continuation (allows)',
+    alw('gh issue edit 5 --title t \\\\\n--body ""'));
+  ok('#213 pins: backslash CR LF is not a continuation (allows)',
+    alw('gh issue edit 5 --title t \\\r\n--body ""'));
 }
 
 // --- crash-safety ---

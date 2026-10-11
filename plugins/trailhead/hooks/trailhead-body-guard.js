@@ -96,7 +96,7 @@ function resolveEditBody(cmd, cwdKnown = true) {
   if (files.length) {
     const r = expandWord(files[files.length - 1], {}, { HOME: os.homedir() });
     if (r.unresolved) return { body: null }; // may or may not be empty: unknowable
-    if (r.value !== '') filePath = r.value;
+    if (r.value !== '') filePath = path.posix.normalize(r.value); // /dev//stdin, /dev/./stdin
   }
 
   if (filePath !== undefined && bodies.length) return undefined; // gh errors, nothing is written
