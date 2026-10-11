@@ -8,6 +8,7 @@ const ACCENT = '#7aa2f7'
 const T0 = 1_000_000
 const FLOOR = 15_000
 const TIMER = 180_000
+const AMBER = '#e0af68'
 const URL = 'https://github.com/o/r/issues'
 
 const MAP = {
@@ -72,6 +73,10 @@ const rig = (on: On) => {
     calls: [] as (readonly string[])[],
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
     isPlaced: true,
+    // `command.run` beneath the plugin: every run is recorded; `gate` holds it, `refuse` rejects it.
+    runs: [] as { command: string; args: string }[],
+    gate: null as Promise<void> | null,
+    refuse: null as string | null,
     clock: mock.clock(on, { now: T0 }),
     // The person opening the pane: the engine's own record, the plugin is not told.
     open: () => {
@@ -86,6 +91,11 @@ const rig = (on: On) => {
     if (file === null) return { deny: `ENOENT: no such file or directory, open '${e.path}'` }
     if (file instanceof Error) return { deny: file.message }
     return { value: file }
+  })
+  on('command.run', async (_$, e) => {
+    r.runs.push({ command: e.command, args: e.args })
+    await r.gate
+    return r.refuse === null ? { text: '' } : { deny: r.refuse }
   })
   on('session.id', () => ({ value: SESSION }))
   on('ui.status', () => ({ value: undefined }))
@@ -453,5 +463,56 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#199 second map')
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 1')
+  })
+
+  test(`a work button on each frontier row runs /trailhead:work and shows queued [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    let release: () => void = () => undefined
+    r.gate = new Promise<void>(resolve => (release = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
+    expect(buttons).toEqual(['work-209', 'work-210', 'work-214'])
+    expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'trailhead:work', args: '209' }])
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect((await ui.find({ key: 'queued-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
+    expect(await ui.find({ key: 'work-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-210' })).toBeDefined()
+
+    // another press while one is pending is ignored
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toHaveLength(1)
+    expect(await ui.find({ key: 'queued-210' })).toBeUndefined()
+
+    release()
+    await first
+    await settle(r)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+
+    // free again: the next press goes through
+    await ui.press({ key: 'work-210' })
+    expect(r.runs).toEqual([
+      { command: 'trailhead:work', args: '209' },
+      { command: 'trailhead:work', args: '210' },
+    ])
+  })
+
+  test(`a work command that is refused clears the queued mark [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.refuse = 'cannot run now'
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toHaveLength(1)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 }

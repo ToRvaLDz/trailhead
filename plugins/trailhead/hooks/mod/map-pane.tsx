@@ -35,6 +35,10 @@ const EMPTY: MapPaneData = { map: null, tickets: [], unverifiedCount: 0, fetched
 
 export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EMPTY)
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)
+// The ticket whose `work` press is queued; one at a time.
+export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
+const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
+const WORK_COMMAND = 'trailhead:work'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
 const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
@@ -169,6 +173,21 @@ const safeReadActiveMap = ($: Dollar) =>
 // Edits of the tracker through the gh CLI: the narrow set worth a refresh right away.
 const GH_ISSUE_WRITE = /\bgh\b[^\n;&|]*\bissue\s+(edit|close|create|comment|reopen)\b/
 
+// Runs `/trailhead:work <n>`; the host queues it behind a running turn. The claim is taken
+// with the version it read, so two presses never both pass. Cleared once the call settles.
+async function startWork($: Dollar, number: number) {
+  const { value, version } = await $.state.get(PENDING)
+  if (value != null) return
+  if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
+  try {
+    await $.command.run({ command: WORK_COMMAND, args: String(number) })
+  } catch (err) {
+    debug($, `trailhead mod: work ${number} did not start: ${String(err)}`)
+  } finally {
+    await update($, pendingWork, () => null)
+  }
+}
+
 const dim = { dimColor: true } as const
 const bold = { bold: true } as const
 const accent = { bold: true, color: ACCENT } as const
@@ -208,11 +227,12 @@ export function registerMapPane(on: On) {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
-    const { Box, Text, Link } = $.ui.resolve(e)
+    const { Box, Text, Button, Link } = $.ui.resolve(e)
     const data = await read($, mapPane)
     const active = await read($, activeMap)
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
+    const pending = await read($, pendingWork)
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
     const isDock = e.props.placement === 'dock'
@@ -261,7 +281,7 @@ export function registerMapPane(on: On) {
     const isInPlay = (t: PaneTicket) => play !== null && !orphaned && play.ticket === t.number
 
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
-      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: null, columns: cols })
+      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isInPlay ? { color: ACCENT } : r.isDim ? dim : {}
       return (
@@ -274,6 +294,15 @@ export function registerMapPane(on: On) {
             {r.type === null ? null : text(`type-${t.number}`, dim, r.type)}
           </Box>
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
+          {r.aside?.kind === 'queued' ? text(`queued-${t.number}`, { color: AMBER }, r.aside.text) : null}
+          {r.aside?.kind === 'work' ? (
+            <Button
+              key={`work-${t.number}`}
+              label="work"
+              variant="primary"
+              onPress={() => void startWork($, t.number).catch(err => debug($, `trailhead mod: work press failed: ${String(err)}`))}
+            />
+          ) : null}
         </Box>
       )
     }
