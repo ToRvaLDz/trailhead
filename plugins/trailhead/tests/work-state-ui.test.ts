@@ -322,4 +322,14 @@ for (const surface of SURFACES) {
     await $.session.end({ reason: 'other', sessionId: SESSION, resume: {} } as never)
     expect(lastStatus(r)).toBe(STATUS_PLAN)
   })
+
+  test(`/clear leaves a state with no session un-orphaned [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.file = stateText({ session: null })
+    await $.session.start(START)
+    const ui = await mountBand($)
+    await $.session.end({ reason: 'clear', sessionId: SESSION, resume: {} } as never)
+    expect(lastStatus(r)).toBe(STATUS_PLAN)
+    expect(await ui.find({ key: 'tag' })).toBeUndefined()
+  })
 }

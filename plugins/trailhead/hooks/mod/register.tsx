@@ -93,7 +93,8 @@ function safeRefresh($: Dollar): Promise<void> {
 // A /clear ends the session the state belongs to: show it as orphaned at once.
 async function markOrphaned($: Dollar) {
   const state = await read($, workState)
-  if (state === null) return
+  // A file with no session is never orphaned, /clear included.
+  if (state === null || state.session === null) return
   await setOrphaned($, true)
   pin($, state, true)
 }
