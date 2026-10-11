@@ -73,6 +73,7 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     'echo $((1<<3))', 'x=$(( y << 2 ))', 'echo $[1<<3]', '((x=1<<3))',
     'echo "a <<EOF b"', "echo '<<EOF'", '# <<EOF', 'echo hi # <<EOF',
     'echo \\<<EOF', 'cat <<<x', 'echo "${#x}" <<<EOF', 'echo $((1\n<<3))',
+    "echo $'a\\'b <<EOF'", 'x=abc; echo ${x#<<EOF}', 'echo ${x:-<<EOF}', 'echo "${x:-<<EOF}"', 'echo ${x:-"}" <<EOF}',
   ];
   for (const c of notHeredoc) {
     const full = `${c}\ncat .env`;
@@ -93,6 +94,17 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     stripHeredocBodies('x=$(cat <<EOF\nbody\nEOF\n)\ncat .env') === 'x=$(cat <<EOF\n)\ncat .env');
   ok('quoted tags and <<- keep working',
     stripHeredocBodies("cat <<'E'\na\nE\ncat <<\"F\"\nb\nF\ncat <<-G\n\tc\n\tG\nz") === "cat <<'E'\ncat <<\"F\"\ncat <<-G\nz");
+  ok('an ANSI-C string closes on its own quote, so a heredoc after it is real',
+    stripHeredocBodies("echo $'a\\'b' <<EOF\nx\nEOF\ncat .env") === "echo $'a\\'b' <<EOF\ncat .env" &&
+    stripHeredocBodies('echo ${x} <<EOF\nx\nEOF\ncat .env') === 'echo ${x} <<EOF\ncat .env');
+  const cont = 'true <<EOF \\\n; echo REACHED\nbody\nEOF\ncat .env';
+  ok('a backslash-newline joins the lines: the continuation stays visible, the body starts after it',
+    stripHeredocBodies(cont) === 'true <<EOF \\\n; echo REACHED\ncat .env' && heredocBodies(cont)[0].body === 'body' &&
+    JSON.stringify(splitStatements(cont)) === JSON.stringify(['true <<EOF', 'echo REACHED', 'cat .env']));
+  ok('an escaped space is not a word boundary, so \\ #x <<EOF is a real heredoc',
+    stripHeredocBodies('echo \\ #x <<EOF\nx\nEOF\ncat .env') === 'echo \\ #x <<EOF\ncat .env' &&
+    countHeredocs('echo \\ #x <<EOF') === 1);
+  ok('a comment ending in a backslash does not continue', stripHeredocBodies('echo hi # c \\\n<<EOF\ncat .env') === 'echo hi # c \\\n<<EOF\ncat .env');
   ok('countHeredocs ignores a quoted or arithmetic << but counts a real one',
     countHeredocs('echo "<<A" $((1<<2)) <<B') === 1);
 }
