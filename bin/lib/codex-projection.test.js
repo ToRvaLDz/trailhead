@@ -15,6 +15,7 @@ const {
   codexVerbSkillContent,
   codexVerbSkillAgentsYaml,
   codexVerbSkillPlan,
+  CODEX_MOD_ONLY_VERBS,
   codexHookEntries,
   enableCodexHooksFeature,
   enableCodexMultiAgentV2Feature,
@@ -159,6 +160,13 @@ ok('codexVerbSkillPlan: accepts a bare-string verb and skips empty/invalid', (()
   return plan.dirs.length === 1 && plan.dirs[0] === '/c/skills/trailhead-work';
 })());
 ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', null).dirs.length === 0 && codexVerbSkillPlan('/c').dirs.length === 0);
+
+// #208: a verb only the Claude Code mod answers (the map panel) has no Codex projection.
+ok('CODEX_MOD_ONLY_VERBS names exactly the panel verb', Array.isArray(CODEX_MOD_ONLY_VERBS) && CODEX_MOD_ONLY_VERBS.length === 1 && CODEX_MOD_ONLY_VERBS[0] === 'panel');
+ok('codexVerbSkillPlan: never projects a mod-only verb, object or bare string', (() => {
+  const plan = codexVerbSkillPlan('/c', [{ verb: 'panel', description: 'x' }, 'panel', { verb: 'map' }]);
+  return plan.dirs.length === 1 && plan.dirs[0] === '/c/skills/trailhead-map' && !plan.writes.some((w) => /panel/.test(w.path));
+})());
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');

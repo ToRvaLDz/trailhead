@@ -323,6 +323,11 @@ policy:
 `;
 }
 
+// --- CODEX_MOD_ONLY_VERBS --------------------------------------------------
+// Verbs only the Claude Code mod answers (commands/<verb>.md exists for the
+// namespaced command, but nothing on Codex can draw it): never projected.
+const CODEX_MOD_ONLY_VERBS = ['panel'];
+
 // --- codexVerbSkillPlan ----------------------------------------------------
 // Given the resolved verb list (each { verb, description? }, or a bare string
 // verb; normally read from plugins/trailhead/commands/*.md by the installer),
@@ -340,6 +345,7 @@ function codexVerbSkillPlan(codexHome, verbs) {
     const v = entry && typeof entry === 'object' ? entry.verb : entry;
     if (v == null || String(v).trim() === '') continue;
     const verb = String(v).trim();
+    if (CODEX_MOD_ONLY_VERBS.includes(verb)) continue;
     const description = entry && typeof entry === 'object' ? entry.description : undefined;
     const skillDir = path.join(skillsRoot, `trailhead-${verb}`);
     dirs.push(skillDir);
@@ -447,6 +453,7 @@ module.exports = {
   codexVerbSkillContent,
   codexVerbSkillAgentsYaml,
   codexVerbSkillPlan,
+  CODEX_MOD_ONLY_VERBS,
   codexHookEntries,
   enableCodexFeatureFlag,
   enableCodexHooksFeature,
