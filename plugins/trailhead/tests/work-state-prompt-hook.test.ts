@@ -74,7 +74,7 @@ test('the section is appended last, on the session side', async ($, on) => {
   expect(sections.map(s => s.id)).toEqual(['intro', ID])
   const s = mine(sections) as Section
   expect(s.scope).toBe('session')
-  expect(s.text).toContain('#204 Inject the work state https://github.com/ToRvaLDz/trailhead/issues/204')
+  expect(s.text).toContain('#204 "Inject the work state" https://github.com/ToRvaLDz/trailhead/issues/204')
   expect(s.text).toContain('#198 https://github.com/ToRvaLDz/trailhead/issues/198')
 })
 
@@ -98,7 +98,7 @@ test('a step change leaves the text untouched; a ticket change rebuilds it', asy
   r.file = stateText({ ticket: 205, title: 'Next ticket', step: 'execute' })
   await turn($)
   const next = (mine(await compose($)) as Section).text
-  expect(next).toContain('#205 Next ticket')
+  expect(next).toContain('#205 "Next ticket"')
   expect(next).toContain('execute')
 })
 
@@ -124,14 +124,21 @@ test('the bare trait gets nothing', async ($, on) => {
   expect(mine(await compose($, ['bare']))).toBeUndefined()
 })
 
-test('a failing repo read still yields the engine sections, next called once', async ($, on) => {
+test('a failing repo read gives the section without links, latched, next called once', async ($, on) => {
   const r = rig(on)
   r.file = stateText()
   r.repoFails = true
   await $.session.start(START)
   const before = r.composes
-  expect(await compose($)).toEqual(ENGINE)
+  const sections = await compose($)
   expect(r.composes - before).toBe(1)
+  expect(sections[0]).toEqual(ENGINE[0])
+  const s = mine(sections) as Section
+  expect(s.text).toContain('#204 "Inject the work state"')
+  expect(s.text).not.toContain('http')
+  const reads = r.repoReads
+  await compose($)
+  expect(r.repoReads).toBe(reads)
 })
 
 test('next runs once per compose', async ($, on) => {
@@ -150,7 +157,7 @@ test('no repo remote: numbers without links', async ($, on) => {
   r.remote = null
   await $.session.start(START)
   const s = mine(await compose($)) as Section
-  expect(s.text).toContain('#204 Inject the work state')
+  expect(s.text).toContain('#204 "Inject the work state"')
   expect(s.text).not.toContain('http')
 })
 
@@ -174,6 +181,27 @@ test('a multi-line title stays one line and the section stays small', async ($, 
   const text = (mine(await compose($)) as Section).text
   const ticket = text.split('\n').filter(l => l.startsWith('Ticket:'))
   expect(ticket).toHaveLength(1)
-  expect(ticket[0]).toContain('line one line two')
+  expect(ticket[0]).toContain('"line one line two')
   expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(1024)
+})
+
+test('a precompute or a subagent compaction leaves the snapshot alone', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText({ step: 'execute' })
+  await $.session.compact({ messages: SUMMARY, trigger: 'precompute' })
+  await $.session.compact({ messages: SUMMARY, agentId: 'sub-1' })
+  expect((mine(await compose($)) as Section).text).toContain('Step: plan')
+})
+
+test('an analysis render shows the section but writes nothing', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  const writes = r.writes
+  const s = mine(await compose($, ['analysis'])) as Section
+  expect(s.text).toContain('#204')
+  expect(r.writes).toBe(writes)
 })

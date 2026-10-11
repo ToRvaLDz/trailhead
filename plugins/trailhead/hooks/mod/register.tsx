@@ -76,15 +76,26 @@ const debug = ($: Dollar, message: string) => {
 }
 
 // The latched text: rebuilt only when its key changed or the snapshot was reset.
-async function currentSnapshot($: Dollar): Promise<PromptSnapshot> {
+// A repo that cannot be read only costs the links, never the section.
+async function readSlug($: Dollar): Promise<string | null> {
+  try {
+    return repoSlug((await $.session.repo())?.remote ?? null)
+  } catch (err) {
+    debug($, `trailhead mod: repo read failed: ${String(err)}`)
+    return null
+  }
+}
+
+// With `persist` false (a /context render) the snapshot is computed but never stored.
+async function currentSnapshot($: Dollar, persist: boolean): Promise<PromptSnapshot> {
   const state = await read($, workState)
   const orphaned = await read($, isOrphaned)
   const key = snapshotKey(state, orphaned)
   const latched = await read($, promptSnapshot)
   if (latched !== null && latched.key === key) return latched
-  const repo = state === null || orphaned ? null : await $.session.repo()
-  const built = { key, text: promptSection(state, orphaned, repoSlug(repo?.remote ?? null)) }
-  await setSnapshot($, built)
+  const slug = state === null || orphaned ? null : await readSlug($)
+  const built = { key, text: promptSection(state, orphaned, slug) }
+  if (persist) await setSnapshot($, built)
   return built
 }
 
@@ -161,7 +172,7 @@ export const register: Register = on => {
     const result = await next(e)
     if (e.traits.includes('bare')) return result
     try {
-      const { text } = await currentSnapshot($)
+      const { text } = await currentSnapshot($, !e.traits.includes('analysis'))
       if (text === null) return result
       return { sections: [...result.sections, { id: SECTION_ID, text, scope: 'session' as const }] }
     } catch (err) {
@@ -173,7 +184,8 @@ export const register: Register = on => {
   // After a compaction the agent re-reads the live state: refresh, then rebuild the snapshot.
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId !== undefined || result.messages === undefined) return result
+    // A subagent's or a precomputed compaction installs nothing in the main conversation.
+    if (e.agentId !== undefined || e.trigger === 'precompute' || result.messages === undefined) return result
     try {
       await safeRefresh($)
       await setSnapshot($, null)
