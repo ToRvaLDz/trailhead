@@ -84,11 +84,11 @@ test('parseTickets strips C1 control characters from titles and logins', () => {
 })
 
 test('parseTickets says when the list reached the gh limit', () => {
-  const rows = (n: number) => Array.from({ length: n }, (_, i) => issue(i + 1))
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => issue({ number: i + 1 }))
   expect(parseTickets(JSON.stringify(rows(199)))?.isCapped).toBe(false)
   expect(parseTickets(JSON.stringify(rows(200)))?.isCapped).toBe(true)
   // quarantined and whiteboard rows count toward the limit gh applied
-  const mixed = [...rows(199), issue(900, 'q', ['trailhead:unverified'])]
+  const mixed = [...rows(199), issue({ number: 900, labels: labels('trailhead:unverified') })]
   expect(parseTickets(JSON.stringify(mixed))?.isCapped).toBe(true)
 })
 

@@ -9,6 +9,7 @@ import {
   ageLabel,
   failureReason,
   groupTickets,
+  LIST_LIMIT,
   parseActiveMap,
   parseMap,
   parseTickets,
@@ -96,7 +97,7 @@ async function gh($: Dollar, args: readonly string[]): Promise<GhResult> {
 const readList = ($: Dollar, target: number) =>
   Promise.all([
     gh($, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
-    gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', '200', '--json', TICKET_FIELDS]),
+    gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
   ])
 
 // One read of the active map. The result is dropped when the pane closed meanwhile
@@ -139,7 +140,8 @@ function stopTimers() {
   ticker = null
 }
 
-type Request = { hasTrailing: boolean }
+// `bypassFloor`: the caller's last result was dropped unseen, so reading again is not a repeat.
+type Request = { hasTrailing: boolean; bypassFloor?: boolean }
 
 // Throttled: inside the floor it keeps ONE trailing refresh for the rest of it (an event
 // just after a refresh still shows), unless the caller is only filling an empty pane.
@@ -147,7 +149,7 @@ async function decide($: Dollar, request: Request) {
   if (!(await isPaneUp($))) return
   ticker ??= $.clock.every(TIMER_MS, () => void requestRefresh($))
   const now = await $.clock.now()
-  const decision = refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
+  const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
   if (!decision.run) {
     if (request.hasTrailing && trailing === null) {
       trailing = $.clock.after(decision.waitMs, () => {
@@ -160,7 +162,7 @@ async function decide($: Dollar, request: Request) {
   lastStartedAt = now
   trailing?.cancel()
   trailing = null
-  await fetchMap($, generation, () => void requestRefresh($))
+  await fetchMap($, generation, () => void requestRefresh($, { hasTrailing: true, bypassFloor: true }))
 }
 
 // Does nothing while the pane is closed: the data exists only for the pane.
@@ -195,6 +197,8 @@ async function startWork($: Dollar, number: number) {
 // so the auto-open runs from a zero-delay timer, a dispatch of its own; `isOpening` keeps two
 // renders from opening twice before the flag is written.
 let isOpening = false
+// Same for the fill an empty pane asks for from its render.
+let isFilling = false
 
 async function openPane($: Dollar) {
   await update($, paneAutoOpened, () => true)
@@ -208,6 +212,8 @@ async function autoOpen($: Dollar) {
   isOpening = true
   try {
     if (!(await $.ui.panes()).some(pane => pane.id === PANE_ID)) await openPane($)
+    // Found up already (a reload with the pane showing): nothing to open, and renders stop asking.
+    else await update($, paneAutoOpened, () => true)
   } catch (err) {
     debug($, `trailhead mod: map pane auto-open failed: ${String(err)}`)
   } finally {
@@ -295,8 +301,16 @@ export function registerMapPane(on: On) {
     }
     const isCurrent = data.map?.number === active
     const isLoading = !isCurrent && (data.isLoading || data.error === null)
-    // A pane the person opened (or that waited undrawn) has no data yet: fill it, once.
-    if (!isCurrent && !data.isLoading && data.error === null) void requestRefresh($, { hasTrailing: false })
+    // A pane the person opened (or that waited undrawn) has no data yet: fill it, once. Like the
+    // auto-open it leaves the render through a zero-delay timer; inside the floor it waits for
+    // the trailing refresh rather than the slow timer.
+    if (!isCurrent && !data.isLoading && data.error === null && !isFilling) {
+      isFilling = true
+      $.clock.after(0, () => {
+        isFilling = false
+        void requestRefresh($)
+      })
+    }
 
     const text = (key: string, props: object, children: string) => (
       <Box key={key}>
@@ -379,7 +393,7 @@ export function registerMapPane(on: On) {
         {group('frontier', 'Frontier', groups.frontier)}
         {group('in-progress', 'In progress', groups.inProgress)}
         {group('blocked', 'Blocked', groups.blocked)}
-        {tickets.length === 0 ? (
+        {isCurrent && data.error === null && tickets.length === 0 ? (
           <Box key="no-tickets" marginTop={gap}>
             <Text {...dim}>No open tickets. Fog may remain: /trailhead:map</Text>
           </Box>
@@ -387,6 +401,11 @@ export function registerMapPane(on: On) {
         {!isCurrent || data.unverifiedCount === 0 ? null : (
           <Box key="unverified" marginTop={gap}>
             <Text {...dim}>{unverifiedLine(data.unverifiedCount)}</Text>
+          </Box>
+        )}
+        {!isCurrent || !data.isCapped ? null : (
+          <Box key="capped" marginTop={gap}>
+            <Text {...dim}>{`list capped at ${LIST_LIMIT}`}</Text>
           </Box>
         )}
         <Box key="spacer" flexGrow={1} />

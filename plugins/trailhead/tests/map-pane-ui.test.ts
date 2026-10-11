@@ -353,6 +353,9 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('map #198')
     expect(await textOf(ui, 'age')).toBe('⚠ gh failed (exit 1)')
     expect(await ui.find({ key: 'loading' })).toBeUndefined()
+    // the tickets are unknown, not absent
+    expect(await ui.find({ key: 'no-tickets' })).toBeUndefined()
+    expect(await ui.find({ key: 'unverified' })).toBeUndefined()
   })
 
   test(`two triggers inside the floor make one fetch and one trailing [${surface}]`, async ($, on) => {
@@ -458,10 +461,8 @@ for (const surface of SURFACES) {
     r.active = '199\n'
     release()
     await settle(r)
-    // the 198 answer never reached the screen
+    // the 198 answer never reached the screen; the retry does not wait for the floor
     expect(await ui.find({ key: 'ticket-1980' })).toBeUndefined()
-    await r.clock.advance(FLOOR)
-    await settle(r)
     expect(await textOf(ui, 'map')).toBe('#199 map 199')
     expect(await textOf(ui, 'ticket-1990')).toBe('#1990 ticket of 199')
     expect(await ui.find({ key: 'ticket-1980' })).toBeUndefined()
@@ -645,5 +646,62 @@ for (const surface of SURFACES) {
     await mountBand($, FULLSCREEN)
     await settle(r)
     expect(r.opens).toHaveLength(1)
+  })
+
+  test(`a list that reached the gh limit says so [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.tickets = Array.from({ length: 200 }, (_, i) => issue(i + 1, `t${i + 1}`, ['trailhead:build']))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'capped')).toBe('list capped at 200')
+    expect((await ui.find({ key: 'capped' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    r.tickets = TICKETS
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await ui.find({ key: 'capped' })).toBeUndefined()
+  })
+
+  test(`a pane found already up at auto-open ends the auto-open for good [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    r.open()
+    const ui = await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toEqual([])
+    r.panes = []
+    await ui.redraw()
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toEqual([])
+  })
+
+  test(`a pane opened by hand after a map switch fills within the floor, not at the slow timer [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    r.open()
+    const first = await mountPane($)
+    await settle(r)
+    expect(await textOf(first, 'map')).toBe('#198 trailhead mod')
+    r.panes = []
+    await first.unmount()
+
+    // the map moves on while the pane is closed
+    r.active = '199\n'
+    r.map = { ...MAP, title: 'second map', url: `${URL}/199` }
+    r.tickets = [issue(300, 'only one', ['trailhead:build'])]
+    await r.clock.advance(3_000)
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    r.open()
+    const ui = await mountPane($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('map #199')
+    await r.clock.advance(FLOOR - 3_000)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#199 second map')
+    expect(fetches(r)).toBe(2)
   })
 }
