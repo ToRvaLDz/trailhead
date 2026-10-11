@@ -2,6 +2,12 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+- **The five Bash guards run in one hook process (#207).** The commit, secret, install, search, and body guards used to be five `PreToolUse(Bash)` registrations, so every Bash call started five node processes. They now share one, `trailhead-bash-guards.js`, which evaluates them in the same order with unchanged verdicts: the first block wins, a guard that errors allows on its own without stopping the others, and a guard module that cannot load is skipped with a stderr warning. The guardrails themselves are unchanged (still the same set of distinct protections); only the registrations and process spawns shrink, to three hook processes per Bash call on Claude Code and Codex. On Codex the hook is registered with `--guards=commit,secret,install,body` (no search guard). A fresh `TRAILHEAD_MOD_GUARDS=<name,...>@<epoch-ms>` stamp, set by the mod for guards it already ran, makes the hook skip exactly those; a missing, malformed, or stale stamp skips none.
+- **Installs migrate on their own.** Re-running the installer strips the old per-guard registrations from `settings.json` / `hooks.json` and registers the merged hook; uninstall removes the merged entry and any legacy one. Install-verify now separates the shipped files (the five guard modules are still copied) from the registered entrypoints.
+
 ## 0.13.0 (2026-10-09)
 
 ### Why
