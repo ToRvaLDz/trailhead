@@ -51,16 +51,21 @@ const HEREDOC_TAG_RE = /(-?)[ \t]*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/y;
 // A `#` starts a comment, and a `((` an arithmetic command, only at a word start.
 const WORD_START_PREV_RE = /[\s;&|()]/;
 
-// Scan ONE line for heredoc introducers, with the shell context a bare regex
-// lacks: a `<<` inside quotes, a comment, `$((..))`, `$[..]`, `((..))` or
-// after a backslash is not an introducer, and `<<<` is a herestring. `st.stack`
-// holds the open contexts ('sq', 'dq', a `$(..)` substitution { sub, n }, an
-// arithmetic span { ar, ... }); it is mutated and carried to the next line, so a
-// quote or arithmetic span that runs across lines keeps suppressing
-// introducers. A `$(..)` is code again, even inside double quotes, so its
-// heredocs count. Returns [{ dash, tag, quoted }]. Best-effort: not a full shell
-// parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not modelled).
-function scanLine(line, st) {
+// The ONE lexer behind heredoc detection and statement splitting. It scans a
+// line with the shell context a bare regex lacks: a `<<` inside quotes, a
+// comment, `$((..))`, `$[..]`, `((..))` or after a backslash is not an
+// introducer, and `<<<` is a herestring. `st.stack` holds the open contexts
+// ('sq', 'dq', a `$(..)` substitution { sub, n }, an arithmetic span { ar,
+// ... }); it is mutated and carried to the next line, so a quote or arithmetic
+// span that runs across lines keeps suppressing introducers. A `$(..)` is code
+// again, even inside double quotes, so its heredocs count. Returns
+// [{ dash, tag, quoted }]. When `seps` is given, the statement separators found
+// in splittable code (top level or inside `$(..)`, never inside a quote,
+// arithmetic span or comment) are pushed to it as { at, len, op }, so the
+// splitters cut exactly where this lexer says code is. Best-effort: not a full
+// shell parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not
+// modelled).
+function scanLine(line, st, seps) {
   const found = [];
   const stack = st.stack;
   for (let i = 0; i < line.length; i++) {
@@ -90,6 +95,13 @@ function scanLine(line, st) {
       if (c === '(') { top.n++; continue; }
       if (c === ')') { if (top.n === 0) stack.pop(); else top.n--; continue; }
     }
+    if (seps && splittable(stack)) {
+      const two = c + line[i + 1];
+      if (two === '&&' || two === '||') { seps.push({ at: i, len: 2, op: two }); i++; continue; }
+      if (c === ';' || c === '|') { seps.push({ at: i, len: 1, op: c }); continue; }
+      // A lone `&` backgrounds, unless it is part of a redirection (`2>&1`, `>&2`, `&>f`).
+      if (c === '&' && line[i - 1] !== '>' && line[i - 1] !== '<' && line[i + 1] !== '>') { seps.push({ at: i, len: 1, op: '&' }); continue; }
+    }
     if (c === '<' && line[i + 1] === '<') {
       if (line[i + 2] === '<') { i += 2; continue; } // herestring
       HEREDOC_TAG_RE.lastIndex = i + 2;
@@ -105,23 +117,32 @@ function scanLine(line, st) {
   return found;
 }
 
-// The one walk shared by stripHeredocBodies, heredocBodies and countHeredocs, so
-// they always agree (secret-guard pairs heredocBodies with per-statement
-// countHeredocs by position). A heredoc BODY is literal data (e.g. a script
-// being written to a file), not shell statements run in the current shell.
-// Whenever a line introduces heredocs, every following line up to and including
-// each terminator is body. Returns { lines, keep, docs }: `keep[i]` is false for
-// body and terminator lines; `docs` is [{ quoted, body }] in order of appearance
-// (`quoted` is true for a quoted delimiter, whose body is literal text).
+// Code that can be split into statements: nothing open but `$(..)` substitutions.
+const splittable = (stack) => stack.every((t) => t.sub);
+
+// The one walk shared by stripHeredocBodies, heredocBodies, countHeredocs and
+// both splitters, so they always agree (secret-guard pairs heredocBodies with
+// per-statement countHeredocs by position). A heredoc BODY is literal data
+// (e.g. a script being written to a file), not shell statements run in the
+// current shell. Whenever a line introduces heredocs, every following line up
+// to and including each terminator is body. Returns { lines, keep, docs, seps,
+// nl }: `keep[i]` is false for body and terminator lines; `docs` is
+// [{ quoted, body }] in order of appearance (`quoted` is true for a quoted
+// delimiter, whose body is literal text); `seps[i]` are the separators inside
+// line i and `nl[i]` says whether the newline after it separates statements.
 function scanHeredocs(cmd) {
   const lines = String(cmd).split('\n');
   const keep = new Array(lines.length).fill(true);
   const docs = [];
+  const seps = lines.map(() => []);
+  const nl = new Array(lines.length).fill(false);
   const st = { stack: [] };
   for (let i = 0; i < lines.length; i++) {
+    const found = scanLine(lines[i], st, seps[i]);
+    nl[i] = splittable(st.stack);
     // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
     // bodies follow in order.
-    for (const { dash, tag, quoted } of scanLine(lines[i], st)) {
+    for (const { dash, tag, quoted } of found) {
       const body = [];
       while (i + 1 < lines.length) {
         i++;
@@ -133,7 +154,7 @@ function scanHeredocs(cmd) {
       docs.push({ quoted, body: body.join('\n') });
     }
   }
-  return { lines, keep, docs };
+  return { lines, keep, docs, seps, nl };
 }
 
 // Remove every heredoc body (and terminator line) before the statement splitter
@@ -156,89 +177,54 @@ function countHeredocs(text) {
 
 // --- statement splitting -------------------------------------------------------
 
+// Cut a command at the separators the lexer reports. Heredoc bodies are skipped
+// (literal data, never statements). Returns [{ text, sep }] with the operator
+// that ENDED each statement (null for the last), untrimmed and unfiltered.
+function cutStatements(cmd, ops) {
+  const { lines, keep, seps, nl } = scanHeredocs(cmd);
+  const kept = lines.map((_, i) => i).filter((i) => keep[i]);
+  const out = [];
+  let cur = '';
+  kept.forEach((i, k) => {
+    let from = 0;
+    for (const { at, len, op } of seps[i]) {
+      if (!ops.includes(op)) continue;
+      out.push({ text: cur + lines[i].slice(from, at), sep: op });
+      cur = '';
+      from = at + len;
+    }
+    cur += lines[i].slice(from);
+    if (k === kept.length - 1) return;
+    if (nl[i]) { out.push({ text: cur, sep: '\n' }); cur = ''; } else cur += '\n';
+  });
+  out.push({ text: cur, sep: null });
+  return out;
+}
+
 // Split a shell string into top-level statements on `&&`, `||`, `;`, `|`, and
-// newlines, respecting single/double quotes (so a separator INSIDE a quoted
-// argument, e.g. a grep pattern, does not fracture the statement). Heredoc
-// bodies are stripped first (see stripHeredocBodies) so literal data written
-// via `<<TAG` is never mistaken for statements. Splitting is purely
+// newlines, respecting quotes, `$((..))`, `$[..]`, `((..))` and comments (so a
+// separator INSIDE any of them, e.g. a grep pattern, does not fracture the
+// statement). Heredoc bodies are stripped first so literal data written via
+// `<<TAG` is never mistaken for statements. Splitting is purely
 // character-driven (not whitespace-driven), so a glued separator with no
 // surrounding spaces (`cat .env|grep KEY`, `cat .env;echo done`) still splits
 // correctly. Best-effort: not a full shell parser, just enough to avoid the
 // common false splits.
 function splitStatements(cmd) {
-  const s = stripHeredocBodies(String(cmd));
-  const stmts = [];
-  let cur = '';
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inSingle) {
-      cur += c;
-      if (c === "'") inSingle = false;
-      continue;
-    }
-    if (inDouble) {
-      cur += c;
-      if (c === '\\' && i + 1 < s.length) { cur += s[++i]; continue; } // escaped char stays literal
-      if (c === '"') inDouble = false;
-      continue;
-    }
-    if (c === "'") { inSingle = true; cur += c; continue; }
-    if (c === '"') { inDouble = true; cur += c; continue; }
-    if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
-    if (c === '&' && s[i + 1] === '&') { stmts.push(cur); cur = ''; i++; continue; }
-    if (c === '|' && s[i + 1] === '|') { stmts.push(cur); cur = ''; i++; continue; }
-    if (c === ';' || c === '|' || c === '\n') { stmts.push(cur); cur = ''; continue; }
-    cur += c;
-  }
-  stmts.push(cur);
-  return stmts.map((t) => t.trim()).filter(Boolean);
+  return cutStatements(cmd, [';', '|', '&&', '||']).map((x) => x.text.trim()).filter(Boolean);
 }
 
 // Like splitStatements, but each statement carries the operator that ENDED it
 // (`;`, `\n`, `&&`, `||`, `|`, `&`, or null for the last one), and a lone `&`
 // (background) also splits. Callers use the separators to tell which statements
 // ran in the current shell and which in a subshell (pipeline or background).
-// Same quoting and heredoc rules as splitStatements, which stays unchanged for
+// Same lexing and heredoc rules as splitStatements, which stays unchanged for
 // its existing consumers. A `&` that is part of a redirection (`2>&1`, `>&2`,
 // `&>f`) is not a separator.
 function splitStatementsWithSeparators(cmd) {
-  const s = stripHeredocBodies(String(cmd));
-  const out = [];
-  let cur = '';
-  let inSingle = false;
-  let inDouble = false;
-  const end = (sep) => { out.push({ text: cur.trim(), sep }); cur = ''; };
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inSingle) {
-      cur += c;
-      if (c === "'") inSingle = false;
-      continue;
-    }
-    if (inDouble) {
-      cur += c;
-      if (c === '\\' && i + 1 < s.length) { cur += s[++i]; continue; }
-      if (c === '"') inDouble = false;
-      continue;
-    }
-    if (c === "'") { inSingle = true; cur += c; continue; }
-    if (c === '"') { inDouble = true; cur += c; continue; }
-    if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
-    if (c === '&' && s[i + 1] === '&') { end('&&'); i++; continue; }
-    if (c === '|' && s[i + 1] === '|') { end('||'); i++; continue; }
-    if (c === '&') {
-      const redirect = s[i - 1] === '>' || s[i - 1] === '<' || s[i + 1] === '>';
-      if (redirect) { cur += c; continue; }
-      end('&');
-      continue;
-    }
-    if (c === ';' || c === '|' || c === '\n') { end(c); continue; }
-    cur += c;
-  }
-  end(null);
-  return out.filter((x) => x.text);
+  return cutStatements(cmd, [';', '|', '&&', '||', '&'])
+    .map((x) => ({ text: x.text.trim(), sep: x.sep }))
+    .filter((x) => x.text);
 }
 
 // --- tokenizing ----------------------------------------------------------------
