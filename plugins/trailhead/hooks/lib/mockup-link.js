@@ -25,12 +25,28 @@ function questionText(q) {
   return [q.question, q.header, ...labels].filter((s) => typeof s === 'string').join('\n');
 }
 
+const questionsOf = (input) => ((input && Array.isArray(input.questions)) ? input.questions : []);
+
+// Is this single question itself a mockup-approval ask?
+function isApprovalQuestion(q) {
+  const t = q ? questionText(q) : '';
+  return MOCKUP_WORD.test(t) && APPROVAL_WORD.test(t);
+}
+
 // AskUserQuestion input: does any single question ask to approve a mockup?
 function isMockupApprovalAsk(input) {
-  const qs = (input && Array.isArray(input.questions)) ? input.questions : [];
-  return qs.some((q) => {
-    const t = q ? questionText(q) : '';
-    return MOCKUP_WORD.test(t) && APPROVAL_WORD.test(t);
+  return questionsOf(input).some(isApprovalQuestion);
+}
+
+// Does a mockup-approval question carry the link itself (question, header,
+// option label or description)? A link in an unrelated question of the same
+// ask does not count.
+function askHasLink(input) {
+  return questionsOf(input).some((q) => {
+    if (!isApprovalQuestion(q)) return false;
+    const opts = Array.isArray(q.options) ? q.options : [];
+    const parts = [q.question, q.header, ...opts.flatMap((o) => [o && o.label, o && o.description])];
+    return parts.some(hasLink);
   });
 }
 
@@ -47,4 +63,4 @@ const BLOCK_REASON =
   'screen/variant) in the plain prose immediately before the question, not the project ' +
   'name, then ask again. See "Surface the mockup" in _shared/techniques/prototype.md.';
 
-module.exports = { hasLink, isMockupApprovalAsk, isMockupApprovalMessage, BLOCK_REASON };
+module.exports = { hasLink, isMockupApprovalAsk, askHasLink, isMockupApprovalMessage, BLOCK_REASON };

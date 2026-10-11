@@ -10,6 +10,8 @@ const {
   isMockupApprovalAsk,
   hasLink,
   proseBeforeAsk,
+  pendingAskIndex,
+  askHasLink,
 } = require('./trailhead-mockup-link-guard.js');
 
 const HOOK = path.join(__dirname, 'trailhead-mockup-link-guard.js');
@@ -20,7 +22,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 // Costruttori di righe transcript (stesso shape JSONL di Claude Code)
 const text = (t) => ({ type: 'assistant', isSidechain: false, message: { content: [{ type: 'text', text: t }] } });
 const thinking = () => ({ type: 'assistant', isSidechain: false, message: { content: [{ type: 'thinking', thinking: '' }] } });
-const toolUse = (name, input = {}) => ({ type: 'assistant', isSidechain: false, message: { content: [{ type: 'tool_use', id: 'x', name, input }] } });
+const toolUse = (name, input = {}, id = 'x') => ({ type: 'assistant', isSidechain: false, message: { content: [{ type: 'tool_use', id, name, input }] } });
 const toolResult = (c) => ({ type: 'user', isSidechain: false, message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: c }] } });
 const userPrompt = (c) => ({ type: 'user', isSidechain: false, message: { content: c } });
 
@@ -103,8 +105,45 @@ const sidechain = [
 ];
 ok('sidechain text is ignored', !hasLink(proseBeforeAsk(sidechain)));
 
-const noAskYet = [userPrompt('x'), text('Ecco https://a.b/c')];
-ok('works when the pending tool_use is not yet in the transcript', hasLink(proseBeforeAsk(noAskYet)));
+// Senza ancora: comportamento storico, si parte dalla coda del transcript
+const noAnchor = [userPrompt('x'), text('Ecco https://a.b/c')];
+ok('without an anchor the prose is read from the transcript tail', hasLink(proseBeforeAsk(noAnchor)));
+
+// Con ancora: si parte dall'ask trovato, non dalla coda
+const anchored = [
+  userPrompt('x'),
+  text('Mockup: https://a.b/c'),
+  toolUse('AskUserQuestion', approvalInput, 'ask1'),
+  toolResult('Approvo'),
+  text('Altro testo senza link'),
+];
+ok('with an anchor the prose is read back from the anchored ask', hasLink(proseBeforeAsk(anchored, 2)));
+
+// --- askHasLink ---
+const askWith = (over) => ({ questions: [{ ...approvalInput.questions[0], ...over }] });
+ok('link in the approval question counts', askHasLink(askWith({ question: 'Approvi il mockup https://claude.ai/artifact/AbC123?' })));
+ok('link in the approval header counts', askHasLink(askWith({ header: 'https://claude.ai/artifact/AbC123' })));
+ok('link in an approval option label counts', askHasLink(askWith({ options: [{ label: 'Apri https://a.b/c' }, { label: 'No' }] })));
+ok('link in an approval option description counts', askHasLink(askWith({ options: [{ label: 'Approvo', description: 'vedi mockups/faq.html' }] })));
+ok('approval ask without any link has none', !askHasLink(approvalInput));
+ok('link only in a different non-approval question does not count', !askHasLink({
+  questions: [
+    { question: 'Dove sta il piano?', options: [{ label: 'https://a.b/piano' }] },
+    approvalInput.questions[0],
+  ],
+}));
+ok('malformed input has no ask link', !askHasLink({}) && !askHasLink(null));
+
+// --- pendingAskIndex ---
+const withIds = [userPrompt('x'), toolUse('Bash', {}, 'b1'), toolResult('ok'), text('Prosa'), toolUse('AskUserQuestion', approvalInput, 'ask1')];
+ok('pendingAskIndex finds the entry by tool_use id', pendingAskIndex(withIds, 'ask1', approvalInput) === 4);
+ok('pendingAskIndex by id ignores a missing id', pendingAskIndex(withIds, 'nope', approvalInput) === -1);
+ok('pendingAskIndex without id falls back to input equality on the tail', pendingAskIndex(withIds, undefined, approvalInput) === 4);
+ok('pendingAskIndex without id is -1 when the tail ask has a different input',
+  pendingAskIndex(withIds, undefined, askWith({ question: 'Approvi il mockup B?' })) === -1);
+ok('pendingAskIndex is -1 when the tail is the previous tool_result',
+  pendingAskIndex([userPrompt('x'), toolUse('Bash', {}, 'b1'), toolResult('ok')], undefined, approvalInput) === -1);
+ok('pendingAskIndex ignores sidechain entries', pendingAskIndex([{ ...toolUse('AskUserQuestion', approvalInput, 'ask1'), isSidechain: true }], 'ask1', approvalInput) === -1);
 
 // --- end-to-end ---
 function writeTranscript(entries) {
@@ -137,6 +176,23 @@ ok('other tools are ignored', r4.code === 0);
 
 const r5 = runHook({ tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Approvi il piano?', options: [] }] }, transcript_path: writeTranscript(failing) });
 ok('non-mockup ask is allowed', r5.code === 0);
+
+// Shape reale di Claude Code 2.1.295: il messaggio corrente non e' ancora nel transcript
+const unflushed = [userPrompt('lavora #12'), toolUse('Bash', {}, 'b1'), toolResult('ok')];
+const ra = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript(unflushed) });
+ok('(a) transcript ending at a previous tool_result fails open', ra.code === 0 && ra.out.trim() === '');
+
+const flushedNoLink = [...failing.slice(0, 5), toolUse('AskUserQuestion', approvalInput, 'ask1')];
+const rb = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript(flushedNoLink) });
+ok('(b) tool_use_id with the ask entry present and no link in the prose is blocked', rb.code === 2 && /MOCKUP_LINK_MISSING/.test(rb.out));
+
+const linkedAsk = askWith({ question: 'Approvi il mockup https://claude.ai/artifact/AbC123?' });
+const rc = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: linkedAsk, transcript_path: writeTranscript(failing) });
+ok('(c) link carried by the ask question is allowed', rc.code === 0 && rc.out.trim() === '');
+
+const otherPending = [userPrompt('x'), text('Niente link'), toolUse('AskUserQuestion', { questions: [{ question: 'Altro?', options: [] }] }, 'other')];
+const rd = runHook({ tool_name: 'AskUserQuestion', tool_use_id: 'ask1', tool_input: approvalInput, transcript_path: writeTranscript(otherPending) });
+ok('(d) transcript ending in a different pending ask fails open', rd.code === 0 && rd.out.trim() === '');
 
 let r6;
 try { execFileSync('node', [HOOK], { input: 'not json' }); r6 = 0; } catch (e) { r6 = e.status; }

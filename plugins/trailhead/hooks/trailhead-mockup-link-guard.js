@@ -7,7 +7,14 @@
 // practice (an approval asked with only the project's name, no URL), so this
 // hook blocks an AskUserQuestion that is a mockup-approval ask when the
 // assistant prose immediately before it (no tool call in between) holds no
-// URL or file path.
+// URL or file path. A link carried by the approval question itself (question,
+// header, option label or description) is accepted too.
+// Transcript timing: Claude Code writes the CURRENT assistant message (its
+// text and tool_use blocks) to the transcript only after the tool call
+// completes, so at PreToolUse the prose carrying the link is usually not
+// there yet. The prose check therefore runs only when the pending ask is
+// found in the transcript (by tool_use_id, or as the identical tail ask);
+// otherwise the guard cannot judge and allows.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
 // Fail-OPEN on any error (exit 0): a missing/unreadable transcript or an
 // unexpected shape must never wedge the workflow.
@@ -16,7 +23,7 @@
 // Pure functions are exported for tests; runs as a hook when executed directly.
 
 const fs = require('fs');
-const { hasLink, isMockupApprovalAsk, BLOCK_REASON } = require('./lib/mockup-link.js');
+const { hasLink, isMockupApprovalAsk, askHasLink, BLOCK_REASON } = require('./lib/mockup-link.js');
 
 // Only the transcript tail matters: the prose sits right before the ask.
 const TAIL_BYTES = 512 * 1024;
@@ -25,12 +32,32 @@ const blocksOf = (e) => (Array.isArray(e.message && e.message.content) ? e.messa
 const isPendingAsk = (e) => e.type === 'assistant'
   && blocksOf(e).some((b) => b.type === 'tool_use' && b.name === 'AskUserQuestion');
 
+const mainChain = (entries) => entries.filter((e) => e && (e.type === 'assistant' || e.type === 'user') && !e.isSidechain);
+
+// Index (in the main chain) of the entry holding the pending ask being
+// judged, or -1 when it is not in the transcript yet. With a tool_use id:
+// the assistant entry carrying that id. Without: the last entry, only if it
+// is a pending AskUserQuestion whose input equals toolInput.
+function pendingAskIndex(entries, toolUseId, toolInput) {
+  const main = mainChain(entries);
+  if (toolUseId) {
+    return main.findIndex((e) => e.type === 'assistant'
+      && blocksOf(e).some((b) => b.type === 'tool_use' && b.id === toolUseId));
+  }
+  const i = main.length - 1;
+  if (i < 0 || !isPendingAsk(main[i])) return -1;
+  const same = blocksOf(main[i]).some((b) => b.type === 'tool_use' && b.name === 'AskUserQuestion'
+    && JSON.stringify(b.input) === JSON.stringify(toolInput));
+  return same ? i : -1;
+}
+
 // The assistant prose right before the ask: walk the main-chain entries back
-// from the end, skip the pending AskUserQuestion entries, and collect text
-// blocks until anything else (a user turn, a tool result, another tool call).
-function proseBeforeAsk(entries) {
-  const main = entries.filter((e) => e && (e.type === 'assistant' || e.type === 'user') && !e.isSidechain);
-  let i = main.length - 1;
+// from the anchor entry (default: the end), skip the pending AskUserQuestion
+// entries, and collect text blocks until anything else (a user turn, a tool
+// result, another tool call).
+function proseBeforeAsk(entries, anchor) {
+  const main = mainChain(entries);
+  let i = anchor === undefined ? main.length - 1 : anchor;
   while (i >= 0 && isPendingAsk(main[i])) i--;
   const texts = [];
   for (; i >= 0; i--) {
@@ -73,9 +100,12 @@ function run(data) {
     const payload = JSON.parse(data);
     if (payload.tool_name && payload.tool_name !== 'AskUserQuestion') process.exit(0);
     if (!isMockupApprovalAsk(payload.tool_input)) process.exit(0);
+    if (askHasLink(payload.tool_input)) process.exit(0);
     if (!payload.transcript_path) process.exit(0);
-    const prose = proseBeforeAsk(parseEntries(readTail(payload.transcript_path)));
-    if (!hasLink(prose)) block();
+    const entries = parseEntries(readTail(payload.transcript_path));
+    const idx = pendingAskIndex(entries, payload.tool_use_id, payload.tool_input);
+    if (idx < 0) process.exit(0); // current message not flushed yet: cannot judge
+    if (!hasLink(proseBeforeAsk(entries, idx))) block();
   } catch {
     // fall through to allow: a guard must never wedge the workflow
   }
@@ -92,4 +122,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { isMockupApprovalAsk, hasLink, proseBeforeAsk };
+module.exports = { isMockupApprovalAsk, hasLink, askHasLink, proseBeforeAsk, pendingAskIndex };
