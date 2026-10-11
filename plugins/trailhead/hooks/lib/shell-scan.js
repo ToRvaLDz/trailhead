@@ -257,25 +257,14 @@ function lexCount(text) {
   return String(text).split('\n').reduce((n, line) => n + scanLine(line, st).length, 0);
 }
 
-// Statement texts whose own re-lex disagrees with the count the whole-command
-// scan assigned them (a cut inside `"$(..)"` leaves a tail that lexes from an
-// empty stack). Filled by the splitters, so countHeredocs on a string they
-// returned gets the whole-scan count. Bounded; only ever holds odd cases.
-const countOverrides = new Map();
-const MAX_OVERRIDES = 1000;
-function noteCount(text, n) {
-  if (lexCount(text) === n) return;
-  if (countOverrides.size >= MAX_OVERRIDES) countOverrides.clear();
-  countOverrides.set(text, n);
-}
-
-// How many heredoc introducers a statement holds. Takes a splitter entry (its
-// `heredocs` count comes from the single whole-command scan) or a statement
-// string (the count the splitter assigned it, else a re-lex of the text).
+// How many heredoc introducers a statement holds. A splitter entry carries the
+// count from the single whole-command scan (`heredocs`), which is what callers
+// pairing statements with heredocBodies must use. A plain string is lexed
+// standalone from an empty stack: pure, no memory of any earlier split, so a
+// fragment cut out of a larger command may count differently from its entry.
 function countHeredocs(stmt) {
   if (stmt && typeof stmt === 'object' && typeof stmt.heredocs === 'number') return stmt.heredocs;
-  const text = typeof stmt === 'object' && stmt ? stmt.text : stmt;
-  return countOverrides.has(text) ? countOverrides.get(text) : lexCount(text);
+  return lexCount(stmt && typeof stmt === 'object' ? stmt.text : stmt);
 }
 
 // --- statement splitting -------------------------------------------------------
@@ -323,7 +312,7 @@ function splitStatements(cmd) {
   return cutStatements(cmd, [';', '|', '&&', '||'])
     .map((x) => ({ text: x.text.trim(), heredocs: x.heredocs }))
     .filter((x) => x.text)
-    .map((x) => { noteCount(x.text, x.heredocs); return x.text; });
+    .map((x) => x.text);
 }
 
 // Like splitStatements, but each statement carries the operator that ENDED it
@@ -336,8 +325,7 @@ function splitStatements(cmd) {
 function splitStatementsWithSeparators(cmd) {
   return cutStatements(cmd, [';', '|', '&&', '||', '&'])
     .map((x) => ({ text: x.text.trim(), sep: x.sep, heredocs: x.heredocs }))
-    .filter((x) => x.text)
-    .map((x) => { noteCount(x.text, x.heredocs); return x; });
+    .filter((x) => x.text);
 }
 
 // --- tokenizing ----------------------------------------------------------------

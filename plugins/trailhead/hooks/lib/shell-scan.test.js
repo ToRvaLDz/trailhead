@@ -113,8 +113,7 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
 // secret-guard pairs heredocBodies with per-statement countHeredocs by position,
 // so the two must agree even when a separator sits inside $((..)), a comment, etc.
 {
-  const agree = (c) => heredocBodies(c).length === splitStatements(c).reduce((n, t) => n + countHeredocs(t), 0) &&
-    heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + countHeredocs(x.text), 0);
+  const agree = (c) => heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + x.heredocs, 0);
   const body = "bash <<'EOF'\ngh issue comment 1 --body hi\nEOF";
   for (const first of [
     'echo $((1|2<<3))', 'echo $((1&&2<<3))', 'echo $((1||2<<3))', 'echo $((1;2<<3))', 'echo $[1|2<<3]',
@@ -132,8 +131,7 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('a multi-line single-quoted string stays one statement', one("echo 'a\ncat .env\nb'"));
   ok('a multi-line ANSI-C string stays one statement', one("echo $'a\ncat .env\nb'"));
   ok('a multi-line ${..} stays one statement', one('echo ${x:-a\ncat .env\nb}'));
-  const agree = (c) => heredocBodies(c).length === splitStatements(c).reduce((n, t) => n + countHeredocs(t), 0) &&
-    heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + countHeredocs(x.text), 0);
+  const agree = (c) => heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + x.heredocs, 0);
   for (const c of ['echo "a\n<<3\nb"\ncat .env', "echo 'a\n<<EOF\nb'\ncat .env", 'echo "a\n<<EOF\nb" <<EOF\nx\nEOF\ncat .env'])
     ok(`heredoc counts agree across a quoted newline: ${JSON.stringify(c)}`, agree(c));
 }
@@ -211,9 +209,8 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
 {
   const J = JSON.stringify;
   const sumBoth = (c) => [
+    splitStatementsWithSeparators(c).reduce((n, s) => n + s.heredocs, 0),
     splitStatementsWithSeparators(c).reduce((n, s) => n + countHeredocs(s), 0),
-    splitStatementsWithSeparators(c).reduce((n, s) => n + countHeredocs(s.text), 0),
-    splitStatements(c).reduce((n, s) => n + countHeredocs(s), 0),
   ];
   const cases = [
     'echo "$(true; echo hi) <<X" ; cat <<\'EOF\'\nbody\nEOF',
@@ -239,6 +236,23 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     if (!sumBoth(c).every((x) => x === n)) bad = c;
   }
   ok('heredoc count pairs over a fragment soup ' + J(bad), bad === null);
+}
+
+// --- countHeredocs on a string is a pure, standalone re-lex (#212) ---
+{
+  const probe = 'echo "x" <<A';
+  const before = countHeredocs(probe);
+  const tail = 'echo hi) <<X"'; // the tail a cut inside "$(..)" leaves; standalone it lexes to 1
+  const tailBefore = countHeredocs(tail);
+  splitStatements('echo "$(true; true)" <<A\nb\nA');
+  splitStatementsWithSeparators('cat <<E \'a\nb\'; cat <<F\nbody\nE\nF');
+  splitStatements('echo "$(true; echo hi) <<X"');
+  ok('countHeredocs(string) is unchanged by unrelated splits',
+    before === 1 && countHeredocs(probe) === before && tailBefore === 1 && countHeredocs(tail) === tailBefore);
+  ok('countHeredocs(string) lexes the text standalone, from an empty stack',
+    countHeredocs('b)" <<A') === 0 && countHeredocs('true) <<A') === 1);
+  ok('countHeredocs(entry) returns its whole-scan count',
+    countHeredocs(splitStatementsWithSeparators('echo "$(true; cat <<A\nb\nA\n) <<X"')[1]) === 1);
 }
 
 // --- scanning stays linear on paren-heavy input (#212) ---
