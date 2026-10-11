@@ -9,7 +9,7 @@ const os = require('os');
 
 // TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
 const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-body-guard.js');
-const { ghBodyWrite, isEmptyBody } = require('./trailhead-body-guard.js');
+const { ghBodyWrite, isEmptyBody, evaluate } = require('./trailhead-body-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -213,6 +213,41 @@ fs.writeFileSync(a4File, 'not empty\n');
 const a4 = runHook(`gh issue edit 5 --body "$(cat ${a4File})"`); // unknowable, can't prove empty
 fs.unlinkSync(a4File);
 ok('allows an unknowable (shell-expansion) body (exit 0)', a4.code === 0 && a4.out.trim() === '');
+
+// --- regression (#211): an empty-body write chained after another command ---
+const isBlock = (r) => r.code === 2 && /"decision":"block"/.test(r.out) && /EMPTY_ISSUE_BODY_WRITE/.test(r.out);
+const isAllow = (r) => r.code === 0 && r.out.trim() === '';
+ok('blocks an empty --body chained after cd (exit 2)', isBlock(runHook('cd /tmp && gh issue edit 5 --body ""')));
+ok('blocks an empty --body after a variable assignment (exit 2)', isBlock(runHook('D=x && gh issue edit 5 --body ""')));
+ok('blocks an empty --body inside a subshell (exit 2)', isBlock(runHook('( gh issue edit 5 --body "" )')));
+ok('blocks an empty --body inside if/then (exit 2)', isBlock(runHook('if true; then gh issue edit 5 --body ""; fi')));
+ok('blocks an empty write that is a LATER statement after a non-empty one (exit 2)',
+  isBlock(runHook('gh issue edit 5 --body "x"; gh issue edit 6 --body ""')));
+ok('blocks a chained gh api -f body="" after cd (exit 2)',
+  isBlock(runHook('cd /tmp && gh api --method PATCH repos/o/r/issues/5 -f body=""')));
+ok('allows a chained non-empty body (exit 0)', isAllow(runHook('cd /tmp && gh issue edit 5 --body "x"')));
+ok('allows a chained empty gh issue comment (out of scope, exit 0)',
+  isAllow(runHook('cd /tmp && gh issue comment 5 --body ""')));
+ok('allows a chained empty gh issue create (out of scope, exit 0)',
+  isAllow(runHook('cd /tmp && gh issue create --title t --body ""')));
+{
+  // After a cd the working directory is unknown: a relative path cannot be proven empty.
+  const relName = `bg-rel-${process.pid}.md`;
+  fs.writeFileSync(path.join(process.cwd(), relName), '');
+  // evaluate() directly: the merged runner's secret-guard has its own (separate) block for this shape.
+  ok('allows a RELATIVE --body-file after cd (unknowable)',
+    evaluate(`cd /tmp && gh issue edit 5 --body-file ${relName}`).kind === 'allow');
+  ok('allows a RELATIVE api body=@path after cd (unknowable)',
+    evaluate(`cd /tmp && gh api --method PATCH repos/o/r/issues/5 -F body=@${relName}`).kind === 'allow');
+  ok('blocks the same RELATIVE --body-file when no cd precedes it',
+    evaluate(`gh issue edit 5 --body-file ${relName}`).kind === 'block');
+  fs.unlinkSync(path.join(process.cwd(), relName));
+  const absEmpty = path.join(os.tmpdir(), `bg-abs-empty-${process.pid}.md`);
+  fs.writeFileSync(absEmpty, '');
+  ok('blocks an ABSOLUTE empty --body-file after cd (exit 2)',
+    isBlock(runHook(`cd /tmp && gh issue edit 5 --body-file ${absEmpty}`)));
+  fs.unlinkSync(absEmpty);
+}
 
 // --- crash-safety ---
 try {

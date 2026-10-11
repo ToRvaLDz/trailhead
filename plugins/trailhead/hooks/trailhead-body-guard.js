@@ -9,6 +9,12 @@
 // backstop: it hard-blocks a `gh issue edit` / `gh pr edit` / `gh api` write
 // that would set a body to empty or whitespace-only, protecting the existing
 // body from a degraded read.
+// The command is not required to START with `gh`: the shared statement walk
+// (ghWrites in secret-guard: `;` `&&` `||` `|` newline, subshells, if/then,
+// leading NAME=v) finds every `gh` write, and each one is checked on its own;
+// ANY provably empty body blocks. Opaque writes (eval, sh -c, ...) are ignored
+// (fail-open). After a cd the working directory is unknown, so a relative
+// --body-file / api `@path` is unknowable and never blocks.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
 // Fail-OPEN on any error (exit 0): this is a cheap backstop, not a hard
 // dependency, and a crash here must never block a legitimate write.
@@ -17,6 +23,7 @@
 
 const fs = require('fs');
 const os = require('os');
+const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
 
 // Is the resolved body text clearly empty or whitespace-only?
@@ -44,8 +51,11 @@ function expandHome(p) {
 // Read a --body-file (or api `@file`) target, mirroring secret-guard's
 // bodyFileText: sliced to ~1MB. Throws (ENOENT etc.) are the caller's
 // problem to catch.
-function readBodyFile(filePath) {
-  return fs.readFileSync(expandHome(filePath), 'utf8').slice(0, 1_000_000);
+function readBodyFile(filePath, cwdKnown = true) {
+  const p = expandHome(filePath);
+  // Unknown cwd (after a cd): a relative path may point anywhere, so refuse to guess.
+  if (!cwdKnown && !path.isAbsolute(p)) throw new Error('relative path with unknown cwd');
+  return fs.readFileSync(p, 'utf8').slice(0, 1_000_000);
 }
 
 // Strip one matching pair of surrounding quotes (an artifact of parsing a
@@ -70,7 +80,7 @@ function stripQuotedPair(val) {
 //   { body: null }   -> a body param IS present but its text is unknowable
 //                        (shell expansion, stdin/process-substitution path,
 //                        or an unreadable --body-file): never block on this.
-function resolveEditBody(cmd) {
+function resolveEditBody(cmd, cwdKnown = true) {
   // --body-file <path> / its short alias -F (quoted or bare; bare stops at
   // whitespace/shell metacharacters, same tokenizer approach as
   // secret-guard's bodyFileText). The `(?<![-\w])` guard on -F mirrors
@@ -83,7 +93,7 @@ function resolveEditBody(cmd) {
     const p = fileMatch[1] || fileMatch[2] || fileMatch[3];
     if (p === '-' || p.startsWith('<')) return { body: null }; // stdin / process substitution
     try {
-      return { body: readBodyFile(p) };
+      return { body: readBodyFile(p, cwdKnown) };
     } catch {
       return { body: null }; // unreadable: unknowable, not provably empty
     }
@@ -117,7 +127,7 @@ function resolveEditBody(cmd) {
 // unknowable) and a bare value carrying literal surrounding quotes (e.g.
 // `-f body=""`, where the shell hasn't run yet so the quote characters are
 // still in the raw command text).
-function resolveApiBody(cmd) {
+function resolveApiBody(cmd, cwdKnown = true) {
   let raw;
   let m = cmd.match(/(?:-f|-F|--field|--raw-field)\s+"body=([^"]*)"/);
   if (m) raw = m[1];
@@ -137,7 +147,7 @@ function resolveApiBody(cmd) {
     const ref = val.slice(1);
     if (ref === '-') return null; // @- : stdin, unknowable
     try {
-      return readBodyFile(ref);
+      return readBodyFile(ref, cwdKnown);
     } catch {
       return null; // unreadable: unknowable, not provably empty
     }
@@ -153,21 +163,36 @@ function resolveApiBody(cmd) {
 // the resolved text (string), or null when present-but-unknowable. Only
 // `gh issue edit` / `gh pr edit` / `gh api ... body=` are recognised: `create`
 // and `comment` add new content rather than overwrite an existing body, so
-// they are out of scope for this guard.
-function ghBodyWrite(cmd) {
+// they are out of scope for this guard. Handles ONE statement; see
+// ghBodyWrites for a whole (possibly compound) command.
+function ghBodyWrite(cmd, { cwdKnown = true } = {}) {
   const parsed = parseGhSubcommand(cmd);
   if (!parsed) return null;
   const { sub, verb } = parsed;
 
   if ((sub === 'issue' || sub === 'pr') && verb === 'edit') {
-    const resolved = resolveEditBody(cmd);
+    const resolved = resolveEditBody(cmd, cwdKnown);
     if (resolved === undefined) return null; // no body param: not this guard's concern
     return { kind: sub, body: resolved.body };
   }
   if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)\s+['"]?body=/.test(cmd)) {
-    return { kind: 'api', body: resolveApiBody(cmd) };
+    return { kind: 'api', body: resolveApiBody(cmd, cwdKnown) };
   }
   return null;
+}
+
+// Every body-clobbering write in a whole command: the shared statement walk
+// finds each `gh` write, then each statement is resolved on its own with the
+// cwd state at that point. Opaque writes are skipped.
+function ghBodyWrites(cmd) {
+  const { ghWrites } = require('./trailhead-secret-guard.js');
+  const hits = [];
+  for (const w of ghWrites(cmd, {})) {
+    if (w.kind === 'opaque') continue;
+    const hit = ghBodyWrite(w.text, { cwdKnown: w.cwdKnown });
+    if (hit) hits.push(hit);
+  }
+  return hits;
 }
 
 function blockVerdict(kind) {
@@ -192,11 +217,10 @@ function blockVerdict(kind) {
 // never block a legitimate write).
 function evaluate(cmd) {
   try {
-    const hit = ghBodyWrite(cmd);
-    if (!hit || hit.body === null || hit.body === undefined) {
-      return { kind: 'allow' }; // not a body write, or a body we cannot prove empty
+    for (const hit of ghBodyWrites(cmd)) {
+      if (hit.body === null || hit.body === undefined) continue; // a body we cannot prove empty
+      if (isEmptyBody(hit.body)) return blockVerdict(hit.kind);
     }
-    if (isEmptyBody(hit.body)) return blockVerdict(hit.kind);
   } catch {
     // never let a crash here block a legitimate write
   }
@@ -228,4 +252,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ghBodyWrite, isEmptyBody, resolveEditBody, resolveApiBody, evaluate };
+module.exports = { ghBodyWrite, ghBodyWrites, isEmptyBody, resolveEditBody, resolveApiBody, evaluate };
