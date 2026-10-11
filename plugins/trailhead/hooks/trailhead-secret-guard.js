@@ -159,31 +159,6 @@ function expandWord(word, vars, env) {
   return { value: out };
 }
 
-// The --body-file path of one gh statement, resolved WITHOUT running anything.
-//   { path }       an absolute path to read
-//   { unresolved } the path cannot be known statically (reason given): fail closed
-//   null           no --body-file/-F, or it reads stdin (`-`)
-// `vars` are the variables set earlier in the command (name -> string, or null when
-// unresolvable), `env` the hook's environment. A relative path resolves against
-// `cwd` (process.cwd() when undefined); cwd === null means the working directory is
-// no longer known (an earlier cd), so a relative path is unresolved.
-function resolveBodyFile(stmt, vars, env, cwd) {
-  const toks = tokenize(stmt);
-  let raw = null;
-  for (let i = 0; i < toks.length; i++) {
-    const t = toks[i];
-    if (t === '--body-file' || t === '-F') raw = toks[i + 1] === undefined ? null : toks[i + 1];
-    else if (t.startsWith('--body-file=')) raw = t.slice('--body-file='.length);
-    else if (t.startsWith('-F=')) raw = t.slice('-F='.length);
-  }
-  if (raw === null || raw === '-' || raw.startsWith('<')) return null; // stdin/heredoc already in the command string
-  const r = expandWord(raw, vars, env);
-  if (r.unresolved) return { unresolved: r.unresolved };
-  if (path.isAbsolute(r.value)) return { path: r.value };
-  if (cwd === null) return { unresolved: 'relative path after cd (working directory unknown)' };
-  return { path: path.resolve(cwd === undefined ? process.cwd() : cwd, r.value) };
-}
-
 // --- statement normalisation ---------------------------------------------------
 
 // Quote-aware word splitter. Like shell-scan's tokenize, but a `$(...)`, `<(...)`,
@@ -284,6 +259,83 @@ function unwrap(text) {
   return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0) };
 }
 
+// --- redirects and flags ----------------------------------------------------------
+
+const REDIRECT_RE = /^(\d*)(<<<|<<-?|&>>|&>|>>|>\||>&|<&|<>|>|<)([\s\S]*)$/;
+
+// Split a statement's words into plain arguments and redirections.
+//   stdin: null | { type: 'heredoc' | 'here' } | { type: 'file', word }
+//   outs:  [{ word, append }]  (stdout redirects; fd duplications like 2>&1 are dropped)
+function parseRedirects(toks) {
+  const args = [];
+  const outs = [];
+  let stdin = null;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    const m = t.startsWith('<(') || t.startsWith('>(') ? null : REDIRECT_RE.exec(t);
+    if (!m) { args.push(t); continue; }
+    const [, fd, op, glued] = m;
+    if (op === '>&' || op === '<&') { if (!glued) i++; continue; } // 2>&1, >&2: fd duplication
+    const word = glued || toks[++i] || '';
+    if (op === '<<' || op === '<<-') stdin = { type: 'heredoc' };
+    else if (op === '<<<') stdin = { type: 'here' };
+    else if (op === '<' || op === '<>') stdin = { type: 'file', word };
+    else if (fd === '' || fd === '1' || op.startsWith('&')) outs.push({ word, append: op.endsWith('>>') });
+  }
+  return { args, outs, stdin };
+}
+
+// Values of a gh flag (long form, optional short form), in order: `--long v`,
+// `--long=v`, `-s v`, `-s=v` and the attached pflag shorthand `-sv`.
+function flagValues(args, long, short) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === long || (short && t === short)) {
+      if (args[i + 1] !== undefined) out.push(args[++i]);
+    } else if (t.startsWith(`${long}=`)) out.push(t.slice(long.length + 1));
+    else if (short && t.startsWith(`${short}=`)) out.push(t.slice(short.length + 1));
+    else if (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2) out.push(t.slice(2));
+  }
+  return out;
+}
+
+// Resolve one shell word that names a file to an absolute path, without running
+// anything: { path } or { unresolved }. See resolveBodyFile for the cwd contract.
+function resolveWord(raw, vars, env, cwd) {
+  if (raw.startsWith('<(') || raw.startsWith('>(')) return { unresolved: 'process substitution' };
+  const r = expandWord(raw, vars, env);
+  if (r.unresolved) return { unresolved: r.unresolved };
+  return resolveExpanded(r.value, cwd);
+}
+
+// Same for an already-expanded value (e.g. the path after `body=@`).
+function resolveExpanded(value, cwd) {
+  if (path.isAbsolute(value)) return { path: path.normalize(value) };
+  if (cwd === null) return { unresolved: 'relative path after cd (working directory unknown)' };
+  return { path: path.resolve(cwd === undefined ? process.cwd() : cwd, value) };
+}
+
+const STDIN_PATHS = new Set(['-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
+
+// The --body-file path of one gh statement, resolved WITHOUT running anything.
+//   { path }       an absolute path to read
+//   { unresolved } the path cannot be known statically (reason given): fail closed
+//   null           no --body-file/-F, or it reads stdin
+// `vars` are the variables set earlier in the command (name -> string, or null when
+// unresolvable), `env` the hook's environment. A relative path resolves against
+// `cwd` (process.cwd() when undefined); cwd === null means the working directory is
+// no longer known (an earlier cd), so a relative path is unresolved. The last
+// --body-file/-F wins, as in gh.
+function resolveBodyFile(stmt, vars, env, cwd) {
+  const { args } = parseRedirects(words(stmt));
+  const vals = flagValues(args, '--body-file', '-F');
+  if (vals.length === 0) return null;
+  const raw = vals[vals.length - 1];
+  if (STDIN_PATHS.has(raw)) return null; // stdin: its content is the command string or a producer
+  return resolveWord(raw, vars, env, cwd);
+}
+
 // --- variable tracking across a compound command -------------------------------
 
 const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
@@ -363,19 +415,17 @@ function ghIssueWrite(cmd, env = process.env) {
   return first ? first.kind : null;
 }
 
-// For gh issue/pr, the body may live in a --body-file <path>; read it too.
-// The path is quoted ("..."/'...') or bare. A bare path stops at whitespace AND
-// at shell metacharacters (; | & ( ) < > `): in a compound command like
-// `gh ... --body-file /tmp/x.md; echo done` the `;` abuts the path with no
-// space, so a naive [^\s]+ would swallow it into the filename and the read would
-// ENOENT, turning a clean write into a spurious could-not-scan (and, worse, a
-// real body left unscanned). Quoted paths keep those characters verbatim.
-function bodyFileText(cmd) {
-  const m = cmd.match(/(?:--body-file|(?<![-\w])-F)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s"';|&()<>`]+))/);
-  if (!m) return '';
-  const path = m[1] || m[2] || m[3];
-  if (path === '-' || path.startsWith('<')) return ''; // stdin/heredoc already in the command string
-  return fs.readFileSync(path, 'utf8').slice(0, 1_000_000);
+// The text of the --body-file a gh issue/pr write in `cmd` reads ('' when none).
+// A thin wrapper over the resolver: it throws when the path cannot be resolved
+// statically or read, rather than guessing. Kept for callers and tests; evaluate()
+// does its own, fuller, body-source analysis.
+function bodyFileText(cmd, env = process.env, cwd) {
+  const w = ghWrites(cmd, env).find((x) => x.kind === 'issue' || x.kind === 'pr');
+  if (!w) return '';
+  const ref = resolveBodyFile(w.text, w.vars, env, w.cwdKnown ? cwd : null);
+  if (!ref) return '';
+  if (ref.unresolved) throw new Error(`body file path not resolvable (${ref.unresolved})`);
+  return fs.readFileSync(ref.path, 'utf8').slice(0, 1_000_000);
 }
 
 function scan(text, env = process.env) {

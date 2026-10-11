@@ -122,6 +122,12 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
   ok('~user is unresolved', !!r('gh issue comment 1 --body-file ~bob/b.md').unresolved);
   ok('relative path with unknown cwd (after cd) is unresolved', !!r('gh issue comment 1 --body-file b.md', {}, {}, null).unresolved);
   ok('absolute path with unknown cwd still resolves', r('gh issue comment 1 --body-file /a/b.md', {}, {}, null).path === '/a/b.md');
+  ok('attached -F/path (pflag shorthand) resolves like -F /path', r('gh issue comment 1 -F/a/b.md').path === '/a/b.md');
+  ok('attached -F with a variable', r('gh issue comment 1 -F"$D"/b.md', { D: '/x' }).path === '/x/b.md');
+  ok('/dev/stdin reads stdin -> null', r('gh issue comment 1 --body-file /dev/stdin') === null);
+  ok('process substitution as body-file is unresolved', !!r('gh issue comment 1 --body-file <(cat /a/b.md)').unresolved);
+  ok('a < redirect is not mistaken for the body-file', r('gh issue comment 1 -F - < /a/b.md') === null);
+  ok('an absolute path is normalised', r('gh issue comment 1 --body-file /a/./c/../b.md').path === '/a/b.md');
   ok('adjacent quoted + bare parts join', r('gh issue comment 1 --body-file "$D"/b.md', { D: '/x' }).path === '/x/b.md');
 }
 
@@ -154,6 +160,20 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
   ok('bash -c with a read stays no write', kinds('bash -c "gh issue list"') === '[]' && kinds('bash -c "gh issue view 3 --comments"') === '[]');
   ok('bash -c without gh stays no write', kinds('bash -c "ls && echo hi"') === '[]');
   ok('git commit message mentioning gh stays no write', kinds('git commit -m "docs: gh issue comment helper"') === '[]');
+}
+
+// --- unit: bodyFileText() is a thin wrapper over the resolver (#210 review I1) ---
+{
+  const leak = path.join(os.tmpdir(), `sg-i1-${process.pid}.md`);
+  fs.writeFileSync(leak, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  ok('bodyFileText expands a variable set earlier in the command',
+    /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`D=${os.tmpdir()}; gh issue edit 5 --body-file $D/sg-i1-${process.pid}.md`)));
+  ok('bodyFileText reads an attached -F/path', /AKIAIOSFODNN7EXAMPLE/.test(bodyFileText(`gh issue edit 5 -F${leak}`)));
+  ok('bodyFileText is empty without a body file', bodyFileText('gh issue edit 5 --body x') === '');
+  let threw = false;
+  try { bodyFileText('gh issue edit 5 --body-file "$SG_UNSET_VAR_210/x.md"'); } catch { threw = true; }
+  ok('bodyFileText throws for an unresolvable path instead of reading it verbatim', threw);
+  fs.unlinkSync(leak);
 }
 
 // --- end-to-end: block ---
