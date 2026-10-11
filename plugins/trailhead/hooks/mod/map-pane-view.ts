@@ -1,5 +1,6 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
+import { fit } from './work-state-view'
 import type { MapInfo, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
@@ -155,4 +156,52 @@ export const ageLabel = (ms: number): string => {
   if (ms < 60_000) return `${Math.floor(ms / 1_000)}s ago`
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
   return `${Math.floor(ms / 3_600_000)}h ago`
+}
+
+export type RowAside = { kind: 'work' | 'queued' | 'holder'; text: string }
+export type RowLayout = {
+  mark: string | null
+  label: string
+  type: string | null
+  aside: RowAside | null
+  isDim: boolean
+  isInPlay: boolean
+}
+export type RowContext = {
+  isInPlay: boolean
+  // True when the group holds the ticket in play: its rows share a two-cell mark column.
+  hasMarkColumn: boolean
+  pendingWork: number | null
+  columns: number
+}
+
+const MARK = '▸ '
+const MARK_PAD = '  '
+// A terminal Button draws `[ label ]`.
+const BUTTON_CHROME = 4
+
+const asideOf = (t: PaneTicket, pendingWork: number | null): RowAside | null => {
+  if (t.state === 'frontier') return pendingWork === t.number ? { kind: 'queued', text: 'queued' } : { kind: 'work', text: 'work' }
+  return t.assignees.length === 0 ? null : { kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') }
+}
+
+const asideWidth = (a: RowAside | null): number =>
+  a === null ? 0 : a.text.length + (a.kind === 'work' ? BUTTON_CHROME : 0) + 1
+
+// What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
+export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
+  const mark = ctx.isInPlay ? MARK : ctx.hasMarkColumn ? MARK_PAD : null
+  const aside = asideOf(t, ctx.pendingWork)
+  const type = t.type === null ? null : ` ${t.type}`
+  const prefix = `#${t.number}`
+  const room = ctx.columns - (mark?.length ?? 0) - asideWidth(aside) - (type?.length ?? 0) - prefix.length - 1
+  const title = fit(t.title, room)
+  return {
+    mark,
+    label: title === '' ? prefix : `${prefix} ${title}`,
+    type,
+    aside,
+    isDim: t.state === 'blocked',
+    isInPlay: ctx.isInPlay,
+  }
 }

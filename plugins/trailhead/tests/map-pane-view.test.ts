@@ -8,6 +8,7 @@ import {
   parseMap,
   parseTickets,
   refreshDecision,
+  rowLayout,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -154,4 +155,60 @@ test('ageLabel reads just now, seconds, minutes, hours', () => {
   expect(ageLabel(6 * 60_000)).toBe('6m ago')
   expect(ageLabel(2 * 3_600_000)).toBe('2h ago')
   expect(ageLabel(49 * 3_600_000)).toBe('49h ago')
+})
+
+const ticket = (over: Record<string, unknown> = {}) => ({
+  number: 209,
+  title: 'Burn-down view of the map',
+  type: 'build' as const,
+  state: 'frontier' as const,
+  assignees: [] as string[],
+  url: 'https://github.com/o/r/issues/209',
+  ...over,
+})
+const layout = (t: ReturnType<typeof ticket>, over: Record<string, unknown> = {}) =>
+  rowLayout(t, { isInPlay: false, hasMarkColumn: false, pendingWork: null, columns: 60, ...over })
+
+test('rowLayout: a frontier row carries the work button, the number, the title and the type', () => {
+  expect(layout(ticket())).toEqual({
+    mark: null,
+    label: '#209 Burn-down view of the map',
+    type: ' build',
+    aside: { kind: 'work', text: 'work' },
+    isDim: false,
+    isInPlay: false,
+  })
+})
+
+test('rowLayout: the pending ticket shows queued in place of the button', () => {
+  expect(layout(ticket(), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(ticket(), { pendingWork: 210 }).aside).toEqual({ kind: 'work', text: 'work' })
+})
+
+test('rowLayout: holders are drawn as @login on in-progress and blocked rows', () => {
+  expect(layout(ticket({ state: 'in-progress', assignees: ['alice'] })).aside).toEqual({ kind: 'holder', text: '@alice' })
+  expect(layout(ticket({ state: 'in-progress', assignees: ['alice', 'bob'] })).aside).toEqual({ kind: 'holder', text: '@alice @bob' })
+  const blocked = layout(ticket({ state: 'blocked', assignees: ['bob'] }))
+  expect(blocked.aside).toEqual({ kind: 'holder', text: '@bob' })
+  expect(blocked.isDim).toBe(true)
+  const loose = layout(ticket({ state: 'blocked' }))
+  expect(loose.aside).toBeNull()
+  expect(loose.isDim).toBe(true)
+})
+
+test('rowLayout: the mark column marks the ticket in play and pads the others', () => {
+  expect(layout(ticket({ state: 'in-progress', assignees: ['me'] }), { isInPlay: true, hasMarkColumn: true })).toMatchObject({ mark: '▸ ', isInPlay: true })
+  expect(layout(ticket(), { hasMarkColumn: true }).mark).toBe('  ')
+  expect(layout(ticket(), { isInPlay: true }).mark).toBe('▸ ')
+})
+
+test('rowLayout: a long title is cut so the row never passes the width', () => {
+  const t = ticket({ title: 'x'.repeat(200) })
+  for (const columns of [30, 40, 60]) {
+    const r = layout(t, { columns })
+    const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside === null ? 0 : r.aside.text.length + 4) + 1
+    expect(r.label.endsWith('…')).toBe(true)
+    expect(used).toBeLessThanOrEqual(columns)
+  }
+  expect(layout(ticket({ type: null })).type).toBeNull()
 })
