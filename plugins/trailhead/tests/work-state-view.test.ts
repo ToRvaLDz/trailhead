@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parseWorkState, pipeline, sameValue, statusLine } from '../hooks/mod/work-state-view'
+import { fit, parseWorkState, pipeline, sameValue, statusLine } from '../hooks/mod/work-state-view'
 
 const valid = {
   map: 198,
@@ -76,4 +76,11 @@ test('sameValue compares by content, not by key order or reference', () => {
   expect(sameValue(parse({}), parse({ step: 'execute' }))).toBe(false)
   expect(sameValue(null, null)).toBe(true)
   expect(sameValue(null, parse({}))).toBe(false)
+})
+
+test('fit cuts with an ellipsis by code point and leaves a short text whole', () => {
+  expect(fit('short', 10)).toBe('short')
+  expect(fit('abcdef', 4)).toBe('abc…')
+  expect(fit('abcdef', 1)).toBe('…')
+  expect(fit('a' + '\u{1F680}'.repeat(5), 3)).toBe('a\u{1F680}…')
 })

@@ -10,6 +10,14 @@ export type StageStatus = 'done' | 'current' | 'todo'
 export type Stage = { name: StageName; status: StageStatus }
 export type Pipeline = { stages: readonly Stage[]; isPaused: boolean }
 
+const ELLIPSIS = '…'
+
+// Cuts by code point, so a surrogate pair (an emoji in an issue title) is never split.
+export const fit = (text: string, room: number): string => {
+  const chars = Array.from(text)
+  return chars.length <= room ? text : room <= 1 ? ELLIPSIS : chars.slice(0, room - 1).join('') + ELLIPSIS
+}
+
 const isPosInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0
 
 const cleanTitle = (text: string): string | null => {

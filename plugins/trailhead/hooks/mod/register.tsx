@@ -8,7 +8,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { PromptSnapshot, WorkState } from '../../types'
 import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
-import { parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
+import { fit, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
 export const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
@@ -20,7 +20,6 @@ const HELPER = 'trailhead-work-state.js'
 const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
-const ELLIPSIS = '…'
 const SECTION_ID = 'trailhead:work-state'
 
 type Dollar = EngineInterface
@@ -28,12 +27,6 @@ type Dollar = EngineInterface
 const isMissing = (err: unknown): boolean => {
   const e = err as { code?: unknown; message?: unknown } | null
   return e?.code === 'ENOENT' || /ENOENT/.test(String(e?.message ?? err))
-}
-
-// Cuts by code point, so a surrogate pair (an emoji in an issue title) is never split.
-const fit = (title: string, room: number): string => {
-  const chars = Array.from(title)
-  return chars.length <= room ? title : room <= 1 ? ELLIPSIS : chars.slice(0, room - 1).join('') + ELLIPSIS
 }
 
 // The status text last pinned; the sentinel makes the first refresh set or clear it.
