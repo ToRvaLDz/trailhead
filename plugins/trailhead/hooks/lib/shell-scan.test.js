@@ -38,6 +38,8 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('withSeparators reports ; and the final null', seps('a; b') === JSON.stringify([['a', ';'], ['b', null]]));
   ok('withSeparators reports &&, ||, | and newline',
     seps('a && b || c | d\ne') === JSON.stringify([['a', '&&'], ['b', '||'], ['c', '|'], ['d', '\n'], ['e', null]]));
+  ok('withSeparators treats ;; as two separators with no empty statement',
+    seps('case x in a) one;; b) two;; esac') === JSON.stringify([['case x in a) one', ';'], ['b) two', ';'], ['esac', null]]));
   ok('withSeparators splits on a lone & (background)', seps('a & b') === JSON.stringify([['a', '&'], ['b', null]]));
   ok('withSeparators does not split on redirections (2>&1, &>)',
     seps('a 2>&1 | b') === JSON.stringify([['a 2>&1', '|'], ['b', null]]) &&

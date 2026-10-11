@@ -523,6 +523,58 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// --- unit: more wrappers, variable command words, function bodies, case arms (#210 round 2, W4) ---
+{
+  const kinds = (c) => JSON.stringify(ghWrites(c).map((w) => w.kind));
+  const W = 'gh issue comment 1 --body-file /x/b.md';
+  const I = '["issue"]';
+  ok('write behind sudo', kinds(`sudo ${W}`) === I);
+  ok('write behind sudo -u USER -E', kinds(`sudo -u bob -E ${W}`) === I);
+  ok('write behind nice / nice -n 5', kinds(`nice ${W}`) === I && kinds(`nice -n 5 ${W}`) === I);
+  ok('write behind timeout DURATION / flags', kinds(`timeout 10 ${W}`) === I && kinds(`timeout -k 1 -s KILL 10s ${W}`) === I);
+  ok('write behind stdbuf -oL / -o L', kinds(`stdbuf -oL ${W}`) === I && kinds(`stdbuf -o L ${W}`) === I);
+  ok('write behind ionice -c 3', kinds(`ionice -c 3 ${W}`) === I);
+  ok('wrappers stack', kinds(`sudo nice -n 5 timeout 9 env A=1 ${W}`) === I);
+  ok('a wrapper around a read is not a write', kinds('sudo -u bob gh issue list') === '[]');
+
+  ok('variable command word that resolves to gh', kinds(`G=gh; $G issue comment 1 --body-file /x/b.md`) === I);
+  ok('quoted and braced variable command word', kinds(`G=gh; "$G" issue comment 1 -F /x/b.md`) === I && kinds(`G=gh; \${G} pr edit 1 -F /x/b.md`) === '["pr"]');
+  ok('variable command word resolving to a gh path', kinds(`G=/usr/bin/gh; $G issue comment 1 -F /x/b.md`) === I);
+  ok('variable command word resolving to something else is no write', kinds('G=echo; $G issue comment 1') === '[]');
+  ok('an unresolvable variable command word with a write verb is opaque', kinds('$SG_UNSET_CMD issue comment 1 --body x') === '["opaque"]');
+  ok('an unresolvable variable command word with a read verb is no write', kinds('$SG_UNSET_CMD issue list') === '[]');
+  ok('an unresolvable variable command word with no gh words is no write', kinds('$EDITOR file.txt') === '[]');
+
+  ok('write in name(){ ... }', kinds(`post(){ ${W}; }`) === I);
+  ok('write in name() { ... }', kinds(`post() { ${W}; }`) === I);
+  ok('write in name () { ... }', kinds(`post () { ${W}; }`) === I);
+  ok('write in function name { ... }', kinds(`function post { ${W}; }`) === I);
+  ok('write in function name() { ... }', kinds(`function post() { ${W}; }`) === I);
+  ok('write in a case arm', kinds(`case x in x) ${W};; esac`) === I);
+  ok('write in a later case arm and alternation', kinds(`case $a in a|b) true;; c) ${W};; esac`) === I);
+  ok('write in a case arm with a leading paren', kinds(`case x in (x) ${W};; esac`) === I);
+  ok('case without a write is none', kinds('case x in x) echo hi;; esac') === '[]');
+}
+
+// --- end-to-end: wrappers, variable command word, functions, case (#210 round 2, W4) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210w4-'));
+  const leakFile = path.join(dir, 'leak.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const W = `gh issue comment 1 --body-file ${leakFile}`;
+  ok('sudo gh blocks', leaks(runHook(`sudo -u bob ${W}`)));
+  ok('timeout gh blocks', leaks(runHook(`timeout 10 ${W}`)));
+  ok('nice -n gh blocks', leaks(runHook(`nice -n 5 ${W}`)));
+  ok('$G gh blocks', leaks(runHook(`G=gh; $G issue comment 1 --body-file ${leakFile}`)));
+  ok('an unresolvable $CMD with a write verb blocks as opaque',
+    runHook('$SG_UNSET_CMD issue comment 1 --body x').out.includes('SECRET_GUARD_OPAQUE_WRITE'));
+  ok('a function body blocks', leaks(runHook(`post(){ ${W}; }; post`)));
+  ok('function keyword blocks', leaks(runHook(`function post { ${W}; }`)));
+  ok('a case arm blocks', leaks(runHook(`case x in x) ${W};; esac`)));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);

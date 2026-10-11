@@ -12,8 +12,16 @@
 // earlier in the command); the guard never runs anything. Bodies read from stdin
 // (< file, cat file | gh), $(cat file), $VAR, gh api body=@file / --input are
 // resolved and scanned too, and a body file the same command writes first (heredoc
-// redirect, tee, cat, cp) is traced to its source. A gh write hidden in bash -c,
-// eval, xargs or a command substitution blocks as an opaque write.
+// redirect, tee, cat, cp) is traced to its source. Expansions inside inline content
+// (echo/printf arguments, unquoted heredocs, herestrings, --body) are resolved and
+// scanned. Writes inside $(...) or backticks, function bodies, case arms and behind
+// wrappers (env, sudo, nice, timeout, ...) or a variable command word are analysed
+// like any other write.
+// Known limits, accepted (fail closed or best-effort, never silent):
+//   - a gh write run through bash -c / sh -c / zsh -c / eval / xargs is not analysed:
+//     it blocks as SECRET_GUARD_OPAQUE_WRITE (run gh directly instead);
+//   - a body file produced by an unrecognised writer (curl -o, a script, ...) in the
+//     same command is not traced: the file must already exist, or the write blocks.
 // Fail-CLOSED on a body file it cannot vouch for: a path that cannot be resolved
 // statically (unknown variable, $(...), backticks, a relative path after a cd)
 // blocks with SECRET_GUARD_UNRESOLVED_BODY_FILE, and a resolved file that cannot
@@ -83,45 +91,79 @@ function writeKind(stmt) {
 
 // Reserved words and prefixes that can precede a command inside a compound construct.
 const PREFIX_WORDS = new Set(['do', 'then', 'else', 'elif', '{', '!', 'time', 'if', 'while', 'until']);
-// Wrappers that run the rest of the line as a command (their own flags are skipped).
-const WRAPPERS = new Set(['env', 'command', 'builtin', 'nohup', 'exec']);
+// Wrappers that run the rest of the line as a command, with the flags of each that
+// take a separate value (skipped together with it).
+const WRAPPER_VALUE_FLAGS = {
+  env: ['-u', '-C', '-S'],
+  sudo: ['-u', '-g', '-h', '-p', '-C', '-r', '-t', '-U', '-D', '-R'],
+  nice: ['-n'],
+  ionice: ['-c', '-n', '-p'],
+  timeout: ['-k', '-s'],
+  stdbuf: ['-i', '-o', '-e'],
+  exec: ['-a'],
+  command: [],
+  builtin: [],
+  nohup: [],
+};
 // Commands that run text we cannot analyse statically.
+const WRAPPERS = new Set(Object.keys(WRAPPER_VALUE_FLAGS));
 const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
 // A gh issue/pr write, or a gh api body/--input write, anywhere in some text.
 const OPAQUE_WRITE_RE =
   /\bgh\b[\s\S]*?\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bgh\b[\s\S]*?\bapi\b[\s\S]*?(?:\bbody=|--input)/;
+// The same after a command word we could not resolve (`$CMD issue comment ...`).
+const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bapi\b[\s\S]*?(?:\bbody=|--input)/;
+
+// Index just past a wrapper command's own flags (and values), starting at the
+// wrapper token toks[k]. `timeout` also takes a DURATION positional.
+function skipWrapperArgs(toks, k) {
+  const w = toks[k];
+  const valueFlags = WRAPPER_VALUE_FLAGS[w];
+  let j = k + 1;
+  while (j < toks.length) {
+    const t = toks[j];
+    if (valueFlags.includes(t)) j += 2;
+    else if (t.startsWith('-')) j++;
+    else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;
+    else break;
+  }
+  if (w === 'timeout' && j < toks.length) j++;
+  return j;
+}
+
+// One leading construct stripped from `toks`, or null: a subshell opener, a reserved
+// word, a function definition head, a case head or arm pattern, or a wrapper command.
+function stripLeader(toks) {
+  const t0 = toks[0];
+  const lead = /^\(+/.exec(t0);
+  if (lead) return { toks: [t0.slice(lead[0].length), ...toks.slice(1)].filter(Boolean), opens: lead[0].length };
+  if (PREFIX_WORDS.has(t0)) return { toks: toks.slice(1) };
+  if (t0 === 'function') return { toks: toks.slice(toks[2] === '()' ? 3 : 2) }; // function NAME [()]
+  if (/^[A-Za-z_][\w.:-]*\(\)\{?$/.test(t0)) return { toks: toks.slice(1) }; // name() / name(){
+  if (/^[A-Za-z_][\w.:-]*$/.test(t0) && toks[1] === '()') return { toks: toks.slice(2) }; // name ()
+  if (t0 === 'case' && toks.includes('in')) return { toks: toks.slice(toks.indexOf('in') + 1) };
+  if (/^[^\s()$"'`]*\)$/.test(t0)) return { toks: toks.slice(1) }; // case arm pattern)
+  let k = 0;
+  while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
+  if (k < toks.length && WRAPPERS.has(toks[k])) {
+    return { toks: [...toks.slice(0, k), ...toks.slice(skipWrapperArgs(toks, k))] };
+  }
+  return null;
+}
 
 // Strip what stands between a statement and the command it runs: reserved words
-// (do, then, else, !, time, ...), subshell/group openers, and wrapper commands
-// (env, command, builtin, nohup, exec). Returns { text, runner } where `runner` is
-// true when the command is bash/sh/zsh/eval/xargs (text we cannot analyse).
-function unwrap(text) {
+// (do, then, else, !, time, ...), subshell/group openers, function and case heads,
+// and wrapper commands (env, sudo, nice, timeout, ...). A variable command word
+// (`$G issue ...`) is resolved with the variables known so far. Returns
+//   { text, runner, unresolvedCmd }
+// `runner` is true for bash/sh/zsh/eval/xargs (text we cannot analyse) and
+// `unresolvedCmd` for a command word that is a variable we cannot resolve.
+function unwrap(text, vars = {}, env = {}) {
   let toks = words(text);
   let opens = 0;
-  for (let changed = true; changed && toks.length; ) {
-    changed = false;
-    const lead = /^\(+/.exec(toks[0]);
-    if (lead) {
-      opens += lead[0].length;
-      toks = [toks[0].slice(lead[0].length), ...toks.slice(1)].filter(Boolean);
-      changed = true;
-      continue;
-    }
-    if (PREFIX_WORDS.has(toks[0])) { toks = toks.slice(1); changed = true; continue; }
-    let k = 0;
-    while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
-    if (k < toks.length && WRAPPERS.has(toks[k])) {
-      const w = toks[k];
-      let j = k + 1;
-      while (j < toks.length) {
-        const t = toks[j];
-        if (w === 'env' && (t === '-u' || t === '-C')) j += 2;
-        else if (t.startsWith('-') || (w === 'env' && ASSIGN_TOKEN_RE.test(t))) j++;
-        else break;
-      }
-      toks = [...toks.slice(0, k), ...toks.slice(j)];
-      changed = true;
-    }
+  for (let step = toks.length ? stripLeader(toks) : null; step; step = toks.length ? stripLeader(toks) : null) {
+    toks = step.toks;
+    opens += step.opens || 0;
   }
   if (opens > 0 && toks.length) {
     const last = toks[toks.length - 1];
@@ -130,8 +172,14 @@ function unwrap(text) {
   }
   let k = 0;
   while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
+  let unresolvedCmd = false;
+  if (toks[k] && /^"?\$\{?[A-Za-z_]/.test(toks[k])) {
+    const r = expandWord(toks[k], vars, env);
+    if (r.unresolved) unresolvedCmd = true;
+    else toks = [...toks.slice(0, k), r.value, ...toks.slice(k + 1)];
+  }
   const cmd0 = toks[k] ? toks[k].replace(/^.*\//, '') : '';
-  return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0) };
+  return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0), unresolvedCmd };
 }
 
 // The --body-file path of one gh statement, resolved WITHOUT running anything.
@@ -202,7 +250,7 @@ function collectWrites(cmd, env, start) {
   for (const { text: raw, sep } of splitStatementsWithSeparators(cmd)) {
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
     prevSep = sep;
-    const { text, runner } = unwrap(raw);
+    const { text, runner, unresolvedCmd } = unwrap(raw, vars, env);
     const index = history.length;
     const heredocs = bodies.slice(nextBody, nextBody + countHeredocs(raw));
     nextBody += heredocs.length;
@@ -210,6 +258,10 @@ function collectWrites(cmd, env, start) {
     const kind = writeKind(text);
     if (kind) {
       writes.push({ kind, text, vars, cwdKnown, index, history });
+      continue;
+    }
+    if (unresolvedCmd && WRITE_WORDS_RE.test(text)) {
+      writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
     // A shell/eval/xargs line that holds a gh write cannot be analysed (opaque). A
