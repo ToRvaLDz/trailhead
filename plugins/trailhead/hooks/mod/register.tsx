@@ -26,8 +26,11 @@ const isMissing = (err: unknown): boolean => {
   return e?.code === 'ENOENT' || /ENOENT/.test(String(e?.message ?? err))
 }
 
-const fit = (title: string, room: number): string =>
-  title.length <= room ? title : room <= 1 ? ELLIPSIS : title.slice(0, room - 1) + ELLIPSIS
+// Cuts by code point, so a surrogate pair (an emoji in an issue title) is never split.
+const fit = (title: string, room: number): string => {
+  const chars = Array.from(title)
+  return chars.length <= room ? title : room <= 1 ? ELLIPSIS : chars.slice(0, room - 1).join('') + ELLIPSIS
+}
 
 // The status text last pinned; the sentinel makes the first refresh set or clear it.
 // (A hot reload resets it, which only costs one repeated status call.)

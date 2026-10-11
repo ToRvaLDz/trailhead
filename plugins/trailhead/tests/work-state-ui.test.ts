@@ -201,6 +201,13 @@ for (const surface of SURFACES) {
     r.file = stateText({ title: 'short' })
     await turn($)
     expect((await leaf(ui, 'title'))?.text).toBe('short')
+    // the cut never splits a surrogate pair
+    r.file = stateText({ title: 'a' + '\u{1F680}'.repeat(60) })
+    await turn($)
+    const astral = (await leaf(ui, 'title'))?.text ?? ''
+    expect(astral.endsWith('…')).toBe(true)
+    // a lone half would reach the screen as U+FFFD or stay unpaired
+    expect(/\uFFFD|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(astral)).toBe(false)
   })
 
   test(`an autonomous run shows its counter, right aligned on row two [${surface}]`, async ($, on) => {
