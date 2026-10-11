@@ -69,6 +69,7 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 function scanLine(line, st, seps) {
   const found = [];
   const stack = st.stack;
+  const parens = {}; // parenIsArith's per-line match cache
   const cont0 = st.cont; // the previous line ended in a backslash: this one continues it
   let escAt = -2; // index of the last escaped char
   st.cont = false;
@@ -104,7 +105,7 @@ function scanLine(line, st, seps) {
       escAt = i;
       continue;
     }
-    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
+    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
     if (c === '$' && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
     if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
     if (top && top.k === 'dq') {
@@ -118,7 +119,7 @@ function scanLine(line, st, seps) {
     if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
     const wordStart = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
     if (c === '#' && wordStart) break; // comment to end of line
-    if (c === '(' && line[i + 1] === '(' && wordStart && parenIsArith(line, i + 2)) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
+    if (c === '(' && line[i + 1] === '(' && wordStart && parenIsArith(line, i + 2, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
     if (top && top.k === 'sub') {
       if (c === '(') { top.n++; continue; }
       if (c === ')') { if (top.n === 0) { stack.pop(); expCloseAt = i; } else top.n--; continue; }
@@ -150,20 +151,34 @@ function scanLine(line, st, seps) {
 // `((` / `$((` open arithmetic only when the paren that closes the inner `(` is
 // directly followed by `)`; `((a); b)` is nested subshells (and `$((a); b)` a
 // substitution). `from` is the index just after the two opening parens. A span
-// that runs past the end of the line is assumed to be arithmetic.
-function parenIsArith(line, from) {
-  let depth = 2;
+// that runs past the end of the line is assumed to be arithmetic. `cache` is one
+// object per line: a single left-to-right pass (skipping quoted spans and
+// escapes) matches every `(` it visits to its `)`, so the many calls on a line
+// full of `((` stay linear instead of each rescanning the rest of the line.
+function parenIsArith(line, from, cache) {
+  const open = from - 1; // the inner `(`
+  if (!cache.close || !cache.close.has(open)) cache.close = matchParens(line, from);
+  const close = cache.close.get(open);
+  return close < 0 ? true : line[close + 1] === ')';
+}
+
+// Match every `(` visited from `from` on to its `)`: Map(open -> close, or -1
+// when it never closes or an unclosed quote hides the rest of the line). The
+// paren just before `from` is the inner one of a `((`, so it is seeded as open.
+function matchParens(line, from) {
+  const close = new Map([[from - 1, -1]]);
+  const opens = [from - 1];
   for (let j = from; j < line.length; j++) {
     const c = line[j];
     if (c === '\\') { j++; continue; }
     if (c === "'" || c === '"') { // skip a quoted span on this line
       const end = line.indexOf(c, j + 1);
-      if (end < 0) return true;
+      if (end < 0) break;
       j = end;
-    } else if (c === '(') depth++;
-    else if (c === ')' && --depth === 1) return line[j + 1] === ')';
+    } else if (c === '(') { close.set(j, -1); opens.push(j); }
+    else if (c === ')' && opens.length > 0) close.set(opens.pop(), j);
   }
-  return true;
+  return close;
 }
 
 // Code that can be split into statements: the innermost open context is a

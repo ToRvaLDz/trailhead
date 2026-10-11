@@ -229,6 +229,15 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('heredoc count pairs over a fragment soup ' + J(bad), bad === null);
 }
 
+// --- scanning stays linear on paren-heavy input (#212) ---
+{
+  const time = (c) => { const t = Date.now(); splitStatements(c); return Date.now() - t; };
+  const k = 16000;
+  ok('nested (( ... ) y scans in linear time', time('(( '.repeat(k) + ') y'.repeat(2 * k + 2)) < 500);
+  ok('a 200KB line scans quickly', time('echo (a) $((1+2)) '.repeat(10000)) < 500);
+  ok('a 5000-line command scans quickly', time('echo $((1<<2)); ((a)); cat <<E\nbody\nE\n'.repeat(1700)) < 500);
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
