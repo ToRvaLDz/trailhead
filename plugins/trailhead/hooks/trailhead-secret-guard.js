@@ -9,7 +9,11 @@
 // Every gh write in a compound command is checked (`D=/x && gh issue comment ...`,
 // `cd d && gh pr comment ...`), not just a command that starts with gh. A
 // --body-file path is resolved statically ($NAME, ${NAME}, leading ~, variables set
-// earlier in the command); the guard never runs anything.
+// earlier in the command); the guard never runs anything. Bodies read from stdin
+// (< file, cat file | gh), $(cat file), $VAR, gh api body=@file / --input are
+// resolved and scanned too, and a body file the same command writes first (heredoc
+// redirect, tee, cat, cp) is traced to its source. A gh write hidden in bash -c,
+// eval, xargs or a command substitution blocks as an opaque write.
 // Fail-CLOSED on a body file it cannot vouch for: a path that cannot be resolved
 // statically (unknown variable, $(...), backticks, a relative path after a cd)
 // blocks with SECRET_GUARD_UNRESOLVED_BODY_FILE, and a resolved file that cannot
