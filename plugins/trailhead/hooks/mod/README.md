@@ -79,6 +79,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `offline: cannot reach GitHub`, `gh failed (exit <n>)`). Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
   on the first fetch, `No active map. Run /trailhead:map to pick one.`, `No open tickets. Fog may remain: /trailhead:map`.
+- **Links**: the map and the rows are `Link`s, clickable where the terminal takes OSC 8 links. A
+  terminal Claude Code cannot identify (for example `TERM=xterm-256color` with no `TERM_PROGRAM`)
+  gets the engine's fallback instead: the text, then the URL in dim on the next line, nothing to
+  click. Start Claude Code with `FORCE_HYPERLINK=1` there to get real links.
 - **Where the data comes from**: `.trailhead/active-map` (read locally on `session.start` and
   `turn.complete`, whether or not the pane is open), then `gh issue view <map>` and
   `gh issue list --label trailhead:map-<map> --state open` through `$.process.run`. A result is
