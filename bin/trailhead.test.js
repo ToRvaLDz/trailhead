@@ -149,6 +149,8 @@ ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.
 // dir, so its discoverability is the cluster itself; use a non-colliding verb.
 ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md')));
 ok('codex: trailhead-bug SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-bug\n'));
+// #208: /trailhead:panel is answered by the Claude Code mod only: no Codex skill for it.
+ok('codex: no per-verb skill for the mod-only panel verb', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-panel')));
 ok('codex: trailhead-bug skill delegates to $trailhead bug', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').includes('$trailhead bug'));
 // #190: audit verb projected per-verb on Codex, description from commands/audit.md.
 const auditCmdSrc190 = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'audit.md'), 'utf8');
@@ -884,6 +886,7 @@ ok('claude: trailhead-work/../_shared/ticket-language.md resolves', fs.existsSyn
 
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: commands/trailhead/audit.md projected', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'audit.md')));
+ok('claude: commands/trailhead/panel.md projected (the mod answers it)', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'panel.md')));
 ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
@@ -1590,6 +1593,12 @@ ok('source: manage SKILL.md routes audit to references/auditing.md', /\*\*`audit
 const dispatcherSrc190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead', 'SKILL.md'), 'utf8');
 ok('source: dispatcher argument-hint lists audit', /argument-hint: "[^"]*\|audit\|[^"]*"/.test(dispatcherSrc190));
 ok('source: dispatcher manage-cluster routing list includes audit', /manage cluster is built[^\n]*`prune`, and `audit`/.test(dispatcherSrc190));
+// #208: panel is a verb the Claude Code mod answers; the dispatcher lists it but routes it to no skill.
+ok('source: dispatcher argument-hint lists panel', /argument-hint: "[^"]*\|panel\|[^"]*"/.test(dispatcherSrc190));
+ok('source: dispatcher says panel is mod-only and routes it to no skill', /`panel`\*\* verb routes to no skill[^\n]*Claude Code[^\n]*mod/.test(dispatcherSrc190));
+const panelCmdSrc208 = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'panel.md'), 'utf8');
+ok('source: commands/panel.md invokes no skill', !/Skill tool|skill name|\$trailhead|trailhead-(view|work|chart|capture|manage)/.test(panelCmdSrc208));
+ok('source: commands/panel.md tells the model the panel is unavailable in one line', /2\.1\.287\+[^\n]*not available/.test(panelCmdSrc208));
 
 const auditingPath190 = path.join(sourceSkillsDir, 'trailhead-manage', 'references', 'auditing.md');
 const auditingSrc = fs.existsSync(auditingPath190) ? fs.readFileSync(auditingPath190, 'utf8') : '';
