@@ -284,12 +284,13 @@ function collectWrites(cmd, env, start) {
   let vars = start.vars;
   let cwdKnown = start.cwdKnown;
   let prevSep = null;
-  for (const { text: raw, sep } of splitStatementsWithSeparators(cmd)) {
+  for (const entry of splitStatementsWithSeparators(cmd)) {
+    const { text: raw, sep } = entry;
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
     prevSep = sep;
     const { text, runner, unresolvedCmd } = unwrap(raw, vars, env);
     const index = history.length;
-    const heredocs = bodies.slice(nextBody, nextBody + countHeredocs(raw));
+    const heredocs = bodies.slice(nextBody, nextBody + countHeredocs(entry));
     nextBody += heredocs.length;
     history.push({ text, sep, vars, cwdKnown, index, heredocs });
     const kind = writeKind(text);

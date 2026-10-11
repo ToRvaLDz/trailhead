@@ -60,7 +60,7 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // ends in a backslash-newline continuation. It is mutated and carried to the next line, so a quote or arithmetic
 // span that runs across lines keeps suppressing introducers. A `$(..)` is code
 // again, even inside double quotes, so its heredocs count. Returns
-// [{ dash, tag, quoted }]. When `seps` is given, the statement separators found
+// [{ at, dash, tag, quoted }] (`at` is the index of the `<<`). When `seps` is given, the statement separators found
 // in splittable code (top level or inside `$(..)`, never inside a quote,
 // arithmetic span or comment) are pushed to it as { at, len, op }, so the
 // splitters cut exactly where this lexer says code is. Best-effort: not a full
@@ -137,7 +137,7 @@ function scanLine(line, st, seps) {
       HEREDOC_TAG_RE.lastIndex = i + 2;
       const m = HEREDOC_TAG_RE.exec(line);
       if (m) {
-        found.push({ dash: m[1] === '-', tag: m[2] || m[3] || m[4], quoted: m[2] !== undefined || m[3] !== undefined });
+        found.push({ at: i, dash: m[1] === '-', tag: m[2] || m[3] || m[4], quoted: m[2] !== undefined || m[3] !== undefined });
         i = HEREDOC_TAG_RE.lastIndex - 1;
       } else {
         i++;
@@ -178,7 +178,7 @@ const splittable = (stack) => stack.length === 0 || stack[stack.length - 1].k ==
 // current shell. Whenever a line introduces heredocs, every following line up
 // to and including each terminator is body. Returns { lines, keep, docs, seps,
 // nl }: `keep[i]` is false for body and terminator lines; `docs` is
-// [{ quoted, body }] in order of appearance (`quoted` is true for a quoted
+// [{ quoted, body }] in order of appearance (`hd[i]` holds the introducer positions on line i) (`quoted` is true for a quoted
 // delimiter, whose body is literal text); `seps[i]` are the separators inside
 // line i and `nl[i]` says whether the newline after it separates statements.
 function scanHeredocs(cmd) {
@@ -187,9 +187,11 @@ function scanHeredocs(cmd) {
   const docs = [];
   const seps = lines.map(() => []);
   const nl = new Array(lines.length).fill(false);
+  const hd = lines.map(() => []); // hd[i]: indexes of the heredoc introducers on line i
   const st = { stack: [] };
   for (let i = 0; i < lines.length; i++) {
     const found = scanLine(lines[i], st, seps[i]);
+    hd[i] = found.map((f) => f.at);
     nl[i] = !st.cont && splittable(st.stack);
     // A line ending in a backslash continues on the next: that is ONE logical
     // line, and any heredoc body starts after its last physical line. So does a
@@ -197,7 +199,9 @@ function scanHeredocs(cmd) {
     // body after the logical line, which ends only when the quote closes.
     while ((st.cont || (found.length > 0 && !splittable(st.stack))) && i + 1 < lines.length) {
       i++;
-      found.push(...scanLine(lines[i], st, seps[i]));
+      const more = scanLine(lines[i], st, seps[i]);
+      hd[i] = more.map((f) => f.at);
+      found.push(...more);
       nl[i] = !st.cont && splittable(st.stack);
     }
     // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
@@ -214,7 +218,7 @@ function scanHeredocs(cmd) {
       docs.push({ quoted, body: body.join('\n') });
     }
   }
-  return { lines, keep, docs, seps, nl };
+  return { lines, keep, docs, seps, nl, hd };
 }
 
 // Remove every heredoc body (and terminator line) before the statement splitter
@@ -229,35 +233,61 @@ function heredocBodies(cmd) {
   return scanHeredocs(cmd).docs;
 }
 
-// How many heredoc introducers a statement's text holds.
-function countHeredocs(text) {
+function lexCount(text) {
   const st = { stack: [] };
   return String(text).split('\n').reduce((n, line) => n + scanLine(line, st).length, 0);
+}
+
+// Statement texts whose own re-lex disagrees with the count the whole-command
+// scan assigned them (a cut inside `"$(..)"` leaves a tail that lexes from an
+// empty stack). Filled by the splitters, so countHeredocs on a string they
+// returned gets the whole-scan count. Bounded; only ever holds odd cases.
+const countOverrides = new Map();
+const MAX_OVERRIDES = 1000;
+function noteCount(text, n) {
+  if (lexCount(text) === n) return;
+  if (countOverrides.size >= MAX_OVERRIDES) countOverrides.clear();
+  countOverrides.set(text, n);
+}
+
+// How many heredoc introducers a statement holds. Takes a splitter entry (its
+// `heredocs` count comes from the single whole-command scan) or a statement
+// string (the count the splitter assigned it, else a re-lex of the text).
+function countHeredocs(stmt) {
+  if (stmt && typeof stmt === 'object' && typeof stmt.heredocs === 'number') return stmt.heredocs;
+  const text = typeof stmt === 'object' && stmt ? stmt.text : stmt;
+  return countOverrides.has(text) ? countOverrides.get(text) : lexCount(text);
 }
 
 // --- statement splitting -------------------------------------------------------
 
 // Cut a command at the separators the lexer reports. Heredoc bodies are skipped
 // (literal data, never statements). Returns [{ text, sep }] with the operator
-// that ENDED each statement (null for the last), untrimmed and unfiltered.
+// that ENDED each statement (null for the last) and the number of heredoc
+// introducers it holds (counted from the scan positions), untrimmed and unfiltered.
 function cutStatements(cmd, ops) {
-  const { lines, keep, seps, nl } = scanHeredocs(cmd);
+  const { lines, keep, seps, nl, hd } = scanHeredocs(cmd);
   const kept = lines.map((_, i) => i).filter((i) => keep[i]);
   const out = [];
   let cur = '';
+  let heredocs = 0;
   kept.forEach((i, k) => {
     let from = 0;
-    for (const { at, len, op } of seps[i]) {
-      if (!ops.includes(op)) continue;
-      out.push({ text: cur + lines[i].slice(from, at), sep: op });
+    const cuts = seps[i].filter((s) => ops.includes(s.op));
+    let h = 0;
+    for (const { at, len, op } of cuts) {
+      while (h < hd[i].length && hd[i][h] < at) { heredocs++; h++; }
+      out.push({ text: cur + lines[i].slice(from, at), sep: op, heredocs });
       cur = '';
+      heredocs = 0;
       from = at + len;
     }
+    heredocs += hd[i].length - h;
     cur += lines[i].slice(from);
     if (k === kept.length - 1) return;
-    if (nl[i]) { out.push({ text: cur, sep: '\n' }); cur = ''; } else cur += '\n';
+    if (nl[i]) { out.push({ text: cur, sep: '\n', heredocs }); cur = ''; heredocs = 0; } else cur += '\n';
   });
-  out.push({ text: cur, sep: null });
+  out.push({ text: cur, sep: null, heredocs });
   return out;
 }
 
@@ -271,7 +301,10 @@ function cutStatements(cmd, ops) {
 // correctly. Best-effort: not a full shell parser, just enough to avoid the
 // common false splits.
 function splitStatements(cmd) {
-  return cutStatements(cmd, [';', '|', '&&', '||']).map((x) => x.text.trim()).filter(Boolean);
+  return cutStatements(cmd, [';', '|', '&&', '||'])
+    .map((x) => ({ text: x.text.trim(), heredocs: x.heredocs }))
+    .filter((x) => x.text)
+    .map((x) => { noteCount(x.text, x.heredocs); return x.text; });
 }
 
 // Like splitStatements, but each statement carries the operator that ENDED it
@@ -283,8 +316,9 @@ function splitStatements(cmd) {
 // `&>f`) is not a separator.
 function splitStatementsWithSeparators(cmd) {
   return cutStatements(cmd, [';', '|', '&&', '||', '&'])
-    .map((x) => ({ text: x.text.trim(), sep: x.sep }))
-    .filter((x) => x.text);
+    .map((x) => ({ text: x.text.trim(), sep: x.sep, heredocs: x.heredocs }))
+    .filter((x) => x.text)
+    .map((x) => { noteCount(x.text, x.heredocs); return x; });
 }
 
 // --- tokenizing ----------------------------------------------------------------

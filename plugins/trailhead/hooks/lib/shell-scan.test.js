@@ -195,6 +195,40 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     splitStatements('x "$(cat <<\'EOF\'\nhi; there\nEOF\n)"; cat .env').pop() === 'cat .env');
 }
 
+// --- per-statement heredoc counts pair with heredocBodies (#212) ---
+{
+  const J = JSON.stringify;
+  const sumBoth = (c) => [
+    splitStatementsWithSeparators(c).reduce((n, s) => n + countHeredocs(s), 0),
+    splitStatementsWithSeparators(c).reduce((n, s) => n + countHeredocs(s.text), 0),
+    splitStatements(c).reduce((n, s) => n + countHeredocs(s), 0),
+  ];
+  const cases = [
+    'echo "$(true; echo hi) <<X" ; cat <<\'EOF\'\nbody\nEOF',
+    'echo "$(true; cat <<A\nb\nA\n) <<X" ; cat <<B\nz\nB',
+    "cat <<E 'a\nb'; cat <<F\nbody\nE\nF",
+    'echo $((1<<3)); cat <<A <<B\n1\nA\n2\nB',
+  ];
+  for (const c of cases) {
+    const n = heredocBodies(c).length;
+    ok('heredoc count pairs for ' + J(c), sumBoth(c).every((x) => x === n));
+  }
+  // property check over a fragment soup
+  const frags = ['echo "$(true; echo hi) <<X"', 'cat <<E\nb\nE', "echo '<<Q'", 'echo $((1<<2))', 'x <<A <<B\n1\nA\n2\nB',
+    'echo "$(cat <<Z\nq\nZ\n)"', 'echo "$(a; b <<Y\ny\nY\n)"', "cat <<E 'a\nb'", 'true # <<C', 'echo ${x:-$(a; b)} <<D\nd\nD'];
+  const seps = [' ; ', '\n', ' && ', ' | ', ' & '];
+  let seed = 12345;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  let bad = null;
+  for (let t = 0; t < 400 && !bad; t++) {
+    let c = frags[rnd(frags.length)];
+    for (let k = rnd(4); k > 0; k--) c += seps[rnd(seps.length)] + frags[rnd(frags.length)];
+    const n = heredocBodies(c).length;
+    if (!sumBoth(c).every((x) => x === n)) bad = c;
+  }
+  ok('heredoc count pairs over a fragment soup ' + J(bad), bad === null);
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
