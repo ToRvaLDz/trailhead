@@ -66,7 +66,8 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // arithmetic span or comment) are pushed to it as { at, len, op }, so the
 // splitters cut exactly where this lexer says code is. Best-effort: not a full
 // shell parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not
-// modelled).
+// modelled; nor is the body order of a heredoc nested in another heredoc's
+// pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
 function scanLine(line, st, seps) {
   const found = [];
   const stack = st.stack;
