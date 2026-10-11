@@ -5,12 +5,13 @@ export type WorkState = {
   title: string | null
   step: string | null
   auto: boolean
+  autoDone: number
   session: string | null
   updatedAt: string | null
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    trailhead: { workState: WorkState | null }
+    trailhead: { workState: WorkState | null; isOrphaned: boolean }
   }
 }
