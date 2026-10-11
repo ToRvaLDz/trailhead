@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Test per templates/trailhead-work-state.js. Run: node work-state.test.js
-// Nessun framework: assert semplici, stesso stile di commit-msg-sync.test.js.
+// Tests for templates/trailhead-work-state.js. Run: node work-state.test.js
+// No framework: plain asserts, same style as commit-msg-sync.test.js.
 //
-// Layer coperti:
-//   1. mergeState() / sanitizeState() puri.
-//   2. main() con cwd/env/stdout iniettati contro cartelle mkdtemp.
-//   3. Iniezione di guasti: fs la cui write o rename lancia.
-//   4. End-to-end: execFileSync dello script stesso.
+// Layers covered:
+//   1. Pure mergeState() / sanitizeState().
+//   2. main() with injected cwd/env/stdout against mkdtemp folders.
+//   3. Fault injection: an fs whose write or rename throws.
+//   4. End-to-end: execFileSync of the script itself.
 const assert = require('assert');
 const { execFileSync, spawnSync } = require('child_process');
 const path = require('path');
@@ -23,7 +23,7 @@ function mktmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-work-state-test-'));
 }
 
-// Esegue main() catturando stdout e stderr; restituisce { code, lines, err }.
+// Runs main() capturing stdout and stderr; returns { code, lines, err }.
 function run(argv, { cwd, env = {}, fsMod } = {}) {
   const chunks = [];
   const errChunks = [];
@@ -222,13 +222,13 @@ for (const argv of [
   ok('parseArgs: map none -> null', p.patch.map === null);
 }
 
-// --- iniezione di guasti -----------------------------------------------------
+// --- fault injection ---------------------------------------------------------
 for (const failing of ['writeFileSync', 'renameSync']) {
   const dir = mktmp();
   run(['set', '--ticket', '1', '--step', 'plan', '--title', 'keep'], { cwd: dir });
   const bytes = fs.readFileSync(statePath(dir));
   const broken = { ...fs, [failing]: () => { throw new Error('boom ' + failing); } };
-  // writeFileSync rotto scrive comunque un parziale prima di lanciare
+  // a broken writeFileSync still writes a partial before throwing
   if (failing === 'writeFileSync') {
     broken.writeFileSync = (p, d) => { fs.writeFileSync(p, 'partial'); throw new Error('boom'); };
   }

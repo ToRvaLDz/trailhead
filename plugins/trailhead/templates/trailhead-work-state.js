@@ -1,25 +1,25 @@
 #!/usr/bin/env node
 'use strict';
-// trailhead work state (self-contained, ships in templates/ così raggiunge ogni
-// canale di installazione: bin/trailhead.js copia templates/ in blocco per
-// Claude/npm e Codex). Scrive e cancella <repo>/.trailhead/work-state.json,
-// lo stato del ticket in lavorazione che le skill aggiornano a ogni step. #205.
+// trailhead work state (self-contained, ships in templates/ so it reaches every
+// install channel: bin/trailhead.js copies templates/ wholesale for Claude/npm
+// and Codex). Writes and removes <repo>/.trailhead/work-state.json, the state
+// of the ticket in play that the skills update at every step. #205.
 //
 // CLI:
 //   node trailhead-work-state.js set [--repo <dir>] [--map <n>|none] [--ticket <n>]
 //        [--title <t>] [--step <step>] [--auto true|false] [--auto-done <n>]
 //   node trailhead-work-state.js clear [--repo <dir>]
-// --repo di default è cwd. `set` fonde i campi passati sul file esistente
-// (solo --step a ogni cambio di step); se --ticket indica un ticket diverso
-// da quello nel file si riparte da uno stato vuoto. Forma del file:
+// --repo defaults to cwd. `set` merges the given fields onto the existing file
+// (only --step at each step change); a --ticket other than the one on file
+// starts from an empty state. File shape:
 //   { map, ticket, title, step, auto, autoDone, session, updatedAt }
 // autoDone: tickets resolved so far in the autonomous run (non-negative
 // integer, default 0; reset to 0 whenever auto is false).
-// Stampa una riga JSON {"status","path","state"?,"message"?}.
+// Prints one JSON line {"status","path","state"?,"message"?}.
 //   status: written | cleared | absent | skipped
-// Exit 0 su ogni esito normale e su qualunque errore I/O inatteso (non deve
-// mai bloccare il chiamante: status skipped col messaggio); exit 2 solo su
-// errore d'uso o di validazione (nulla viene scritto).
+// Exit 0 on every normal outcome and on any unexpected I/O error (it must
+// never block the caller: status skipped with the message); exit 2 only on a
+// usage or validation error (nothing is written).
 
 const fs = require('fs');
 const path = require('path');
@@ -32,7 +32,7 @@ const TITLE_MAX = 200;
 
 const isPosInt = (v) => Number.isInteger(v) && v > 0;
 
-// Parsing stretto di un intero positivo da stringa CLI; null se non valido.
+// Strict parse of a positive integer from a CLI string; null if invalid.
 function parsePosInt(text) {
   return /^[1-9]\d*$/.test(text) ? Number(text) : null;
 }
@@ -42,14 +42,14 @@ function parseNonNegInt(text) {
   return /^(0|[1-9]\d*)$/.test(text) ? Number(text) : null;
 }
 
-// Titolo su una riga sola: controlli e newline diventano spazi, spazi
-// collassati, trim, tetto a TITLE_MAX caratteri.
+// Title on a single line: control characters and newlines become spaces,
+// spaces collapsed, trimmed, capped at TITLE_MAX characters.
 function cleanTitle(text) {
   return String(text).replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, TITLE_MAX);
 }
 
-// Tiene solo i campi validi di un oggetto arbitrario: un campo non valido è
-// scartato (trattato come assente), mai riportato nel nuovo stato.
+// Keeps only the valid fields of an arbitrary object: an invalid field is
+// dropped (treated as absent), never carried into the new state.
 function sanitizeState(raw) {
   const out = {};
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -62,9 +62,9 @@ function sanitizeState(raw) {
   return out;
 }
 
-// Fonde la patch sullo stato esistente. Un ticket diverso riparte da vuoto
-// (niente titolo/map ereditati). Ritorna lo stato normalizzato oppure
-// { error } se manca ticket o step.
+// Merges the patch onto the existing state. A different ticket starts from
+// empty (no inherited title/map). Returns the normalised state, or
+// { error } when ticket or step is missing.
 function mergeState(existing, patch, { session = null, now = new Date() } = {}) {
   const base = sanitizeState(existing);
   const start = patch.ticket !== undefined && base.ticket !== undefined && base.ticket !== patch.ticket ? {} : base;
@@ -122,7 +122,7 @@ function parseArgs(argv) {
   return { command, repo, patch };
 }
 
-// Legge il file esistente; assente o corrotto = nessuno stato (mai un crash).
+// Reads the existing file; missing or corrupt = no state (never a crash).
 function readExisting(file, fsMod) {
   try {
     return JSON.parse(fsMod.readFileSync(file, 'utf8'));
@@ -131,8 +131,8 @@ function readExisting(file, fsMod) {
   }
 }
 
-// Scrittura atomica: temp unico nella stessa dir, poi rename sopra il file
-// (mai un truncate in place); il temp è rimosso se qualcosa fallisce.
+// Atomic write: a unique temp in the same dir, then rename over the file
+// (never an in-place truncate); the temp is removed if anything fails.
 function writeAtomic(dir, file, text, fsMod) {
   fsMod.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, `.${STATE_FILE}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`);
