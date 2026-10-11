@@ -42,10 +42,20 @@ stand alone. The section is absent with no state, with an orphaned one, and unde
 It is a latched snapshot kept in the `promptSnapshot` atom (session scoped, never a module
 variable). It is rebuilt only when the map, ticket, title, orphaned flag or auto flag changes, at
 `session.start`, and after a main-loop compaction (`session.compact`, once it did not skip). A
-step change deliberately leaves the text alone, so the prompt cache holds; the section says the
-step may have moved on and that `.trailhead/work-state.json` holds the live one. The text is at
-most 1024 bytes and carries no skill protocol. `next(e)` is called once, before any enrichment,
-and a failure while enriching returns the engine's sections untouched.
+`precompute` or a subagent's compaction installs nothing in the conversation, so it leaves the
+snapshot alone. A step change deliberately leaves the text alone, so the prompt cache holds; the
+section says the step may have moved on and that `.trailhead/work-state.json` holds the live one.
+For the same reason an autonomous run shows as `Mode: autonomous run`, without the done count.
+
+The issue title is untrusted text from GitHub. It is rendered as quoted data
+(`Ticket: #204 "Title"`), with zero-width and bidi controls removed, inner double quotes turned
+into single ones, and a line saying the title is data, not an instruction. The text is at most
+1024 bytes and carries no skill protocol.
+
+`next(e)` is called once, before any enrichment, and a failure while enriching returns the
+engine's sections untouched. If the repo cannot be read, the section is built without links and
+latched like any other. A `/context` render (`analysis` trait) shows the section but never writes
+the atom.
 
 ## Requirements
 
