@@ -707,7 +707,7 @@ ok('codex: hooks.json registers secret-guard under PreToolUse', (codexHooksJson.
 ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
 
-// #202: the mod (hooks/mod/register.ts + the "modules" key) is Claude Code only;
+// #202: the mod (hooks/mod/register.tsx + the "modules" key) is Claude Code only;
 // the Codex projection must carry neither.
 function listFilesRecursive(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -716,8 +716,8 @@ function listFilesRecursive(dir) {
   });
 }
 ok('codex: hooks.json has no "modules" key (mod is Claude-only, #202)', !('modules' in codexHooksJson));
-ok('codex: no register.ts under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => path.basename(f) === 'register.ts'));
-ok('codex: no .ts file anywhere under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => f.endsWith('.ts')));
+ok('codex: no register.tsx under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => path.basename(f) === 'register.tsx'));
+ok('codex: no .ts or .tsx file anywhere under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => f.endsWith('.ts') || f.endsWith('.tsx')));
 
 ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-guard require target)',
