@@ -58,7 +58,8 @@ function writeKind(stmt) {
   if ((sub === 'issue' || sub === 'pr') && ['create', 'comment', 'edit', 'review'].includes(verb)) {
     return sub;
   }
-  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)\s+['"]?body=/.test(stmt)) return 'api';
+  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)(?:\s+|=)?['"]?body=/.test(stmt)) return 'api';
+  if (sub === 'api' && /(?:^|\s)--input(?:=|\s|$)/.test(stmt)) return 'api'; // --input sends a request body from a file
   return null;
 }
 
@@ -372,6 +373,7 @@ function changesDir(text) {
 // `cwdKnown` turns false after a cd/pushd/popd.
 function ghWrites(cmd, env = process.env) {
   const writes = [];
+  const history = []; // every statement: { text, sep, vars, cwdKnown, index }
   let vars = {};
   let cwdKnown = true;
   let prevSep = null;
@@ -379,16 +381,18 @@ function ghWrites(cmd, env = process.env) {
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
     prevSep = sep;
     const { text, runner } = unwrap(raw);
+    const index = history.length;
+    history.push({ text, sep, vars, cwdKnown, index });
     const kind = writeKind(text);
     if (kind) {
-      writes.push({ kind, text, vars, cwdKnown });
+      writes.push({ kind, text, vars, cwdKnown, index, history });
       continue;
     }
     // A shell/eval/xargs line, or a command substitution, that holds a gh write
     // cannot be analysed: report it as an opaque write.
     const nested = runner ? (/<<-?/.test(text) ? cmd : text) : /\$\(|`|<\(|>\(/.test(text) ? text : '';
     if (nested && OPAQUE_WRITE_RE.test(nested)) {
-      writes.push({ kind: 'opaque', text, vars, cwdKnown });
+      writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
     const assigns = parseAssignments(text);
@@ -456,6 +460,114 @@ function unscannedVerdict(kind, err) {
   };
 }
 
+// --- where a write's body comes from -----------------------------------------------
+
+const basenameOf = (w) => String(w || '').replace(/^.*\//, '');
+const INLINE_PRODUCERS = new Set(['echo', 'printf', 'true', ':']);
+const HEREDOC_CAT_RE = /^\$\(\s*cat\s+<<-?\s*(?:'[^']*'|"[^"]*"|\w+)\s*\)$/;
+const CAT_SUBST_RE = /^\$\(\s*cat\s+(\S+)\s*\)$/;
+const READ_SUBST_RE = /^\$\(\s*<\s*(\S+)\s*\)$/;
+
+// Body sources are a list of items:
+//   { text }        content to scan that is not in the command string (an expanded value)
+//   { path }        a file to read and scan
+//   { unresolved }  a source that cannot be known statically: block
+// Content that is already inside the command string (heredoc, herestring, echo/printf
+// arguments) needs no item: the whole command is scanned.
+
+const unresolvedItem = (reason) => [{ unresolved: reason }];
+
+// Items for a file named by a shell word, as seen from statement `rec`.
+function wordItems(word, rec, ctx) {
+  const r = resolveWord(word, rec.vars, ctx.env, rec.cwdKnown ? ctx.cwd : null);
+  return r.unresolved ? unresolvedItem(r.unresolved) : fileItems(r.path, rec.index, ctx);
+}
+
+// Items for reading the file `p` as of statement `before` (extended for files the
+// same command writes first).
+function fileItems(p) {
+  return [{ path: p }];
+}
+
+// What a statement feeds to its stdin: items, or null when there is no stdin source.
+function stdinContent(rec, ctx) {
+  const red = parseRedirects(words(rec.text));
+  if (red.stdin) return red.stdin.type === 'file' ? wordItems(red.stdin.word, rec, ctx) : [];
+  const prev = ctx.history[rec.index - 1];
+  if (prev && prev.sep === '|') return producerItems(prev, ctx);
+  return null;
+}
+
+// What a pipeline producer writes to stdout.
+function producerItems(rec, ctx) {
+  const { args } = parseRedirects(words(rec.text));
+  let k = 0;
+  while (k < args.length && ASSIGN_TOKEN_RE.test(args[k])) k++;
+  const cmd0 = basenameOf(args[k]);
+  if (INLINE_PRODUCERS.has(cmd0)) return [];
+  if (cmd0 === 'cat') {
+    const files = args.slice(k + 1).filter((a) => !a.startsWith('-'));
+    if (files.length) return files.flatMap((f) => wordItems(f, rec, ctx));
+    return stdinContent(rec, ctx) || unresolvedItem('cat reads a stdin the guard cannot see');
+  }
+  return unresolvedItem(`the body is piped from ${cmd0 || 'a command'}`);
+}
+
+// Items for a --body/-b value.
+function bodyValueItems(raw, rec, ctx) {
+  if (!/[$`]/.test(raw) || /^'[\s\S]*'$/.test(raw)) return []; // literal: already in the command
+  if (/\$\(|`/.test(raw)) {
+    const inner = raw.replace(/^"([\s\S]*)"$/, '$1');
+    if (HEREDOC_CAT_RE.test(inner)) return []; // heredoc text is in the command string
+    const m = CAT_SUBST_RE.exec(inner) || READ_SUBST_RE.exec(inner);
+    if (m) return wordItems(m[1], rec, ctx);
+    return unresolvedItem('command substitution in the body');
+  }
+  const r = expandWord(raw, rec.vars, ctx.env);
+  return r.unresolved ? unresolvedItem(r.unresolved) : [{ text: r.value }];
+}
+
+// Every body source of one write: { items }.
+function bodySources(w, ctx) {
+  const rec = w.history[w.index];
+  const { args } = parseRedirects(words(w.text));
+  const stdinItems = () => stdinContent(rec, ctx) || [];
+  const fileArg = (raw) => (STDIN_PATHS.has(raw) ? stdinItems() : wordItems(raw, rec, ctx));
+  const items = [];
+  if (w.kind === 'api') {
+    for (const raw of flagValues(args, '--field', '-F')) {
+      const r = expandWord(raw, rec.vars, ctx.env);
+      if (r.unresolved) { items.push(...unresolvedItem(r.unresolved)); continue; }
+      if (!r.value.startsWith('body=@')) continue;
+      const file = r.value.slice('body=@'.length);
+      if (STDIN_PATHS.has(file)) { items.push(...stdinItems()); continue; }
+      const res = resolveExpanded(file, rec.cwdKnown ? ctx.cwd : null);
+      items.push(...(res.unresolved ? unresolvedItem(res.unresolved) : fileItems(res.path, rec.index, ctx)));
+    }
+    for (const raw of flagValues(args, '--input', null)) items.push(...fileArg(raw));
+    return items;
+  }
+  const files = flagValues(args, '--body-file', '-F');
+  // gh keeps the last one, but scanning every occurrence is the safe direction.
+  for (const raw of files) items.push(...fileArg(raw));
+  for (const raw of flagValues(args, '--body', '-b')) items.push(...bodyValueItems(raw, rec, ctx));
+  return items;
+}
+
+// Read a body file (regular files only: a FIFO or device could hang the hook).
+// `optional` tolerates a missing file.
+function readBodyFile(p, optional) {
+  let st;
+  try {
+    st = fs.statSync(p);
+  } catch (e) {
+    if (optional && e.code === 'ENOENT') return '';
+    throw e;
+  }
+  if (!st.isFile()) throw Object.assign(new Error('not a regular file'), { code: 'ENOTFILE' });
+  return fs.readFileSync(p, 'utf8').slice(0, 1_000_000);
+}
+
 // A block verdict for a body file the guard cannot vouch for.
 function bodyFileBlock(code, kind, detail) {
   return {
@@ -499,17 +611,17 @@ function evaluate(cmd, { env = process.env, cwd } = {}) {
 
   let text = cmd;
   for (const w of writes) {
-    if (w.kind === 'api') continue;
-    const ref = resolveBodyFile(w.text, w.vars, env, w.cwdKnown ? cwd : null);
-    if (!ref) continue;
-    if (ref.unresolved) {
-      return bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${ref.unresolved})`);
-    }
-    try {
-      text += '\n' + fs.readFileSync(ref.path, 'utf8').slice(0, 1_000_000);
-    } catch (e) {
-      const why = (e && e.code) || 'read error';
-      return bodyFileBlock('SECRET_GUARD_UNREADABLE_BODY_FILE', w.kind, `could not read (${why}: ${ref.path})`);
+    for (const item of bodySources(w, { env, cwd, history: w.history })) {
+      if (item.unresolved) {
+        return bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${item.unresolved})`);
+      }
+      if (item.text !== undefined) { text += '\n' + item.text; continue; }
+      try {
+        text += '\n' + readBodyFile(item.path, item.optional);
+      } catch (e) {
+        const why = (e && e.code) || 'read error';
+        return bodyFileBlock('SECRET_GUARD_UNREADABLE_BODY_FILE', w.kind, `could not read (${why}: ${item.path})`);
+      }
     }
   }
 

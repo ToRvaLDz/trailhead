@@ -207,7 +207,11 @@ const a2 = runHook('gh issue view 5 --json body'); // read, not a write
 ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
 const a3 = runHook('gh issue comment 5 --body ""'); // excluded verb, even though empty
 ok('allows an empty gh issue comment (excluded verb, exit 0)', a3.code === 0 && a3.out.trim() === '');
-const a4 = runHook('gh issue edit 5 --body "$(cat f)"'); // unknowable, can't prove empty
+// The merged runner also runs the secret-guard, which resolves `$(cat <path>)`: point it at a real clean file.
+const a4File = path.join(os.tmpdir(), `bg-subst-${process.pid}.md`);
+fs.writeFileSync(a4File, 'not empty\n');
+const a4 = runHook(`gh issue edit 5 --body "$(cat ${a4File})"`); // unknowable, can't prove empty
+fs.unlinkSync(a4File);
 ok('allows an unknowable (shell-expansion) body (exit 0)', a4.code === 0 && a4.out.trim() === '');
 
 // --- crash-safety ---

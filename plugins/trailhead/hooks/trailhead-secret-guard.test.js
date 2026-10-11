@@ -318,6 +318,75 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// --- end-to-end: bodies that do not come from a literal file argument (#210 review W2) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210w2-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const cleanFile = path.join(dir, 'clean.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  fs.writeFileSync(cleanFile, 'all good, nothing sensitive here\n');
+  fs.writeFileSync(path.join(dir, 'leak.json'), '{"body":"AKIAIOSFODNN7EXAMPLE"}');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const unres = (r) => r.code === 2 && r.out.includes('"code":"SECRET_GUARD_UNRESOLVED_BODY_FILE"');
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  const G = 'gh issue comment 1';
+
+  // stdin: heredoc / herestring / redirect / pipe
+  ok('stdin heredoc with a clean body passes', passes(runHook(`${G} -F - <<'EOF'\nhello world\nEOF`)));
+  ok('stdin heredoc with a secret blocks (scanned in the command)', leaks(runHook(`${G} -F - <<'EOF'\nDeploy: AKIAIOSFODNN7EXAMPLE\nEOF`)));
+  ok('stdin <<- heredoc passes', passes(runHook(`${G} --body-file - <<-EOF\n\thello\n\tEOF`)));
+  ok('stdin herestring passes', passes(runHook(`${G} -F - <<< "hello"`)));
+  ok('stdin < leak.md blocks', leaks(runHook(`${G} -F - < ${leakFile}`)));
+  ok('stdin < clean.md passes', passes(runHook(`${G} -F - < ${cleanFile}`)));
+  ok('/dev/stdin < leak.md blocks', leaks(runHook(`${G} --body-file /dev/stdin < ${leakFile}`)));
+  ok('stdin < $UNSET blocks as unresolved', unres(runHook(`${G} -F - < "$SG_UNSET_VAR_210"`)));
+  ok('stdin < relative path resolves against the hook cwd', leaks(runHook(`${G} -F - < leak.md`, {}, dir)));
+  ok('cat leak.md | gh -F - blocks', leaks(runHook(`cat ${leakFile} | ${G} -F -`)));
+  ok('cat clean.md | gh -F - passes', passes(runHook(`cat ${cleanFile} | ${G} -F -`)));
+  ok('echo | gh -F - passes (inline content is scanned in the command)', passes(runHook(`echo hello | ${G} -F -`)));
+  ok('echo secret | gh -F - blocks', leaks(runHook(`echo AKIAIOSFODNN7EXAMPLE | ${G} -F -`)));
+  ok('printf | gh -F - passes', passes(runHook(`printf '%s' hello | ${G} -F -`)));
+  ok('an unknown producer piped to gh -F - blocks as unresolved', unres(runHook(`curl -s http://x/y | ${G} -F -`)));
+  ok('gh -F - with no stdin source at all passes', passes(runHook(`${G} -F -`)));
+
+  ok('a leaking first of two --body-file flags still blocks', leaks(runHook(`${G} --body-file ${leakFile} --body-file ${cleanFile}`)));
+  ok('a leaking -F next to --body-file blocks', leaks(runHook(`${G} --body-file ${cleanFile} -F ${leakFile}`)));
+
+  // process substitution
+  ok('--body-file <(...) blocks as unresolved', unres(runHook(`${G} --body-file <(cat ${leakFile})`)));
+
+  // --body / -b values
+  ok('-b "$(cat leak.md)" blocks', leaks(runHook(`${G} -b "$(cat ${leakFile})"`)));
+  ok('--body "$(cat clean.md)" passes', passes(runHook(`${G} --body "$(cat ${cleanFile})"`)));
+  ok('-b "$(<leak.md)" blocks', leaks(runHook(`${G} -b "$(<${leakFile})"`)));
+  ok('unquoted -b $(cat leak.md) blocks', leaks(runHook(`${G} -b $(cat ${leakFile})`)));
+  ok('--body "$(date)" blocks as unresolved', unres(runHook(`${G} --body "$(date)"`)));
+  ok('--body with backticks blocks as unresolved', unres(runHook(`${G} --body "\`date\`"`)));
+  ok('the heredoc-in-substitution idiom passes', passes(runHook(`${G} --body "$(cat <<'EOF'\nhello there\nEOF\n)"`)));
+  ok('the heredoc-in-substitution idiom with a secret blocks', leaks(runHook(`${G} --body "$(cat <<'EOF'\nAKIAIOSFODNN7EXAMPLE\nEOF\n)"`)));
+  ok('--body "$VAR" scans the expanded value', leaks(runHook(`${G} --body "$SG_BODY"`, { SG_BODY: 'AKIAIOSFODNN7EXAMPLE' })));
+  ok('--body "$VAR" with a clean value passes', passes(runHook(`${G} --body "$SG_BODY"`, { SG_BODY: 'fine' })));
+  ok('--body "$UNSET" blocks as unresolved', unres(runHook(`${G} --body "$SG_UNSET_VAR_210"`)));
+  ok("--body 'literal $X' passes", passes(runHook(`${G} --body 'literal $X'`)));
+  ok('B=...; --body "$B" scans the variable set in the command', leaks(runHook(`B=AKIAIOSFODNN7EXAMPLE; ${G} --body "$B"`)));
+
+  // gh api
+  const A = 'gh api repos/o/r/issues/1/comments';
+  ok('api -F body=@leak.md blocks', leaks(runHook(`${A} -F body=@${leakFile}`)));
+  ok('api --field body=@clean.md passes', passes(runHook(`${A} --field body=@${cleanFile}`)));
+  ok('api -F body=@$D/leak.md resolves the variable', leaks(runHook(`D=${dir}; ${A} -F "body=@$D/leak.md"`)));
+  ok('api -F body=@- reads stdin from a redirect', leaks(runHook(`${A} -F body=@- < ${leakFile}`)));
+  ok('api -F body=@- with a heredoc passes', passes(runHook(`${A} -F body=@- <<'EOF'\nhello\nEOF`)));
+  ok('api --input leak.json blocks (any method)', leaks(runHook(`gh api -X PATCH repos/o/r/issues/1 --input ${path.join(dir, 'leak.json')}`)));
+  ok('api --input - < leak.json blocks', leaks(runHook(`gh api repos/o/r/issues/1 --input - < ${path.join(dir, 'leak.json')}`)));
+  ok('api --input with an unresolvable path blocks', unres(runHook('gh api repos/o/r/issues/1 --input "$SG_UNSET_VAR_210"')));
+  ok('api -f body=@leak.md is a raw field: literal, passes', passes(runHook(`${A} -f body=@${leakFile}`)));
+  ok('api -f body=hi passes', passes(runHook(`${A} -f body=hi`)));
+  ok('api read without body or --input is not a write', passes(runHook('gh api repos/o/r/issues/1')));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);
