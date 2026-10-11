@@ -7,12 +7,14 @@
 //
 // CLI:
 //   node trailhead-work-state.js set [--repo <dir>] [--map <n>|none] [--ticket <n>]
-//        [--title <t>] [--step <step>] [--auto true|false]
+//        [--title <t>] [--step <step>] [--auto true|false] [--auto-done <n>]
 //   node trailhead-work-state.js clear [--repo <dir>]
 // --repo di default è cwd. `set` fonde i campi passati sul file esistente
 // (solo --step a ogni cambio di step); se --ticket indica un ticket diverso
 // da quello nel file si riparte da uno stato vuoto. Forma del file:
-//   { map, ticket, title, step, auto, session, updatedAt }
+//   { map, ticket, title, step, auto, autoDone, session, updatedAt }
+// autoDone: tickets resolved so far in the autonomous run (non-negative
+// integer, default 0; reset to 0 whenever auto is false).
 // Stampa una riga JSON {"status","path","state"?,"message"?}.
 //   status: written | cleared | absent | skipped
 // Exit 0 su ogni esito normale e su qualunque errore I/O inatteso (non deve
@@ -35,6 +37,11 @@ function parsePosInt(text) {
   return /^[1-9]\d*$/.test(text) ? Number(text) : null;
 }
 
+// Strict parse of a non-negative integer from a CLI string; null if invalid.
+function parseNonNegInt(text) {
+  return /^(0|[1-9]\d*)$/.test(text) ? Number(text) : null;
+}
+
 // Titolo su una riga sola: controlli e newline diventano spazi, spazi
 // collassati, trim, tetto a TITLE_MAX caratteri.
 function cleanTitle(text) {
@@ -51,6 +58,7 @@ function sanitizeState(raw) {
   if (typeof raw.title === 'string') out.title = cleanTitle(raw.title);
   if (STEPS.includes(raw.step)) out.step = raw.step;
   if (typeof raw.auto === 'boolean') out.auto = raw.auto;
+  if (Number.isInteger(raw.autoDone) && raw.autoDone >= 0) out.autoDone = raw.autoDone;
   return out;
 }
 
@@ -63,12 +71,15 @@ function mergeState(existing, patch, { session = null, now = new Date() } = {}) 
   const merged = { ...start, ...patch };
   if (merged.ticket === undefined) return { error: 'usage: set needs a ticket (pass --ticket)' };
   if (merged.step === undefined) return { error: 'usage: set needs a step (pass --step)' };
+  const auto = merged.auto === undefined ? false : merged.auto;
   return {
     map: merged.map === undefined ? null : merged.map,
     ticket: merged.ticket,
     title: merged.title === undefined || merged.title === '' ? null : merged.title,
     step: merged.step,
-    auto: merged.auto === undefined ? false : merged.auto,
+    auto,
+    // A run that is not autonomous has no counter.
+    autoDone: auto && merged.autoDone !== undefined ? merged.autoDone : 0,
     session,
     updatedAt: now.toISOString(),
   };
@@ -81,7 +92,7 @@ function parseArgs(argv) {
   }
   let repo = null;
   const patch = {};
-  const allowed = command === 'set' ? ['--repo', '--map', '--ticket', '--title', '--step', '--auto'] : ['--repo'];
+  const allowed = command === 'set' ? ['--repo', '--map', '--ticket', '--title', '--step', '--auto', '--auto-done'] : ['--repo'];
   for (let i = 1; i < argv.length; i++) {
     const flag = argv[i];
     if (!allowed.includes(flag)) return { error: `usage: unknown argument: ${flag}` };
@@ -103,6 +114,9 @@ function parseArgs(argv) {
     } else if (flag === '--auto') {
       if (value !== 'true' && value !== 'false') return { error: `usage: --auto must be true or false, got: ${value}` };
       patch.auto = value === 'true';
+    } else if (flag === '--auto-done') {
+      if (parseNonNegInt(value) === null) return { error: `usage: --auto-done must be a non-negative integer, got: ${value}` };
+      patch.autoDone = parseNonNegInt(value);
     }
   }
   return { command, repo, patch };

@@ -53,7 +53,7 @@ const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs
   ok('fresh set: one JSON line, status written', r.lines.length === 1 && r.lines[0].status === 'written');
   ok('fresh set: output carries path and state', r.lines[0].path === statePath(dir) && r.lines[0].state.ticket === 205);
   ok('fresh set: exact key set',
-    JSON.stringify(Object.keys(s)) === JSON.stringify(['map', 'ticket', 'title', 'step', 'auto', 'session', 'updatedAt']));
+    JSON.stringify(Object.keys(s)) === JSON.stringify(['map', 'ticket', 'title', 'step', 'auto', 'autoDone', 'session', 'updatedAt']));
   ok('fresh set: values', s.map === 12 && s.ticket === 205 && s.title === 'Write it' && s.step === 'discuss' && s.auto === false);
   ok('fresh set: session from env', s.session === 'sess-1');
   ok('fresh set: updatedAt is ISO-8601', new Date(s.updatedAt).toISOString() === s.updatedAt);
@@ -119,6 +119,10 @@ for (const argv of [
   ['set', '--ticket', '1', '--step', 'plan', '--map', '-3'],
   ['set', '--ticket', '1', '--step', 'plan', '--map', 'x'],
   ['set', '--ticket', '1', '--step', 'plan', '--auto', 'maybe'],
+  ['set', '--ticket', '1', '--step', 'plan', '--auto-done', '-1'],
+  ['set', '--ticket', '1', '--step', 'plan', '--auto-done', '01'],
+  ['set', '--ticket', '1', '--step', 'plan', '--auto-done', '1.5'],
+  ['set', '--ticket', '1', '--step', 'plan', '--auto-done', 'x'],
   ['set', '--ticket', '1', '--step', 'plan', '--bogus', 'x'],
   ['set', '--ticket', '1', '--step'],
   ['set', '--ticket', '1'],
@@ -140,6 +144,38 @@ for (const argv of [
   ok('title: control chars collapsed to spaces and trimmed', readState(dir).title === 'a b c d');
   run(['set', '--ticket', '2', '--step', 'plan', '--title', 'x'.repeat(500)], { cwd: dir });
   ok('title: capped at 200', readState(dir).title.length === 200);
+}
+
+// --- autoDone ----------------------------------------------------------------
+{
+  const dir = mktmp();
+  run(['set', '--ticket', '1', '--step', 'plan'], { cwd: dir });
+  ok('autoDone: defaults to 0', readState(dir).autoDone === 0);
+  ok('autoDone: parseArgs strict integer', parseArgs(['set', '--auto-done', '0']).patch.autoDone === 0
+    && parseArgs(['set', '--auto-done', '12']).patch.autoDone === 12);
+  run(['set', '--auto', 'true', '--auto-done', '3'], { cwd: dir });
+  ok('autoDone: set with auto true', readState(dir).auto === true && readState(dir).autoDone === 3);
+  run(['set', '--step', 'execute'], { cwd: dir });
+  ok('autoDone: kept by a merge', readState(dir).autoDone === 3 && readState(dir).auto === true);
+  run(['set', '--auto', 'false'], { cwd: dir });
+  ok('autoDone: reset to 0 when auto goes false', readState(dir).autoDone === 0);
+  run(['set', '--auto-done', '5'], { cwd: dir });
+  ok('autoDone: ignored (0) while auto is false', readState(dir).autoDone === 0);
+  run(['set', '--auto', 'true', '--auto-done', '2'], { cwd: dir });
+  run(['set', '--ticket', '9', '--step', 'discuss', '--auto', 'true'], { cwd: dir });
+  ok('autoDone: dropped by a ticket change unless passed again', readState(dir).autoDone === 0);
+  run(['set', '--ticket', '10', '--step', 'discuss', '--auto', 'true', '--auto-done', '4'], { cwd: dir });
+  ok('autoDone: kept on a ticket change when passed again', readState(dir).autoDone === 4);
+  // old file without the field
+  const old = mktmp();
+  fs.mkdirSync(path.join(old, '.trailhead'));
+  fs.writeFileSync(statePath(old), JSON.stringify({ map: null, ticket: 4, title: 'x', step: 'plan', auto: true, session: null, updatedAt: 'z' }));
+  run(['set', '--step', 'execute'], { cwd: old });
+  ok('autoDone: old file without the field gets 0', readState(old).autoDone === 0 && readState(old).auto === true);
+  ok('autoDone: sanitizeState accepts non-negative integers only',
+    sanitizeState({ autoDone: 0 }).autoDone === 0 && sanitizeState({ autoDone: 7 }).autoDone === 7
+    && sanitizeState({ autoDone: -1 }).autoDone === undefined && sanitizeState({ autoDone: 1.5 }).autoDone === undefined
+    && sanitizeState({ autoDone: '3' }).autoDone === undefined);
 }
 
 // --- corrupt and malformed existing file -------------------------------------
