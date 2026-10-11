@@ -344,7 +344,10 @@ export function registerMapPane(on: On) {
         <Box key="spacer" flexGrow={1} />
         <Box key="footer" flexDirection="column">
           {text('rule', dim, '─'.repeat(cols))}
-          {text('age', dim, fit(status, cols))}
+          <Box gap={1}>
+            <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
+            {text('age', dim, status)}
+          </Box>
         </Box>
       </Box>
     )

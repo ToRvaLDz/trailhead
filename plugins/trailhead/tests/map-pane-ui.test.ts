@@ -472,7 +472,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
-    expect(buttons).toEqual(['work-209', 'work-210', 'work-214'])
+    expect(buttons).toEqual(['work-209', 'work-210', 'work-214', 'refresh'])
     expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
 
@@ -514,5 +514,30 @@ for (const surface of SURFACES) {
     expect(r.runs).toHaveLength(1)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`the refresh button obeys the same floor [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect((await ui.find({ key: 'refresh' }))?.props).toMatchObject({ label: 'refresh' })
+    expect((await ui.find({ key: 'refresh' }))?.props).not.toHaveProperty('variant')
+    expect(fetches(r)).toBe(1)
+
+    // inside the floor: no fetch now, one when it ends
+    await r.clock.advance(5_000)
+    await ui.press({ key: 'refresh' })
+    await ui.press({ key: 'refresh' })
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+    await r.clock.advance(FLOOR - 5_000)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+
+    // outside the floor: at once
+    await r.clock.advance(FLOOR)
+    await ui.press({ key: 'refresh' })
+    await settle(r)
+    expect(fetches(r)).toBe(3)
   })
 }
