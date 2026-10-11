@@ -4,6 +4,9 @@ const assert = require('assert');
 const {
   basename,
   stripQuotes,
+  stripHeredocBodies,
+  heredocBodies,
+  countHeredocs,
   splitStatements,
   splitStatementsWithSeparators,
   tokenize,
@@ -42,6 +45,23 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('withSeparators keeps a quoted separator intact', seps('grep "a;b&c" f') === JSON.stringify([['grep "a;b&c" f', null]]));
   ok('withSeparators skips heredoc bodies', seps("cat <<EOF\na; b\nEOF\nz") === JSON.stringify([['cat <<EOF', '\n'], ['z', null]]));
   ok('splitStatements is unchanged on a lone &', JSON.stringify(splitStatements('a & b')) === JSON.stringify(['a & b']));
+}
+
+// --- heredocs: a herestring (<<<) is not a heredoc; bodies are extractable ---
+{
+  ok('a herestring does not swallow the following lines',
+    stripHeredocBodies('cat <<< "hello"\ngh issue comment 1 -F x') === 'cat <<< "hello"\ngh issue comment 1 -F x');
+  ok('a herestring with a bare word does not swallow the following lines',
+    stripHeredocBodies('cat <<<word\nnext line') === 'cat <<<word\nnext line');
+  ok('a real heredoc is still stripped', stripHeredocBodies('cat <<EOF\nbody\nEOF\nnext') === 'cat <<EOF\nnext');
+  const hb = heredocBodies("cat <<EOF | x <<'B'\nfirst $(a)\nEOF\nsecond\nB\nlast");
+  ok('heredocBodies returns bodies in order with the quoting of the delimiter',
+    hb.length === 2 && hb[0].body === 'first $(a)' && hb[0].quoted === false && hb[1].body === 'second' && hb[1].quoted === true);
+  ok('heredocBodies handles <<- with tab-indented terminator',
+    heredocBodies('cat <<-EOF\n\tx\n\tEOF\n')[0].body === '\tx');
+  ok('heredocBodies ignores a herestring', heredocBodies('cat <<< "a"\nb').length === 0);
+  ok('countHeredocs counts introducers in a statement',
+    countHeredocs('cat <<A <<B') === 2 && countHeredocs('cat <<< x') === 0 && countHeredocs('ls') === 0);
 }
 
 // --- tokenize: quoted multi-word phrase stays ONE token ---

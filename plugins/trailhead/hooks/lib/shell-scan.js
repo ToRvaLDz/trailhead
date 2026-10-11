@@ -44,9 +44,9 @@ function stripQuotes(t) {
 
 // Matches a heredoc introducer anywhere it can appear on a line: `<<TAG`,
 // `<<'TAG'`, `<<"TAG"`, and `<<-TAG` (which also allows the terminator line to
-// be indented with leading tabs). Captures the operator's `-` and the tag
+// be indented with leading tabs). A herestring (`<<<`) is not a heredoc. Captures the operator's `-` and the tag
 // (quoted or bare) separately.
-const HEREDOC_RE = /<<(-?)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/;
+const HEREDOC_RE = /(?<!<)<<(?!<)(-?)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/;
 
 // A heredoc BODY is literal data (e.g. a script being written to a file), not
 // shell statements executed in the current shell. Scan the command line by
@@ -81,6 +81,46 @@ function stripHeredocBodies(cmd) {
     }
   }
   return out.join('\n');
+}
+
+// The heredoc bodies of a command, in order of appearance: [{ quoted, body }].
+// `quoted` is true when the delimiter is quoted (`<<'EOF'`), so the body is literal
+// text; an unquoted body is expanded by the shell. Same walk as stripHeredocBodies.
+function heredocBodies(cmd) {
+  const lines = String(cmd).split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    let m;
+    while ((m = HEREDOC_RE.exec(line))) {
+      const dashStrip = m[1] === '-';
+      const tag = m[2] || m[3] || m[4];
+      const quoted = m[2] !== undefined || m[3] !== undefined;
+      line = line.slice(m.index + m[0].length);
+      if (!tag) break;
+      const body = [];
+      while (i + 1 < lines.length) {
+        i++;
+        const l = lines[i];
+        if ((dashStrip ? l.replace(/^\t+/, '') : l) === tag) break;
+        body.push(l);
+      }
+      out.push({ quoted, body: body.join('\n') });
+    }
+  }
+  return out;
+}
+
+// How many heredoc introducers a statement's text holds.
+function countHeredocs(text) {
+  let n = 0;
+  let line = String(text);
+  let m;
+  while ((m = HEREDOC_RE.exec(line))) {
+    n++;
+    line = line.slice(m.index + m[0].length);
+  }
+  return n;
 }
 
 // --- statement splitting -------------------------------------------------------
@@ -282,6 +322,8 @@ module.exports = {
   basename,
   stripQuotes,
   stripHeredocBodies,
+  heredocBodies,
+  countHeredocs,
   splitStatements,
   splitStatementsWithSeparators,
   tokenize,
