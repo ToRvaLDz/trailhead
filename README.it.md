@@ -6,7 +6,7 @@
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
-[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-23%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-7%20hook-e8710a?style=flat-square)
+[![sito](https://img.shields.io/badge/sito-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![CI sito](https://img.shields.io/github/actions/workflow/status/ToRvaLDz/trailhead/site-ci.yml?branch=main&style=flat-square&label=CI%20sito)](https://github.com/ToRvaLDz/trailhead/actions/workflows/site-ci.yml) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![host](https://img.shields.io/badge/host-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![comandi](https://img.shields.io/badge/comandi-24%20verbi-0e8a16?style=flat-square) ![guardrail](https://img.shields.io/badge/guardrail-7%20hook-e8710a?style=flat-square)
 
 </div>
 
@@ -185,6 +185,7 @@ Ogni verbo è anche un comando con namespace (`/trailhead:new`, `/trailhead:work
 | `/trailhead:grill [topic]` | esegue una sessione di grilling autonoma su una decision/topic |
 | `/trailhead:map` | mostra la mappa a bassa risoluzione (destination, decisions, frontier, fog) |
 | `/trailhead:dashboard` | mostra la dashboard del repo: l'indice pinnato di ogni mappa aperta, la whiteboard, e i conteggi live |
+| `/trailhead:panel` | apre o chiude il pannello live della mappa: i ticket aperti della mappa attiva per stato, con un pulsante `work` per ogni ticket della frontier (**solo Claude Code**: richiede la mod di trailhead, 2.1.287+) |
 
 ### Capture: zero attrito, una riga di conferma, non risolve nulla
 

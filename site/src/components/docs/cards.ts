@@ -201,7 +201,7 @@ const pageCards: Record<string, Card> = {
   'docs/commands': {
     key: 'commands',
     title: 'commands',
-    count: '23 verbs',
+    count: '24 verbs',
     barPercent: 100,
     chips: [
       { prefix: '/trailhead:', key: 'new' },
