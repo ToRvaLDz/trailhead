@@ -43,15 +43,15 @@ test('parseWorkState defaults autoDone and normalises invalid optional fields', 
 
 test('statusLine builds the entry for each shape', () => {
   const s = parse({})
-  expect(statusLine(s, false)).toBe('trailhead map #198 · #203 Status entry · plan')
-  expect(statusLine(parse({ map: null }), false)).toBe('trailhead whiteboard · #203 Status entry · plan')
-  expect(statusLine(parse({ title: null }), false)).toBe('trailhead map #198 · #203 · plan')
+  expect(statusLine(s, false)).toBe('map #198 · #203 Status entry · plan')
+  expect(statusLine(parse({ map: null }), false)).toBe('whiteboard · #203 Status entry · plan')
+  expect(statusLine(parse({ title: null }), false)).toBe('map #198 · #203 · plan')
   expect(statusLine(parse({ auto: true, autoDone: 3 }), false)).toBe(
-    'trailhead map #198 · #203 Status entry · plan · auto 3 done',
+    'map #198 · #203 Status entry · plan · auto 3 done',
   )
-  expect(statusLine(s, true)).toBe('trailhead map #198 · #203 Status entry · plan · orphaned, resume?')
+  expect(statusLine(s, true)).toBe('map #198 · #203 Status entry · plan · orphaned, resume?')
   expect(statusLine(parse({ auto: true, autoDone: 1 }), true)).toBe(
-    'trailhead map #198 · #203 Status entry · plan · auto 1 done · orphaned, resume?',
+    'map #198 · #203 Status entry · plan · auto 1 done · orphaned, resume?',
   )
   expect(statusLine(null, false)).toBeUndefined()
   expect(statusLine(null, true)).toBeUndefined()

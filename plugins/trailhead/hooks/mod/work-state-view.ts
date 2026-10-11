@@ -58,7 +58,8 @@ export const statusLine = (state: WorkState | null, isOrphaned: boolean): string
   if (state === null || state.ticket === null) return undefined
   const where = state.map === null ? 'whiteboard' : `map #${state.map}`
   const ticket = state.title === null ? `#${state.ticket}` : `#${state.ticket} ${state.title}`
-  const parts = ['trailhead ' + where, ticket]
+  // No own "trailhead" prefix: the engine already prefixes a plugin's status with its name.
+  const parts = [where, ticket]
   if (state.step !== null) parts.push(state.step)
   if (state.auto) parts.push(`auto ${state.autoDone} done`)
   if (isOrphaned) parts.push('orphaned, resume?')

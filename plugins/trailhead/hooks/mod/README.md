@@ -10,7 +10,7 @@ the status text, the pipeline stages) are in `work-state-view.ts`.
 
 ## What it shows
 
-- **Status entry**: one line under the prompt, `trailhead map #198 · #203 Title · plan`
+- **Status entry**: one line under the prompt, `map #198 · #203 Title · plan` (the engine prefixes it with the plugin name, `trailhead:`)
   (`whiteboard` instead of `map #<n>` for a ticket with no map; the title is left out when
   there is none). During an autonomous run ` · auto 3 done` is appended.
 - **Band above the prompt**: row one is the ticket number (bold, accent) and the title cut to

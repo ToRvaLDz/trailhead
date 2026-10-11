@@ -7,7 +7,7 @@ const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
 const TITLE = 'Status entry and pipeline band'
-const STATUS_PLAN = `trailhead map #198 · #203 ${TITLE} · plan`
+const STATUS_PLAN = `map #198 · #203 ${TITLE} · plan`
 const HELPER_CALL = 'node ~/.claude/trailhead/templates/trailhead-work-state.js set --repo . --step execute'
 
 const stateText = (over: Record<string, unknown> = {}): string =>
@@ -137,10 +137,10 @@ for (const surface of SURFACES) {
     const r = rig(on)
     r.file = stateText({ map: null })
     await $.session.start(START)
-    expect(lastStatus(r)).toBe(`trailhead whiteboard · #203 ${TITLE} · plan`)
+    expect(lastStatus(r)).toBe(`whiteboard · #203 ${TITLE} · plan`)
     r.file = stateText({ title: null })
     await turn($)
-    expect(lastStatus(r)).toBe('trailhead map #198 · #203 · plan')
+    expect(lastStatus(r)).toBe('map #198 · #203 · plan')
   })
 
   test(`each step highlights its stage [${surface}]`, async ($, on) => {
@@ -276,7 +276,7 @@ for (const surface of SURFACES) {
     expect((await leaf(ui, 'stage-plan'))?.text).toBe('▸ plan')
 
     await $.tool.call({ tool: 'Bash', command: HELPER_CALL } as never)
-    expect(lastStatus(r)).toBe(`trailhead map #198 · #203 ${TITLE} · execute`)
+    expect(lastStatus(r)).toBe(`map #198 · #203 ${TITLE} · execute`)
     expect((await leaf(ui, 'stage-execute'))?.text).toBe('▸ execute')
 
     // any other Bash call reads nothing
