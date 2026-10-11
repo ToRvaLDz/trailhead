@@ -104,7 +104,7 @@ function scanLine(line, st, seps) {
       escAt = i;
       continue;
     }
-    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
+    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
     if (c === '$' && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
     if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
     if (top && top.k === 'dq') {
@@ -118,7 +118,7 @@ function scanLine(line, st, seps) {
     if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
     const wordStart = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
     if (c === '#' && wordStart) break; // comment to end of line
-    if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
+    if (c === '(' && line[i + 1] === '(' && wordStart && parenIsArith(line, i + 2)) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
     if (top && top.k === 'sub') {
       if (c === '(') { top.n++; continue; }
       if (c === ')') { if (top.n === 0) { stack.pop(); expCloseAt = i; } else top.n--; continue; }
@@ -145,6 +145,25 @@ function scanLine(line, st, seps) {
     }
   }
   return found;
+}
+
+// `((` / `$((` open arithmetic only when the paren that closes the inner `(` is
+// directly followed by `)`; `((a); b)` is nested subshells (and `$((a); b)` a
+// substitution). `from` is the index just after the two opening parens. A span
+// that runs past the end of the line is assumed to be arithmetic.
+function parenIsArith(line, from) {
+  let depth = 2;
+  for (let j = from; j < line.length; j++) {
+    const c = line[j];
+    if (c === '\\') { j++; continue; }
+    if (c === "'" || c === '"') { // skip a quoted span on this line
+      const end = line.indexOf(c, j + 1);
+      if (end < 0) return true;
+      j = end;
+    } else if (c === '(') depth++;
+    else if (c === ')' && --depth === 1) return line[j + 1] === ')';
+  }
+  return true;
 }
 
 // Code that can be split into statements: the innermost open context is a

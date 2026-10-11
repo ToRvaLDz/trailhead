@@ -167,6 +167,18 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('a process substitution separator splits inside it', J(splitStatements('cat <(a; b)')) === J(['cat <(a', 'b)']));
 }
 
+// --- nested subshells and substitutions inside quotes / ${..} (#212) ---
+{
+  const J = JSON.stringify;
+  ok('((cmd); cmd) is nested subshells, not arithmetic', J(splitStatements('((echo a); cat .env)')) === J(['((echo a)', 'cat .env)']));
+  ok('$((cmd); cmd) falls back to a substitution too', J(splitStatements('x=$((echo a); cat .env)')) === J(['x=$((echo a)', 'cat .env)']));
+  ok('a real ((..)) and $((..)) stay arithmetic',
+    J(splitStatements('((a=(1+2)*3; b=1|2)); echo $((1|(2)))')) === J(['((a=(1+2)*3; b=1|2))', 'echo $((1|(2)))']));
+  ok('$(..) inside double quotes splits its inner ;', J(splitStatements('echo "$(echo a; cat .env)"')) === J(['echo "$(echo a', 'cat .env)"']));
+  ok('$(..) inside ${..} splits its inner ;', J(splitStatements('echo ${x:-$(echo a; cat .env)}')) === J(['echo ${x:-$(echo a', 'cat .env)}']));
+  ok('text after a closed $(..) in dq is quoted again', splitStatements('echo "$(a) ; b"').length === 1);
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
