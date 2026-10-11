@@ -125,6 +125,37 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
   ok('adjacent quoted + bare parts join', r('gh issue comment 1 --body-file "$D"/b.md', { D: '/x' }).path === '/x/b.md');
 }
 
+// --- unit: ghWrites() sees writes inside compound constructs and wrappers (#210 review C1) ---
+{
+  const kinds = (c) => JSON.stringify(ghWrites(c).map((w) => w.kind));
+  const W = 'gh issue comment 1 --body-file /x/b.md';
+  ok('write after do', kinds(`for f in a; do ${W}; done`) === '["issue"]');
+  ok('write after then', kinds(`if true; then ${W}; fi`) === '["issue"]');
+  ok('write after else', kinds(`if false; then true; else ${W}; fi`) === '["issue"]');
+  ok('write as an if condition', kinds(`if ${W}; then true; fi`) === '["issue"]');
+  ok('write in a { } group', kinds(`{ ${W}; }`) === '["issue"]');
+  ok('write in a ( ) subshell, spaced', kinds(`( ${W} )`) === '["issue"]');
+  ok('write in a ( ) subshell, glued', kinds(`(${W})`) === '["issue"]');
+  ok('write after !', kinds(`! ${W}`) === '["issue"]');
+  ok('write after time', kinds(`time ${W}`) === '["issue"]');
+  ok('write behind env', kinds(`env ${W}`) === '["issue"]');
+  ok('write behind env -i NAME=v', kinds(`env -i A=1 ${W}`) === '["issue"]');
+  ok('write behind command', kinds(`command ${W}`) === '["issue"]');
+  ok('write behind builtin/nohup/exec',
+    kinds(`nohup ${W}`) === '["issue"]' && kinds(`exec ${W}`) === '["issue"]' && kinds(`builtin ${W}`) === '["issue"]');
+  ok('trailing ) of a subshell does not reach the path',
+    ghWrites(`(${W})`)[0].text.endsWith('b.md') && ghWrites(`( ${W} )`)[0].text.endsWith('b.md'));
+  ok('bash -c with a write is an opaque write', kinds(`bash -c '${W}'`) === '["opaque"]');
+  ok('sh -c / zsh -c / eval / xargs with a write are opaque',
+    kinds(`sh -c "${W}"`) === '["opaque"]' && kinds(`zsh -c "${W}"`) === '["opaque"]' &&
+    kinds(`eval ${W}`) === '["opaque"]' && kinds(`echo 1 | xargs ${W}`) === '["opaque"]');
+  ok('bash -c with a gh api body write is opaque', kinds('bash -c "gh api repos/o/r/issues/1/comments -f body=x"') === '["opaque"]');
+  ok('a command substitution holding a write is opaque', kinds(`echo $(${W})`) === '["opaque"]');
+  ok('bash -c with a read stays no write', kinds('bash -c "gh issue list"') === '[]' && kinds('bash -c "gh issue view 3 --comments"') === '[]');
+  ok('bash -c without gh stays no write', kinds('bash -c "ls && echo hi"') === '[]');
+  ok('git commit message mentioning gh stays no write', kinds('git commit -m "docs: gh issue comment helper"') === '[]');
+}
+
 // --- end-to-end: block ---
 const b1 = runHook('gh issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
 ok('blocks an inline secret (exit 2)', b1.code === 2 && /"decision":"block"/.test(b1.out));
@@ -245,6 +276,25 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   ok('a relative clean body-file resolves against the hook input cwd and passes',
     (() => { const r = runHook('gh issue comment 1 --body-file clean.md', {}, dir); return r.code === 0 && r.out.trim() === ''; })());
 
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// --- end-to-end: compound constructs and opaque writes (#210 review C1) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210c-'));
+  const leakFile = path.join(dir, 'leak.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const W = `gh issue comment 1 --body-file ${leakFile}`;
+  for (const [name, c] of [
+    ['do', `for f in a; do ${W}; done`], ['then', `if true; then ${W}; fi`], ['{ }', `{ ${W}; }`],
+    ['( )', `(${W})`], ['!', `! ${W}`], ['time', `time ${W}`], ['env', `env ${W}`], ['command', `command ${W}`],
+  ]) ok(`a leaking body-file inside ${name} blocks`, leaks(runHook(c)));
+  const op = runHook(`bash -c '${W}'`);
+  ok('bash -c with a gh write blocks as opaque', op.code === 2 && op.out.includes('"code":"SECRET_GUARD_OPAQUE_WRITE"'));
+  ok('eval with a gh write blocks as opaque', runHook(`eval ${W}`).out.includes('SECRET_GUARD_OPAQUE_WRITE'));
+  const rd = runHook('bash -c "gh issue list"');
+  ok('bash -c with a read is allowed silently', rd.code === 0 && rd.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 

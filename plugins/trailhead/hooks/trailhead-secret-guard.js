@@ -184,6 +184,106 @@ function resolveBodyFile(stmt, vars, env, cwd) {
   return { path: path.resolve(cwd === undefined ? process.cwd() : cwd, r.value) };
 }
 
+// --- statement normalisation ---------------------------------------------------
+
+// Quote-aware word splitter. Like shell-scan's tokenize, but a `$(...)`, `<(...)`,
+// `>(...)` or backtick span stays inside ONE word even when it holds spaces.
+function words(stmt) {
+  const s = String(stmt).trim();
+  const out = [];
+  let cur = '';
+  let quote = null; // ' or "
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      cur += c;
+      if (quote === '"' && c === '\\' && i + 1 < s.length) cur += s[++i];
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
+    if ((c === '$' || c === '<' || c === '>') && s[i + 1] === '(') {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < s.length; j++) {
+        if (s[j] === '(') depth++;
+        else if (s[j] === ')' && --depth === 0) break;
+      }
+      cur += s.slice(i, j + 1);
+      i = j;
+      continue;
+    }
+    if (c === '`') {
+      const close = s.indexOf('`', i + 1);
+      const end = close === -1 ? s.length - 1 : close;
+      cur += s.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      if (cur) { out.push(cur); cur = ''; }
+      continue;
+    }
+    cur += c;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Reserved words and prefixes that can precede a command inside a compound construct.
+const PREFIX_WORDS = new Set(['do', 'then', 'else', 'elif', '{', '!', 'time', 'if', 'while', 'until']);
+// Wrappers that run the rest of the line as a command (their own flags are skipped).
+const WRAPPERS = new Set(['env', 'command', 'builtin', 'nohup', 'exec']);
+// Commands that run text we cannot analyse statically.
+const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
+// A gh issue/pr write, or a gh api body/--input write, anywhere in some text.
+const OPAQUE_WRITE_RE =
+  /\bgh\b[\s\S]*?\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bgh\b[\s\S]*?\bapi\b[\s\S]*?(?:\bbody=|--input)/;
+
+// Strip what stands between a statement and the command it runs: reserved words
+// (do, then, else, !, time, ...), subshell/group openers, and wrapper commands
+// (env, command, builtin, nohup, exec). Returns { text, runner } where `runner` is
+// true when the command is bash/sh/zsh/eval/xargs (text we cannot analyse).
+function unwrap(text) {
+  let toks = words(text);
+  let opens = 0;
+  for (let changed = true; changed && toks.length; ) {
+    changed = false;
+    const lead = /^\(+/.exec(toks[0]);
+    if (lead) {
+      opens += lead[0].length;
+      toks = [toks[0].slice(lead[0].length), ...toks.slice(1)].filter(Boolean);
+      changed = true;
+      continue;
+    }
+    if (PREFIX_WORDS.has(toks[0])) { toks = toks.slice(1); changed = true; continue; }
+    let k = 0;
+    while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
+    if (k < toks.length && WRAPPERS.has(toks[k])) {
+      const w = toks[k];
+      let j = k + 1;
+      while (j < toks.length) {
+        const t = toks[j];
+        if (w === 'env' && (t === '-u' || t === '-C')) j += 2;
+        else if (t.startsWith('-') || (w === 'env' && ASSIGN_TOKEN_RE.test(t))) j++;
+        else break;
+      }
+      toks = [...toks.slice(0, k), ...toks.slice(j)];
+      changed = true;
+    }
+  }
+  if (opens > 0 && toks.length) {
+    const last = toks[toks.length - 1];
+    const stripped = last.replace(new RegExp(`\\){1,${opens}}$`), '');
+    toks = stripped ? [...toks.slice(0, -1), stripped] : toks.slice(0, -1);
+  }
+  let k = 0;
+  while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
+  const cmd0 = toks[k] ? toks[k].replace(/^.*\//, '') : '';
+  return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0) };
+}
+
 // --- variable tracking across a compound command -------------------------------
 
 const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
@@ -223,20 +323,28 @@ function ghWrites(cmd, env = process.env) {
   let vars = {};
   let cwdKnown = true;
   let prevSep = null;
-  for (const { text, sep } of splitStatementsWithSeparators(cmd)) {
+  for (const { text: raw, sep } of splitStatementsWithSeparators(cmd)) {
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
     prevSep = sep;
+    const { text, runner } = unwrap(raw);
     const kind = writeKind(text);
     if (kind) {
       writes.push({ kind, text, vars, cwdKnown });
+      continue;
+    }
+    // A shell/eval/xargs line, or a command substitution, that holds a gh write
+    // cannot be analysed: report it as an opaque write.
+    const nested = runner ? (/<<-?/.test(text) ? cmd : text) : /\$\(|`|<\(|>\(/.test(text) ? text : '';
+    if (nested && OPAQUE_WRITE_RE.test(nested)) {
+      writes.push({ kind: 'opaque', text, vars, cwdKnown });
       continue;
     }
     const assigns = parseAssignments(text);
     if (assigns) {
       if (!subshell) {
         const next = { ...vars };
-        for (const [name, raw] of assigns) {
-          const r = expandWord(raw, next, env);
+        for (const [name, rawValue] of assigns) {
+          const r = expandWord(rawValue, next, env);
           next[name] = r.unresolved ? null : r.value;
         }
         vars = next;
@@ -323,6 +431,21 @@ function bodyFileBlock(code, kind, detail) {
 function evaluate(cmd, { env = process.env, cwd } = {}) {
   const writes = ghWrites(cmd, env);
   if (writes.length === 0) return { kind: 'allow' }; // not a tracker write: out of scope
+
+  const opaque = writes.find((w) => w.kind === 'opaque');
+  if (opaque) {
+    return {
+      kind: 'block',
+      payload: {
+        decision: 'block',
+        code: 'SECRET_GUARD_OPAQUE_WRITE',
+        reason:
+          'trailhead: a gh issue/PR write runs inside bash -c / sh -c / eval / xargs or a command substitution, ' +
+          'so the secret-guard cannot analyse the body it posts. Run the gh command directly, with the body in a file ' +
+          'passed by its literal absolute path (--body-file /tmp/body.md), and post again.',
+      },
+    };
+  }
 
   let text = cmd;
   for (const w of writes) {
