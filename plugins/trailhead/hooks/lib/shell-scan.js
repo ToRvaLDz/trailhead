@@ -73,7 +73,10 @@ function scanLine(line, st, seps) {
   let escAt = -2; // index of the last escaped char
   st.cont = false;
   // Is the char before index i a word boundary? An escaped char (`\ #x`) is not.
-  const isBoundary = (i) => WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1;
+  // The `)` that closes an expansion (`$(..)`, `<(..)`, `$((..))`) ends no word
+  // either: `$(x)# y` is not a comment, `(x)# y` is.
+  let expCloseAt = -2;
+  const isBoundary = (i) => WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1 && expCloseAt !== i - 1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     const top = stack[stack.length - 1];
@@ -86,7 +89,7 @@ function scanLine(line, st, seps) {
     if (top && top.k === 'ar') {
       if (top.mode === 'bracket') { if (c === ']') stack.pop(); continue; }
       if (c === '(') top.depth++;
-      else if (c === ')' && --top.depth === 0) stack.pop();
+      else if (c === ')' && --top.depth === 0) { stack.pop(); if (top.exp) expCloseAt = i; }
       continue;
     }
     if (c === '\\') { // escaped char stays literal
@@ -101,7 +104,7 @@ function scanLine(line, st, seps) {
       escAt = i;
       continue;
     }
-    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i += 2; continue; }
+    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
     if (c === '$' && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
     if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
     if (top && top.k === 'dq') {
@@ -118,8 +121,10 @@ function scanLine(line, st, seps) {
     if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
     if (top && top.k === 'sub') {
       if (c === '(') { top.n++; continue; }
-      if (c === ')') { if (top.n === 0) stack.pop(); else top.n--; continue; }
+      if (c === ')') { if (top.n === 0) { stack.pop(); expCloseAt = i; } else top.n--; continue; }
     }
+    // A process substitution `<(..)` / `>(..)` is code, like `$(..)`.
+    if ((c === '<' || c === '>') && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
     if (seps && splittable(stack)) {
       const two = c + line[i + 1];
       if (two === '&&' || two === '||') { seps.push({ at: i, len: 2, op: two }); i++; continue; }

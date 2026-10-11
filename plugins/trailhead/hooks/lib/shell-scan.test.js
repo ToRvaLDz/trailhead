@@ -149,6 +149,24 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     countHeredocs('echo a\\ \\\n# x <<EOF') === 1);
 }
 
+// --- a # glued to the ) of an expansion is not a comment (#212) ---
+{
+  const J = JSON.stringify;
+  ok('$(..)# keeps splitting: bash runs the later statement',
+    J(splitStatements('$(echo b)# cm ; echo MARK')) === J(['$(echo b)# cm', 'echo MARK']));
+  ok('<(..)# keeps splitting on a background &',
+    J(splitStatementsWithSeparators('cat <(echo z)# cm & echo MARK').map((x) => x.text)) === J(['cat <(echo z)# cm', 'echo MARK']));
+  ok('>(..)# and $((..))# keep splitting',
+    J(splitStatements('tee >(cat)# c ; echo MARK')) === J(['tee >(cat)# c', 'echo MARK']) &&
+    J(splitStatements('echo $((1+2))# c ; echo MARK')) === J(['echo $((1+2))# c', 'echo MARK']));
+  ok('a # after a plain subshell or group is still a comment',
+    J(splitStatements('(echo b)# cm ; echo NOMARK')) === J(['(echo b)# cm ; echo NOMARK']) &&
+    J(splitStatements('((x=1))# cm ; echo NOMARK')) === J(['((x=1))# cm ; echo NOMARK']));
+  ok('$(..)# glued word: a later << is a real heredoc, a comment one is not',
+    countHeredocs('cat $(echo b)# <<EOF') === 1 && countHeredocs('(echo b)# <<EOF') === 0);
+  ok('a process substitution separator splits inside it', J(splitStatements('cat <(a; b)')) === J(['cat <(a', 'b)']));
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
