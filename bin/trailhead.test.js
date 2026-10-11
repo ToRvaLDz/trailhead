@@ -701,9 +701,12 @@ const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
 const codexHooksJson = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
 const codexHooksJsonStr = JSON.stringify(codexHooksJson);
-ok('codex: hooks.json registers commit-guard under PreToolUse', codexHooksJsonStr.includes('trailhead-commit-guard.js') &&
-  (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-commit-guard.js'))));
-ok('codex: hooks.json registers secret-guard under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-secret-guard.js'))));
+ok('codex: hooks.json registers the merged Bash guards under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => g.matcher === 'Bash' &&
+  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body'))));
+ok('codex: hooks.json registers none of the per-guard scripts on their own', !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(codexHooksJsonStr));
+ok('codex: the five guard modules the merged hook requires are still shipped (no search)',
+  ['commit', 'secret', 'install', 'body'].every((n) => fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', `trailhead-${n}-guard.js`))) &&
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-bash-guards.js')));
 ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
 
@@ -852,7 +855,7 @@ ok('codex uninstall: cluster trailhead-view gone', !fs.existsSync(path.join(code
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);
-  return !str.includes('trailhead-commit-guard.js') && !str.includes('trailhead-secret-guard.js') &&
+  return !str.includes('trailhead-bash-guards.js') && !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(str) &&
     !str.includes('trailhead-issue-injection-scanner.js') && !str.includes('trailhead-check-update.js');
 })());
 
@@ -1044,7 +1047,15 @@ for (const nm of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
-ok('claude: settings.json references commit-guard', settingsContent.includes('trailhead-commit-guard.js'));
+ok('claude: settings.json registers the merged Bash guards', settingsContent.includes('trailhead-bash-guards.js'));
+ok('claude: settings.json registers none of the per-guard scripts on their own',
+  !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(settingsContent));
+ok('claude: exactly one PreToolUse/Bash trailhead-bash-guards registration', (() => {
+  const s = JSON.parse(settingsContent);
+  return (s.hooks.PreToolUse || []).flatMap((g) => g.hooks || []).filter((h) => h.command.includes('trailhead-bash-guards.js')).length === 1;
+})());
+ok('claude: hooks/trailhead-bash-guards.js and its five modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard']
+  .every((n) => fs.existsSync(path.join(claudeDir, 'hooks', `trailhead-${n}.js`))));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
 ok('claude: hooks/trailhead-mockup-link-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-guard.js')));
@@ -1366,6 +1377,78 @@ const missingBodyGuardPkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', '
   ok('(h) pre-#169 search-guard migration: prints ✓', out.stdout.includes('✓'));
   const afterHooksJson = fs.readFileSync(hooksJsonPath, 'utf8');
   ok('(h) pre-#169 search-guard migration: the stale entry is gone', !afterHooksJson.includes('trailhead-search-guard.js'));
+}
+
+// (#207) Migration to the merged Bash guard hook. An install that registered
+// each guard on its own ends with only the merged entry; install and uninstall
+// are idempotent; uninstall removes the merged entry and every legacy one.
+const LEGACY_GUARD_RE = /trailhead-(commit|secret|install|search|body)-guard\.js/;
+const bashGuardCommands = (registry) => (registry.hooks.PreToolUse || [])
+  .flatMap((g) => (g.matcher === 'Bash' ? g.hooks || [] : []))
+  .map((h) => h.command)
+  .filter((c) => c.includes('trailhead-bash-guards.js') || LEGACY_GUARD_RE.test(c));
+{
+  const mDir = mktmp();
+  runInstaller([`--claude`, `--dir=${mDir}`]);
+  const settingsFile = path.join(mDir, 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  const hooksDirM = path.join(mDir, 'hooks');
+  settings.hooks.PreToolUse = settings.hooks.PreToolUse.map((g) => ({
+    ...g,
+    hooks: g.hooks.filter((h) => !h.command.includes('trailhead-bash-guards.js')),
+  })).filter((g) => g.hooks.length);
+  const legacyGroup = { matcher: 'Bash', hooks: ['commit', 'secret', 'install', 'search', 'body']
+    .map((n) => ({ type: 'command', command: `node "${path.join(hooksDirM, `trailhead-${n}-guard.js`)}"` })) };
+  settings.hooks.PreToolUse.push(legacyGroup);
+  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  const out = runPkg(repoRoot, [`--claude`, `--dir=${mDir}`]);
+  ok('(#207) claude migration: exit 0', out.status === 0);
+  const after = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  const cmds = bashGuardCommands(after);
+  ok('(#207) claude migration: only the merged entry remains', cmds.length === 1 && cmds[0].includes('trailhead-bash-guards.js'));
+  const once = fs.readFileSync(settingsFile, 'utf8');
+  runInstaller([`--claude`, `--dir=${mDir}`]);
+  ok('(#207) claude install twice leaves the same settings.json', fs.readFileSync(settingsFile, 'utf8') === once);
+  runInstaller([`--claude`, `--dir=${mDir}`, '--uninstall']);
+  const gone = fs.readFileSync(settingsFile, 'utf8');
+  ok('(#207) claude uninstall strips the merged entry', !gone.includes('trailhead-bash-guards.js'));
+  runInstaller([`--claude`, `--dir=${mDir}`, '--uninstall']);
+  ok('(#207) claude uninstall twice leaves the same settings.json', fs.readFileSync(settingsFile, 'utf8') === gone);
+}
+{
+  const mDir = mktmp();
+  const hooksJsonFile = path.join(mDir, 'hooks.json');
+  const scriptsDir = path.join(mDir, 'skills', 'trailhead', 'hooks');
+  runInstaller([`--codex`, `--dir=${mDir}`]);
+  const reg = JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8'));
+  reg.hooks.PreToolUse = reg.hooks.PreToolUse.map((g) => ({
+    ...g,
+    hooks: g.hooks.filter((h) => !h.command.includes('trailhead-bash-guards.js')),
+  })).filter((g) => g.hooks.length);
+  reg.hooks.PreToolUse.push({ matcher: 'Bash', hooks: ['commit', 'secret', 'install', 'search', 'body']
+    .map((n) => ({ type: 'command', command: `node "${path.join(scriptsDir, `trailhead-${n}-guard.js`)}"` })) });
+  fs.writeFileSync(hooksJsonFile, JSON.stringify(reg, null, 2));
+  const out = runPkg(repoRoot, [`--codex`, `--dir=${mDir}`]);
+  ok('(#207) codex migration: exit 0', out.status === 0);
+  const cmds = bashGuardCommands(JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8')));
+  ok('(#207) codex migration: only the merged entry remains', cmds.length === 1 &&
+    cmds[0].endsWith(' --guards=commit,secret,install,body'));
+  const once = fs.readFileSync(hooksJsonFile, 'utf8');
+  runInstaller([`--codex`, `--dir=${mDir}`]);
+  ok('(#207) codex install twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === once);
+  // A legacy registration reappearing next to the merged one is removed on uninstall too.
+  const withLegacy = JSON.parse(once);
+  withLegacy.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(scriptsDir, 'trailhead-search-guard.js')}"` },
+    { type: 'command', command: `node "${path.join(scriptsDir, 'trailhead-commit-guard.js')}"` },
+  ] });
+  fs.writeFileSync(hooksJsonFile, JSON.stringify(withLegacy, null, 2));
+  runInstaller([`--codex`, `--dir=${mDir}`, '--uninstall']);
+  const gone = fs.readFileSync(hooksJsonFile, 'utf8');
+  ok('(#207) codex uninstall strips the merged entry and every legacy one',
+    !gone.includes('trailhead-bash-guards.js') && !LEGACY_GUARD_RE.test(gone));
+  runInstaller([`--codex`, `--dir=${mDir}`, '--uninstall']);
+  ok('(#207) codex uninstall twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === gone);
 }
 
 // (i) an unresolved env var on a registered target warns instead of failing.

@@ -162,17 +162,13 @@ ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', nul
 
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
-ok('codexHookEntries returns 8 entries', Array.isArray(entries) && entries.length === 8);
-ok('codexHookEntries: commit-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-commit-guard.js') && e.command.includes('/h')));
-ok('codexHookEntries: secret-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-secret-guard.js')));
-ok('codexHookEntries: install-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-install-guard.js')));
-ok('codexHookEntries: search-guard is absent (Claude-Code-only, not projected to Codex)',
-  entries.every((e) => !e.command.includes('trailhead-search-guard.js')));
-ok('codexHookEntries: body-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-body-guard.js')));
+ok('codexHookEntries returns 5 entries', Array.isArray(entries) && entries.length === 5);
+const bashEntries = entries.filter((e) => e.event === 'PreToolUse' && e.matcher === 'Bash');
+ok('codexHookEntries: exactly one PreToolUse/Bash registration', bashEntries.length === 1);
+ok('codexHookEntries: the Bash entry is the merged hook with exactly --guards=commit,secret,install,body',
+  bashEntries[0].command === 'node "/h/trailhead-bash-guards.js" --guards=commit,secret,install,body');
+ok('codexHookEntries: no per-guard script is registered on its own', entries.every((e) =>
+  !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(e.command)));
 ok('codexHookEntries: secret-read-guard is PreToolUse/Read|Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Read|Bash' && e.command.includes('trailhead-secret-read-guard.js')));
 ok('codexHookEntries: injection-scanner is PostToolUse/Bash', entries.some((e) =>

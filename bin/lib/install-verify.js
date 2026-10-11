@@ -135,6 +135,9 @@ function readRegistry(registryFile) {
 // token expands to exactly hooksDir/<f>, OR an unresolved token's basename is
 // <f> (stays warning-only, never also missing).
 function checkRegisteredTargets(spec, missing, unverified) {
+  // Shipped files (hookFiles) may include modules that are only require()d;
+  // the files that must be registered are the entrypoints (default: all shipped).
+  const entrypoints = spec.entrypointFiles || spec.hookFiles;
   const registry = readRegistry(spec.registryFile);
   const registryName = path.basename(spec.registryFile);
   const events = (registry && typeof registry.hooks === 'object' && registry.hooks) ? registry.hooks : {};
@@ -168,7 +171,7 @@ function checkRegisteredTargets(spec, missing, unverified) {
     }
   }
 
-  for (const f of spec.hookFiles) {
+  for (const f of entrypoints) {
     if (!registeredExact.has(f) && !registeredViaUnresolved.has(f)) {
       missing.push(`hook registration ${f} (${registryName})`);
     }
@@ -185,8 +188,8 @@ function checkAgents(spec, missing) {
 }
 
 // --- verifyInstall --------------------------------------------------------------
-// spec = { skillsRoot, skillDirs, sharedFiles, hooksDir, hookFiles,
-//          hookLibFiles, registryFile, agentsDir, agentPattern, env, home }
+// spec = { skillsRoot, skillDirs, sharedFiles, hooksDir, hookFiles (shipped),
+//          entrypointFiles (registered; defaults to hookFiles), hookLibFiles, registryFile, agentsDir, agentPattern, env, home }
 function verifyInstall(spec) {
   const missing = [];
   const unverified = [];
@@ -199,13 +202,14 @@ function verifyInstall(spec) {
 }
 
 // --- spec builders ---------------------------------------------------------
-function claudeVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, hookLibFiles, env, home }) {
+function claudeVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, entrypointFiles, hookLibFiles, env, home }) {
   return {
     skillsRoot: path.join(configDir, 'skills'),
     skillDirs,
     sharedFiles,
     hooksDir: path.join(configDir, 'hooks'),
     hookFiles,
+    entrypointFiles,
     hookLibFiles,
     registryFile: path.join(configDir, 'settings.json'),
     agentsDir: path.join(configDir, 'agents'),
@@ -215,7 +219,7 @@ function claudeVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, hookLi
   };
 }
 
-function codexVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, hookLibFiles, env, home }) {
+function codexVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, entrypointFiles, hookLibFiles, env, home }) {
   const L = codexLayout(configDir);
   return {
     skillsRoot: L.skillsRoot,
@@ -223,6 +227,7 @@ function codexVerifySpec(configDir, { skillDirs, sharedFiles, hookFiles, hookLib
     sharedFiles,
     hooksDir: L.hooksScriptsDir,
     hookFiles,
+    entrypointFiles,
     hookLibFiles,
     registryFile: L.hooksJson,
     agentsDir: L.codexAgentsDir,

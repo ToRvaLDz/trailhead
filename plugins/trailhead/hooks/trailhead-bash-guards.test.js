@@ -203,4 +203,15 @@ for (const name of ['commit', 'secret', 'install', 'search', 'body']) {
   eq(`${name}-guard suite passes through the merged hook`, r.status, 0);
 }
 
+// --- registration: one Bash entry, one command (the merged hook) ---
+{
+  const reg = JSON.parse(fs.readFileSync(path.join(__dirname, 'hooks.json'), 'utf8'));
+  const bashGroups = reg.hooks.PreToolUse.filter((g) => g.matcher === 'Bash');
+  eq('hooks.json has exactly one PreToolUse entry with matcher Bash', bashGroups.length, 1);
+  eq('that entry holds exactly one command', bashGroups[0].hooks.length, 1);
+  ok('and it is the merged hook', bashGroups[0].hooks[0].command.includes('trailhead-bash-guards.js'));
+  ok('no legacy guard script is registered anywhere in hooks.json',
+    !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(JSON.stringify(reg)));
+}
+
 console.log(`trailhead-bash-guards.test.js: ${passed} checks passed`);

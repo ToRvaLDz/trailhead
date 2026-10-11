@@ -359,6 +359,57 @@ function buildCodexFixture() {
     r.unverified.some((u) => u.includes('CLAUDE_PLUGIN_ROOT undefined')));
 }
 
+// --- shipped files vs registered entrypoints (#207) ---------------------------
+// The guard modules are shipped (they must exist) but only require()d by the
+// merged hook, so they are never required to be registered.
+function buildMergedFixture(host) {
+  const configDir = mktmp();
+  const skillDirs = ['trailhead', '_shared'];
+  const sharedFiles = ['load-first.md'];
+  const modules = ['trailhead-commit-guard.js', 'trailhead-body-guard.js'];
+  const entrypointFiles = ['trailhead-bash-guards.js'];
+  const hookFiles = [...modules, ...entrypointFiles];
+  const hooksDir = host === 'codex' ? path.join(configDir, 'skills', 'trailhead', 'hooks') : path.join(configDir, 'hooks');
+  write(path.join(configDir, 'skills', 'trailhead', 'SKILL.md'), 'x');
+  write(path.join(configDir, 'skills', '_shared', 'load-first.md'), 'x');
+  for (const f of hookFiles) write(path.join(hooksDir, f), 'x');
+  write(path.join(configDir, 'agents', host === 'codex' ? 'trailhead-execute.toml' : 'trailhead-execute.md'), 'x');
+  const registry = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(hooksDir, 'trailhead-bash-guards.js')}"${host === 'codex' ? ' --guards=commit,body' : ''}` },
+  ] }] } };
+  write(path.join(configDir, host === 'codex' ? 'hooks.json' : 'settings.json'), JSON.stringify(registry, null, 2));
+  const build = host === 'codex' ? codexVerifySpec : claudeVerifySpec;
+  const spec = build(configDir, { skillDirs, sharedFiles, hookFiles, entrypointFiles, hookLibFiles: [], env: {}, home: H });
+  return { configDir, spec, hooksDir };
+}
+for (const host of ['claude', 'codex']) {
+  {
+    const { spec } = buildMergedFixture(host);
+    const r = verifyInstall(spec);
+    ok(`${host}: passes with the guard modules shipped but unregistered`, r.missing.length === 0 && r.unverified.length === 0);
+  }
+  {
+    const { spec, hooksDir } = buildMergedFixture(host);
+    fs.rmSync(path.join(hooksDir, 'trailhead-commit-guard.js'));
+    const r = verifyInstall(spec);
+    ok(`${host}: a shipped guard module that is missing is still reported`, r.missing.includes('hook script trailhead-commit-guard.js'));
+  }
+  {
+    const { configDir, spec } = buildMergedFixture(host);
+    write(path.join(configDir, host === 'codex' ? 'hooks.json' : 'settings.json'), JSON.stringify({ hooks: {} }));
+    const r = verifyInstall(spec);
+    ok(`${host}: fails when the registered entrypoint is not registered`,
+      r.missing.some((m) => m.startsWith('hook registration trailhead-bash-guards.js')));
+  }
+  {
+    const { spec, hooksDir } = buildMergedFixture(host);
+    fs.rmSync(path.join(hooksDir, 'trailhead-bash-guards.js'));
+    const r = verifyInstall(spec);
+    ok(`${host}: fails when the registered entrypoint file is missing`,
+      r.missing.includes('hook script trailhead-bash-guards.js') && r.missing.some((m) => m.startsWith('registered hook target')));
+  }
+}
+
 // --- formatters --------------------------------------------------------------
 {
   const out = formatVerifyFailure('Claude Code', '/c/dir', { missing: ['skill trailhead-work/SKILL.md'], unverified: ['/x/trailhead-y.js (PreToolUse, settings.json: $Y undefined)'] });

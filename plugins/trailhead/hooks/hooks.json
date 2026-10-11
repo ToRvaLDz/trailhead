@@ -6,23 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-commit-guard.js\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-secret-guard.js\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-install-guard.js\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-search-guard.js\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-body-guard.js\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trailhead-bash-guards.js\""
           }
         ]
       },

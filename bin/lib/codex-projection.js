@@ -113,7 +113,7 @@ Codex has a subagent toolkit: the multi_agent tools (\`spawn_agent\`, \`send_inp
 The engine's \`/clear\` is Codex's \`/new\` (start a fresh session). Command references in a handoff use the skill form (\`$trailhead work <n>\`).
 
 ## F. Lifecycle hooks (native Codex hooks)
-Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not degraded prose. The installer registers them in \`~/.codex/hooks.json\`: commit-guard, secret-guard, install-guard and body-guard as \`PreToolUse\` (matcher \`Bash\`) hooks that can veto the command before it runs, secret-read-guard as a \`PreToolUse\` (matcher \`Read|Bash\`) hook that denies reads of \`.env\`/\`.env.*\`/\`.secrets\`, the injection-scanner as a \`PostToolUse\` (matcher \`Bash\`) advisory, mockup-link-stop as a \`Stop\` hook (when your final reply asks to approve a mockup without carrying its link, it continues the turn so you rewrite the ask with the URL or file path in the prose), and check-update as a \`SessionStart\` hook. On Codex, file reads happen through shell commands rather than a native Read-tool event, so the secret-read guard's enforcement here runs via its **Bash** arm (protection is not lost); the \`Read\` half of its matcher is a Claude-Code-native path, registered on Codex too only so it fires without changes if a future Codex version adds an equivalent event. search-guard is Claude-Code-specific (it only prevents arming Claude's \`Read()\` deny rule under bypass permissions, a mechanism Codex lacks), so it is not projected to Codex at all. They use the same wire format they use on Claude Code (JSON on stdin, a \`decision\`/\`permissionDecision\` verdict on stdout), which Codex accepts. The host-independent git \`commit-msg\` hook is still installed at repo first-use as well (defence in depth), exactly as on Claude. Codex gates hooks behind \`features.hooks = true\` and reviews them for trust on first start: the installer enables the flag, and Codex will ask you to trust trailhead's hooks the next time it starts.
+Codex has a hook bus, so trailhead's guardrails run as **real Codex hooks**, not degraded prose. The installer registers them in \`~/.codex/hooks.json\`: commit-guard, secret-guard, install-guard and body-guard as \`PreToolUse\` (matcher \`Bash\`) hooks that can veto the command before it runs (the four run in one process, a single \`trailhead-bash-guards.js --guards=commit,secret,install,body\` registration, so a Bash call pays one start-up instead of four), secret-read-guard as a \`PreToolUse\` (matcher \`Read|Bash\`) hook that denies reads of \`.env\`/\`.env.*\`/\`.secrets\`, the injection-scanner as a \`PostToolUse\` (matcher \`Bash\`) advisory, mockup-link-stop as a \`Stop\` hook (when your final reply asks to approve a mockup without carrying its link, it continues the turn so you rewrite the ask with the URL or file path in the prose), and check-update as a \`SessionStart\` hook. On Codex, file reads happen through shell commands rather than a native Read-tool event, so the secret-read guard's enforcement here runs via its **Bash** arm (protection is not lost); the \`Read\` half of its matcher is a Claude-Code-native path, registered on Codex too only so it fires without changes if a future Codex version adds an equivalent event. search-guard is Claude-Code-specific (it only prevents arming Claude's \`Read()\` deny rule under bypass permissions, a mechanism Codex lacks), so it is not projected to Codex at all. They use the same wire format they use on Claude Code (JSON on stdin, a \`decision\`/\`permissionDecision\` verdict on stdout), which Codex accepts. The host-independent git \`commit-msg\` hook is still installed at repo first-use as well (defence in depth), exactly as on Claude. Codex gates hooks behind \`features.hooks = true\` and reviews them for trust on first start: the installer enables the flag, and Codex will ask you to trust trailhead's hooks the next time it starts.
 
 ## G. Design / UI mockups: artifacts -> stitch offer, else local disk
 The \`artifacts\` mockup mode (a Design canvas Artifact built with Claude Code's \`Artifact\` tool; the legacy \`claude.ai/design\` value means the same) does not exist on Codex: there is no \`Artifact\` tool here. When \`config.design\` names it, follow the Prototype technique's fallback: **offer once to switch this project to \`design: stitch\`** (the Google Stitch MCP runs on Codex too), and only on decline produce a throwaway static HTML mockup next to the code (\`disk\`), link it from the ticket, and say why. Never try to create or edit an Artifact on Codex. \`config.design.approval\` still applies unchanged: \`explicit\` waits for the user's go-ahead before any UI code, \`auto\` surfaces the mockup and proceeds.
@@ -358,10 +358,13 @@ function codexVerbSkillPlan(codexHome, verbs) {
 }
 
 // --- codexHookEntries -----------------------------------------------------
-// The six guardrail hooks trailhead registers on Codex, as {event, matcher,
-// command} records. Commands run the copied guard scripts under hooksScriptsDir
-// via node, matching Claude's `node "<path>"` form. PreToolUse guards (commit,
-// secret, install, body, secret-read) can veto; the injection-scanner
+// The guardrail hooks trailhead registers on Codex, as {event, matcher,
+// command} records. Commands run the copied hook scripts under hooksScriptsDir
+// via node, matching Claude's `node "<path>"` form. The four Bash guards
+// (commit, secret, install, body) are ONE registration, the merged
+// trailhead-bash-guards.js with `--guards=commit,secret,install,body` (a single
+// node process per Bash call); secret-read is a separate PreToolUse hook. All
+// PreToolUse guards can veto; the injection-scanner
 // is a PostToolUse advisory; check-update runs at SessionStart. Reused by the
 // installer, which merges them into ~/.codex/hooks.json (same shape as
 // Claude's settings.json hooks block).
@@ -372,10 +375,7 @@ function codexVerbSkillPlan(codexHome, verbs) {
 function codexHookEntries(hooksScriptsDir) {
   const cmd = (name) => `node "${path.join(hooksScriptsDir, name)}"`;
   return [
-    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-commit-guard.js') },
-    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-secret-guard.js') },
-    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-install-guard.js') },
-    { event: 'PreToolUse', matcher: 'Bash', command: cmd('trailhead-body-guard.js') },
+    { event: 'PreToolUse', matcher: 'Bash', command: `${cmd('trailhead-bash-guards.js')} --guards=commit,secret,install,body` },
     { event: 'PreToolUse', matcher: 'Read|Bash', command: cmd('trailhead-secret-read-guard.js') },
     { event: 'PostToolUse', matcher: 'Bash', command: cmd('trailhead-issue-injection-scanner.js') },
     { event: 'Stop', matcher: '', command: cmd('trailhead-mockup-link-stop.js') },
