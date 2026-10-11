@@ -620,6 +620,34 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   ok('bash -c with a nested bash -c write is opaque', kinds(`bash -c "bash -c 'gh issue edit 1 --body x'"`) === O);
 }
 
+// --- end-to-end: glued redirects and /dev/null (#210 round 3, I7) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210i7-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const C = path.join(dir, 'c.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const code = (r, c) => r.code === 2 && r.out.includes(`"code":"${c}"`);
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  const G = `gh issue comment 1 --body-file ${C}`;
+
+  ok('cat >path<<EOF (no spaces) is traced like the spaced form', passes(runHook(`cat >${C}<<'EOF'\nhello\nEOF\n${G}`)));
+  ok('cat >path<<EOF with a secret blocks', code(runHook(`cat >${C}<<'EOF'\nAKIAIOSFODNN7EXAMPLE\nEOF\n${G}`), 'SECRET_IN_ISSUE_WRITE'));
+  ok('echo x>path (no spaces) is traced', passes(runHook(`echo x>${C} && ${G}`)));
+  ok('echo x>>path (no spaces) is traced', passes(runHook(`echo x>>${C} && ${G}`)));
+  ok('echo "$(cat leak)">path (no spaces) scans the substitution', leaks(runHook(`echo "$(cat ${leakFile})">${C} && ${G}`)));
+  ok('cat leak>path (no spaces) scans the source', leaks(runHook(`cat ${leakFile}>${C}; ${G}`)));
+  ok('2>&1 and &>/dev/null stay fd redirects', passes(runHook(`echo hi 2>&1 &>/dev/null; echo ok`)));
+  ok('stdin <path glued is read', leaks(runHook(`gh issue comment 1 -F - <${leakFile}`)));
+
+  ok('--body-file /dev/null is an empty body: allowed', passes(runHook('gh issue comment 1 --body-file /dev/null')));
+  ok('cat /dev/null | gh -F - is allowed', passes(runHook('cat /dev/null | gh issue comment 1 -F -')));
+  ok('-F - < /dev/null is allowed', passes(runHook('gh issue comment 1 -F - < /dev/null')));
+  ok('other non-regular files still block as unreadable',
+    code(runHook('gh issue comment 1 --body-file /dev/zero'), 'SECRET_GUARD_UNREADABLE_BODY_FILE'));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);

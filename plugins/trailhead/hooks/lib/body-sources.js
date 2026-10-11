@@ -148,6 +148,15 @@ function words(stmt) {
       if (cur) { out.push(cur); cur = ''; }
       continue;
     }
+    // A redirect operator glued to its neighbours (`cat >f<<'EOF'`, `echo x>f`)
+    // starts a new word; a file-descriptor digit before it stays with the operator.
+    if (c === '<' || c === '>' || (c === '&' && s[i + 1] === '>')) {
+      if (cur && !/^\d+$/.test(cur)) { out.push(cur); cur = ''; }
+      const op = /^(?:&>>|&>|<<<|<<-|<<|>>|>&|<&|>\||<>|>|<)/.exec(s.slice(i))[0];
+      cur += op;
+      i += op.length - 1;
+      continue;
+    }
     cur += c;
   }
   if (cur) out.push(cur);
@@ -300,6 +309,7 @@ function wordItems(word, rec, ctx) {
 // (or is not) on disk now; unrecognised writers are not counted, so the file must
 // exist and is read.
 function fileItems(p, before, ctx) {
+  if (p === '/dev/null') return []; // an empty body: nothing to scan
   const writers = [];
   for (let i = 0; i < before; i++) {
     const rec = ctx.history[i];
