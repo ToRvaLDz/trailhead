@@ -54,9 +54,9 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // The ONE lexer behind heredoc detection and statement splitting. It scans a
 // line with the shell context a bare regex lacks: a `<<` inside quotes, a
 // comment, `$((..))`, `$[..]`, `((..))` or after a backslash is not an
-// introducer, and `<<<` is a herestring. `st.stack` holds the open contexts
-// ('sq', 'dq', 'ansi' for `$'..'`, a `${..}` { br }, a `$(..)` substitution
-// { sub, n }, an arithmetic span { ar, ... }); `st.cont` is set when the line
+// introducer, and `<<<` is a herestring. `st.stack` holds the open contexts as
+// uniform { k, ... } frames: k is 'sq', 'dq', 'ansi' (`$'..'`), 'br' (`${..}`),
+// 'sub' (`$(..)`, with a paren count n) or 'ar' (an arithmetic span); `st.cont` is set when the line
 // ends in a backslash-newline continuation. It is mutated and carried to the next line, so a quote or arithmetic
 // span that runs across lines keeps suppressing introducers. A `$(..)` is code
 // again, even inside double quotes, so its heredocs count. Returns
@@ -75,14 +75,14 @@ function scanLine(line, st, seps) {
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     const top = stack[stack.length - 1];
-    if (top === 'sq') { if (c === "'") stack.pop(); continue; }
-    if (top === 'ansi') { // $'..': a backslash escapes the next char, even a quote
+    if (top && top.k === 'sq') { if (c === "'") stack.pop(); continue; }
+    if (top && top.k === 'ansi') { // $'..': a backslash escapes the next char, even a quote
       if (c === '\\') i++;
       else if (c === "'") stack.pop();
       continue;
     }
-    if (top && top.ar) {
-      if (top.ar === 'bracket') { if (c === ']') stack.pop(); continue; }
+    if (top && top.k === 'ar') {
+      if (top.mode === 'bracket') { if (c === ']') stack.pop(); continue; }
       if (c === '(') top.depth++;
       else if (c === ')' && --top.depth === 0) stack.pop();
       continue;
@@ -93,23 +93,23 @@ function scanLine(line, st, seps) {
       escAt = i;
       continue;
     }
-    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ ar: 'paren', depth: 2 }); i += 2; continue; }
-    if (c === '$' && line[i + 1] === '(') { stack.push({ sub: true, n: 0 }); i++; continue; }
-    if (c === '$' && line[i + 1] === '{') { stack.push({ br: true }); i++; continue; }
-    if (top === 'dq') {
+    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i += 2; continue; }
+    if (c === '$' && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
+    if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
+    if (top && top.k === 'dq') {
       if (c === '"') stack.pop();
       continue;
     }
-    if (c === '$' && line[i + 1] === "'") { stack.push('ansi'); i++; continue; }
-    if (c === "'") { stack.push('sq'); continue; }
-    if (c === '"') { stack.push('dq'); continue; }
-    if (c === '$' && line[i + 1] === '[') { stack.push({ ar: 'bracket' }); i++; continue; }
-    if (top && top.br) { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
+    if (c === '$' && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
+    if (c === "'") { stack.push({ k: 'sq' }); continue; }
+    if (c === '"') { stack.push({ k: 'dq' }); continue; }
+    if (c === '$' && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
+    if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
     // An escaped char (`\ #x`) is not a word boundary.
     const wordStart = i === 0 ? !cont0 : WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1;
     if (c === '#' && wordStart) break; // comment to end of line
-    if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ ar: 'paren', depth: 2 }); i++; continue; }
-    if (top && top.sub) {
+    if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
+    if (top && top.k === 'sub') {
       if (c === '(') { top.n++; continue; }
       if (c === ')') { if (top.n === 0) stack.pop(); else top.n--; continue; }
     }
@@ -135,8 +135,10 @@ function scanLine(line, st, seps) {
   return found;
 }
 
-// Code that can be split into statements: nothing open but `$(..)` substitutions.
-const splittable = (stack) => stack.every((t) => t.sub);
+// Code that can be split into statements: the innermost open context is a
+// `$(..)` substitution (or nothing). Frames are uniform { k, ... } objects, so
+// no string can ever hit a String.prototype property by accident.
+const splittable = (stack) => stack.length === 0 || stack[stack.length - 1].k === 'sub';
 
 // The one walk shared by stripHeredocBodies, heredocBodies, countHeredocs and
 // both splitters, so they always agree (secret-guard pairs heredocBodies with

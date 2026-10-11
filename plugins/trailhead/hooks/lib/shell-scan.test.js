@@ -124,6 +124,20 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     JSON.stringify(splitStatements('echo $((1|2)) $[3;4] # a;b\nls')) === JSON.stringify(['echo $((1|2)) $[3;4] # a;b', 'ls']));
 }
 
+// --- a newline inside an open quote is not a statement boundary (#212) ---
+{
+  const one = (c) => splitStatements(c).length === 1 && splitStatementsWithSeparators(c).length === 1;
+  ok('a multi-line double-quoted commit message stays one statement',
+    one('git commit -m "fix\n\nrun:\ncat .env\nmore"'));
+  ok('a multi-line single-quoted string stays one statement', one("echo 'a\ncat .env\nb'"));
+  ok('a multi-line ANSI-C string stays one statement', one("echo $'a\ncat .env\nb'"));
+  ok('a multi-line ${..} stays one statement', one('echo ${x:-a\ncat .env\nb}'));
+  const agree = (c) => heredocBodies(c).length === splitStatements(c).reduce((n, t) => n + countHeredocs(t), 0) &&
+    heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + countHeredocs(x.text), 0);
+  for (const c of ['echo "a\n<<3\nb"\ncat .env', "echo 'a\n<<EOF\nb'\ncat .env", 'echo "a\n<<EOF\nb" <<EOF\nx\nEOF\ncat .env'])
+    ok(`heredoc counts agree across a quoted newline: ${JSON.stringify(c)}`, agree(c));
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
