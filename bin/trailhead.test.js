@@ -729,6 +729,8 @@ ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-gua
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
 ok('codex: skills/trailhead/hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-subcommand.js')));
+ok('codex: skills/trailhead/hooks/lib/body-sources.js exists (secret-guard require target, #210)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'body-sources.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-defaults-review.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults.json exists (#186)',
@@ -893,6 +895,8 @@ ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require targe
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude: hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-subcommand.js')));
+ok('claude: hooks/lib/body-sources.js exists (secret-guard require target, #210)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'body-sources.js')));
 ok('claude: hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults-review.js')));
 ok('claude: hooks/lib/model-defaults.json exists (#186)',

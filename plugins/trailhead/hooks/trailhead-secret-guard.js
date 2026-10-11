@@ -31,6 +31,17 @@ const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
 const { splitStatementsWithSeparators, tokenize } = require('./lib/shell-scan.js');
+const {
+  ASSIGN_TOKEN_RE,
+  STDIN_PATHS,
+  words,
+  expandWord,
+  parseRedirects,
+  flagValues,
+  resolveWord,
+  bodySources,
+  readBodyFile,
+} = require('./lib/body-sources.js');
 
 // High-confidence secret formats: a match here is almost never a false positive.
 const SECRET_PATTERNS = [
@@ -67,149 +78,7 @@ function writeKind(stmt) {
   return null;
 }
 
-// --- static shell expansion (just enough to find a --body-file path) -----------
-
-// Look a variable up: variables set earlier in the command first, then the hook's
-// environment. null = unknown or recorded as unresolvable.
-function lookupVar(name, vars, env) {
-  if (Object.prototype.hasOwnProperty.call(vars, name)) return vars[name];
-  const v = env[name];
-  return typeof v === 'string' ? v : null;
-}
-
-// Expand the `$...` at text[i]. Only $NAME and ${NAME} are understood; command
-// substitution, parameter operators and positional/special params are unresolvable.
-// Returns { value, next } or { unresolved }.
-function expandDollar(text, i, vars, env) {
-  const rest = text.slice(i + 1);
-  let name;
-  let len;
-  const braced = /^\{([A-Za-z_][A-Za-z0-9_]*)\}/.exec(rest);
-  if (braced) {
-    name = braced[1];
-    len = braced[0].length;
-  } else if (rest[0] === '{') {
-    return { unresolved: 'parameter expansion operator' };
-  } else if (rest[0] === '(') {
-    return { unresolved: 'command substitution' };
-  } else if (/^[0-9@*#?$!-]/.test(rest)) {
-    return { unresolved: `special parameter $${rest[0]}` };
-  } else {
-    const bare = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest);
-    if (!bare) return { value: '$', next: i + 1 }; // a lone $ is literal
-    name = bare[0];
-    len = name.length;
-  }
-  const v = lookupVar(name, vars, env);
-  if (v === null) return { unresolved: `unknown variable ${name}` };
-  return { value: v, next: i + 1 + len };
-}
-
-// Expand one shell word the way bash would for a plain argument: single quotes are
-// literal, double quotes expand $NAME/${NAME} only, a bare word also expands a
-// leading `~`/`~/` to HOME. Returns { value } or { unresolved: reason }.
-function expandWord(word, vars, env) {
-  let out = '';
-  let i = 0;
-  if (word[0] === '~') {
-    if (word.length > 1 && word[1] !== '/') return { unresolved: 'user home (~user)' };
-    const home = lookupVar('HOME', vars, env);
-    if (home === null) return { unresolved: 'unknown variable HOME' };
-    out = home;
-    i = 1;
-  }
-  while (i < word.length) {
-    const c = word[i];
-    if (c === "'") {
-      const close = word.indexOf("'", i + 1);
-      if (close === -1) return { unresolved: 'unterminated quote' };
-      out += word.slice(i + 1, close);
-      i = close + 1;
-    } else if (c === '"') {
-      i++;
-      for (;;) {
-        if (i >= word.length) return { unresolved: 'unterminated quote' };
-        const d = word[i];
-        if (d === '"') { i++; break; }
-        if (d === '`') return { unresolved: 'command substitution' };
-        if (d === '\\' && i + 1 < word.length) {
-          const n = word[i + 1];
-          out += '$`"\\'.includes(n) ? n : d + n;
-          i += 2;
-        } else if (d === '$') {
-          const r = expandDollar(word, i, vars, env);
-          if (r.unresolved) return r;
-          out += r.value;
-          i = r.next;
-        } else {
-          out += d;
-          i++;
-        }
-      }
-    } else if (c === '\\' && i + 1 < word.length) {
-      out += word[i + 1];
-      i += 2;
-    } else if (c === '$') {
-      const r = expandDollar(word, i, vars, env);
-      if (r.unresolved) return r;
-      out += r.value;
-      i = r.next;
-    } else if (c === '`') {
-      return { unresolved: 'command substitution' };
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return { value: out };
-}
-
 // --- statement normalisation ---------------------------------------------------
-
-// Quote-aware word splitter. Like shell-scan's tokenize, but a `$(...)`, `<(...)`,
-// `>(...)` or backtick span stays inside ONE word even when it holds spaces.
-function words(stmt) {
-  const s = String(stmt).trim();
-  const out = [];
-  let cur = '';
-  let quote = null; // ' or "
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quote) {
-      cur += c;
-      if (quote === '"' && c === '\\' && i + 1 < s.length) cur += s[++i];
-      else if (c === quote) quote = null;
-      continue;
-    }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
-    if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
-    if ((c === '$' || c === '<' || c === '>') && s[i + 1] === '(') {
-      let depth = 0;
-      let j = i + 1;
-      for (; j < s.length; j++) {
-        if (s[j] === '(') depth++;
-        else if (s[j] === ')' && --depth === 0) break;
-      }
-      cur += s.slice(i, j + 1);
-      i = j;
-      continue;
-    }
-    if (c === '`') {
-      const close = s.indexOf('`', i + 1);
-      const end = close === -1 ? s.length - 1 : close;
-      cur += s.slice(i, end + 1);
-      i = end;
-      continue;
-    }
-    if (/\s/.test(c)) {
-      if (cur) { out.push(cur); cur = ''; }
-      continue;
-    }
-    cur += c;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
 
 // Reserved words and prefixes that can precede a command inside a compound construct.
 const PREFIX_WORDS = new Set(['do', 'then', 'else', 'elif', '{', '!', 'time', 'if', 'while', 'until']);
@@ -296,65 +165,6 @@ function unwrap(text) {
   return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0) };
 }
 
-// --- redirects and flags ----------------------------------------------------------
-
-const REDIRECT_RE = /^(\d*)(<<<|<<-?|&>>|&>|>>|>\||>&|<&|<>|>|<)([\s\S]*)$/;
-
-// Split a statement's words into plain arguments and redirections.
-//   stdin: null | { type: 'heredoc' | 'here' } | { type: 'file', word }
-//   outs:  [{ word, append }]  (stdout redirects; fd duplications like 2>&1 are dropped)
-function parseRedirects(toks) {
-  const args = [];
-  const outs = [];
-  let stdin = null;
-  for (let i = 0; i < toks.length; i++) {
-    const t = toks[i];
-    const m = t.startsWith('<(') || t.startsWith('>(') ? null : REDIRECT_RE.exec(t);
-    if (!m) { args.push(t); continue; }
-    const [, fd, op, glued] = m;
-    if (op === '>&' || op === '<&') { if (!glued) i++; continue; } // 2>&1, >&2: fd duplication
-    const word = glued || toks[++i] || '';
-    if (op === '<<' || op === '<<-') stdin = { type: 'heredoc' };
-    else if (op === '<<<') stdin = { type: 'here' };
-    else if (op === '<' || op === '<>') stdin = { type: 'file', word };
-    else if (fd === '' || fd === '1' || op.startsWith('&')) outs.push({ word, append: op.endsWith('>>') });
-  }
-  return { args, outs, stdin };
-}
-
-// Values of a gh flag (long form, optional short form), in order: `--long v`,
-// `--long=v`, `-s v`, `-s=v` and the attached pflag shorthand `-sv`.
-function flagValues(args, long, short) {
-  const out = [];
-  for (let i = 0; i < args.length; i++) {
-    const t = args[i];
-    if (t === long || (short && t === short)) {
-      if (args[i + 1] !== undefined) out.push(args[++i]);
-    } else if (t.startsWith(`${long}=`)) out.push(t.slice(long.length + 1));
-    else if (short && t.startsWith(`${short}=`)) out.push(t.slice(short.length + 1));
-    else if (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2) out.push(t.slice(2));
-  }
-  return out;
-}
-
-// Resolve one shell word that names a file to an absolute path, without running
-// anything: { path } or { unresolved }. See resolveBodyFile for the cwd contract.
-function resolveWord(raw, vars, env, cwd) {
-  if (raw.startsWith('<(') || raw.startsWith('>(')) return { unresolved: 'process substitution' };
-  const r = expandWord(raw, vars, env);
-  if (r.unresolved) return { unresolved: r.unresolved };
-  return resolveExpanded(r.value, cwd);
-}
-
-// Same for an already-expanded value (e.g. the path after `body=@`).
-function resolveExpanded(value, cwd) {
-  if (path.isAbsolute(value)) return { path: path.normalize(value) };
-  if (cwd === null) return { unresolved: 'relative path after cd (working directory unknown)' };
-  return { path: path.resolve(cwd === undefined ? process.cwd() : cwd, value) };
-}
-
-const STDIN_PATHS = new Set(['-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
-
 // The --body-file path of one gh statement, resolved WITHOUT running anything.
 //   { path }       an absolute path to read
 //   { unresolved } the path cannot be known statically (reason given): fail closed
@@ -375,7 +185,6 @@ function resolveBodyFile(stmt, vars, env, cwd) {
 
 // --- variable tracking across a compound command -------------------------------
 
-const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
 const DECL_KEYWORDS = new Set(['export', 'declare', 'local', 'readonly', 'typeset']);
 
 // [[name, rawValue], ...] when the statement is only assignments (optionally behind
@@ -498,178 +307,6 @@ function unscannedVerdict(kind, err) {
   };
 }
 
-// --- where a write's body comes from -----------------------------------------------
-
-const basenameOf = (w) => String(w || '').replace(/^.*\//, '');
-const INLINE_PRODUCERS = new Set(['echo', 'printf', 'true', ':']);
-const HEREDOC_CAT_RE = /^\$\(\s*cat\s+<<-?\s*(?:'[^']*'|"[^"]*"|\w+)\s*\)$/;
-const CAT_SUBST_RE = /^\$\(\s*cat\s+(\S+)\s*\)$/;
-const READ_SUBST_RE = /^\$\(\s*<\s*(\S+)\s*\)$/;
-
-// Body sources are a list of items:
-//   { text }        content to scan that is not in the command string (an expanded value)
-//   { path }        a file to read and scan
-//   { unresolved }  a source that cannot be known statically: block
-// Content that is already inside the command string (heredoc, herestring, echo/printf
-// arguments) needs no item: the whole command is scanned.
-
-const unresolvedItem = (reason) => [{ unresolved: reason }];
-
-// Items for a file named by a shell word, as seen from statement `rec`.
-function wordItems(word, rec, ctx) {
-  const r = resolveWord(word, rec.vars, ctx.env, rec.cwdKnown ? ctx.cwd : null);
-  return r.unresolved ? unresolvedItem(r.unresolved) : fileItems(r.path, rec.index, ctx);
-}
-
-// Items for reading the file `p` as of statement index `before`. A file an earlier
-// statement of the same command writes (and that is recognised: a redirect fed by
-// inline content or by cat, tee, cp) has the content of its source, not whatever is
-// (or is not) on disk now; unrecognised writers are not counted, so the file must
-// exist and is read.
-function fileItems(p, before, ctx) {
-  const writers = [];
-  for (let i = 0; i < before; i++) {
-    const rec = ctx.history[i];
-    if (rec.sep === '&') continue; // backgrounded: may not have run yet
-    for (const t of writerTargets(rec, ctx)) if (t.path === p) writers.push(t);
-  }
-  if (writers.length === 0) return [{ path: p }];
-  const items = writers.flatMap((t) => t.content);
-  if (writers.some((t) => t.append)) items.push({ path: p, optional: true }); // keeps what was there
-  return items;
-}
-
-// Content a `cmd > file` redirect puts in the file, or null when not recognised.
-function redirectContent(cmd0, rest, rec, ctx) {
-  if (!cmd0 || INLINE_PRODUCERS.has(cmd0)) return [];
-  if (cmd0 === 'cat') {
-    const files = rest.filter((a) => !a.startsWith('-'));
-    return files.length ? files.flatMap((f) => wordItems(f, rec, ctx)) : stdinContent(rec, ctx);
-  }
-  return null;
-}
-
-// The files a statement writes and what it writes into them:
-// [{ path, append, content: items }]. Only the recognised shapes: a stdout
-// redirect of cat/echo/printf (or nothing), `tee [-a] path`, and `cp src dst`.
-function writerTargets(rec, ctx) {
-  const red = parseRedirects(words(rec.text));
-  let k = 0;
-  while (k < red.args.length && ASSIGN_TOKEN_RE.test(red.args[k])) k++;
-  const cmd0 = basenameOf(red.args[k]);
-  const rest = red.args.slice(k + 1);
-  const cwd = rec.cwdKnown ? ctx.cwd : null;
-  const target = (word) => {
-    const r = resolveWord(word, rec.vars, ctx.env, cwd);
-    return r.unresolved ? null : r.path;
-  };
-  const out = [];
-  if (red.outs.length) {
-    const content = redirectContent(cmd0, rest, rec, ctx);
-    if (content) {
-      for (const o of red.outs) {
-        const t = target(o.word);
-        if (t) out.push({ path: t, append: o.append, content });
-      }
-    }
-  }
-  if (cmd0 === 'tee') {
-    const content = stdinContent(rec, ctx);
-    if (content) {
-      const append = rest.includes('-a') || rest.includes('--append');
-      for (const f of rest.filter((a) => !a.startsWith('-'))) {
-        const t = target(f);
-        if (t) out.push({ path: t, append, content });
-      }
-    }
-  }
-  if (cmd0 === 'cp') {
-    const operands = rest.filter((a) => !a.startsWith('-'));
-    const dst = operands.length === 2 ? target(operands[1]) : null;
-    if (dst) out.push({ path: dst, append: false, content: wordItems(operands[0], rec, ctx) });
-  }
-  return out;
-}
-
-// What a statement feeds to its stdin: items, or null when there is no stdin source.
-function stdinContent(rec, ctx) {
-  const red = parseRedirects(words(rec.text));
-  if (red.stdin) return red.stdin.type === 'file' ? wordItems(red.stdin.word, rec, ctx) : [];
-  const prev = ctx.history[rec.index - 1];
-  if (prev && prev.sep === '|') return producerItems(prev, ctx);
-  return null;
-}
-
-// What a pipeline producer writes to stdout.
-function producerItems(rec, ctx) {
-  const { args } = parseRedirects(words(rec.text));
-  let k = 0;
-  while (k < args.length && ASSIGN_TOKEN_RE.test(args[k])) k++;
-  const cmd0 = basenameOf(args[k]);
-  if (INLINE_PRODUCERS.has(cmd0)) return [];
-  if (cmd0 === 'cat') {
-    const files = args.slice(k + 1).filter((a) => !a.startsWith('-'));
-    if (files.length) return files.flatMap((f) => wordItems(f, rec, ctx));
-    return stdinContent(rec, ctx) || unresolvedItem('cat reads a stdin the guard cannot see');
-  }
-  return unresolvedItem(`the body is piped from ${cmd0 || 'a command'}`);
-}
-
-// Items for a --body/-b value.
-function bodyValueItems(raw, rec, ctx) {
-  if (!/[$`]/.test(raw) || /^'[\s\S]*'$/.test(raw)) return []; // literal: already in the command
-  if (/\$\(|`/.test(raw)) {
-    const inner = raw.replace(/^"([\s\S]*)"$/, '$1');
-    if (HEREDOC_CAT_RE.test(inner)) return []; // heredoc text is in the command string
-    const m = CAT_SUBST_RE.exec(inner) || READ_SUBST_RE.exec(inner);
-    if (m) return wordItems(m[1], rec, ctx);
-    return unresolvedItem('command substitution in the body');
-  }
-  const r = expandWord(raw, rec.vars, ctx.env);
-  return r.unresolved ? unresolvedItem(r.unresolved) : [{ text: r.value }];
-}
-
-// Every body source of one write: { items }.
-function bodySources(w, ctx) {
-  const rec = w.history[w.index];
-  const { args } = parseRedirects(words(w.text));
-  const stdinItems = () => stdinContent(rec, ctx) || [];
-  const fileArg = (raw) => (STDIN_PATHS.has(raw) ? stdinItems() : wordItems(raw, rec, ctx));
-  const items = [];
-  if (w.kind === 'api') {
-    for (const raw of flagValues(args, '--field', '-F')) {
-      const r = expandWord(raw, rec.vars, ctx.env);
-      if (r.unresolved) { items.push(...unresolvedItem(r.unresolved)); continue; }
-      if (!r.value.startsWith('body=@')) continue;
-      const file = r.value.slice('body=@'.length);
-      if (STDIN_PATHS.has(file)) { items.push(...stdinItems()); continue; }
-      const res = resolveExpanded(file, rec.cwdKnown ? ctx.cwd : null);
-      items.push(...(res.unresolved ? unresolvedItem(res.unresolved) : fileItems(res.path, rec.index, ctx)));
-    }
-    for (const raw of flagValues(args, '--input', null)) items.push(...fileArg(raw));
-    return items;
-  }
-  const files = flagValues(args, '--body-file', '-F');
-  // gh keeps the last one, but scanning every occurrence is the safe direction.
-  for (const raw of files) items.push(...fileArg(raw));
-  for (const raw of flagValues(args, '--body', '-b')) items.push(...bodyValueItems(raw, rec, ctx));
-  return items;
-}
-
-// Read a body file (regular files only: a FIFO or device could hang the hook).
-// `optional` tolerates a missing file.
-function readBodyFile(p, optional) {
-  let st;
-  try {
-    st = fs.statSync(p);
-  } catch (e) {
-    if (optional && e.code === 'ENOENT') return '';
-    throw e;
-  }
-  if (!st.isFile()) throw Object.assign(new Error('not a regular file'), { code: 'ENOTFILE' });
-  return fs.readFileSync(p, 'utf8').slice(0, 1_000_000);
-}
-
 // A block verdict for a body file the guard cannot vouch for.
 function bodyFileBlock(code, kind, detail) {
   return {
@@ -687,69 +324,73 @@ function bodyFileBlock(code, kind, detail) {
   };
 }
 
-// Pure verdict for one command: allow | block {payload} | advise {payload, stderr}.
-// Never exits or writes. `env` carries the test seam so the merged runner's
-// environment is the one honoured; `cwd` is the hook input's working directory
-// (relative body-file paths resolve against it, process.cwd() when absent).
-// Fail closed on a body file: if its path cannot be resolved statically, or the
-// resolved file cannot be read, the write is blocked (it would otherwise post an
-// unscanned body). Only an internal scanner fault is an advisory.
-function evaluate(cmd, { env = process.env, cwd } = {}) {
-  const writes = ghWrites(cmd, env);
-  if (writes.length === 0) return { kind: 'allow' }; // not a tracker write: out of scope
+function blockVerdict(code, reason) {
+  return { kind: 'block', payload: { decision: 'block', code, reason } };
+}
 
-  const opaque = writes.find((w) => w.kind === 'opaque');
-  if (opaque) {
-    return {
-      kind: 'block',
-      payload: {
-        decision: 'block',
-        code: 'SECRET_GUARD_OPAQUE_WRITE',
-        reason:
-          'trailhead: a gh issue/PR write runs inside bash -c / sh -c / eval / xargs or a command substitution, ' +
-          'so the secret-guard cannot analyse the body it posts. Run the gh command directly, with the body in a file ' +
-          'passed by its literal absolute path (--body-file /tmp/body.md), and post again.',
-      },
-    };
-  }
+function opaqueBlock() {
+  return blockVerdict(
+    'SECRET_GUARD_OPAQUE_WRITE',
+    'trailhead: a gh issue/PR write runs inside bash -c / sh -c / eval / xargs, so the secret-guard cannot analyse ' +
+      'the body it posts. Run the gh command directly, with the body in a file passed by its literal absolute path ' +
+      '(--body-file /tmp/body.md), and post again.',
+  );
+}
 
+function secretBlock(kind, hit) {
+  return blockVerdict(
+    'SECRET_IN_ISSUE_WRITE',
+    `trailhead: this ${kind === 'api' ? 'GitHub API write' : `gh ${kind}`} looks like it contains a secret (${hit}). ` +
+      'Nothing sensitive may land on the tracker. Redact it: replace the value with `<REDACTED>` or an env-var reference ' +
+      '(e.g. `$SUPABASE_KEY`), and post again. If this is a false positive (not a real secret), reword so it no longer matches a credential pattern.',
+  );
+}
+
+// The text to scan for a set of writes: the command itself plus every body source
+// (expanded values, files read). Returns { text } or { block } when a source cannot
+// be resolved or read (fail closed).
+function gatherText(cmd, writes, env, cwd) {
   let text = cmd;
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {
       if (item.unresolved) {
-        return bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${item.unresolved})`);
+        return { block: bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${item.unresolved})`) };
       }
       if (item.text !== undefined) { text += '\n' + item.text; continue; }
       try {
         text += '\n' + readBodyFile(item.path, item.optional);
       } catch (e) {
         const why = (e && e.code) || 'read error';
-        return bodyFileBlock('SECRET_GUARD_UNREADABLE_BODY_FILE', w.kind, `could not read (${why}: ${item.path})`);
+        return { block: bodyFileBlock('SECRET_GUARD_UNREADABLE_BODY_FILE', w.kind, `could not read (${why}: ${item.path})`) };
       }
     }
   }
+  return { text };
+}
+
+// Pure verdict for one command: allow | block {payload} | advise {payload, stderr}.
+// Never exits or writes. `env` carries the test seam so the merged runner's
+// environment is the one honoured; `cwd` is the hook input's working directory
+// (relative body-file paths resolve against it, process.cwd() when absent).
+// Fail closed on a body source: if its path cannot be resolved statically, or the
+// resolved file cannot be read, the write is blocked (it would otherwise post an
+// unscanned body). Only an internal scanner fault is an advisory.
+function evaluate(cmd, { env = process.env, cwd } = {}) {
+  const writes = ghWrites(cmd, env);
+  if (writes.length === 0) return { kind: 'allow' }; // not a tracker write: out of scope
+  if (writes.some((w) => w.kind === 'opaque')) return opaqueBlock();
+
+  const gathered = gatherText(cmd, writes, env, cwd);
+  if (gathered.block) return gathered.block;
 
   // From here we KNOW it's a tracker write, so a scan failure must be OBSERVABLE.
   const kind = writes[0].kind;
   try {
-    const hit = scan(text, env);
-    if (hit) {
-      return {
-        kind: 'block',
-        payload: {
-          decision: 'block',
-          code: 'SECRET_IN_ISSUE_WRITE',
-          reason:
-            `trailhead: this ${kind === 'api' ? 'GitHub API write' : `gh ${kind}`} looks like it contains a secret (${hit}). ` +
-            'Nothing sensitive may land on the tracker. Redact it: replace the value with `<REDACTED>` or an env-var reference ' +
-            '(e.g. `$SUPABASE_KEY`), and post again. If this is a false positive (not a real secret), reword so it no longer matches a credential pattern.',
-        },
-      };
-    }
+    const hit = scan(gathered.text, env);
+    return hit ? secretBlock(kind, hit) : { kind: 'allow' };
   } catch (e) {
     return unscannedVerdict(kind, e); // internal fault: fail open, but loudly, never a silent clean-looking pass
   }
-  return { kind: 'allow' };
 }
 
 function run(data) {
