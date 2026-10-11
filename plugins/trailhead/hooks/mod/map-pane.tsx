@@ -134,6 +134,8 @@ async function isPaneUp($: Dollar): Promise<boolean> {
 
 function stopTimers() {
   generation += 1
+  // A fill timer dropped with the pane must not leave the next pane unfillable.
+  isFilling = false
   trailing?.cancel()
   trailing = null
   ticker?.cancel()
@@ -141,17 +143,17 @@ function stopTimers() {
 }
 
 // `bypassFloor`: the caller's last result was dropped unseen, so reading again is not a repeat.
-type Request = { hasTrailing: boolean; bypassFloor?: boolean }
+type Request = { bypassFloor?: boolean }
 
-// Throttled: inside the floor it keeps ONE trailing refresh for the rest of it (an event
-// just after a refresh still shows), unless the caller is only filling an empty pane.
+// Throttled: inside the floor it keeps ONE trailing refresh for the rest of it, so an event
+// just after a refresh still shows.
 async function decide($: Dollar, request: Request) {
   if (!(await isPaneUp($))) return
   ticker ??= $.clock.every(TIMER_MS, () => void requestRefresh($))
   const now = await $.clock.now()
   const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
   if (!decision.run) {
-    if (request.hasTrailing && trailing === null) {
+    if (trailing === null) {
       trailing = $.clock.after(decision.waitMs, () => {
         trailing = null
         void requestRefresh($)
@@ -162,11 +164,11 @@ async function decide($: Dollar, request: Request) {
   lastStartedAt = now
   trailing?.cancel()
   trailing = null
-  await fetchMap($, generation, () => void requestRefresh($, { hasTrailing: true, bypassFloor: true }))
+  await fetchMap($, generation, () => void requestRefresh($, { bypassFloor: true }))
 }
 
 // Does nothing while the pane is closed: the data exists only for the pane.
-export function requestRefresh($: Dollar, request: Request = { hasTrailing: true }): Promise<void> {
+export function requestRefresh($: Dollar, request: Request = {}): Promise<void> {
   queue = queue.then(() => decide($, request)).catch(err => debug($, `trailhead mod: map pane refresh failed: ${String(err)}`))
   return queue
 }
