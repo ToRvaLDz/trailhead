@@ -119,12 +119,16 @@ function words(stmt) {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
+      // Inside double quotes bash removes a backslash-newline continuation.
+      if (quote === '"' && c === '\\' && s[i + 1] === '\n') { i++; continue; }
       cur += c;
       if (quote === '"' && c === '\\' && i + 1 < s.length) cur += s[++i];
       else if (c === quote) quote = null;
       continue;
     }
     if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    // A backslash-newline continuation vanishes (`a\<nl>b` is `ab`, `a \<nl>b` is two words).
+    if (c === '\\' && s[i + 1] === '\n') { i++; continue; }
     if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
     if ((c === '$' || c === '<' || c === '>') && s[i + 1] === '(') {
       let depth = 0;

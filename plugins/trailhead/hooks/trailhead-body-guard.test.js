@@ -297,6 +297,25 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
     alw('gh issue edit 5 --body "" --body "x"; gh issue edit 6 --body "ok"'));
 }
 
+// --- regression (#213 review): backslash-newline continuations, stdin-like body files ---
+{
+  const blk = (c) => evaluate(c).kind === 'block';
+  const alw = (c) => evaluate(c).kind === 'allow';
+  const { words } = require('./lib/body-sources.js');
+  ok('words: unindented continuation joins (a\\<nl>b -> ab)', JSON.stringify(words('a\\\nb')) === '["ab"]');
+  ok('words: spaced continuation keeps two words', JSON.stringify(words('a \\\nb')) === '["a","b"]');
+  ok('words: continuation inside double quotes is removed', JSON.stringify(words('"a\\\nb"')) === '["\"ab\""]');
+  ok('words: continuation inside single quotes is literal', JSON.stringify(words("'a\\\nb'")) === JSON.stringify(["'a\\\nb'"]));
+  ok('#213 blocks --title t \\<nl>--body ""', blk('gh issue edit 5 --title t \\\n--body ""'));
+  ok('#213 blocks edit 5 \\<nl>--body ""', blk('gh issue edit 5 \\\n--body ""'));
+  ok('#213 blocks --body "x" \\<nl>--body ""', blk('gh issue edit 5 --body "x" \\\n--body ""'));
+  ok('#213 allows --body "" \\<nl>--body "x"', alw('gh issue edit 5 --body "" \\\n--body "x"'));
+  for (const f of ['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0', '-']) {
+    const r = ghBodyWrite(`gh issue edit 5 --body-file ${f}`);
+    ok(`#213 --body-file ${f} is unknowable`, r && r.body === null);
+  }
+}
+
 // --- crash-safety ---
 try {
   execFileSync('node', [HOOK], { input: 'not json at all {{{' });
