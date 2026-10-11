@@ -72,6 +72,8 @@ function scanLine(line, st, seps) {
   const cont0 = st.cont; // the previous line ended in a backslash: this one continues it
   let escAt = -2; // index of the last escaped char
   st.cont = false;
+  // Is the char before index i a word boundary? An escaped char (`\ #x`) is not.
+  const isBoundary = (i) => WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     const top = stack[stack.length - 1];
@@ -88,7 +90,13 @@ function scanLine(line, st, seps) {
       continue;
     }
     if (c === '\\') { // escaped char stays literal
-      if (i + 1 >= line.length) st.cont = true; // backslash-newline: the line continues
+      if (i + 1 >= line.length) { // backslash-newline: the line continues
+        st.cont = true;
+        // The next line is glued to this text: it starts a word only if the
+        // char before the backslash was a boundary (`a \<nl>#x` is a comment,
+        // `a\<nl>#x` is not). A line of just `\` inherits the earlier answer.
+        st.contBoundary = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
+      }
       i++;
       escAt = i;
       continue;
@@ -105,8 +113,7 @@ function scanLine(line, st, seps) {
     if (c === '"') { stack.push({ k: 'dq' }); continue; }
     if (c === '$' && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
     if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
-    // An escaped char (`\ #x`) is not a word boundary.
-    const wordStart = i === 0 ? !cont0 : WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1;
+    const wordStart = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
     if (c === '#' && wordStart) break; // comment to end of line
     if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
     if (top && top.k === 'sub') {

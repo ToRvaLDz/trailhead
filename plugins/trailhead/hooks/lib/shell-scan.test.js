@@ -138,6 +138,17 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     ok(`heredoc counts agree across a quoted newline: ${JSON.stringify(c)}`, agree(c));
 }
 
+// --- a continuation line starts a word only if the text before the backslash ended one (#212) ---
+{
+  const plain = (c) => heredocBodies(c).length === 0 && stripHeredocBodies(c) === c;
+  ok('echo a \\<nl># is a comment, so its << is no heredoc', plain('echo a \\\n# x <<EOF\ncat .env\nEOF'));
+  ok('echo a\\<nl># is a word, not a comment, so the << is a heredoc',
+    stripHeredocBodies('echo a\\\n# x <<EOF\nx\nEOF\ncat .env') === 'echo a\\\n# x <<EOF\ncat .env');
+  ok('a lone backslash line keeps the earlier boundary', plain('echo a \\\n\\\n# x <<EOF\ncat .env\nEOF'));
+  ok('an escaped space before the backslash is not a boundary',
+    countHeredocs('echo a\\ \\\n# x <<EOF') === 1);
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===
