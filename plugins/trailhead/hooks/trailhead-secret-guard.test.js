@@ -9,7 +9,7 @@ const os = require('os');
 
 // TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
 const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-secret-guard.js');
-const { scan, ghIssueWrite, ghWrites, bodyFileText } = require('./trailhead-secret-guard.js');
+const { scan, ghIssueWrite, ghWrites, resolveBodyFile, bodyFileText } = require('./trailhead-secret-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -75,6 +75,54 @@ ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0
   ok('ghIssueWrite returns the first write kind of a compound command',
     ghIssueWrite('cd /x && gh pr comment 1 --body x && gh issue edit 2 --body y') === 'pr');
   ok('ghIssueWrite still returns null for a compound with no write', ghIssueWrite('cd /x && ls') === null);
+}
+
+// --- unit: ghWrites() variable tracking (what each write can see) ---
+{
+  const w0 = (c, env = {}) => ghWrites(c, env)[0];
+  ok('var set with ; reaches the write', w0('D=/x; gh issue comment 1 --body-file $D/b.md').vars.D === '/x');
+  ok('var set with && reaches the write', w0('D=/x && gh issue comment 1 --body-file $D/b.md').vars.D === '/x');
+  ok('export NAME=v sets a var', w0('export D=/x && gh issue comment 1 --body-file $D/b.md').vars.D === '/x');
+  ok('single-quoted value stays literal', w0("D='$HOME'; gh issue comment 1 --body-file $D/b.md").vars.D === '$HOME');
+  ok('double-quoted value expands known vars', w0('A=/x; D="$A/y"; gh issue comment 1 --body-file $D/b.md').vars.D === '/x/y');
+  ok('bare value expands env and ~', w0('D=~/y; gh issue comment 1 --body-file $D/b.md', { HOME: '/h' }).vars.D === '/h/y');
+  ok('an unresolvable value is recorded as null', w0('D=$(pwd); gh issue comment 1 --body-file $D/b.md').vars.D === null);
+  ok('assignment ending in | does not propagate', !('D' in w0('D=/x | gh issue comment 1 --body-file $D/b.md').vars));
+  ok('assignment ending in & does not propagate', !('D' in w0('D=/x & gh issue comment 1 --body-file $D/b.md').vars));
+  ok('inline prefix does not propagate to the same statement', !('D' in w0('D=/x gh issue comment 1 --body-file "$D/a.md"').vars));
+  ok('assignment after a pipe does not propagate', !('D' in w0('true | D=/x; gh issue comment 1 --body-file "$D/a.md"').vars));
+  ok('cwd is known without a cd', w0('gh issue comment 1 --body x').cwdKnown === true);
+  ok('cwd is unknown after cd', w0('cd /tmp && gh issue comment 1 --body x').cwdKnown === false);
+  ok('cwd is unknown after pushd', w0('pushd /tmp; gh issue comment 1 --body x').cwdKnown === false);
+}
+
+// --- unit: resolveBodyFile() ---
+{
+  const r = (c, vars = {}, env = {}, cwd = '/work') => resolveBodyFile(c, vars, env, cwd);
+  ok('no body-file flag -> null', r('gh issue comment 1 --body hi') === null);
+  ok('stdin body file -> null', r('gh issue comment 1 --body-file -') === null);
+  ok('literal absolute path', r('gh issue comment 1 --body-file /a/b.md').path === '/a/b.md');
+  ok('-F short flag', r('gh issue comment 1 -F /a/b.md').path === '/a/b.md');
+  ok('--body-file=path form', r('gh issue comment 1 --body-file=/a/b.md').path === '/a/b.md');
+  ok('quoted path', r('gh issue comment 1 --body-file "/a b/c.md"').path === '/a b/c.md');
+  ok('$NAME from vars', r('gh issue comment 1 --body-file $D/b.md', { D: '/x' }).path === '/x/b.md');
+  ok('${NAME} in double quotes', r('gh issue comment 1 --body-file "${D}/b.md"', { D: '/x' }).path === '/x/b.md');
+  ok('$NAME falls back to env', r('gh issue comment 1 --body-file $D/b.md', {}, { D: '/e' }).path === '/e/b.md');
+  ok('vars win over env', r('gh issue comment 1 --body-file $D/b.md', { D: '/x' }, { D: '/e' }).path === '/x/b.md');
+  ok('single-quoted path is literal', r("gh issue comment 1 --body-file '/l/$D/b.md'", { D: '/x' }).path === '/l/$D/b.md');
+  ok('bare ~/ expands to HOME', r('gh issue comment 1 --body-file ~/b.md', {}, { HOME: '/h' }).path === '/h/b.md');
+  ok('double-quoted ~ stays literal (relative to cwd)', r('gh issue comment 1 --body-file "~/b.md"', {}, { HOME: '/h' }).path === '/work/~/b.md');
+  ok('relative path resolves against cwd', r('gh issue comment 1 --body-file b.md').path === '/work/b.md');
+  ok('unknown variable is unresolved', !!r('gh issue comment 1 --body-file "$NOPE/b.md"').unresolved);
+  ok('variable recorded as null is unresolved', !!r('gh issue comment 1 --body-file $D/b.md', { D: null }).unresolved);
+  ok('command substitution is unresolved', !!r('gh issue comment 1 --body-file $(pwd)/b.md').unresolved);
+  ok('backticks are unresolved', !!r('gh issue comment 1 --body-file `pwd`/b.md').unresolved);
+  ok('parameter operator is unresolved', !!r('gh issue comment 1 --body-file ${D:-/x}/b.md', { D: '/x' }).unresolved);
+  ok('positional/special params are unresolved', !!r('gh issue comment 1 --body-file $1').unresolved && !!r('gh issue comment 1 --body-file $@').unresolved && !!r('gh issue comment 1 --body-file $$').unresolved);
+  ok('~user is unresolved', !!r('gh issue comment 1 --body-file ~bob/b.md').unresolved);
+  ok('relative path with unknown cwd (after cd) is unresolved', !!r('gh issue comment 1 --body-file b.md', {}, {}, null).unresolved);
+  ok('absolute path with unknown cwd still resolves', r('gh issue comment 1 --body-file /a/b.md', {}, {}, null).path === '/a/b.md');
+  ok('adjacent quoted + bare parts join', r('gh issue comment 1 --body-file "$D"/b.md', { D: '/x' }).path === '/x/b.md');
 }
 
 // --- end-to-end: block ---

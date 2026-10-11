@@ -14,8 +14,9 @@
 // the merged trailhead-bash-guards.js; runs as a hook when executed directly.
 
 const fs = require('fs');
+const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { splitStatementsWithSeparators } = require('./lib/shell-scan.js');
+const { splitStatementsWithSeparators, tokenize } = require('./lib/shell-scan.js');
 
 // High-confidence secret formats: a match here is almost never a false positive.
 const SECRET_PATTERNS = [
@@ -51,23 +52,196 @@ function writeKind(stmt) {
   return null;
 }
 
-// Every `gh` tracker write in a (possibly compound) command, in order. The command
-// is split into statements (`;`, `&&`, `||`, `|`, `&`, newline) and each one is
-// checked on its own: `D=/x && gh issue comment ...` or `cd d && gh pr comment ...`
-// is a write even though the string does not START with gh.
-function ghWrites(cmd) {
+// --- static shell expansion (just enough to find a --body-file path) -----------
+
+// Look a variable up: variables set earlier in the command first, then the hook's
+// environment. null = unknown or recorded as unresolvable.
+function lookupVar(name, vars, env) {
+  if (Object.prototype.hasOwnProperty.call(vars, name)) return vars[name];
+  const v = env[name];
+  return typeof v === 'string' ? v : null;
+}
+
+// Expand the `$...` at text[i]. Only $NAME and ${NAME} are understood; command
+// substitution, parameter operators and positional/special params are unresolvable.
+// Returns { value, next } or { unresolved }.
+function expandDollar(text, i, vars, env) {
+  const rest = text.slice(i + 1);
+  let name;
+  let len;
+  const braced = /^\{([A-Za-z_][A-Za-z0-9_]*)\}/.exec(rest);
+  if (braced) {
+    name = braced[1];
+    len = braced[0].length;
+  } else if (rest[0] === '{') {
+    return { unresolved: 'parameter expansion operator' };
+  } else if (rest[0] === '(') {
+    return { unresolved: 'command substitution' };
+  } else if (/^[0-9@*#?$!-]/.test(rest)) {
+    return { unresolved: `special parameter $${rest[0]}` };
+  } else {
+    const bare = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest);
+    if (!bare) return { value: '$', next: i + 1 }; // a lone $ is literal
+    name = bare[0];
+    len = name.length;
+  }
+  const v = lookupVar(name, vars, env);
+  if (v === null) return { unresolved: `unknown variable ${name}` };
+  return { value: v, next: i + 1 + len };
+}
+
+// Expand one shell word the way bash would for a plain argument: single quotes are
+// literal, double quotes expand $NAME/${NAME} only, a bare word also expands a
+// leading `~`/`~/` to HOME. Returns { value } or { unresolved: reason }.
+function expandWord(word, vars, env) {
+  let out = '';
+  let i = 0;
+  if (word[0] === '~') {
+    if (word.length > 1 && word[1] !== '/') return { unresolved: 'user home (~user)' };
+    const home = lookupVar('HOME', vars, env);
+    if (home === null) return { unresolved: 'unknown variable HOME' };
+    out = home;
+    i = 1;
+  }
+  while (i < word.length) {
+    const c = word[i];
+    if (c === "'") {
+      const close = word.indexOf("'", i + 1);
+      if (close === -1) return { unresolved: 'unterminated quote' };
+      out += word.slice(i + 1, close);
+      i = close + 1;
+    } else if (c === '"') {
+      i++;
+      for (;;) {
+        if (i >= word.length) return { unresolved: 'unterminated quote' };
+        const d = word[i];
+        if (d === '"') { i++; break; }
+        if (d === '`') return { unresolved: 'command substitution' };
+        if (d === '\\' && i + 1 < word.length) {
+          const n = word[i + 1];
+          out += '$`"\\'.includes(n) ? n : d + n;
+          i += 2;
+        } else if (d === '$') {
+          const r = expandDollar(word, i, vars, env);
+          if (r.unresolved) return r;
+          out += r.value;
+          i = r.next;
+        } else {
+          out += d;
+          i++;
+        }
+      }
+    } else if (c === '\\' && i + 1 < word.length) {
+      out += word[i + 1];
+      i += 2;
+    } else if (c === '$') {
+      const r = expandDollar(word, i, vars, env);
+      if (r.unresolved) return r;
+      out += r.value;
+      i = r.next;
+    } else if (c === '`') {
+      return { unresolved: 'command substitution' };
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return { value: out };
+}
+
+// The --body-file path of one gh statement, resolved WITHOUT running anything.
+//   { path }       an absolute path to read
+//   { unresolved } the path cannot be known statically (reason given): fail closed
+//   null           no --body-file/-F, or it reads stdin (`-`)
+// `vars` are the variables set earlier in the command (name -> string, or null when
+// unresolvable), `env` the hook's environment. A relative path resolves against
+// `cwd` (process.cwd() when undefined); cwd === null means the working directory is
+// no longer known (an earlier cd), so a relative path is unresolved.
+function resolveBodyFile(stmt, vars, env, cwd) {
+  const toks = tokenize(stmt);
+  let raw = null;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t === '--body-file' || t === '-F') raw = toks[i + 1] === undefined ? null : toks[i + 1];
+    else if (t.startsWith('--body-file=')) raw = t.slice('--body-file='.length);
+    else if (t.startsWith('-F=')) raw = t.slice('-F='.length);
+  }
+  if (raw === null || raw === '-' || raw.startsWith('<')) return null; // stdin/heredoc already in the command string
+  const r = expandWord(raw, vars, env);
+  if (r.unresolved) return { unresolved: r.unresolved };
+  if (path.isAbsolute(r.value)) return { path: r.value };
+  if (cwd === null) return { unresolved: 'relative path after cd (working directory unknown)' };
+  return { path: path.resolve(cwd === undefined ? process.cwd() : cwd, r.value) };
+}
+
+// --- variable tracking across a compound command -------------------------------
+
+const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+const DECL_KEYWORDS = new Set(['export', 'declare', 'local', 'readonly', 'typeset']);
+
+// [[name, rawValue], ...] when the statement is only assignments (optionally behind
+// export/declare/...), else null. `D=v cmd ...` (an inline prefix) is not one.
+function parseAssignments(text) {
+  const toks = tokenize(text);
+  const decl = DECL_KEYWORDS.has(toks[0]);
+  const out = [];
+  for (let i = decl ? 1 : 0; i < toks.length; i++) {
+    const m = ASSIGN_TOKEN_RE.exec(toks[i]);
+    if (m) out.push([m[1], m[2]]);
+    else if (!(decl && (toks[i].startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*$/.test(toks[i])))) return null;
+  }
+  return decl || out.length ? out : null;
+}
+
+function changesDir(text) {
+  const toks = tokenize(text);
+  let i = 0;
+  while (i < toks.length && ASSIGN_TOKEN_RE.test(toks[i])) i++;
+  return ['cd', 'pushd', 'popd'].includes(toks[i]);
+}
+
+// Every `gh` tracker write in a (possibly compound) command, in order:
+// { kind, text, vars, cwdKnown }. The command is split into statements (`;`, `&&`,
+// `||`, `|`, `&`, newline) and each is checked on its own: `D=/x && gh issue comment
+// ...` or `cd d && gh pr comment ...` is a write even though the string does not
+// START with gh. `vars` are the variables the write can see: a pure `NAME=v`
+// statement propagates, except in a pipeline or a backgrounded statement (a
+// subshell); an inline `NAME=v gh ...` prefix is the child's environment only.
+// `cwdKnown` turns false after a cd/pushd/popd.
+function ghWrites(cmd, env = process.env) {
   const writes = [];
-  for (const { text } of splitStatementsWithSeparators(cmd)) {
+  let vars = {};
+  let cwdKnown = true;
+  let prevSep = null;
+  for (const { text, sep } of splitStatementsWithSeparators(cmd)) {
+    const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
+    prevSep = sep;
     const kind = writeKind(text);
-    if (kind) writes.push({ kind, text });
+    if (kind) {
+      writes.push({ kind, text, vars, cwdKnown });
+      continue;
+    }
+    const assigns = parseAssignments(text);
+    if (assigns) {
+      if (!subshell) {
+        const next = { ...vars };
+        for (const [name, raw] of assigns) {
+          const r = expandWord(raw, next, env);
+          next[name] = r.unresolved ? null : r.value;
+        }
+        vars = next;
+      }
+      continue;
+    }
+    if (changesDir(text)) cwdKnown = false;
   }
   return writes;
 }
 
 // Is this command a `gh` write of issue/PR/comment text? Returns the kind of the
 // first write, or null.
-function ghIssueWrite(cmd) {
-  const first = ghWrites(cmd)[0];
+function ghIssueWrite(cmd, env = process.env) {
+  const first = ghWrites(cmd, env)[0];
   return first ? first.kind : null;
 }
 
@@ -173,4 +347,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ghIssueWrite, ghWrites, bodyFileText, scan, evaluate, SECRET_PATTERNS };
+module.exports = { ghIssueWrite, ghWrites, resolveBodyFile, bodyFileText, scan, evaluate, SECRET_PATTERNS };
