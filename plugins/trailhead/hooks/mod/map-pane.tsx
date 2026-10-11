@@ -19,6 +19,7 @@ import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
 export const PANE_TITLE = 'Map'
+export const PANEL_COMMAND = 'trailhead:panel'
 export const MIN_REFRESH_MS = 15_000
 export const TIMER_MS = 180_000
 export const GH_TIMEOUT_MS = 20_000
@@ -37,6 +38,8 @@ export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EM
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)
 // The ticket whose `work` press is queued; one at a time.
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
+// Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
+export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
 const WORK_COMMAND = 'trailhead:work'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
@@ -188,6 +191,39 @@ async function startWork($: Dollar, number: number) {
   }
 }
 
+// Opening always refreshes. A render cannot write state, not even from work it left running,
+// so the auto-open runs from a zero-delay timer, a dispatch of its own; `isOpening` keeps two
+// renders from opening twice before the flag is written.
+let isOpening = false
+
+async function openPane($: Dollar) {
+  await update($, paneAutoOpened, () => true)
+  const opened = await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
+  if (opened.isPlaced) void requestRefresh($)
+  return opened
+}
+
+async function autoOpen($: Dollar) {
+  if (isOpening) return
+  isOpening = true
+  try {
+    if (!(await $.ui.panes()).some(pane => pane.id === PANE_ID)) await openPane($)
+  } catch (err) {
+    debug($, `trailhead mod: map pane auto-open failed: ${String(err)}`)
+  } finally {
+    isOpening = false
+  }
+}
+
+async function togglePanel($: Dollar): Promise<string> {
+  if ((await $.ui.panes()).some(pane => pane.id === PANE_ID)) {
+    await $.ui.close({ id: PANE_ID })
+    return 'Map panel closed.'
+  }
+  const opened = await openPane($)
+  return opened.isPlaced ? 'Map panel opened.' : `Map panel not shown: ${opened.reason}`
+}
+
 const dim = { dimColor: true } as const
 const bold = { bold: true } as const
 const accent = { bold: true, color: ACCENT } as const
@@ -220,9 +256,21 @@ export function registerMapPane(on: On) {
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))
 
+  // /trailhead:panel is a plugin command file; this answers it, so the model never runs.
+  on('command.run', { command: PANEL_COMMAND }, async $ => ({ text: await togglePanel($) }))
+
+  // Only in fullscreen, where a pane docks beside the transcript; this bare matcher is
+  // narrower than the band's, and the band's own hook (in register.tsx) draws after it.
+  on('ui.render', { component: 'AbovePrompt', viewport: { isFullscreen: true } }, async ($, e, next) => {
+    if ((await read($, activeMap)) !== null && !(await read($, paneAutoOpened))) $.clock.after(0, () => void autoOpen($))
+    return next(e)
+  })
+
   on('ui.close', { id: PANE_ID }, async ($, e, next) => {
     const result = await next(e)
     stopTimers()
+    // The person closing it by hand ends the auto-open for good.
+    if (e.origin.kind === 'person') await update($, paneAutoOpened, () => true)
     return result
   })
 

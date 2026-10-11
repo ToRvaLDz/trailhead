@@ -73,6 +73,8 @@ const rig = (on: On) => {
     calls: [] as (readonly string[])[],
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
     isPlaced: true,
+    logs: [] as string[],
+    opens: [] as { id: string; title?: string }[],
     // `command.run` beneath the plugin: every run is recorded; `gate` holds it, `refuse` rejects it.
     runs: [] as { command: string; args: string }[],
     gate: null as Promise<void> | null,
@@ -98,6 +100,10 @@ const rig = (on: On) => {
     return r.refuse === null ? { text: '' } : { deny: r.refuse }
   })
   on('session.id', () => ({ value: SESSION }))
+  on('ui.log', (_$, e) => {
+    r.logs.push(e.text)
+    return { value: undefined }
+  })
   on('ui.status', () => ({ value: undefined }))
   on('process.run', async (_$, e) => {
     r.calls.push([...e.argv])
@@ -106,6 +112,7 @@ const rig = (on: On) => {
     return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('ui.open', (_$, e) => {
+    r.opens.push({ id: e.id, title: e.title })
     r.panes = [
       ...r.panes.filter(p => p.id !== e.id),
       { id: e.id, title: e.title ?? e.id, isShown: true, isFocused: false, isPlaced: r.isPlaced },
@@ -126,6 +133,16 @@ const rig = (on: On) => {
   return r
 }
 type Rig = ReturnType<typeof rig>
+
+const BAND_PROPS = {
+  hasSurvey: false,
+  isWorking: false,
+  maxRows: 10,
+  bodyColumns: 80,
+  scroll: { offset: 0, bodyRows: 10 },
+  view: {},
+} as const
+const FULLSCREEN = { columns: 200, rows: 50, isFullscreen: true } as const
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 let turns = 0
@@ -539,5 +556,94 @@ for (const surface of SURFACES) {
     await ui.press({ key: 'refresh' })
     await settle(r)
     expect(fetches(r)).toBe(3)
+  })
+
+  const panel = ($: any) => $.command.run({ command: 'trailhead:panel' })
+  const mountBand = ($: any, viewport: Record<string, unknown> | undefined) =>
+    $.ui.mount({ plugin: 'trailhead', surface, component: 'AbovePrompt', props: BAND_PROPS, viewport })
+
+  test(`/trailhead:panel opens and closes the pane, answering without running a command [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const opened = await panel($)
+    expect(opened.text).toBe('Map panel opened.')
+    expect(r.opens).toEqual([{ id: PANE, title: 'Map' }])
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    const closed = await panel($)
+    expect(closed.text).toBe('Map panel closed.')
+    expect(r.panes).toEqual([])
+    await r.clock.advance(TIMER * 2)
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    // the model never sees it; other commands still reach the engine
+    expect(r.runs).toEqual([])
+    await $.command.run({ command: 'trailhead:work', args: '5' } as never)
+    expect(r.runs).toEqual([{ command: 'trailhead:work', args: '5' }])
+  })
+
+  test(`/trailhead:panel says why a pane cannot be placed [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.isPlaced = false
+    await $.session.start(START)
+    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    await settle(r)
+    expect(fetches(r)).toBe(0)
+    // a pane waiting undrawn can still be closed
+    expect((await panel($)).text).toBe('Map panel closed.')
+  })
+
+  for (const withBand of [false, true]) {
+    test(`the pane opens by itself once in fullscreen, the band ${withBand ? 'drawing' : 'yielding'} [${surface}]`, async ($, on) => {
+      const r = rig(on)
+      r.work = withBand ? stateText() : null
+      await $.session.start(START)
+      expect(r.opens).toEqual([])
+      const ui = await mountBand($, FULLSCREEN)
+      await settle(r)
+      expect([r.logs, r.opens]).toEqual([[], [{ id: PANE, title: 'Map' }]])
+      expect(fetches(r)).toBe(1)
+      // the band keeps its own drawing: it draws with a state, yields without one
+      expect(await ui.find({ key: withBand ? 'ticket' : 'engine' })).toBeDefined()
+
+      // closed by the person: never again
+      r.panes = []
+      await ui.redraw()
+      await mountBand($, FULLSCREEN)
+      await settle(r)
+      expect(r.opens).toHaveLength(1)
+    })
+  }
+
+  test(`the pane never opens by itself on the main screen, unknown layout or without a map [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    await mountBand($, { columns: 200, rows: 50, isFullscreen: false })
+    await mountBand($, { columns: 200, rows: 50 })
+    await mountBand($, undefined)
+    await settle(r)
+    expect(r.opens).toEqual([])
+
+    r.active = null
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toEqual([])
+    expect(r.calls).toEqual([])
+  })
+
+  test(`a pane the person closed with the command is not opened again by itself [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    await panel($)
+    await panel($)
+    expect(r.panes).toEqual([])
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
   })
 }
