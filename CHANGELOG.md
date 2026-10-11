@@ -8,6 +8,9 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 - **The five Bash guards run in one hook process (#207).** The commit, secret, install, search, and body guards used to be five `PreToolUse(Bash)` registrations, so every Bash call started five node processes. They now share one, `trailhead-bash-guards.js`, which evaluates them in the same order with unchanged verdicts: the first block wins, a guard that errors allows on its own without stopping the others, and a guard module that cannot load is skipped with a stderr warning and a session advisory naming it. The guardrails themselves are unchanged (still the same set of distinct protections); only the registrations and process spawns shrink, to three hook processes per Bash call on Claude Code and Codex. On Codex the hook is registered with `--guards=commit,secret,install,body` (no search guard). A fresh `TRAILHEAD_MOD_GUARDS=<name,...>@<epoch-ms>` stamp, set by the mod for guards it already ran, makes the hook skip exactly those; a missing, malformed, or stale stamp skips none.
 - **Installs migrate on their own.** Re-running the installer strips the old per-guard registrations from `settings.json` / `hooks.json` and registers the merged hook; uninstall removes the merged entry and any legacy one. Install-verify now separates the shipped files (the five guard modules are still copied) from the registered entrypoints.
 
+### Fixed
+- **Body guard resolves repeated body flags like gh (#213).** `gh issue edit` / `gh pr edit` with a repeated `--body` / `--body-file` (or `-b` / `-F`) was judged on the first occurrence, but gh keeps the last, so `--body "x" --body ""` slipped through while `--body "" --body "x"` was blocked. The guard now takes the last value of each flag, treats an empty `--body-file` as absent, and allows `--body` combined with a non-empty `--body-file` (gh rejects it and writes nothing).
+
 ## 0.13.0 (2026-10-09)
 
 ### Why
