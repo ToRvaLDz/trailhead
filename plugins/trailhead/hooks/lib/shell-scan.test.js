@@ -97,6 +97,21 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     countHeredocs('echo "<<A" $((1<<2)) <<B') === 1);
 }
 
+// --- heredocs: splitters and the scanner share one context model (#212) ---
+// secret-guard pairs heredocBodies with per-statement countHeredocs by position,
+// so the two must agree even when a separator sits inside $((..)), a comment, etc.
+{
+  const agree = (c) => heredocBodies(c).length === splitStatements(c).reduce((n, t) => n + countHeredocs(t), 0) &&
+    heredocBodies(c).length === splitStatementsWithSeparators(c).reduce((n, x) => n + countHeredocs(x.text), 0);
+  const body = "bash <<'EOF'\ngh issue comment 1 --body hi\nEOF";
+  for (const first of [
+    'echo $((1|2<<3))', 'echo $((1&&2<<3))', 'echo $((1||2<<3))', 'echo $((1;2<<3))', 'echo $[1|2<<3]',
+    '((x=1|2<<3))', ': # ;true <<A', ': # |true <<A', 'echo ${x:-a;b <<A}', 'echo ok',
+  ]) ok(`heredocBodies agrees with countHeredocs per statement: ${JSON.stringify(first)}`, agree(`${first}\n${body}`));
+  ok('splitStatements does not cut inside $((..)), $[..] or a comment',
+    JSON.stringify(splitStatements('echo $((1|2)) $[3;4] # a;b\nls')) === JSON.stringify(['echo $((1|2)) $[3;4] # a;b', 'ls']));
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===

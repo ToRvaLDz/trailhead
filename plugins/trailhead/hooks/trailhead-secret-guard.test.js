@@ -671,4 +671,13 @@ ok('could-not-scan is OBSERVABLE, not byte-identical to a clean pass',
 const f2 = runHook('gh issue view 5 --json body', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.trim() === '');
 
+// --- #212: a phantom << in a fragment must not hide a later opaque heredoc write ---
+{
+  const hidden = "bash <<'EOF'\ngh issue comment 1 --body hi\nEOF";
+  for (const first of ['echo ok', 'echo $((1|2<<3))', 'echo $((1&&2<<3))', 'echo $((1;2<<3))', ': # ;true <<A']) {
+    ok(`an opaque heredoc write after ${JSON.stringify(first)} blocks`,
+      runHook(`${first}\n${hidden}`).out.includes('SECRET_GUARD_OPAQUE_WRITE'));
+  }
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);
