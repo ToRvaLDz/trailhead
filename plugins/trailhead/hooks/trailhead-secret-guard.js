@@ -148,8 +148,16 @@ function stripLeader(toks) {
   return null;
 }
 
-// xargs flags that take a separate value.
-const XARGS_VALUE_FLAGS = new Set(['-I', '-n', '-P', '-d', '-E', '-L', '-s', '-a', '-R', '-S', '-J']);
+// xargs flags that take a separate value (a long flag only when written without `=`).
+const XARGS_VALUE_FLAGS = new Set([
+  '-I', '-n', '-P', '-d', '-E', '-L', '-s', '-a', '-R', '-S', '-J',
+  '--arg-file', '--delimiter', '--eof', '--max-lines', '--max-args', '--max-procs', '--max-chars', '--process-slot-var',
+]);
+// xargs long flags that take no separate value (`--replace` and `--eof` also accept `=`).
+const XARGS_BOOLEAN_LONG = new Set([
+  '--null', '--no-run-if-empty', '--verbose', '--interactive', '--open-tty', '--exit', '--show-limits',
+  '--version', '--help', '--replace', '--',
+]);
 
 // The script text a shell/eval/xargs statement runs, as a list of strings to analyse
 // (the `-c` string, eval's arguments, the heredoc bodies fed to a shell, the command
@@ -163,8 +171,17 @@ function runnerScripts(text, heredocs) {
   if (name === 'eval') return [rest.map(stripQuotes).join(' ')];
   if (name === 'xargs') {
     let j = 0;
-    while (j < rest.length && rest[j].startsWith('-')) j += XARGS_VALUE_FLAGS.has(rest[j]) ? 2 : 1;
-    return j < rest.length ? [rest.slice(j).join(' ')] : []; // run directly: quotes stay for the recursion
+    let unknownLong = false; // a long flag we cannot size: its value might be taken for the command
+    while (j < rest.length && rest[j].startsWith('-')) {
+      const f = rest[j];
+      if (f.startsWith('--') && !f.includes('=') && !XARGS_VALUE_FLAGS.has(f) && !XARGS_BOOLEAN_LONG.has(f)) unknownLong = true;
+      j += XARGS_VALUE_FLAGS.has(f) ? 2 : 1;
+    }
+    if (j >= rest.length) return [];
+    // The command runs directly: quotes stay for the recursion. After an unknown flag
+    // fail closed: also try each later word as the command.
+    const from = unknownLong ? rest.map((_, i) => i).filter((i) => i >= j) : [j];
+    return from.map((i) => rest.slice(i).join(' '));
   }
   const c = rest.findIndex((a) => /^-[A-Za-z]*c$/.test(a));
   if (c >= 0) return rest[c + 1] === undefined ? [] : [stripQuotes(rest[c + 1])];

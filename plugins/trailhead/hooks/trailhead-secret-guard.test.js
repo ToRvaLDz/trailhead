@@ -648,6 +648,20 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// --- unit: xargs long value flags (#210 round 4, W9) ---
+{
+  const kinds = (c) => JSON.stringify(ghWrites(c).map((w) => w.kind));
+  const O = '["opaque"]';
+  for (const f of ['--max-args 1', '--max-procs 4', '--delimiter X', '--arg-file F', '--max-lines 2', '--eof E', '--max-chars 100', '--process-slot-var V', '--max-args=1', '--replace={}', '-n 1', '-P 4 -n 1', '--null --no-run-if-empty -t']) {
+    ok(`xargs ${f} gh issue edit is opaque`, kinds(`echo 1 | xargs ${f} gh issue edit --body hi`) === O);
+  }
+  ok('xargs --max-args 1 grep "gh issue comment" is allowed', kinds('echo 1 | xargs --max-args 1 grep "gh issue comment"') === '[]');
+  ok('xargs --max-procs 4 grep with a bare gh mention in quotes is allowed', kinds(`xargs --max-procs 4 grep -n 'gh pr create'`) === '[]');
+  ok('an unknown long xargs flag still fails closed when gh runs later',
+    kinds('echo 1 | xargs --future-flag VALUE gh issue edit --body hi') === O);
+  ok('an unknown long xargs flag with a harmless command is allowed', kinds('echo 1 | xargs --future-flag VALUE echo hi') === '[]');
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);
