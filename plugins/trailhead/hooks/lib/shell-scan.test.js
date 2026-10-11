@@ -66,6 +66,37 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     countHeredocs('cat <<A <<B') === 2 && countHeredocs('cat <<< x') === 0 && countHeredocs('ls') === 0);
 }
 
+// --- heredocs: a `<<` with shell context (#212) ---
+{
+  // Each is followed by a newline and `cat .env`, which must stay visible.
+  const notHeredoc = [
+    'echo $((1<<3))', 'x=$(( y << 2 ))', 'echo $[1<<3]', '((x=1<<3))',
+    'echo "a <<EOF b"', "echo '<<EOF'", '# <<EOF', 'echo hi # <<EOF',
+    'echo \\<<EOF', 'cat <<<x', 'echo "${#x}" <<<EOF', 'echo $((1\n<<3))',
+  ];
+  for (const c of notHeredoc) {
+    const full = `${c}\ncat .env`;
+    ok(`not a heredoc: ${JSON.stringify(c)}`,
+      stripHeredocBodies(full) === full && countHeredocs(c) === 0 && heredocBodies(full).length === 0 &&
+      splitStatements(full).includes('cat .env'));
+  }
+  ok('a quoted string spanning lines suppresses an introducer on the next line',
+    stripHeredocBodies('echo "start\n<<EOF\nend"\ncat .env') === 'echo "start\n<<EOF\nend"\ncat .env' &&
+    heredocBodies('echo "start\n<<EOF\nend"\ncat .env').length === 0);
+  ok('a single-quoted string spanning lines suppresses an introducer too',
+    stripHeredocBodies("echo 'a\n<<EOF\nb'\ncat .env") === "echo 'a\n<<EOF\nb'\ncat .env");
+  ok('# mid-word is not a comment, so the heredoc after it is real',
+    stripHeredocBodies('a#b <<EOF\nx\nEOF\ncat .env') === 'a#b <<EOF\ncat .env');
+  ok('let x=1<<3 is a heredoc with tag 3',
+    stripHeredocBodies('let x=1<<3\nbody\n3\ncat .env') === 'let x=1<<3\ncat .env');
+  ok('a heredoc inside $(...) is still found',
+    stripHeredocBodies('x=$(cat <<EOF\nbody\nEOF\n)\ncat .env') === 'x=$(cat <<EOF\n)\ncat .env');
+  ok('quoted tags and <<- keep working',
+    stripHeredocBodies("cat <<'E'\na\nE\ncat <<\"F\"\nb\nF\ncat <<-G\n\tc\n\tG\nz") === "cat <<'E'\ncat <<\"F\"\ncat <<-G\nz");
+  ok('countHeredocs ignores a quoted or arithmetic << but counts a real one',
+    countHeredocs('echo "<<A" $((1<<2)) <<B') === 1);
+}
+
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
   JSON.stringify(tokenize('git commit -m "document .env usage"')) ===

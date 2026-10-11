@@ -46,6 +46,8 @@ ok('Read .environment (near-miss) is allowed', !detectSecretRead('Read', { file_
 // --- #135 follow-up: Finding 1 - glued shell metacharacters must not bypass detection ---
 ok('Bash cat .env|grep KEY is denied (glued pipe)', !!detectSecretRead('Bash', { command: 'cat .env|grep KEY' }));
 ok('Bash cat .env;echo done is denied (glued semicolon)', !!detectSecretRead('Bash', { command: 'cat .env;echo done' }));
+ok('Bash cat .env after an arithmetic << on the previous line is denied (#212)',
+  !!detectSecretRead('Bash', { command: 'echo $((1<<3))\ncat .env' }));
 ok('Bash cat .env&&echo done is denied (glued &&)', !!detectSecretRead('Bash', { command: 'cat .env&&echo done' }));
 ok('Bash bash -c "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'bash -c "cat .env"' }));
 ok('Bash eval "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'eval "cat .env"' }));
