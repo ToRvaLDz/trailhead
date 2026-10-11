@@ -38,7 +38,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize } = require('./lib/shell-scan.js');
+const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize, stripQuotes } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
   STDIN_PATHS,
@@ -108,10 +108,7 @@ const WRAPPER_VALUE_FLAGS = {
 // Commands that run text we cannot analyse statically.
 const WRAPPERS = new Set(Object.keys(WRAPPER_VALUE_FLAGS));
 const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
-// A gh issue/pr write, or a gh api body/--input write, anywhere in some text.
-const OPAQUE_WRITE_RE =
-  /\bgh\b[\s\S]*?\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bgh\b[\s\S]*?\bapi\b[\s\S]*?(?:\bbody=|--input)/;
-// The same after a command word we could not resolve (`$CMD issue comment ...`).
+// A gh write's words after a command word we could not resolve (`$CMD issue comment ...`).
 const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bapi\b[\s\S]*?(?:\bbody=|--input)/;
 
 // Index just past a wrapper command's own flags (and values), starting at the
@@ -149,6 +146,29 @@ function stripLeader(toks) {
     return { toks: [...toks.slice(0, k), ...toks.slice(skipWrapperArgs(toks, k))] };
   }
   return null;
+}
+
+// xargs flags that take a separate value.
+const XARGS_VALUE_FLAGS = new Set(['-I', '-n', '-P', '-d', '-E', '-L', '-s', '-a', '-R', '-S', '-J']);
+
+// The script text a shell/eval/xargs statement runs, as a list of strings to analyse
+// (the `-c` string, eval's arguments, the heredoc bodies fed to a shell, the command
+// xargs runs). Only the runner's own arguments: never the rest of the command.
+function runnerScripts(text, heredocs) {
+  const { args } = parseRedirects(words(text));
+  let k = 0;
+  while (k < args.length && ASSIGN_TOKEN_RE.test(args[k])) k++;
+  const name = args[k].replace(/^.*\//, '');
+  const rest = args.slice(k + 1);
+  if (name === 'eval') return [rest.map(stripQuotes).join(' ')];
+  if (name === 'xargs') {
+    let j = 0;
+    while (j < rest.length && rest[j].startsWith('-')) j += XARGS_VALUE_FLAGS.has(rest[j]) ? 2 : 1;
+    return j < rest.length ? [rest.slice(j).join(' ')] : []; // run directly: quotes stay for the recursion
+  }
+  const c = rest.findIndex((a) => /^-[A-Za-z]*c$/.test(a));
+  if (c >= 0) return rest[c + 1] === undefined ? [] : [stripQuotes(rest[c + 1])];
+  return heredocs.map((h) => h.body); // a script fed on stdin
 }
 
 // Strip what stands between a statement and the command it runs: reserved words
@@ -267,7 +287,8 @@ function collectWrites(cmd, env, start) {
     // A shell/eval/xargs line that holds a gh write cannot be analysed (opaque). A
     // command substitution is analysed like any other command, from this state.
     if (runner) {
-      if (OPAQUE_WRITE_RE.test(/<<-?/.test(text) ? cmd : text)) {
+      const state = { vars, cwdKnown };
+      if (runnerScripts(text, heredocs).some((script) => collectWrites(script, env, state).length > 0)) {
         writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
         continue;
       }

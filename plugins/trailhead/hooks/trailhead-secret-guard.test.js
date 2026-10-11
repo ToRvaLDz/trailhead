@@ -596,6 +596,30 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   ok('api body=$VAR set earlier in the command is expanded', leaks(runHook(`S=${SEC.SEC}; ${A} -f body="x $S"`)));
 }
 
+// --- unit: opaque runners only count a gh WRITE in command position (#210 round 3, I5) ---
+{
+  const kinds = (c) => JSON.stringify(ghWrites(c).map((w) => w.kind));
+  const O = '["opaque"]';
+  ok('xargs grep "gh issue comment" is not a write', kinds('git ls-files | xargs grep -n "gh issue comment"') === '[]');
+  ok("bash -c with --grep='gh pr create' is not a write", kinds(`bash -c "git log --grep='gh pr create'"`) === '[]');
+  ok('bash ./x.sh # gh issue comment is not a write', kinds('bash ./x.sh # gh issue comment') === '[]');
+  ok('bash -c with the text only quoted in echo is not a write', kinds(`bash -c "echo 'gh issue comment 1'"`) === '[]');
+  ok('bash -c with the text only in a comment is not a write', kinds(`bash -c 'gh issue view 3 # gh issue comment 1'`) === '[]');
+  ok('a shell heredoc without a write beside a real write is just that write',
+    kinds("bash <<'EOF'\nls\nEOF\ngh issue comment 1 --body-file /x/b.md") === '["issue"]');
+  ok('a shell heredoc holding a write is opaque', kinds("bash <<'EOF'\ngh issue comment 1 -F /x/b.md\nEOF") === O);
+  ok('xargs -I{} gh issue edit is opaque', kinds('echo 1 | xargs -I{} gh issue edit {} --body x') === O);
+  ok('xargs -n1 gh issue comment is opaque', kinds('echo 1 | xargs -n1 gh issue comment --body-file /x/b.md') === O);
+  ok('xargs gh issue view is not a write', kinds('echo 1 | xargs gh issue view') === '[]');
+  ok('xargs sh -c with a write is opaque', kinds(`echo 1 | xargs sh -c 'gh issue comment 1 --body x'`) === O);
+  ok('bash -c with a write after && is opaque', kinds('bash -c "ls && gh issue comment 1 --body x"') === O);
+  ok('bash -lc with a write is opaque', kinds(`bash -lc 'gh pr create --body x'`) === O);
+  ok('eval of a quoted write is opaque', kinds('eval "echo a; gh pr create --body x"') === O);
+  ok('eval of a bare write is opaque', kinds('eval gh issue comment 1 --body x') === O);
+  ok('bash -c with a gh api body write is opaque', kinds('bash -c "gh api repos/o/r/issues/1/comments -f body=x"') === O);
+  ok('bash -c with a nested bash -c write is opaque', kinds(`bash -c "bash -c 'gh issue edit 1 --body x'"`) === O);
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);
