@@ -255,10 +255,46 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
   fs.mkdirSync(path.join(dir, 'lib'));
   fs.copyFileSync(path.join(__dirname, 'trailhead-body-guard.js'), path.join(dir, 'trailhead-body-guard.js'));
   fs.copyFileSync(path.join(__dirname, 'lib', 'gh-subcommand.js'), path.join(dir, 'lib', 'gh-subcommand.js'));
+  fs.copyFileSync(path.join(__dirname, 'lib', 'body-sources.js'), path.join(dir, 'lib', 'body-sources.js'));
   const partial = require(path.join(dir, 'trailhead-body-guard.js'));
   ok('without secret-guard, a leading empty --body still blocks',
     partial.evaluate('gh issue edit 5 --body ""').kind === 'block');
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// --- regression (#213): repeated / mixed body flags resolve like gh (pflag keeps the LAST) ---
+{
+  const blk = (c) => evaluate(c).kind === 'block';
+  const alw = (c) => evaluate(c).kind === 'allow';
+  for (const sub of ['issue', 'pr']) {
+    const g = `gh ${sub} edit 5`;
+    ok(`#213 ${sub}: blocks --body "x" --body ""`, blk(`${g} --body "x" --body ""`));
+    ok(`#213 ${sub}: blocks --body=x --body=`, blk(`${g} --body=x --body=`));
+    ok(`#213 ${sub}: blocks -b "x" --body ""`, blk(`${g} -b "x" --body ""`));
+    ok(`#213 ${sub}: blocks -b "x" -b ""`, blk(`${g} -b "x" -b ""`));
+    ok(`#213 ${sub}: allows --body "" --body "x"`, alw(`${g} --body "" --body "x"`));
+    ok(`#213 ${sub}: allows --body= --body=x`, alw(`${g} --body= --body=x`));
+    ok(`#213 ${sub}: allows --body "" -b "x"`, alw(`${g} --body "" -b "x"`));
+    ok(`#213 ${sub}: allows --body '' --body 'x'`, alw(`${g} --body '' --body 'x'`));
+  }
+  const g = 'gh issue edit 5';
+  ok('#213 blocks --body "x" --body "   "', blk(`${g} --body "x" --body "   "`));
+  ok('#213 blocks an attached -b""', blk(`${g} -b""`));
+  ok('#213 allows --body "" --body "$(cat f)" (unknowable last)', alw(`${g} --body "" --body "$(cat f)"`));
+  ok('#213 allows --body "" --body $B (unknowable last)', alw(`${g} --body "" --body $B`));
+  ok('#213 allows --body "" --body-file /dev/null (gh mutual-exclusion error)', alw(`${g} --body "" --body-file /dev/null`));
+  ok('#213 allows --body "x" --body-file /dev/null (gh mutual-exclusion error)', alw(`${g} --body "x" --body-file /dev/null`));
+  ok('#213 allows --body "x" --body-file "" (empty file flag = absent)', alw(`${g} --body "x" --body-file ""`));
+  ok('#213 blocks --body "" --body-file "" (empty file flag = absent)', blk(`${g} --body "" --body-file ""`));
+  const full = path.join(os.tmpdir(), `bg-213-full-${process.pid}.md`);
+  fs.writeFileSync(full, 'real content\n');
+  ok('#213 blocks --body-file <full> --body-file /dev/null (last wins)', blk(`${g} --body-file ${full} --body-file /dev/null`));
+  ok('#213 allows --body-file /dev/null --body-file <full> (last wins)', alw(`${g} --body-file /dev/null --body-file ${full}`));
+  fs.unlinkSync(full);
+  ok('#213 per statement: blocks a later repeated-flag empty write',
+    blk('gh issue edit 5 --body "x" --body ""; gh issue edit 6 --body "x"'));
+  ok('#213 per statement: allows when the last --body of each statement is non-empty',
+    alw('gh issue edit 5 --body "" --body "x"; gh issue edit 6 --body "ok"'));
 }
 
 // --- crash-safety ---

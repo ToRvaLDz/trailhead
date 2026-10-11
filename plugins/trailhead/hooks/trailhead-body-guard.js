@@ -25,6 +25,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
+const { words, parseRedirects, flagValues, expandWord } = require('./lib/body-sources.js');
 
 // Is the resolved body text clearly empty or whitespace-only?
 function isEmptyBody(text) {
@@ -74,47 +75,46 @@ function stripQuotedPair(val) {
   return val;
 }
 
-// Resolve the body for a `gh issue edit` / `gh pr edit` command. Returns:
-//   undefined -> no body param present at all (not a body-carrying write)
+// Resolve the body for a `gh issue edit` / `gh pr edit` command, the way gh
+// does (pflag keeps the LAST occurrence of a repeated flag; pkg/cmd/{issue,pr}/
+// edit rejects --body together with --body-file, and --body counts as provided
+// whenever it appears, while --body-file counts only if its last value is
+// non-empty). Flags are parsed with the shared body-sources helpers. Returns:
+//   undefined -> no body param present at all, or gh would reject the command
+//                        (both --body and a non-empty --body-file: no write)
 //   { body: string } -> known body text
 //   { body: null }   -> a body param IS present but its text is unknowable
 //                        (shell expansion, stdin/process-substitution path,
 //                        or an unreadable --body-file): never block on this.
 function resolveEditBody(cmd, cwdKnown = true) {
-  // --body-file <path> / its short alias -F (quoted or bare; bare stops at
-  // whitespace/shell metacharacters, same tokenizer approach as
-  // secret-guard's bodyFileText). The `(?<![-\w])` guard on -F mirrors
-  // secret-guard's bodyFileText: it stops -F matching when embedded inside
-  // a longer token, and keeps --body-file from being double-matched.
-  const fileMatch = cmd.match(
-    /(?:--body-file|(?<![-\w])-F)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s"';|&()<>`]+))/
-  );
-  if (fileMatch) {
-    const p = fileMatch[1] || fileMatch[2] || fileMatch[3];
-    if (p === '-' || p.startsWith('<')) return { body: null }; // stdin / process substitution
+  const { args } = parseRedirects(words(cmd));
+  const files = flagValues(args, '--body-file', '-F');
+  const bodies = flagValues(args, '--body', '-b');
+
+  // Last --body-file value; an empty expanded value means "not provided".
+  let filePath;
+  if (files.length) {
+    const r = expandWord(files[files.length - 1], {}, { HOME: os.homedir() });
+    if (r.unresolved) return { body: null }; // may or may not be empty: unknowable
+    if (r.value !== '') filePath = r.value;
+  }
+
+  if (filePath !== undefined && bodies.length) return undefined; // gh errors, nothing is written
+
+  if (filePath !== undefined) {
+    if (filePath === '-' || filePath.startsWith('<')) return { body: null }; // stdin / process substitution
     try {
-      return { body: readBodyFile(p, cwdKnown) };
+      return { body: readBodyFile(filePath, cwdKnown) };
     } catch {
       return { body: null }; // unreadable: unknowable, not provably empty
     }
   }
 
-  // Inline --body <val> / --body=<val> / its short alias -b, quoted or
-  // bare. The `(?<![-\w])` guard on -b keeps it from matching the "-b"
-  // that appears inside "--body" itself.
-  const inlineMatch = cmd.match(
-    /(?:--body|(?<![-\w])-b)(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S*))/
-  );
-  if (inlineMatch) {
-    const val =
-      inlineMatch[1] !== undefined
-        ? inlineMatch[1]
-        : inlineMatch[2] !== undefined
-        ? inlineMatch[2]
-        : inlineMatch[3];
-    if (val === undefined) return { body: null };
-    if (isShellExpansion(val)) return { body: null };
-    return { body: val };
+  if (bodies.length) {
+    // Empty env: any $VAR, $(...) or backtick is unresolved, hence unknowable.
+    const r = expandWord(bodies[bodies.length - 1], {}, {});
+    if (r.unresolved) return { body: null };
+    return { body: r.value };
   }
 
   return undefined; // no body param at all
