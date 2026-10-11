@@ -7,8 +7,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { PromptSnapshot, WorkState } from '../../types'
+import { registerMapPane } from './map-pane'
 import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
-import { fit, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
+import { fit, isMissing, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
 export const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
@@ -23,11 +24,6 @@ const AMBER = '#e0af68'
 const SECTION_ID = 'trailhead:work-state'
 
 type Dollar = EngineInterface
-
-const isMissing = (err: unknown): boolean => {
-  const e = err as { code?: unknown; message?: unknown } | null
-  return e?.code === 'ENOENT' || /ENOENT/.test(String(e?.message ?? err))
-}
 
 // The status text last pinned; the sentinel makes the first refresh set or clear it.
 // (A hot reload resets it, which only costs one repeated status call.)
@@ -153,6 +149,8 @@ const stageLabel = (name: string, status: StageStatus) =>
   status === 'done' ? `✓ ${name}` : status === 'current' ? `▸ ${name}` : name
 
 export const register: Register = on => {
+  registerMapPane(on)
+
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await safeRefresh($)

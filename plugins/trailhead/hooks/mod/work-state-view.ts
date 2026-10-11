@@ -18,6 +18,12 @@ export const fit = (text: string, room: number): string => {
   return chars.length <= room ? text : room <= 1 ? ELLIPSIS : chars.slice(0, room - 1).join('') + ELLIPSIS
 }
 
+// A read that failed because the file is not there (any other failure is transient).
+export const isMissing = (err: unknown): boolean => {
+  const e = err as { code?: unknown; message?: unknown } | null
+  return e?.code === 'ENOENT' || /ENOENT/.test(String(e?.message ?? err))
+}
+
 const isPosInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0
 
 const cleanTitle = (text: string): string | null => {
