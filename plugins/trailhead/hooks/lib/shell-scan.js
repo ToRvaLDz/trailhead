@@ -42,85 +42,116 @@ function stripQuotes(t) {
 
 // --- heredoc bodies ------------------------------------------------------------
 
-// Matches a heredoc introducer anywhere it can appear on a line: `<<TAG`,
-// `<<'TAG'`, `<<"TAG"`, and `<<-TAG` (which also allows the terminator line to
-// be indented with leading tabs). A herestring (`<<<`) is not a heredoc. Captures the operator's `-` and the tag
-// (quoted or bare) separately.
-const HEREDOC_RE = /(?<!<)<<(?!<)(-?)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/;
+// What follows a `<<` introducer: an optional `-` (the terminator line may then
+// be indented with leading tabs), then the tag, quoted or bare. Captures the
+// `-` and the tag (single-quoted, double-quoted or bare) separately. Sticky, so
+// it only matches right at the operator.
+const HEREDOC_TAG_RE = /(-?)[ \t]*(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_]+))/y;
 
-// A heredoc BODY is literal data (e.g. a script being written to a file), not
-// shell statements executed in the current shell. Scan the command line by
-// line; whenever a line introduces a heredoc, skip every following line up to
-// and including the matching terminator line before it ever reaches the
-// statement splitter below. Handles multiple heredocs on the same command and
-// both quoted and unquoted tags. Best-effort: not a full shell parser.
-function stripHeredocBodies(cmd) {
-  const lines = String(cmd).split('\n');
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    out.push(line);
-    let m;
-    // A single line can introduce more than one heredoc (`cmd <<A <<B`); walk
-    // left to right and skip each body in turn.
-    while ((m = HEREDOC_RE.exec(line))) {
-      const dashStrip = m[1] === '-';
-      const tag = m[2] || m[3] || m[4];
-      line = line.slice(m.index + m[0].length); // keep scanning the rest of this line for more `<<TAG`s
-      if (!tag) break;
-      // Skip lines until the terminator: an exact match, or (for `<<-`) the
-      // tag preceded only by tabs.
-      while (i + 1 < lines.length) {
+// A `#` starts a comment, and a `((` an arithmetic command, only at a word start.
+const WORD_START_PREV_RE = /[\s;&|()]/;
+
+// Scan ONE line for heredoc introducers, with the shell context a bare regex
+// lacks: a `<<` inside quotes, a comment, `$((..))`, `$[..]`, `((..))` or
+// after a backslash is not an introducer, and `<<<` is a herestring. `st.stack`
+// holds the open contexts ('sq', 'dq', a `$(..)` substitution { sub, n }, an
+// arithmetic span { ar, ... }); it is mutated and carried to the next line, so a
+// quote or arithmetic span that runs across lines keeps suppressing
+// introducers. A `$(..)` is code again, even inside double quotes, so its
+// heredocs count. Returns [{ dash, tag, quoted }]. Best-effort: not a full shell
+// parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not modelled).
+function scanLine(line, st) {
+  const found = [];
+  const stack = st.stack;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    const top = stack[stack.length - 1];
+    if (top === 'sq') { if (c === "'") stack.pop(); continue; }
+    if (top && top.ar) {
+      if (top.ar === 'bracket') { if (c === ']') stack.pop(); continue; }
+      if (c === '(') top.depth++;
+      else if (c === ')' && --top.depth === 0) stack.pop();
+      continue;
+    }
+    if (c === '\\') { i++; continue; } // escaped char stays literal
+    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(') { stack.push({ ar: 'paren', depth: 2 }); i += 2; continue; }
+    if (c === '$' && line[i + 1] === '(') { stack.push({ sub: true, n: 0 }); i++; continue; }
+    if (top === 'dq') {
+      if (c === '"') stack.pop();
+      continue;
+    }
+    if (c === "'") { stack.push('sq'); continue; }
+    if (c === '"') { stack.push('dq'); continue; }
+    if (c === '$' && line[i + 1] === '[') { stack.push({ ar: 'bracket' }); i++; continue; }
+    const wordStart = i === 0 || WORD_START_PREV_RE.test(line[i - 1]);
+    if (c === '#' && wordStart) break; // comment to end of line
+    if (c === '(' && line[i + 1] === '(' && wordStart) { stack.push({ ar: 'paren', depth: 2 }); i++; continue; }
+    if (top && top.sub) {
+      if (c === '(') { top.n++; continue; }
+      if (c === ')') { if (top.n === 0) stack.pop(); else top.n--; continue; }
+    }
+    if (c === '<' && line[i + 1] === '<') {
+      if (line[i + 2] === '<') { i += 2; continue; } // herestring
+      HEREDOC_TAG_RE.lastIndex = i + 2;
+      const m = HEREDOC_TAG_RE.exec(line);
+      if (m) {
+        found.push({ dash: m[1] === '-', tag: m[2] || m[3] || m[4], quoted: m[2] !== undefined || m[3] !== undefined });
+        i = HEREDOC_TAG_RE.lastIndex - 1;
+      } else {
         i++;
-        const body = lines[i];
-        const term = dashStrip ? body.replace(/^\t+/, '') : body;
-        if (term === tag) break; // terminator line: consumed, not a candidate statement either
-        // else: heredoc data line, deliberately NOT pushed to `out` - it must
-        // never become a candidate statement.
       }
     }
   }
-  return out.join('\n');
+  return found;
 }
 
-// The heredoc bodies of a command, in order of appearance: [{ quoted, body }].
-// `quoted` is true when the delimiter is quoted (`<<'EOF'`), so the body is literal
-// text; an unquoted body is expanded by the shell. Same walk as stripHeredocBodies.
-function heredocBodies(cmd) {
+// The one walk shared by stripHeredocBodies, heredocBodies and countHeredocs, so
+// they always agree (secret-guard pairs heredocBodies with per-statement
+// countHeredocs by position). A heredoc BODY is literal data (e.g. a script
+// being written to a file), not shell statements run in the current shell.
+// Whenever a line introduces heredocs, every following line up to and including
+// each terminator is body. Returns { lines, keep, docs }: `keep[i]` is false for
+// body and terminator lines; `docs` is [{ quoted, body }] in order of appearance
+// (`quoted` is true for a quoted delimiter, whose body is literal text).
+function scanHeredocs(cmd) {
   const lines = String(cmd).split('\n');
-  const out = [];
+  const keep = new Array(lines.length).fill(true);
+  const docs = [];
+  const st = { stack: [] };
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    let m;
-    while ((m = HEREDOC_RE.exec(line))) {
-      const dashStrip = m[1] === '-';
-      const tag = m[2] || m[3] || m[4];
-      const quoted = m[2] !== undefined || m[3] !== undefined;
-      line = line.slice(m.index + m[0].length);
-      if (!tag) break;
+    // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
+    // bodies follow in order.
+    for (const { dash, tag, quoted } of scanLine(lines[i], st)) {
       const body = [];
       while (i + 1 < lines.length) {
         i++;
+        keep[i] = false; // body or terminator: never a candidate statement
         const l = lines[i];
-        if ((dashStrip ? l.replace(/^\t+/, '') : l) === tag) break;
+        if ((dash ? l.replace(/^\t+/, '') : l) === tag) break; // exact match, or (for `<<-`) tabs then the tag
         body.push(l);
       }
-      out.push({ quoted, body: body.join('\n') });
+      docs.push({ quoted, body: body.join('\n') });
     }
   }
-  return out;
+  return { lines, keep, docs };
+}
+
+// Remove every heredoc body (and terminator line) before the statement splitter
+// sees the command. Handles multiple heredocs on one line and quoted tags.
+function stripHeredocBodies(cmd) {
+  const { lines, keep } = scanHeredocs(cmd);
+  return lines.filter((_, i) => keep[i]).join('\n');
+}
+
+// The heredoc bodies of a command, in order of appearance: [{ quoted, body }].
+function heredocBodies(cmd) {
+  return scanHeredocs(cmd).docs;
 }
 
 // How many heredoc introducers a statement's text holds.
 function countHeredocs(text) {
-  let n = 0;
-  let line = String(text);
-  let m;
-  while ((m = HEREDOC_RE.exec(line))) {
-    n++;
-    line = line.slice(m.index + m[0].length);
-  }
-  return n;
+  const st = { stack: [] };
+  return String(text).split('\n').reduce((n, line) => n + scanLine(line, st).length, 0);
 }
 
 // --- statement splitting -------------------------------------------------------
