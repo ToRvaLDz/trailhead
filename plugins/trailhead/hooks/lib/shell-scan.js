@@ -60,7 +60,8 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // ends in a backslash-newline continuation. It is mutated and carried to the next line, so a quote or arithmetic
 // span that runs across lines keeps suppressing introducers. A `$(..)` is code
 // again, even inside double quotes, so its heredocs count. Returns
-// [{ at, dash, tag, quoted }] (`at` is the index of the `<<`). When `seps` is given, the statement separators found
+// [{ at, depth, dash, tag, quoted }] (`at` is the index of the `<<`, `depth` the
+// number of open contexts there). When `seps` is given, the statement separators found
 // in splittable code (top level or inside `$(..)`, never inside a quote,
 // arithmetic span or comment) are pushed to it as { at, len, op }, so the
 // splitters cut exactly where this lexer says code is. Best-effort: not a full
@@ -138,7 +139,7 @@ function scanLine(line, st, seps) {
       HEREDOC_TAG_RE.lastIndex = i + 2;
       const m = HEREDOC_TAG_RE.exec(line);
       if (m) {
-        found.push({ at: i, dash: m[1] === '-', tag: m[2] || m[3] || m[4], quoted: m[2] !== undefined || m[3] !== undefined });
+        found.push({ at: i, depth: stack.length, dash: m[1] === '-', tag: m[2] || m[3] || m[4], quoted: m[2] !== undefined || m[3] !== undefined });
         i = HEREDOC_TAG_RE.lastIndex - 1;
       } else {
         i++;
@@ -212,7 +213,10 @@ function scanHeredocs(cmd) {
     // line, and any heredoc body starts after its last physical line. So does a
     // quote opened after the introducer (`cat <<E 'a<nl>b'`): bash starts the
     // body after the logical line, which ends only when the quote closes.
-    while ((st.cont || (found.length > 0 && !splittable(st.stack))) && i + 1 < lines.length) {
+    // A heredoc introduced inside the innermost open `$(..)` (the `"$(cat <<EOF`
+    // idiom) starts its body on the next physical line; one introduced at an
+    // outer depth waits until every context opened after it has closed.
+    while ((st.cont || found.some((f) => st.stack.length > f.depth)) && i + 1 < lines.length) {
       i++;
       const more = scanLine(lines[i], st, seps[i]);
       hd[i] = more.map((f) => f.at);

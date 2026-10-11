@@ -195,6 +195,18 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     splitStatements('x "$(cat <<\'EOF\'\nhi; there\nEOF\n)"; cat .env').pop() === 'cat .env');
 }
 
+// --- a newline inside an open $(..) keeps the logical line open for an outer heredoc (#212) ---
+{
+  const J = JSON.stringify;
+  ok('an outer heredoc waits for a multi-line "$(..)" to close',
+    J(splitStatements('cat <<E "$(true\ntrue)"; cat .env\nbody\nE')) === J(['cat <<E "$(true', 'true)"', 'cat .env']));
+  ok('an outer heredoc waits for a multi-line bare $(..) to close',
+    J(splitStatements('cat <<E $(true\ntrue); cat .env\nbody\nE')) === J(['cat <<E $(true', 'true)', 'cat .env']));
+  ok('a heredoc inside the innermost $(..) starts its body on the next physical line',
+    heredocBodies('gh issue comment 1 --body "$(cat <<\'EOF\'\nbody\nEOF\n)"; cat .env')[0].body === 'body' &&
+    splitStatements('gh issue comment 1 --body "$(cat <<\'EOF\'\nbody\nEOF\n)"; cat .env').pop() === 'cat .env');
+}
+
 // --- per-statement heredoc counts pair with heredocBodies (#212) ---
 {
   const J = JSON.stringify;
