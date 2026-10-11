@@ -77,11 +77,26 @@ test('parseTickets flattens an untrusted title', () => {
   expect(title).toBe('a bcdefg h')
 })
 
+test('parseTickets strips C1 control characters from titles and logins', () => {
+  const out = parseTickets(list(issue({ title: 'a\u0085b\u009fc\u0080d', assignees: [{ login: 'al\u0090ice' }], state: 'x' })))
+  expect(out?.tickets[0]?.title).toBe('abcd')
+  expect(out?.tickets[0]?.assignees).toEqual(['alice'])
+})
+
+test('parseTickets says when the list reached the gh limit', () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => issue(i + 1))
+  expect(parseTickets(JSON.stringify(rows(199)))?.isCapped).toBe(false)
+  expect(parseTickets(JSON.stringify(rows(200)))?.isCapped).toBe(true)
+  // quarantined and whiteboard rows count toward the limit gh applied
+  const mixed = [...rows(199), issue(900, 'q', ['trailhead:unverified'])]
+  expect(parseTickets(JSON.stringify(mixed))?.isCapped).toBe(true)
+})
+
 test('parseTickets is null on invalid JSON and skips malformed rows', () => {
   expect(parseTickets('{nope')).toBeNull()
   expect(parseTickets('{"a":1}')).toBeNull()
   expect(parseTickets('null')).toBeNull()
-  expect(parseTickets('[]')).toEqual({ tickets: [], unverifiedCount: 0 })
+  expect(parseTickets('[]')).toEqual({ tickets: [], unverifiedCount: 0, isCapped: false })
   const out = parseTickets(list(null, 5, { title: 'x' }, issue({ number: 0 }), issue({ number: 8, labels: undefined, assignees: undefined })))
   expect(out?.tickets.map(t => t.number)).toEqual([8])
 })

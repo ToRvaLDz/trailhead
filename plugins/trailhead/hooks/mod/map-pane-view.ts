@@ -5,7 +5,8 @@ import type { MapInfo, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
-export type ParsedTickets = { tickets: readonly PaneTicket[]; unverifiedCount: number }
+// `isCapped`: gh returned as many rows as it was asked for, so the list may be cut.
+export type ParsedTickets = { tickets: readonly PaneTicket[]; unverifiedCount: number; isCapped: boolean }
 export type TicketGroups = {
   frontier: readonly PaneTicket[]
   inProgress: readonly PaneTicket[]
@@ -13,6 +14,9 @@ export type TicketGroups = {
 }
 export type Failure = { error: unknown } | { exitCode: number; stderr: string }
 export type RefreshDecision = { run: true } | { run: false; waitMs: number }
+
+// The most rows one `gh issue list` is asked for.
+export const LIST_LIMIT = 200
 
 const LABEL_PREFIX = 'trailhead:'
 
@@ -23,7 +27,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typ
 // Text from GitHub is untrusted and only drawn: one line, no control, zero-width or bidi characters.
 const flatten = (text: string): string =>
   text
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -79,7 +83,7 @@ export const parseTickets = (stdout: string): ParsedTickets | null => {
         url: safeUrl(r.url),
       }
     })
-  return { tickets, unverifiedCount }
+  return { tickets, unverifiedCount, isCapped: raw.length >= LIST_LIMIT }
 }
 
 // Markdown emphasis, code ticks and links reduced to their text.

@@ -32,7 +32,7 @@ const MAP_FIELDS = 'title,body,url'
 const ACCENT = '#7aa2f7'
 const AMBER = '#e0af68'
 
-const EMPTY: MapPaneData = { map: null, tickets: [], unverifiedCount: 0, fetchedAt: null, error: null, isLoading: false }
+const EMPTY: MapPaneData = { map: null, tickets: [], unverifiedCount: 0, isCapped: false, fetchedAt: null, error: null, isLoading: false }
 
 export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EMPTY)
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)

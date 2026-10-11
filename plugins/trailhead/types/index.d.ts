@@ -33,6 +33,7 @@ export type MapPaneData = {
   map: MapInfo | null
   tickets: readonly PaneTicket[]
   unverifiedCount: number
+  isCapped: boolean
   fetchedAt: number | null
   error: string | null
   isLoading: boolean
