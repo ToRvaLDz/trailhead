@@ -249,6 +249,18 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
   fs.unlinkSync(absEmpty);
 }
 
+{
+  // Partial install (no secret-guard next to the hook): the leading write still blocks.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bg-partial-'));
+  fs.mkdirSync(path.join(dir, 'lib'));
+  fs.copyFileSync(path.join(__dirname, 'trailhead-body-guard.js'), path.join(dir, 'trailhead-body-guard.js'));
+  fs.copyFileSync(path.join(__dirname, 'lib', 'gh-subcommand.js'), path.join(dir, 'lib', 'gh-subcommand.js'));
+  const partial = require(path.join(dir, 'trailhead-body-guard.js'));
+  ok('without secret-guard, a leading empty --body still blocks',
+    partial.evaluate('gh issue edit 5 --body ""').kind === 'block');
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // --- crash-safety ---
 try {
   execFileSync('node', [HOOK], { input: 'not json at all {{{' });

@@ -183,9 +183,17 @@ function ghBodyWrite(cmd, { cwdKnown = true } = {}) {
 
 // Every body-clobbering write in a whole command: the shared statement walk
 // finds each `gh` write, then each statement is resolved on its own with the
-// cwd state at that point. Opaque writes are skipped.
+// cwd state at that point. Opaque writes are skipped. If the walk cannot load
+// (a partial install), fall back to the single-statement check so a leading
+// empty-body write still blocks.
 function ghBodyWrites(cmd) {
-  const { ghWrites } = require('./trailhead-secret-guard.js');
+  let ghWrites;
+  try {
+    ({ ghWrites } = require('./trailhead-secret-guard.js'));
+  } catch {
+    const hit = ghBodyWrite(cmd);
+    return hit ? [hit] : [];
+  }
   const hits = [];
   for (const w of ghWrites(cmd, {})) {
     if (w.kind === 'opaque') continue;
