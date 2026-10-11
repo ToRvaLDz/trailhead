@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
+const { splitStatementsWithSeparators } = require('./lib/shell-scan.js');
 
 // High-confidence secret formats: a match here is almost never a false positive.
 const SECRET_PATTERNS = [
@@ -38,16 +39,36 @@ const ASSIGN_RE =
 const SAFE_VALUE =
   /^(?:\$|\$\{|<|\*{2,}|x{3,}|redacted|your[-_]|example|placeholder|dummy|test|todo|none|null|true|false|process\.env|import\.meta|os\.environ)/i;
 
-// Is this a `gh` command that WRITES issue/PR/comment text? Returns the kind or null.
-function ghIssueWrite(cmd) {
-  const parsed = parseGhSubcommand(cmd);
+// Kind of tracker write ('issue' | 'pr' | 'api') one statement performs, or null.
+function writeKind(stmt) {
+  const parsed = parseGhSubcommand(stmt);
   if (!parsed) return null;
   const { sub, verb } = parsed;
   if ((sub === 'issue' || sub === 'pr') && ['create', 'comment', 'edit', 'review'].includes(verb)) {
     return sub;
   }
-  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)\s+['"]?body=/.test(cmd)) return 'api';
+  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)\s+['"]?body=/.test(stmt)) return 'api';
   return null;
+}
+
+// Every `gh` tracker write in a (possibly compound) command, in order. The command
+// is split into statements (`;`, `&&`, `||`, `|`, `&`, newline) and each one is
+// checked on its own: `D=/x && gh issue comment ...` or `cd d && gh pr comment ...`
+// is a write even though the string does not START with gh.
+function ghWrites(cmd) {
+  const writes = [];
+  for (const { text } of splitStatementsWithSeparators(cmd)) {
+    const kind = writeKind(text);
+    if (kind) writes.push({ kind, text });
+  }
+  return writes;
+}
+
+// Is this command a `gh` write of issue/PR/comment text? Returns the kind of the
+// first write, or null.
+function ghIssueWrite(cmd) {
+  const first = ghWrites(cmd)[0];
+  return first ? first.kind : null;
 }
 
 // For gh issue/pr, the body may live in a --body-file <path>; read it too.
@@ -152,4 +173,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ghIssueWrite, bodyFileText, scan, evaluate, SECRET_PATTERNS };
+module.exports = { ghIssueWrite, ghWrites, bodyFileText, scan, evaluate, SECRET_PATTERNS };

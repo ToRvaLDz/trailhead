@@ -9,7 +9,7 @@ const os = require('os');
 
 // TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
 const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-secret-guard.js');
-const { scan, ghIssueWrite, bodyFileText } = require('./trailhead-secret-guard.js');
+const { scan, ghIssueWrite, ghWrites, bodyFileText } = require('./trailhead-secret-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -57,6 +57,25 @@ ok('ignores gh issue view (read)', ghIssueWrite('gh issue view 5 --json body') =
 ok('ignores gh -R o/r issue view (read, even with global flag)',
   ghIssueWrite('gh -R owner/repo issue view 5 --json body') === null);
 ok('ignores non-gh commands', ghIssueWrite('echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx') === null);
+
+// --- unit: ghWrites() finds every write in a compound command ---
+{
+  const kinds = (c) => JSON.stringify(ghWrites(c).map((w) => w.kind));
+  ok('ghWrites sees a write after D=/x &&', kinds('D=/x && gh issue comment 1 --body-file /x/b.md') === '["issue"]');
+  ok('ghWrites sees a write after cd &&', kinds('cd /tmp && gh pr comment 1 --body x') === '["pr"]');
+  ok('ghWrites sees a write after echo ;', kinds('echo x; gh issue edit 1 --body x') === '["issue"]');
+  ok('ghWrites sees a write after a background &', kinds('true & gh issue comment 1 --body x') === '["issue"]');
+  ok('ghWrites sees a write after a newline', kinds('echo x\ngh issue create --body x') === '["issue"]');
+  ok('ghWrites returns both writes of one command',
+    kinds('gh issue comment 1 --body a && gh pr review 2 --body b') === '["issue","pr"]');
+  ok('ghWrites sees a gh api body= write behind &&', kinds('cd /x && gh api repos/o/r/issues/5/comments -f body=x') === '["api"]');
+  ok('ghWrites ignores echo gh issue create', kinds('echo gh issue create --body x') === '[]');
+  ok('ghWrites ignores ls && git status', kinds('ls && git status') === '[]');
+  ok('ghWrites ignores a read behind &&', kinds('cd /x && gh issue view 5') === '[]');
+  ok('ghIssueWrite returns the first write kind of a compound command',
+    ghIssueWrite('cd /x && gh pr comment 1 --body x && gh issue edit 2 --body y') === 'pr');
+  ok('ghIssueWrite still returns null for a compound with no write', ghIssueWrite('cd /x && ls') === null);
+}
 
 // --- end-to-end: block ---
 const b1 = runHook('gh issue comment 5 --body "t ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xx"');
