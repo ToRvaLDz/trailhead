@@ -10,8 +10,11 @@ export type WorkState = {
   updatedAt: string | null
 }
 
+// The latched system-prompt section: the key it was built for and its text (null: no section).
+export type PromptSnapshot = { key: string; text: string | null }
+
 declare module 'claude-code' {
   interface PluginState {
-    trailhead: { workState: WorkState | null; isOrphaned: boolean }
+    trailhead: { workState: WorkState | null; isOrphaned: boolean; promptSnapshot: PromptSnapshot | null }
   }
 }

@@ -1,16 +1,19 @@
 // trailhead mod. Needs Claude Code 2.1.287+.
 // Command hooks stay the floor: builds without mod support skip only this module.
 // It reads .trailhead/work-state.json (written by the skills through the template
-// helper) and shows the ticket in play: a status entry and a band above the prompt.
+// helper) and shows the ticket in play: a status entry and a band above the prompt,
+// and a section in the system prompt so the agent keeps its bearings after a compaction.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { WorkState } from '../../types'
+import type { PromptSnapshot, WorkState } from '../../types'
+import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
 import { parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
 export const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 export const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
+export const promptSnapshot = atom({ plugin: 'trailhead', key: 'promptSnapshot' } as const, null as PromptSnapshot | null)
 
 const STATE_PATH = '.trailhead/work-state.json'
 const HELPER = 'trailhead-work-state.js'
@@ -18,6 +21,7 @@ const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
 const ELLIPSIS = '…'
+const SECTION_ID = 'trailhead:work-state'
 
 type Dollar = EngineInterface
 
@@ -55,6 +59,33 @@ async function setWorkState($: Dollar, value: WorkState | null) {
 async function setOrphaned($: Dollar, value: boolean) {
   const current = await read($, isOrphaned)
   if (current !== value) await update($, isOrphaned, () => value)
+}
+
+// null means "rebuild on the next compose"; written only when it changes.
+async function setSnapshot($: Dollar, value: PromptSnapshot | null) {
+  const current = await read($, promptSnapshot)
+  if (!sameValue(current, value)) await update($, promptSnapshot, () => value)
+}
+
+const debug = ($: Dollar, message: string) => {
+  try {
+    $.ui.log(message, { to: 'debug' })
+  } catch {
+    // No log sink: nothing to tell.
+  }
+}
+
+// The latched text: rebuilt only when its key changed or the snapshot was reset.
+async function currentSnapshot($: Dollar): Promise<PromptSnapshot> {
+  const state = await read($, workState)
+  const orphaned = await read($, isOrphaned)
+  const key = snapshotKey(state, orphaned)
+  const latched = await read($, promptSnapshot)
+  if (latched !== null && latched.key === key) return latched
+  const repo = state === null || orphaned ? null : await $.session.repo()
+  const built = { key, text: promptSection(state, orphaned, repoSlug(repo?.remote ?? null)) }
+  await setSnapshot($, built)
+  return built
 }
 
 async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
@@ -121,6 +152,34 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await safeRefresh($)
+    await setSnapshot($, null).catch(err => debug($, `trailhead mod: snapshot reset failed: ${String(err)}`))
+    return result
+  })
+
+  // The section rides after the engine's own, on the session side of the cache boundary.
+  on('prompt.compose', async ($, e, next) => {
+    const result = await next(e)
+    if (e.traits.includes('bare')) return result
+    try {
+      const { text } = await currentSnapshot($)
+      if (text === null) return result
+      return { sections: [...result.sections, { id: SECTION_ID, text, scope: 'session' as const }] }
+    } catch (err) {
+      debug($, `trailhead mod: work state section failed: ${String(err)}`)
+      return result
+    }
+  })
+
+  // After a compaction the agent re-reads the live state: refresh, then rebuild the snapshot.
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId !== undefined || result.messages === undefined) return result
+    try {
+      await safeRefresh($)
+      await setSnapshot($, null)
+    } catch (err) {
+      debug($, `trailhead mod: snapshot reset after compact failed: ${String(err)}`)
+    }
     return result
   })
 
