@@ -6,10 +6,20 @@
 // post to an issue/PR/comment and BLOCKS if it looks like a secret is in it, so
 // nothing sensitive lands on the tracker.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
-// Fail-OPEN on error to keep the workflow moving, but the failure is made
-// OBSERVABLE (an advisory), never byte-identical to a clean pass: once a write is
-// identified, a scan error emits a "could-not-scan" advisory instead of silently
-// allowing. (Anti-pattern: a guard whose failure looks exactly like a success.)
+// Every gh write in a compound command is checked (`D=/x && gh issue comment ...`,
+// `cd d && gh pr comment ...`), not just a command that starts with gh. A
+// --body-file path is resolved statically ($NAME, ${NAME}, leading ~, variables set
+// earlier in the command); the guard never runs anything.
+// Fail-CLOSED on a body file it cannot vouch for: a path that cannot be resolved
+// statically (unknown variable, $(...), backticks, a relative path after a cd)
+// blocks with SECRET_GUARD_UNRESOLVED_BODY_FILE, and a resolved file that cannot
+// be read blocks with SECRET_GUARD_UNREADABLE_BODY_FILE. Otherwise the write would
+// post an unscanned body.
+// Fail-OPEN only on an internal scanner fault, to keep the workflow moving, but the
+// failure is made OBSERVABLE (an advisory), never byte-identical to a clean pass:
+// once a write is identified, a scan error emits a "could-not-scan" advisory
+// instead of silently allowing. (Anti-pattern: a guard whose failure looks exactly
+// like a success.)
 // Self-contained. Pure functions (incl. evaluate) are exported for tests and for
 // the merged trailhead-bash-guards.js; runs as a hook when executed directly.
 
@@ -288,16 +298,51 @@ function unscannedVerdict(kind, err) {
   };
 }
 
+// A block verdict for a body file the guard cannot vouch for.
+function bodyFileBlock(code, kind, detail) {
+  return {
+    kind: 'block',
+    payload: {
+      decision: 'block',
+      code,
+      reason:
+        `trailhead: this gh ${kind} write reads its body from a file the secret-guard ${detail}, ` +
+        'so it cannot verify the body is secret-free. Write the body to a file and pass its literal absolute path ' +
+        '(e.g. `--body-file /tmp/body.md`), with no variables, `~` or command substitution in the path, and post again.',
+    },
+  };
+}
+
 // Pure verdict for one command: allow | block {payload} | advise {payload, stderr}.
 // Never exits or writes. `env` carries the test seam so the merged runner's
-// environment is the one honoured.
-function evaluate(cmd, { env = process.env } = {}) {
-  const kind = ghIssueWrite(cmd);
-  if (!kind) return { kind: 'allow' }; // not a tracker write: out of scope
+// environment is the one honoured; `cwd` is the hook input's working directory
+// (relative body-file paths resolve against it, process.cwd() when absent).
+// Fail closed on a body file: if its path cannot be resolved statically, or the
+// resolved file cannot be read, the write is blocked (it would otherwise post an
+// unscanned body). Only an internal scanner fault is an advisory.
+function evaluate(cmd, { env = process.env, cwd } = {}) {
+  const writes = ghWrites(cmd, env);
+  if (writes.length === 0) return { kind: 'allow' }; // not a tracker write: out of scope
+
+  let text = cmd;
+  for (const w of writes) {
+    if (w.kind === 'api') continue;
+    const ref = resolveBodyFile(w.text, w.vars, env, w.cwdKnown ? cwd : null);
+    if (!ref) continue;
+    if (ref.unresolved) {
+      return bodyFileBlock('SECRET_GUARD_UNRESOLVED_BODY_FILE', w.kind, `cannot resolve statically (${ref.unresolved})`);
+    }
+    try {
+      text += '\n' + fs.readFileSync(ref.path, 'utf8').slice(0, 1_000_000);
+    } catch (e) {
+      const why = (e && e.code) || 'read error';
+      return bodyFileBlock('SECRET_GUARD_UNREADABLE_BODY_FILE', w.kind, `could not read (${why}: ${ref.path})`);
+    }
+  }
 
   // From here we KNOW it's a tracker write, so a scan failure must be OBSERVABLE.
+  const kind = writes[0].kind;
   try {
-    const text = cmd + '\n' + (kind !== 'api' ? bodyFileText(cmd) : '');
     const hit = scan(text, env);
     if (hit) {
       return {
@@ -313,19 +358,22 @@ function evaluate(cmd, { env = process.env } = {}) {
       };
     }
   } catch (e) {
-    return unscannedVerdict(kind, e); // fail open, but loudly: never a silent clean-looking pass
+    return unscannedVerdict(kind, e); // internal fault: fail open, but loudly, never a silent clean-looking pass
   }
   return { kind: 'allow' };
 }
 
 function run(data) {
   let cmd = '';
+  let cwd;
   try {
-    cmd = (JSON.parse(data).tool_input || {}).command || '';
+    const input = JSON.parse(data);
+    cmd = (input.tool_input || {}).command || '';
+    cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined;
   } catch {
     process.exit(0); // unparseable input: nothing meaningful to say
   }
-  const v = evaluate(cmd);
+  const v = evaluate(cmd, { cwd });
   if (v.kind === 'block') {
     process.stdout.write(JSON.stringify(v.payload));
     process.exit(2);

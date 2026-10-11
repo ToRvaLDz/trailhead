@@ -70,7 +70,7 @@ function loadFailureAdvisory(name) {
 
 // Run the selected, non-skipped guards over one command.
 // Returns { code, stdout, stderr } for the caller to emit.
-function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.now(), evaluators = {} } = {}) {
+function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.now(), evaluators = {}, cwd } = {}) {
   const skip = parseModGuards(env.TRAILHEAD_MOD_GUARDS, now);
   let stderr = '';
   const advisories = [];
@@ -86,7 +86,7 @@ function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.no
     }
     let verdict;
     try {
-      verdict = evaluate(cmd, { env });
+      verdict = evaluate(cmd, { env, cwd });
     } catch {
       continue; // same posture as each guard on its own: fail open
     }
@@ -108,14 +108,17 @@ function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.no
 
 function run(data, argv) {
   let cmd = '';
+  let cwd;
   try {
-    cmd = (JSON.parse(data).tool_input || {}).command || '';
+    const input = JSON.parse(data);
+    cmd = (input.tool_input || {}).command || '';
+    cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined; // relative body-file paths resolve against it
   } catch {
     process.exit(0); // unparseable input: nothing meaningful to say
   }
   let result;
   try {
-    result = runGuards(cmd, { guards: parseGuardsArg(argv) });
+    result = runGuards(cmd, { guards: parseGuardsArg(argv), cwd });
   } catch {
     process.exit(0); // never wedge the workflow
   }

@@ -15,8 +15,8 @@ let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 // Run the hook end-to-end: pipe tool_input JSON on stdin, capture {code, out}.
-function runHook(command, env = {}) {
-  const input = JSON.stringify({ tool_input: { command } });
+function runHook(command, env = {}, cwd) {
+  const input = JSON.stringify({ tool_input: { command }, ...(cwd ? { cwd } : {}) });
   try {
     const out = execFileSync('node', [HOOK], { input, env: { ...process.env, ...env } });
     return { code: 0, out: out.toString() };
@@ -197,6 +197,56 @@ const a1 = runHook('gh issue comment 5 --body "tutto ok, 368 test verdi"');
 ok('allows a clean write (exit 0, no output)', a1.code === 0 && a1.out.trim() === '');
 const a2 = runHook('gh issue view 5 --json body'); // read, never scanned
 ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
+
+// --- end-to-end: body-file paths with variables, compound commands (#210) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const cleanFile = path.join(dir, 'clean.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  fs.writeFileSync(cleanFile, 'all good, nothing sensitive here\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const code = (r, c) => r.code === 2 && r.out.includes(`"code":"${c}"`);
+  const UNRES = 'SECRET_GUARD_UNRESOLVED_BODY_FILE';
+  const UNREAD = 'SECRET_GUARD_UNREADABLE_BODY_FILE';
+
+  ok('REPRO row 1: literal absolute body-file blocks', leaks(runHook(`gh issue comment 1 --body-file ${leakFile}`)));
+  ok('REPRO row 2: D=dir; ... $D/leak.md blocks', leaks(runHook(`D=${dir}; gh issue comment 1 --body-file $D/leak.md`)));
+  ok('REPRO row 3: D=dir && ... "${D}/leak.md" blocks', leaks(runHook(`D=${dir} && gh issue comment 1 --body-file "\${D}/leak.md"`)));
+  ok('a body-file behind cd && blocks', leaks(runHook(`cd / && gh issue comment 1 --body-file ${leakFile}`)));
+  ok('a body-file behind echo ; blocks', leaks(runHook(`echo hi; gh issue edit 1 --body-file ${leakFile}`)));
+  ok('a body-file behind a background & blocks', leaks(runHook(`true & gh issue comment 1 --body-file ${leakFile}`)));
+  ok('export D=dir && ... $D/leak.md blocks', leaks(runHook(`export D=${dir} && gh issue comment 1 --body-file $D/leak.md`)));
+  ok('two writes: only the second body leaks -> blocks',
+    leaks(runHook(`gh issue comment 1 --body-file ${cleanFile} && gh pr comment 2 --body-file ${leakFile}`)));
+  ok('two writes: both clean -> allowed',
+    (() => { const r = runHook(`gh issue comment 1 --body-file ${cleanFile} && gh pr comment 2 --body-file ${cleanFile}`); return r.code === 0 && r.out.trim() === ''; })());
+  ok('a clean body via D=dir; ... $D/clean.md is allowed silently',
+    (() => { const r = runHook(`D=${dir}; gh issue comment 1 --body-file $D/clean.md`); return r.code === 0 && r.out.trim() === ''; })());
+  ok('a clean body via ~ expansion is allowed silently',
+    (() => { const r = runHook('gh issue comment 1 --body-file ~/clean.md', { HOME: dir }); return r.code === 0 && r.out.trim() === ''; })());
+  ok('an env-only variable resolves from the hook env',
+    leaks(runHook('gh issue comment 1 --body-file "$SG_ENV_DIR/leak.md"', { SG_ENV_DIR: dir })));
+
+  // Fail closed: a path we cannot know, or cannot read, never passes as a clean write.
+  ok('an unset variable blocks as unresolved', code(runHook('gh issue comment 1 --body-file "$SG_UNSET_VAR_210/x.md"'), UNRES));
+  ok('a command substitution blocks as unresolved', code(runHook('gh issue comment 1 --body-file $(pwd)/x.md'), UNRES));
+  ok('a missing literal path blocks as unreadable', code(runHook(`gh issue comment 1 --body-file ${dir}/nope.md`), UNREAD));
+  ok('a directory as body-file blocks as unreadable', code(runHook(`gh issue comment 1 --body-file ${dir}`), UNREAD));
+  ok("D='$HOME' stays literal (unreadable, not expanded)", code(runHook("D='$HOME'; gh issue comment 1 --body-file $D/x.md", { HOME: dir }, dir), UNREAD));
+  ok('"~/x" in double quotes stays literal (unreadable)', code(runHook('gh issue comment 1 --body-file "~/clean.md"', { HOME: dir }, dir), UNREAD));
+  ok('an assignment piped into gh does not leak its variable', code(runHook(`SG_P=${dir} | gh issue comment 1 --body-file $SG_P/clean.md`), UNRES));
+  ok('an inline prefix is not used to expand its own arguments', code(runHook(`SG_I=${dir} gh issue comment 1 --body-file "$SG_I/clean.md"`), UNRES));
+  ok('an assignment after a pipe does not propagate', code(runHook(`true | SG_Q=${dir}; gh issue comment 1 --body-file "$SG_Q/clean.md"`), UNRES));
+  ok('a relative path after cd blocks as unresolved', code(runHook('cd / && gh issue comment 1 --body-file clean.md', {}, dir), UNRES));
+
+  // The hook input's cwd resolves a relative body-file path (single hook and merged runner).
+  ok('a relative body-file resolves against the hook input cwd and blocks', leaks(runHook('gh issue comment 1 --body-file leak.md', {}, dir)));
+  ok('a relative clean body-file resolves against the hook input cwd and passes',
+    (() => { const r = runHook('gh issue comment 1 --body-file clean.md', {}, dir); return r.code === 0 && r.out.trim() === ''; })());
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
