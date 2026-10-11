@@ -30,7 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { splitStatementsWithSeparators, tokenize } = require('./lib/shell-scan.js');
+const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
   STDIN_PATHS,
@@ -39,6 +39,7 @@ const {
   parseRedirects,
   flagValues,
   resolveWord,
+  substitutionSpans,
   bodySources,
   readBodyFile,
 } = require('./lib/body-sources.js');
@@ -89,38 +90,6 @@ const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xar
 // A gh issue/pr write, or a gh api body/--input write, anywhere in some text.
 const OPAQUE_WRITE_RE =
   /\bgh\b[\s\S]*?\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bgh\b[\s\S]*?\bapi\b[\s\S]*?(?:\bbody=|--input)/;
-
-// The inner text of every command/process substitution ($(...), `...`, <(...),
-// >(...)) in a statement, ignoring single-quoted text. Prose around them is not
-// part of what would run.
-function substitutionSpans(s) {
-  const out = [];
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inSingle) { if (c === "'") inSingle = false; continue; }
-    if (c === '\\') { i++; continue; }
-    if (c === "'") { inSingle = true; continue; }
-    if (c === '"') { inDouble = !inDouble; continue; }
-    if (s[i + 1] === '(' && (c === '$' || (!inDouble && (c === '<' || c === '>')))) {
-      let depth = 0;
-      let j = i + 1;
-      for (; j < s.length; j++) {
-        if (s[j] === '(') depth++;
-        else if (s[j] === ')' && --depth === 0) break;
-      }
-      out.push(s.slice(i + 2, j));
-      i = j;
-    } else if (c === '`') {
-      const close = s.indexOf('`', i + 1);
-      const end = close === -1 ? s.length : close;
-      out.push(s.slice(i + 1, end));
-      i = end;
-    }
-  }
-  return out;
-}
 
 // Strip what stands between a statement and the command it runs: reserved words
 // (do, then, else, !, time, ...), subshell/group openers, and wrapper commands
@@ -218,7 +187,9 @@ function changesDir(text) {
 // `cwdKnown` turns false after a cd/pushd/popd.
 function ghWrites(cmd, env = process.env) {
   const writes = [];
-  const history = []; // every statement: { text, sep, vars, cwdKnown, index }
+  const history = []; // every statement: { text, sep, vars, cwdKnown, index, heredocs }
+  const bodies = heredocBodies(cmd);
+  let nextBody = 0;
   let vars = {};
   let cwdKnown = true;
   let prevSep = null;
@@ -227,7 +198,9 @@ function ghWrites(cmd, env = process.env) {
     prevSep = sep;
     const { text, runner } = unwrap(raw);
     const index = history.length;
-    history.push({ text, sep, vars, cwdKnown, index });
+    const heredocs = bodies.slice(nextBody, nextBody + countHeredocs(raw));
+    nextBody += heredocs.length;
+    history.push({ text, sep, vars, cwdKnown, index, heredocs });
     const kind = writeKind(text);
     if (kind) {
       writes.push({ kind, text, vars, cwdKnown, index, history });
@@ -237,7 +210,7 @@ function ghWrites(cmd, env = process.env) {
     // cannot be analysed: report it as an opaque write.
     const holdsWrite = runner
       ? OPAQUE_WRITE_RE.test(/<<-?/.test(text) ? cmd : text)
-      : substitutionSpans(text).some((inner) => OPAQUE_WRITE_RE.test(inner));
+      : substitutionSpans(text).some((sp) => OPAQUE_WRITE_RE.test(sp.inner));
     if (holdsWrite) {
       writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;

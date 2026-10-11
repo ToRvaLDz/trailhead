@@ -154,6 +154,65 @@ function words(stmt) {
   return out;
 }
 
+// The command/process substitutions ($(...), `...`, and outside double quotes <(...)
+// and >(...)) in some text: [{ start, end, inner }] (end exclusive). Single-quoted
+// text is skipped, except with `literalQuotes` (heredoc text, where quotes are
+// ordinary characters). An unclosed span runs to the end of the text.
+function substitutionSpans(s, literalQuotes = false) {
+  const out = [];
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inSingle) { if (c === "'") inSingle = false; continue; }
+    if (c === '\\') { i++; continue; }
+    if (!literalQuotes && c === "'") { inSingle = true; continue; }
+    if (!literalQuotes && c === '"') { inDouble = !inDouble; continue; }
+    if (s[i + 1] === '(' && (c === '$' || (!inDouble && !literalQuotes && (c === '<' || c === '>')))) {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < s.length; j++) {
+        if (s[j] === '(') depth++;
+        else if (s[j] === ')' && --depth === 0) break;
+      }
+      out.push({ start: i, end: Math.min(j + 1, s.length), inner: s.slice(i + 2, j) });
+      i = j;
+    } else if (c === '`') {
+      const close = s.indexOf('`', i + 1);
+      const end = close === -1 ? s.length : close;
+      out.push({ start: i, end: Math.min(end + 1, s.length), inner: s.slice(i + 1, end) });
+      i = end;
+    }
+  }
+  return out;
+}
+
+// Expand heredoc text the way bash does for an unquoted delimiter: $NAME and ${NAME}
+// expand, `\$`, `\`` and `\\` are escapes, quotes are ordinary characters.
+function expandPlain(text, vars, env) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '\\' && i + 1 < text.length) {
+      const n = text[i + 1];
+      out += '$`\\'.includes(n) ? n : c + n;
+      i += 2;
+    } else if (c === '$') {
+      const r = expandDollar(text, i, vars, env);
+      if (r.unresolved) return r;
+      out += r.value;
+      i = r.next;
+    } else if (c === '`') {
+      return { unresolved: 'command substitution' };
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return { value: out };
+}
+
 // --- redirects and flags ----------------------------------------------------------
 
 const REDIRECT_RE = /^(\d*)(<<<|<<-?|&>>|&>|>>|>\||>&|<&|<>|>|<)([\s\S]*)$/;
@@ -173,7 +232,7 @@ function parseRedirects(toks) {
     if (op === '>&' || op === '<&') { if (!glued) i++; continue; } // 2>&1, >&2: fd duplication
     const word = glued || toks[++i] || '';
     if (op === '<<' || op === '<<-') stdin = { type: 'heredoc' };
-    else if (op === '<<<') stdin = { type: 'here' };
+    else if (op === '<<<') stdin = { type: 'here', word };
     else if (op === '<' || op === '<>') stdin = { type: 'file', word };
     else if (fd === '' || fd === '1' || op.startsWith('&')) outs.push({ word, append: op.endsWith('>>') });
   }
@@ -217,9 +276,6 @@ const STDIN_PATHS = new Set(['-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 
 const basenameOf = (w) => String(w || '').replace(/^.*\//, '');
 const INLINE_PRODUCERS = new Set(['echo', 'printf', 'true', ':']);
-const HEREDOC_CAT_RE = /^\$\(\s*cat\s+<<-?\s*(?:'[^']*'|"[^"]*"|\w+)\s*\)$/;
-const CAT_SUBST_RE = /^\$\(\s*cat\s+(\S+)\s*\)$/;
-const READ_SUBST_RE = /^\$\(\s*<\s*(\S+)\s*\)$/;
 
 // Body sources are a list of items:
 //   { text }        content to scan that is not in the command string (an expanded value)
@@ -256,7 +312,8 @@ function fileItems(p, before, ctx) {
 
 // Content a `cmd > file` redirect puts in the file, or null when not recognised.
 function redirectContent(cmd0, rest, rec, ctx) {
-  if (!cmd0 || INLINE_PRODUCERS.has(cmd0)) return [];
+  if (!cmd0) return [];
+  if (INLINE_PRODUCERS.has(cmd0)) return rest.flatMap((a) => valueItems(a, rec, ctx));
   if (cmd0 === 'cat') {
     const files = rest.filter((a) => !a.startsWith('-'));
     return files.length ? files.flatMap((f) => wordItems(f, rec, ctx)) : stdinContent(rec, ctx);
@@ -309,7 +366,11 @@ function writerTargets(rec, ctx) {
 // What a statement feeds to its stdin: items, or null when there is no stdin source.
 function stdinContent(rec, ctx) {
   const red = parseRedirects(words(rec.text));
-  if (red.stdin) return red.stdin.type === 'file' ? wordItems(red.stdin.word, rec, ctx) : [];
+  if (red.stdin) {
+    if (red.stdin.type === 'file') return wordItems(red.stdin.word, rec, ctx);
+    if (red.stdin.type === 'here') return valueItems(red.stdin.word, rec, ctx);
+    return heredocItems(rec, ctx);
+  }
   const prev = ctx.history[rec.index - 1];
   if (prev && prev.sep === '|') return producerItems(prev, ctx);
   return null;
@@ -321,7 +382,7 @@ function producerItems(rec, ctx) {
   let k = 0;
   while (k < args.length && ASSIGN_TOKEN_RE.test(args[k])) k++;
   const cmd0 = basenameOf(args[k]);
-  if (INLINE_PRODUCERS.has(cmd0)) return [];
+  if (INLINE_PRODUCERS.has(cmd0)) return args.slice(k + 1).flatMap((a) => valueItems(a, rec, ctx));
   if (cmd0 === 'cat') {
     const files = args.slice(k + 1).filter((a) => !a.startsWith('-'));
     if (files.length) return files.flatMap((f) => wordItems(f, rec, ctx));
@@ -330,18 +391,42 @@ function producerItems(rec, ctx) {
   return unresolvedItem(`the body is piped from ${cmd0 || 'a command'}`);
 }
 
-// Items for a --body/-b value.
-function bodyValueItems(raw, rec, ctx) {
-  if (!/[$`]/.test(raw) || /^'[\s\S]*'$/.test(raw)) return []; // literal: already in the command
-  if (/\$\(|`/.test(raw)) {
-    const inner = raw.replace(/^"([\s\S]*)"$/, '$1');
-    if (HEREDOC_CAT_RE.test(inner)) return []; // heredoc text is in the command string
-    const m = CAT_SUBST_RE.exec(inner) || READ_SUBST_RE.exec(inner);
-    if (m) return wordItems(m[1], rec, ctx);
-    return unresolvedItem('command substitution in the body');
+// Items for text whose `$...` and backticks the shell would expand: a --body value,
+// an echo/printf argument, a herestring, an unquoted heredoc body (`literalQuotes`).
+// Substitutions of `cat path`/`<path` are read, `cat <<EOF` follows the heredoc,
+// $VAR is expanded, and anything else is unresolvable. Literal text needs no item:
+// the whole command is scanned.
+function valueItems(raw, rec, ctx, literalQuotes = false) {
+  if (!/[$`]/.test(raw) || (!literalQuotes && /^'[\s\S]*'$/.test(raw))) return [];
+  const items = [];
+  let rest = '';
+  let at = 0;
+  for (const sp of substitutionSpans(raw, literalQuotes)) {
+    rest += raw.slice(at, sp.start);
+    at = sp.end;
+    items.push(...substitutionItems(sp.inner, rec, ctx));
   }
-  const r = expandWord(raw, rec.vars, ctx.env);
-  return r.unresolved ? unresolvedItem(r.unresolved) : [{ text: r.value }];
+  rest += raw.slice(at);
+  if (/[$`]/.test(rest)) {
+    const r = literalQuotes ? expandPlain(rest, rec.vars, ctx.env) : expandWord(rest, rec.vars, ctx.env);
+    items.push(...(r.unresolved ? unresolvedItem(r.unresolved) : [{ text: r.value }]));
+  }
+  return items;
+}
+
+// Items for one `$(inner)` / `inner` substitution.
+function substitutionItems(inner, rec, ctx) {
+  const t = inner.trim();
+  const h = /^cat\s+<<-?\s*(['"]?)\w+\1$/.exec(t);
+  if (h) return h[1] ? [] : heredocItems(rec, ctx); // a quoted delimiter is literal text
+  const m = /^cat\s+(\S+)$/.exec(t) || /^<\s*(\S+)$/.exec(t);
+  if (m) return wordItems(m[1], rec, ctx);
+  return unresolvedItem('command substitution in the body');
+}
+
+// Items for the unquoted heredoc bodies of a statement (the shell expands them).
+function heredocItems(rec, ctx) {
+  return (rec.heredocs || []).filter((h) => !h.quoted).flatMap((h) => valueItems(h.body, rec, ctx, true));
 }
 
 // Every body source of one write: { items }.
@@ -367,7 +452,7 @@ function bodySources(w, ctx) {
   const files = flagValues(args, '--body-file', '-F');
   // gh keeps the last one, but scanning every occurrence is the safe direction.
   for (const raw of files) items.push(...fileArg(raw));
-  for (const raw of flagValues(args, '--body', '-b')) items.push(...bodyValueItems(raw, rec, ctx));
+  for (const raw of flagValues(args, '--body', '-b')) items.push(...valueItems(raw, rec, ctx));
   return items;
 }
 
@@ -394,6 +479,7 @@ module.exports = {
   flagValues,
   resolveWord,
   resolveExpanded,
+  substitutionSpans,
   bodySources,
   readBodyFile,
 };

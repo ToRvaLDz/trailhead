@@ -444,6 +444,50 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// --- end-to-end: expansions inside inline content are scanned (#210 round 2, W5) ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-210w5-'));
+  const leakFile = path.join(dir, 'leak.md');
+  const N = path.join(dir, 'new.md');
+  fs.writeFileSync(leakFile, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const unres = (r) => r.code === 2 && r.out.includes('"code":"SECRET_GUARD_UNRESOLVED_BODY_FILE"');
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  const TOK = { SG_TOK: 'AKIAIOSFODNN7EXAMPLE' };
+  const G = 'gh issue comment 1';
+
+  ok('echo "$(cat leak)" | gh -F - blocks', leaks(runHook(`echo "$(cat ${leakFile})" | ${G} -F -`)));
+  ok('echo $(cat leak) unquoted | gh -F - blocks', leaks(runHook(`echo $(cat ${leakFile}) | ${G} -F -`)));
+  ok('printf "$VAR" | gh -F - scans the env value', leaks(runHook(`printf '%s' "$SG_TOK" | ${G} -F -`, TOK)));
+  ok('unquoted heredoc with $(cat leak) blocks', leaks(runHook(`${G} -F - <<EOF\nvalue $(cat ${leakFile})\nEOF`)));
+  ok('unquoted heredoc with $VAR blocks', leaks(runHook(`${G} -F - <<EOF\nvalue $SG_TOK\nEOF`, TOK)));
+  ok('an apostrophe in the heredoc does not hide a later substitution',
+    leaks(runHook(`${G} -F - <<EOF\ndon't $(cat ${leakFile})\nEOF`)));
+  ok('herestring "$(cat leak)" blocks', leaks(runHook(`${G} -F - <<< "$(cat ${leakFile})"`)));
+  ok('echo "$(cat leak)" > f && gh -F f blocks', leaks(runHook(`echo "$(cat ${leakFile})" > ${N} && ${G} -F ${N}`)));
+  ok('heredoc redirect with $(cat leak) then gh blocks',
+    leaks(runHook(`cat > ${N} <<EOF\n$(cat ${leakFile})\nEOF\n${G} -F ${N}`)));
+  ok('--body "$(cat <<EOF ... $(cat leak) ... EOF)" blocks',
+    leaks(runHook(`${G} --body "$(cat <<EOF\nx $(cat ${leakFile}) y\nEOF\n)"`)));
+  ok('--body "pre $(cat leak) post" (embedded substitution) blocks', leaks(runHook(`${G} --body "pre $(cat ${leakFile}) post"`)));
+  ok('a herestring redirect does not hide the next statement',
+    leaks(runHook(`cat > ${N} <<< "x"\n${G} --body-file ${leakFile}`)));
+
+  ok("quoted heredoc <<'EOF' stays literal", passes(runHook(`${G} -F - <<'EOF'\nuse $(cat ${leakFile}) and $SG_TOK\nEOF`, TOK)));
+  ok('quoted heredoc <<"EOF" stays literal', passes(runHook(`${G} -F - <<"EOF"\nuse $(cat ${leakFile})\nEOF`)));
+  ok('single-quoted echo argument stays literal', passes(runHook(`echo '$(cat ${leakFile})' | ${G} -F -`)));
+  ok('unquoted heredoc without expansions passes', passes(runHook(`${G} -F - <<EOF\nplain text, it's fine\nEOF`)));
+  ok('echo "$VAR" with a clean env value passes', passes(runHook(`echo "$SG_FINE" | ${G} -F -`, { SG_FINE: 'fine' })));
+  ok('an escaped \\$ in an unquoted heredoc is literal', passes(runHook(`${G} -F - <<EOF\ncost \\$SG_UNSET_VAR_210\nEOF`)));
+
+  ok('echo "$(date)" | gh -F - blocks as unresolved', unres(runHook(`echo "$(date)" | ${G} -F -`)));
+  ok('echo "$UNSET" | gh -F - blocks as unresolved', unres(runHook(`echo "$SG_UNSET_VAR_210" | ${G} -F -`)));
+  ok('unquoted heredoc with $(date) blocks as unresolved', unres(runHook(`${G} -F - <<EOF\n$(date)\nEOF`)));
+  ok('herestring "$UNSET" blocks as unresolved', unres(runHook(`${G} -F - <<< "$SG_UNSET_VAR_210"`)));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);
