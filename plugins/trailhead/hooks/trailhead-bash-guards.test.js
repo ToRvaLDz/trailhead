@@ -190,6 +190,8 @@ for (const [name, cmd, ev] of [
       missing.err.trim().split('\n').length === 1 && /search/.test(missing.err));
     const clean = runHook('git status', { hook });
     eq('a load failure alone still exits 0', clean.code, 0);
+    ok('a load failure reaches the session as an advisory naming the guard',
+      /could NOT load the search guard/.test(JSON.parse(clean.out).hookSpecificOutput.additionalContext));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

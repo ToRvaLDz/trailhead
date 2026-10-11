@@ -56,6 +56,18 @@ function loadEvaluator(name) {
   }
 }
 
+// The advisory for a selected guard whose module could not be loaded.
+function loadFailureAdvisory(name) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      additionalContext:
+        `⚠️ trailhead bash-guards could NOT load the ${name} guard, so it did NOT check this command. ` +
+        'Its module is missing or broken: reinstall or update trailhead. Do not treat this as a clean pass.',
+    },
+  };
+}
+
 // Run the selected, non-skipped guards over one command.
 // Returns { code, stdout, stderr } for the caller to emit.
 function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.now(), evaluators = {} } = {}) {
@@ -66,7 +78,10 @@ function runGuards(cmd, { guards = GUARD_ORDER, env = process.env, now = Date.no
     if (!guards.includes(name) || skip.has(name)) continue;
     const evaluate = evaluators[name] || loadEvaluator(name);
     if (!evaluate) {
+      // Fail open like the guard itself, but loudly: a stderr line alone is
+      // hidden on exit 0, so the skip also reaches the session as context.
       stderr += `trailhead bash-guards: could not load the ${name} guard, skipping it\n`;
+      advisories.push(loadFailureAdvisory(name));
       continue;
     }
     let verdict;
