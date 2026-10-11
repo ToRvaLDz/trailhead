@@ -7,7 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const HOOK = path.join(__dirname, 'trailhead-secret-guard.js');
+// TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
+const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-secret-guard.js');
 const { scan, ghIssueWrite, bodyFileText } = require('./trailhead-secret-guard.js');
 
 let passed = 0;

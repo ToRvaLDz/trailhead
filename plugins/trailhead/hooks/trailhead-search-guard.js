@@ -239,15 +239,26 @@ function detectSearchHygieneViolation(cmd) {
   return null;
 }
 
-function block(hit) {
+function blockVerdict(hit) {
   const reason =
     "trailhead search-hygiene: a 'cd <dir>' (or pushd/env -C) followed by a relative " +
     `${hit.verb} read (\`${hit.file}\`) makes the read target non-static, which trips the ` +
     'Read() deny rule under bypass permissions (prompting for manual approval instead of ' +
     'running headless). Pass explicit paths instead and never cd first: ' +
     'grep -niE "<patterns>" <abs>/<file>, git -C <abs> ..., or use the Grep/Read tools.';
-  process.stdout.write(JSON.stringify({ decision: 'block', code: 'SEARCH_HYGIENE_VIOLATION', reason }));
-  process.exit(2);
+  return { kind: 'block', payload: { decision: 'block', code: 'SEARCH_HYGIENE_VIOLATION', reason } };
+}
+
+// Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
+// exits or writes; any internal error falls through to allow.
+function evaluate(cmd) {
+  try {
+    const hit = detectSearchHygieneViolation(cmd);
+    if (hit) return blockVerdict(hit);
+  } catch {
+    // fall through to allow: a guard must never wedge the workflow
+  }
+  return { kind: 'allow' };
 }
 
 function run(data) {
@@ -257,11 +268,10 @@ function run(data) {
   } catch {
     process.exit(0); // unparseable input: nothing to gate
   }
-  try {
-    const hit = detectSearchHygieneViolation(cmd);
-    if (hit) block(hit);
-  } catch {
-    // fall through to allow: a guard must never wedge the workflow
+  const v = evaluate(cmd);
+  if (v.kind === 'block') {
+    process.stdout.write(JSON.stringify(v.payload));
+    process.exit(2);
   }
   process.exit(0);
 }
@@ -276,4 +286,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { detectSearchHygieneViolation };
+module.exports = { detectSearchHygieneViolation, evaluate };

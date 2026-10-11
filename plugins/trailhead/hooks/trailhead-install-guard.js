@@ -13,8 +13,8 @@
 // and local paths / URLs / VCS refs carry no typed name and pass through.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
 // Crash-safe: any error → exit 0 (never wedge the user's workflow).
-// Self-contained, no dependencies. Pure functions exported for tests; runs as a
-// hook when executed directly.
+// Self-contained, no dependencies. Pure functions (incl. evaluate) exported for tests
+// and the merged trailhead-bash-guards.js; runs as a hook when executed directly.
 
 const SENTINEL = /(?:^|\s)TRAILHEAD_VERIFIED_INSTALL=1(?:\s|$)/;
 
@@ -133,7 +133,7 @@ function isVerified(cmd) {
   return SENTINEL.test(String(cmd));
 }
 
-function block(hit) {
+function blockVerdict(hit) {
   const list = hit.packages.join(', ');
   const reason =
     `trailhead: this ${hit.ecosystem} install names package(s) not yet vetted (${list}). ` +
@@ -142,8 +142,20 @@ function block(hit) {
     'and repository metadata (present and matching). ' +
     'STOP and ask the human on anything suspicious (block-and-ask): do not install on your own judgement. ' +
     'Once vetted, re-run the exact command prefixed with `TRAILHEAD_VERIFIED_INSTALL=1` to proceed.';
-  process.stdout.write(JSON.stringify({ decision: 'block', code: 'UNVETTED_PACKAGE_INSTALL', reason }));
-  process.exit(2);
+  return { kind: 'block', payload: { decision: 'block', code: 'UNVETTED_PACKAGE_INSTALL', reason } };
+}
+
+// Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
+// exits or writes; any internal error falls through to allow.
+function evaluate(cmd) {
+  try {
+    if (isVerified(cmd)) return { kind: 'allow' }; // agent has vetted these
+    const hit = detectInstall(cmd);
+    if (hit) return blockVerdict(hit);
+  } catch {
+    // fall through to allow: a guard must never wedge the workflow
+  }
+  return { kind: 'allow' };
 }
 
 function run(data) {
@@ -153,12 +165,10 @@ function run(data) {
   } catch {
     process.exit(0); // unparseable input: nothing to gate
   }
-  try {
-    if (isVerified(cmd)) process.exit(0); // agent has vetted these
-    const hit = detectInstall(cmd);
-    if (hit) block(hit);
-  } catch {
-    // fall through to allow: a guard must never wedge the workflow
+  const v = evaluate(cmd);
+  if (v.kind === 'block') {
+    process.stdout.write(JSON.stringify(v.payload));
+    process.exit(2);
   }
   process.exit(0);
 }
@@ -173,4 +183,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { detectInstall, isVerified };
+module.exports = { detectInstall, isVerified, evaluate };

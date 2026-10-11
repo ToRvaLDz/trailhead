@@ -5,7 +5,8 @@ const assert = require('assert');
 const { execFileSync } = require('child_process');
 const path = require('path');
 
-const HOOK = path.join(__dirname, 'trailhead-commit-guard.js');
+// TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
+const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-commit-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };

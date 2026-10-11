@@ -170,10 +170,11 @@ function ghBodyWrite(cmd) {
   return null;
 }
 
-function block(kind) {
+function blockVerdict(kind) {
   const label = kind === 'api' ? 'GitHub API write' : `gh ${kind} edit`;
-  process.stdout.write(
-    JSON.stringify({
+  return {
+    kind: 'block',
+    payload: {
       decision: 'block',
       code: 'EMPTY_ISSUE_BODY_WRITE',
       reason:
@@ -182,30 +183,39 @@ function block(kind) {
         'pre-write read returned an empty or degraded body (e.g. a transient HTTP 5xx on `gh issue view --json body`). ' +
         'Aborting to protect the existing body: re-read the current body (treat a non-200 or empty read as a hard ' +
         'error, retry once with backoff), rebuild it, then write again.',
-    })
-  );
-  process.exit(2);
+    },
+  };
+}
+
+// Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
+// exits or writes; any internal error falls through to allow (a crash here must
+// never block a legitimate write).
+function evaluate(cmd) {
+  try {
+    const hit = ghBodyWrite(cmd);
+    if (!hit || hit.body === null || hit.body === undefined) {
+      return { kind: 'allow' }; // not a body write, or a body we cannot prove empty
+    }
+    if (isEmptyBody(hit.body)) return blockVerdict(hit.kind);
+  } catch {
+    // never let a crash here block a legitimate write
+  }
+  return { kind: 'allow' };
 }
 
 function run(data) {
+  let cmd = '';
   try {
-    let cmd = '';
-    try {
-      cmd = (JSON.parse(data).tool_input || {}).command || '';
-    } catch {
-      process.exit(0); // unparseable input: nothing meaningful to say
-    }
-    const hit = ghBodyWrite(cmd);
-    if (!hit || hit.body === null || hit.body === undefined) {
-      process.exit(0); // not a body write, or a body we cannot prove empty
-    }
-    if (isEmptyBody(hit.body)) {
-      block(hit.kind);
-    }
-    process.exit(0);
+    cmd = (JSON.parse(data).tool_input || {}).command || '';
   } catch {
-    process.exit(0); // never let a crash here block a legitimate write
+    process.exit(0); // unparseable input: nothing meaningful to say
   }
+  const v = evaluate(cmd);
+  if (v.kind === 'block') {
+    process.stdout.write(JSON.stringify(v.payload));
+    process.exit(2);
+  }
+  process.exit(0);
 }
 
 if (require.main === module) {
@@ -218,4 +228,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ghBodyWrite, isEmptyBody, resolveEditBody, resolveApiBody };
+module.exports = { ghBodyWrite, isEmptyBody, resolveEditBody, resolveApiBody, evaluate };

@@ -5,7 +5,8 @@ const assert = require('assert');
 const { execFileSync } = require('child_process');
 const path = require('path');
 
-const HOOK = path.join(__dirname, 'trailhead-install-guard.js');
+// TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
+const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-install-guard.js');
 const { detectInstall, isVerified } = require('./trailhead-install-guard.js');
 
 let passed = 0;
