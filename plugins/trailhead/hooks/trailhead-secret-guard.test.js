@@ -575,6 +575,27 @@ ok('allows a read (exit 0)', a2.code === 0 && a2.out.trim() === '');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// --- end-to-end: gh api inline field values are expanded and scanned (#210 round 3, W8) ---
+{
+  const A = 'gh api repos/o/r/issues/1/comments';
+  const SEC = { SEC: 'AKIAIOSFODNN7EXAMPLE' };
+  const leaks = (r) => r.code === 2 && /AWS access key/.test(r.out);
+  const passes = (r) => r.code === 0 && r.out.trim() === '';
+  for (const f of [
+    '-f body=$SEC', '-F body=$SEC', '--field body=$SEC', '--raw-field body=$SEC',
+    '-f "body=$SEC"', '-fbody=$SEC', '-Fbody=$SEC', '--field=body=$SEC', '--raw-field=body=$SEC', '-f body="$SEC"',
+  ]) ok(`api ${f} with a leaking env value blocks`, leaks(runHook(`${A} ${f}`, SEC)));
+  ok('api -f body=$SEC with a clean value passes', passes(runHook(`${A} -f body=$SEC`, { SEC: 'fine' })));
+  ok("api -f 'body=$SEC' (single quotes) stays literal", passes(runHook(`${A} -f 'body=$SEC'`, SEC)));
+  ok('api -f body=$(cat leak) blocks as unresolved text',
+    runHook(`${A} -f body="$(date)"`).out.includes('single quotes'));
+  ok('api -f body=$UNSET blocks as unresolved', runHook(`${A} -f body=$SG_UNSET_VAR_210`).code === 2);
+  ok('api -f title=$SEC (not a body field) is not scanned', passes(runHook(`${A} -f body=hi -f title=$SEC`, SEC)));
+  ok('api -f body=@file is literal text for a raw field', passes(runHook(`${A} -f body=@/nonexistent/x.md`)));
+  ok('api -F body=@file still reads the file', runHook(`${A} -F body=@/nonexistent/x.md`).out.includes('UNREADABLE_BODY_FILE'));
+  ok('api body=$VAR set earlier in the command is expanded', leaks(runHook(`S=${SEC.SEC}; ${A} -f body="x $S"`)));
+}
+
 // --- THE FAILURE ARM: a scan we could not complete must be OBSERVABLE, not a silent pass ---
 const f = runHook('gh issue comment 5 --body "anything"', { TRAILHEAD_SECRETGUARD_THROW: '1' });
 ok('could-not-scan does not block (exit 0)', f.code === 0);

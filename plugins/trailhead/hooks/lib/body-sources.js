@@ -439,10 +439,17 @@ function bodySources(w, ctx) {
   const fileArg = (raw) => (STDIN_PATHS.has(raw) ? stdinItems() : wordItems(raw, rec, ctx));
   const items = [];
   if (w.kind === 'api') {
-    for (const raw of flagValues(args, '--field', '-F')) {
+    // Every `body=` field: -F/--field may read a file (`body=@path`, `body=@-`); for
+    // -f/--raw-field `@` is literal. Any other value is inline text, expanded and scanned.
+    const fields = [
+      ...flagValues(args, '--field', '-F').map((raw) => ({ raw, fileOk: true })),
+      ...flagValues(args, '--raw-field', '-f').map((raw) => ({ raw, fileOk: false })),
+    ];
+    for (const { raw, fileOk } of fields) {
+      if (!/^["']?body=/.test(raw)) continue;
+      if (!(fileOk && /^["']?body=@/.test(raw))) { items.push(...valueItems(raw, rec, ctx)); continue; }
       const r = expandWord(raw, rec.vars, ctx.env);
       if (r.unresolved) { items.push(...unresolvedItem(r.unresolved)); continue; }
-      if (!r.value.startsWith('body=@')) continue;
       const file = r.value.slice('body=@'.length);
       if (STDIN_PATHS.has(file)) { items.push(...stdinItems()); continue; }
       const res = resolveExpanded(file, rec.cwdKnown ? ctx.cwd : null);
