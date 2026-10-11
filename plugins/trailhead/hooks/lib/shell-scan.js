@@ -125,6 +125,51 @@ function splitStatements(cmd) {
   return stmts.map((t) => t.trim()).filter(Boolean);
 }
 
+// Like splitStatements, but each statement carries the operator that ENDED it
+// (`;`, `\n`, `&&`, `||`, `|`, `&`, or null for the last one), and a lone `&`
+// (background) also splits. Callers use the separators to tell which statements
+// ran in the current shell and which in a subshell (pipeline or background).
+// Same quoting and heredoc rules as splitStatements, which stays unchanged for
+// its existing consumers. A `&` that is part of a redirection (`2>&1`, `>&2`,
+// `&>f`) is not a separator.
+function splitStatementsWithSeparators(cmd) {
+  const s = stripHeredocBodies(String(cmd));
+  const out = [];
+  let cur = '';
+  let inSingle = false;
+  let inDouble = false;
+  const end = (sep) => { out.push({ text: cur.trim(), sep }); cur = ''; };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inSingle) {
+      cur += c;
+      if (c === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      cur += c;
+      if (c === '\\' && i + 1 < s.length) { cur += s[++i]; continue; }
+      if (c === '"') inDouble = false;
+      continue;
+    }
+    if (c === "'") { inSingle = true; cur += c; continue; }
+    if (c === '"') { inDouble = true; cur += c; continue; }
+    if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
+    if (c === '&' && s[i + 1] === '&') { end('&&'); i++; continue; }
+    if (c === '|' && s[i + 1] === '|') { end('||'); i++; continue; }
+    if (c === '&') {
+      const redirect = s[i - 1] === '>' || s[i - 1] === '<' || s[i + 1] === '>';
+      if (redirect) { cur += c; continue; }
+      end('&');
+      continue;
+    }
+    if (c === ';' || c === '|' || c === '\n') { end(c); continue; }
+    cur += c;
+  }
+  end(null);
+  return out.filter((x) => x.text);
+}
+
 // --- tokenizing ----------------------------------------------------------------
 
 // Quote-aware whitespace tokenizer: splits a statement on UNQUOTED
@@ -238,6 +283,7 @@ module.exports = {
   stripQuotes,
   stripHeredocBodies,
   splitStatements,
+  splitStatementsWithSeparators,
   tokenize,
   skipEnvPrefix,
   GREP_VALUE_FLAGS,

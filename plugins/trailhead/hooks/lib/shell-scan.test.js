@@ -5,6 +5,7 @@ const {
   basename,
   stripQuotes,
   splitStatements,
+  splitStatementsWithSeparators,
   tokenize,
   scanArgsSkippingPattern,
   SEARCH_VERB_CONFIG,
@@ -27,6 +28,21 @@ ok('splitStatements splits a glued pipe', JSON.stringify(splitStatements('cat .e
 ok('splitStatements splits a glued semicolon', JSON.stringify(splitStatements('cat .env;echo done')) === JSON.stringify(['cat .env', 'echo done']));
 ok('splitStatements splits a glued &&', JSON.stringify(splitStatements('cat .env&&echo done')) === JSON.stringify(['cat .env', 'echo done']));
 ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatements('grep "a;b" f.txt')) === JSON.stringify(['grep "a;b" f.txt']));
+
+// --- splitStatementsWithSeparators: statements plus the operator that ended each ---
+{
+  const seps = (c) => JSON.stringify(splitStatementsWithSeparators(c).map((x) => [x.text, x.sep]));
+  ok('withSeparators reports ; and the final null', seps('a; b') === JSON.stringify([['a', ';'], ['b', null]]));
+  ok('withSeparators reports &&, ||, | and newline',
+    seps('a && b || c | d\ne') === JSON.stringify([['a', '&&'], ['b', '||'], ['c', '|'], ['d', '\n'], ['e', null]]));
+  ok('withSeparators splits on a lone & (background)', seps('a & b') === JSON.stringify([['a', '&'], ['b', null]]));
+  ok('withSeparators does not split on redirections (2>&1, &>)',
+    seps('a 2>&1 | b') === JSON.stringify([['a 2>&1', '|'], ['b', null]]) &&
+    seps('a &> f') === JSON.stringify([['a &> f', null]]));
+  ok('withSeparators keeps a quoted separator intact', seps('grep "a;b&c" f') === JSON.stringify([['grep "a;b&c" f', null]]));
+  ok('withSeparators skips heredoc bodies', seps("cat <<EOF\na; b\nEOF\nz") === JSON.stringify([['cat <<EOF', '\n'], ['z', null]]));
+  ok('splitStatements is unchanged on a lone &', JSON.stringify(splitStatements('a & b')) === JSON.stringify(['a & b']));
+}
 
 // --- tokenize: quoted multi-word phrase stays ONE token ---
 ok('tokenize keeps a multi-word double-quoted phrase as one token',
