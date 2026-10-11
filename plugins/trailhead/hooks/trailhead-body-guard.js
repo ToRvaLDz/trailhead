@@ -96,13 +96,15 @@ function resolveEditBody(cmd, cwdKnown = true) {
   if (files.length) {
     const r = expandWord(files[files.length - 1], {}, { HOME: os.homedir() });
     if (r.unresolved) return { body: null }; // may or may not be empty: unknowable
-    if (r.value !== '') filePath = path.posix.normalize(r.value); // /dev//stdin, /dev/./stdin
+    if (r.value !== '') filePath = r.value;
   }
 
   if (filePath !== undefined && bodies.length) return undefined; // gh errors, nothing is written
 
   if (filePath !== undefined) {
-    if (STDIN_PATHS.has(filePath) || filePath.startsWith('<')) return { body: null }; // stdin / process substitution
+    // Normalise only for this test (/dev//stdin, /dev/./stdin): the read below keeps the raw
+    // path, since the kernel resolves `..` after symlinks, not lexically.
+    if (STDIN_PATHS.has(path.posix.normalize(filePath)) || filePath.startsWith('<')) return { body: null }; // stdin / process substitution
     try {
       return { body: readBodyFile(filePath, cwdKnown) };
     } catch {

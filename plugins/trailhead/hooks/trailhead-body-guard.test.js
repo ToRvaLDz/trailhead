@@ -317,12 +317,25 @@ ok('allows a chained empty gh issue create (out of scope, exit 0)',
   // Run only this guard as a real hook process behind a shell pipe (stdin is a consumed pipe, like in production).
   const bodyGuardOnly = (c) => {
     try {
-      execFileSync('sh', ['-c', 'printf %s "$TH_IN" | node "$TH_HOOK"'], {
-        env: { ...process.env, TH_IN: JSON.stringify({ tool_input: { command: c } }), TH_HOOK: path.join(__dirname, 'trailhead-body-guard.js') },
+      execFileSync('sh', ['-c', 'printf %s "$TH_IN" | "$TH_NODE" "$TH_HOOK"'], {
+        env: { ...process.env, TH_IN: JSON.stringify({ tool_input: { command: c } }), TH_NODE: process.execPath, TH_HOOK: path.join(__dirname, 'trailhead-body-guard.js') },
       });
       return true;
     } catch { return false; }
   };
+  ok('#213 negative control: the bodyGuardOnly harness sees a block', !bodyGuardOnly('gh issue edit 5 --body ""'));
+  {
+    // `..` after a symlink resolves in the kernel, not lexically: lnk/s -> real/sub, so lnk/s/../empty.md is real/empty.md.
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bg-213-lnk-'));
+    fs.mkdirSync(path.join(d, 'real', 'sub'), { recursive: true });
+    fs.mkdirSync(path.join(d, 'lnk'));
+    fs.writeFileSync(path.join(d, 'real', 'empty.md'), '');
+    fs.writeFileSync(path.join(d, 'lnk', 'empty.md'), 'not empty\n');
+    fs.symlinkSync(path.join(d, 'real', 'sub'), path.join(d, 'lnk', 's'));
+    ok('#213 blocks a --body-file whose .. follows a symlink (read the raw path)',
+      blk(`gh issue edit 5 --body-file ${d}/lnk/s/../empty.md`));
+    fs.rmSync(d, { recursive: true, force: true });
+  }
   for (const f of ['/dev//stdin', '/dev/fd//0', '/dev/./stdin']) {
     ok(`#213 allows --body-file ${f} (non-canonical stdin spelling)`, bodyGuardOnly(`gh issue edit 5 --body-file ${f}`)); // the secret-guard judges these spellings on its own
   }
