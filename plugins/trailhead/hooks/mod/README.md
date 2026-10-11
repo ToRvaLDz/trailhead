@@ -31,6 +31,22 @@ The file is read on `session.start`, `turn.start`, `turn.complete`, and after a 
 command contains `trailhead-work-state.js` (so a step change shows without waiting for a turn).
 Atoms and the status entry are only written when their content changed.
 
+## System prompt
+
+Next to the screen pieces, the mod appends one section, `trailhead:work-state`, to the system
+prompt through `prompt.compose` (session side of the cache boundary, after the engine's own
+sections). It names the active map, the ticket in play (number, title, link) and the step, so the
+agent keeps its bearings after a compaction. Links need a GitHub `origin`; without one the numbers
+stand alone. The section is absent with no state, with an orphaned one, and under `--bare`.
+
+It is a latched snapshot kept in the `promptSnapshot` atom (session scoped, never a module
+variable). It is rebuilt only when the map, ticket, title, orphaned flag or auto flag changes, at
+`session.start`, and after a main-loop compaction (`session.compact`, once it did not skip). A
+step change deliberately leaves the text alone, so the prompt cache holds; the section says the
+step may have moved on and that `.trailhead/work-state.json` holds the live one. The text is at
+most 1024 bytes and carries no skill protocol. `next(e)` is called once, before any enrichment,
+and a failure while enriching returns the engine's sections untouched.
+
 ## Requirements
 
 - Claude Code 2.1.287 or newer (tested on 2.1.296).
@@ -55,7 +71,7 @@ Run from the repo root.
 - Everything at once: `npm test`. It runs the `*.test.js` suites, then validate and test.
   Without `claude` on PATH it fails; set `TRAILHEAD_SKIP_MOD_CHECKS=1` to skip the mod checks.
 - Debugging: `claude --debug`, or `claude -p --plugin-dir plugins/trailhead --debug-file <file> "say ok"`.
-  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start, turn.start, turn.complete, tool.call, session.end, ui.render`.
+  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start, turn.start, turn.complete, tool.call, session.end, ui.render, prompt.compose, session.compact`.
   A module that fails to parse shows `hooks module did not load`.
 
 ## Optional type check
