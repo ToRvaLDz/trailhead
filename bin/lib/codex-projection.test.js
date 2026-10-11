@@ -419,6 +419,11 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   const teamwork = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'teamwork.md'), 'utf8'));
   ok('projected teamwork carries the step change call',
     teamwork.includes('trailhead-work-state.js set --repo <working-root> --step <step>'));
+  ok('projected teamwork carries the autoDone counter flag',
+    teamwork.includes('--auto true --auto-done <n>'));
+  const autoRef = convertToCodex(fs.readFileSync(path.join(skillsDir, 'trailhead-work', 'references', 'auto.md'), 'utf8'));
+  ok('projected auto reference carries the autoDone counter flag',
+    autoRef.includes('--auto true --auto-done <n>'));
 }
 
 console.log(`✓ codex-projection: ${passed} assertions passed`);
