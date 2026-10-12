@@ -4,17 +4,25 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { MapPaneData, PaneTicket, WorkState } from '../../types'
+import type { BurndownHistory, MapPaneData, PaneTicket, WorkState } from '../../types'
 import {
   ageLabel,
+  axisStart,
+  type BurndownSeries,
+  burndownSeries,
+  chartKind,
   failureReason,
   groupTickets,
+  HISTORY_LIMIT,
   LIST_LIMIT,
   parseActiveMap,
+  parseHistory,
   parseMap,
   parseTickets,
+  rasterCells,
   refreshDecision,
   rowLayout,
+  sparkline,
 } from './map-pane-view'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -29,11 +37,25 @@ const AGE_REFRESH_MS = 60_000
 const ACTIVE_MAP_PATH = '.trailhead/active-map'
 const TICKET_FIELDS = 'number,title,labels,assignees,url'
 const MAP_FIELDS = 'title,body,url'
+const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
+// The accent as a Raster colour (0x00RRGGBB), and the chart height in terminal rows.
+const ACCENT_RGB = 0x7aa2f7
+const CHART_ROWS = 3
 const AMBER = '#e0af68'
 
-const EMPTY: MapPaneData = { map: null, tickets: [], unverifiedCount: 0, isCapped: false, fetchedAt: null, error: null, isLoading: false }
+const EMPTY: MapPaneData = {
+  map: null,
+  tickets: [],
+  unverifiedCount: 0,
+  isCapped: false,
+  history: null,
+  historyAt: null,
+  fetchedAt: null,
+  error: null,
+  isLoading: false,
+}
 
 export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EMPTY)
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)
@@ -98,7 +120,11 @@ const readList = ($: Dollar, target: number) =>
   Promise.all([
     gh($, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
     gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
   ])
+
+// What the pane compares to skip a write: times aside, but whether the history is as fresh as the list.
+const shape = (d: MapPaneData) => ({ ...d, fetchedAt: 0, historyAt: d.historyAt === d.fetchedAt })
 
 // One read of the active map. The result is dropped when the pane closed meanwhile
 // (generation) or the active map moved on; a moved map is read again.
@@ -110,7 +136,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
   const isSameMap = before.map?.number === target
   if (!isSameMap) await setPane($, { ...EMPTY, isLoading: true })
 
-  const [view, list] = await readList($, target)
+  const [view, list, historyRead] = await readList($, target)
   if (token !== generation) return
   if ((await readActiveMap($)) !== target) return wantsAnother()
 
@@ -122,9 +148,12 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
   if (map === null || tickets === null) return setPane($, { ...kept, error: 'gh returned unreadable output', isLoading: false })
 
   const now = await $.clock.now()
-  const next: MapPaneData = { map, ...tickets, fetchedAt: now, error: null, isLoading: false }
+  // A history that failed alone keeps the last good one of this map (with its own time), never another map's.
+  const history = historyRead.ok ? parseHistory(historyRead.stdout) : null
+  const historyPart = history !== null ? { history, historyAt: now } : { history: kept.history, historyAt: kept.historyAt }
+  const next: MapPaneData = { map, ...tickets, ...historyPart, fetchedAt: now, error: null, isLoading: false }
   const isFresh = before.fetchedAt !== null && now - before.fetchedAt < AGE_REFRESH_MS
-  if (isFresh && isSameMap && sameValue({ ...before, fetchedAt: 0 }, { ...next, fetchedAt: 0 })) return
+  if (isFresh && isSameMap && sameValue(shape(before), shape(next))) return
   await setPane($, next)
 }
 
@@ -283,7 +312,10 @@ export function registerMapPane(on: On) {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
-    const { Box, Text, Button, Link } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button, Link } = ui
+    // Raster is the terminal surface's only; elsewhere the constructor is not a real element.
+    const Raster = e.surface === 'terminal' && 'Raster' in ui ? ui.Raster : undefined
     const data = await read($, mapPane)
     const active = await read($, activeMap)
     const play = await read($, workState)
@@ -389,6 +421,24 @@ export function registerMapPane(on: On) {
           ? `⚠ ${data.error}`
           : `⚠ ${data.error} · list from ${ageLabel(now - data.fetchedAt)}`
 
+    const series = isCurrent && data.history !== null ? burndownSeries(data.history, now, cols) : null
+    const burndown = (s: BurndownSeries, history: BurndownHistory, historyAt: number | null) => (
+      <Box key="burndown-section" flexDirection="column" marginTop={gap}>
+        {text('burndown-head', bold, 'Burn-down')}
+        {text('burndown-counts', dim, fit(`open ${s.open} · done ${s.done} · removed ${s.removed} · peak ${s.peak}`, cols))}
+        {chartKind(Raster !== undefined) === 'raster' && Raster !== undefined ? (
+          <Raster key="burndown" columns={cols} rows={CHART_ROWS} cells={rasterCells(s.values, s.peak, CHART_ROWS, ACCENT_RGB)} />
+        ) : (
+          text('burndown-spark', { color: ACCENT }, sparkline(s.values, s.peak))
+        )}
+        <Box key="burndown-axis" width={cols} justifyContent="space-between">
+          {text('burndown-axis-start', dim, axisStart(s.startedAt, now))}
+          {text('burndown-axis-end', dim, historyAt === data.fetchedAt || historyAt === null ? 'now' : ageLabel(now - historyAt))}
+        </Box>
+        {history.isCapped ? text('burndown-capped', dim, `history capped at ${HISTORY_LIMIT}: starts at the oldest ticket read`) : null}
+      </Box>
+    )
+
     return (
       <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
         {header}
@@ -410,6 +460,7 @@ export function registerMapPane(on: On) {
             <Text {...dim}>{`list capped at ${LIST_LIMIT}`}</Text>
           </Box>
         )}
+        {series === null || data.history === null ? null : burndown(series, data.history, data.historyAt)}
         <Box key="spacer" flexGrow={1} />
         <Box key="footer" flexDirection="column">
           {text('rule', dim, '─'.repeat(cols))}
