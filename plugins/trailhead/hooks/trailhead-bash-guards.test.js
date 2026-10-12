@@ -197,6 +197,20 @@ for (const [name, cmd, ev] of [
   }
 }
 
+// --- #227: unmodelled constructs through the merged runner ---
+{
+  const r1 = runHook('alias g=gh; g issue comment 1 --body x');
+  eq('secret-guard blocks a hidden gh write behind an alias', [r1.code, codeOf(r1)], [2, 'SECRET_GUARD_UNMODELLED_CONSTRUCT']);
+  const r2 = runHook('echo ${ gh issue comment 1 --body x; }');
+  eq('secret-guard blocks a write inside a function substitution', [r2.code, codeOf(r2)], [2, 'SECRET_GUARD_UNMODELLED_CONSTRUCT']);
+  const r3 = runHook("gh api -X PATCH repos/o/r/issues/1 -f 'body'=\"\"");
+  eq('body-guard blocks a quoted api body key with an empty body', [r3.code, codeOf(r3)], [2, 'BODY_GUARD_UNMODELLED_CONSTRUCT']);
+  const r4 = runHook('printf -v B %s x; gh issue edit 1 --body-file ~/nonexistent-227.md');
+  eq('a state construct before a tilde body file blocks', r4.code, 2);
+  eq('a plain alias passes', runHook("alias ll='ls -l'").code, 0);
+  eq('a literal write after source passes', runHook(". venv/bin/activate && gh issue edit 1 --body 'hello'").code, 0);
+}
+
 // --- every existing guard suite, re-run through the merged hook ---
 for (const name of ['commit', 'secret', 'install', 'search', 'body']) {
   const file = path.join(__dirname, `trailhead-${name}-guard.test.js`);
