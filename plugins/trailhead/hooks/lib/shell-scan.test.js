@@ -11,6 +11,7 @@ const {
   splitStatementsWithSeparators,
   tokenize,
   substitutionBodies,
+  heredocSubstitutionBodies,
   scanArgsSkippingPattern,
   SEARCH_VERB_CONFIG,
 } = require('./shell-scan.js');
@@ -380,6 +381,24 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('substitutionBodies finds a backtick span across lines', bodies('echo `true\ncat .env\n`') === JSON.stringify(['true\ncat .env\n']));
   ok('substitutionBodies keeps a double-nested escaped backtick for the recursion',
     bodies('echo `echo \\`echo \\\\\\`cat .env\\\\\\`\\``') === JSON.stringify(['echo `echo \\`cat .env\\``']));
+}
+
+// --- heredocSubstitutionBodies: substitutions in an unquoted heredoc body (#218) ---
+{
+  const hb = (b) => JSON.stringify(heredocSubstitutionBodies(b));
+  const cat = JSON.stringify(['cat .env']);
+  ok('heredocSubstitutionBodies finds a $(..)', hb('$(cat .env)') === cat);
+  ok('heredocSubstitutionBodies finds a $(..) after an apostrophe (quotes are literal)', hb("it's $(cat .env)") === cat);
+  ok('heredocSubstitutionBodies finds a $(..) after a double quote', hb('say "hi $(cat .env)') === cat);
+  ok('heredocSubstitutionBodies finds a backtick body', hb('`cat .env`') === cat);
+  ok('heredocSubstitutionBodies skips an escaped $(..)', hb('\\$(cat .env)') === '[]');
+  ok('heredocSubstitutionBodies skips an escaped backtick', hb('\\`cat .env\\`') === '[]');
+  ok('heredocSubstitutionBodies finds substitutions on several lines', hb('a $(one)\nb\n`two`') === JSON.stringify(['one', 'two']));
+  ok('heredocSubstitutionBodies returns only the outer of a nest', hb('$(a $(b))') === JSON.stringify(['a $(b)']));
+  ok('heredocSubstitutionBodies finds a $(..) inside ${..}', hb('${x:-$(cat .env)}') === cat);
+  ok('heredocSubstitutionBodies is empty for plain text', hb('cat .env') === '[]');
+  ok('heredocSubstitutionBodies treats <(..) as literal text', hb('diff <(cat .env)') === '[]');
+  ok('heredocSubstitutionBodies treats a # as literal text', hb('# $(cat .env)') === cat);
 }
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);

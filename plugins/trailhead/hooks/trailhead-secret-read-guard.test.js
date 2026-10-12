@@ -219,6 +219,17 @@ allowCmd('echo "run `ls` then `pwd`"');
 allowCmd("echo '`cat .env`'");
 allowCmd('echo "\\`cat .env\\`"');
 
+// #218: a secret read inside the body of an UNQUOTED heredoc (the shell runs $(..) and backticks there)
+for (const c of ['cat <<EOF\n$(cat .env)\nEOF', 'cat <<EOF\n`cat .env`\nEOF', 'cat <<-EOF\n\t$(cat .env)\n\tEOF',
+  "cat <<EOF\nit's $(cat .env)\nEOF", 'cat <<EOF\nsay "hi $(cat .env)\nEOF', 'cat <<EOF\n${x:-$(cat .env)}\nEOF',
+  'cat <<EOF\nfirst line\nthen text $(cat .env) more\nEOF', 'x=$(cat <<EOF\n$(cat .env)\nEOF\n)']) {
+  ok(`Bash \`${c}\` is denied with path .env (#218)`, hit214(c));
+}
+for (const c of ["cat <<'EOF'\n$(cat .env)\nEOF", 'cat <<"EOF"\n$(cat .env)\nEOF', "cat <<'EOF'\n`cat .env`\nEOF",
+  'cat <<EOF\n\\$(cat .env)\nEOF', 'cat <<EOF\n\\`cat .env\\`\nEOF', 'cat <<EOF\ncat .env\nEOF']) {
+  allowCmd(c);
+}
+
 // #214: deep nesting is bounded (explicit work-list, capped), never a stack overflow
 {
   const nest = (n, inner) => 'echo ' + '"$('.repeat(n) + inner + ')"'.repeat(n);
