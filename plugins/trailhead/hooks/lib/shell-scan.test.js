@@ -302,6 +302,17 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('substitutionBodies skips heredoc bodies', bodies('cat <<E\n$(cat .env)\nE') === '[]');
   ok('substitutionBodies returns the remainder of an unterminated body', bodies('echo "$(cat .env') === JSON.stringify(['cat .env']));
   ok('substitutionBodies is empty for plain text', bodies('echo hi') === '[]');
+  // W2: a heredoc inside a body stays in the body text (the recursion strips it itself)
+  ok('substitutionBodies keeps a heredoc inside a body',
+    bodies('echo "$(cat <<E\nfoo\nE\n; cat .env)"') === JSON.stringify(['cat <<E\nfoo\nE\n; cat .env']));
+  ok('substitutionBodies skips a $(..) inside a heredoc inside a body',
+    bodies('echo $(cat <<E\n$(cat .env)\nE\n)') === JSON.stringify(['cat <<E\n$(cat .env)\nE\n']));
+  // W3: a substitution inside arithmetic runs
+  ok('substitutionBodies finds $(..) inside $((..))', bodies('echo "$(( $(cat .env) ))"') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies finds $(..) inside $[..]', bodies('echo "$[ $(cat .env) ]"') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies keeps arithmetic parens balanced around a sub',
+    bodies('echo "$(( ($(a)) + 1 ))" "$(b)"') === JSON.stringify(['a', 'b']));
+  ok('substitutionBodies still skips plain nested arithmetic', bodies('echo $((a+(b)))') === '[]');
 }
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);

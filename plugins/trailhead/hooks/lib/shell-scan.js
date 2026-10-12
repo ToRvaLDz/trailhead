@@ -66,8 +66,8 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // arithmetic span or comment) are pushed to it as { at, len, op }, so the
 // splitters cut exactly where this lexer says code is. Best-effort: not a full
 // shell parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not
-// modelled; nor is the body order of a heredoc nested in another heredoc's
-// pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
+// modelled, and backtick substitutions are tracked as a separate bug; nor is
+// the body order of a heredoc nested in another heredoc's pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
 // When `subs` is given ({ open(at), close(at) }), it is told where each
 // OUTERMOST `$(..)` / `<(..)` / `>(..)` body starts (the index after the `(`)
 // and where it ends (the index of the closing `)`), so substitutionBodies
@@ -100,6 +100,9 @@ function scanLine(line, st, seps, subs) {
       continue;
     }
     if (top && top.k === 'ar') {
+      // A `$(..)` inside arithmetic runs: push a sub frame (its own parens
+      // balance there), unless it is itself an arithmetic `$((..))`.
+      if (c === '$' && line[i + 1] === '(' && !(line[i + 2] === '(' && parenIsArith(line, i + 3, parens))) { openSub(i + 2); i++; continue; }
       if (top.mode === 'bracket') { if (c === ']') stack.pop(); continue; }
       if (c === '(') top.depth++;
       else if (c === ')' && --top.depth === 0) { stack.pop(); if (top.exp) expCloseAt = i; }
@@ -286,7 +289,10 @@ function countHeredocs(stmt) {
 // runs to the end of the input (fail toward scanning). Read off scanLine's
 // `sub` frames, so it agrees with the splitters on what is code.
 function substitutionBodies(cmd) {
-  const lines = stripHeredocBodies(cmd).split('\n');
+  // Cut from the ORIGINAL text: a heredoc inside a body keeps its body and
+  // terminator lines there (the caller's own scan strips them), while lines
+  // that are heredoc body are never lexed, so a `$(..)` in one is not returned.
+  const { lines, keep } = scanHeredocs(cmd);
   const st = { stack: [] };
   const out = [];
   let cur = null; // text of the open body so far, or null
@@ -297,6 +303,7 @@ function substitutionBodies(cmd) {
   };
   let li = 0;
   for (; li < lines.length; li++) {
+    if (!keep[li]) { if (cur !== null) cur += lines[li] + '\n'; continue; }
     from = 0;
     scanLine(lines[li], st, undefined, subs);
     if (cur !== null) cur += lines[li].slice(from) + '\n';
