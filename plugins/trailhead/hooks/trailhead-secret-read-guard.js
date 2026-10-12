@@ -48,7 +48,9 @@
 // substitution sat in double quotes (`echo "$(cat .env)"`, `x="$(cat .env)"`,
 // `echo "$(true; cat .env)"`): the quoted token hid it, and the splitter cut
 // inside the `$(..)`. Each outermost `$(..)` / `<(..)` / `>(..)` body (from
-// substitutionBodies in lib/shell-scan.js) is now also scanned as a command.
+// substitutionBodies in lib/shell-scan.js) is now also scanned as a command,
+// off a depth- and size-capped work-list. Backtick substitutions are still not
+// modelled (tracked as a separate bug).
 //
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only
@@ -398,6 +400,23 @@ function scanStatementForSecretPath(stmt) {
   return scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
 }
 
+// #214: substitution bodies are scanned off an explicit work-list (no
+// recursion, so no stack overflow) under a cap on nesting depth and on the
+// total bytes of bodies scanned. Past the cap the remaining text is checked
+// crudely instead (see crudeSecretToken): the guard fails toward blocking.
+const MAX_SUB_DEPTH = 32;
+const MAX_SUB_BYTES = 64 * 1024;
+const CRUDE_SPLIT_RE = /[\s"'`()$;|&<>{}=]+/;
+
+// Fallback when the cap is hit: split the unscanned text on whitespace, quotes,
+// parens and operators, and return the first piece that is a secret path.
+function crudeSecretToken(text) {
+  for (const piece of text.split(CRUDE_SPLIT_RE)) {
+    if (piece && isSecretPathArg(piece)) return piece;
+  }
+  return null;
+}
+
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
 // `||`, and newlines all split, even with no surrounding whitespace, e.g.
 // `cat .env|grep KEY`) looking for a secret path used as a plain positional,
@@ -405,17 +424,24 @@ function scanStatementForSecretPath(stmt) {
 // (quotes/punctuation not necessarily stripped) or null. Best-effort: not a
 // full shell parser.
 function scanBashForSecretPath(cmd) {
-  const statements = splitStatements(cmd);
-  for (const stmt of statements) {
-    const hit = scanStatementForSecretPath(stmt);
-    if (hit) return hit;
-  }
-  // #214: a statement cut inside `"$(..)"` loses the closing context, and a
-  // double-quoted token hides its body from the per-token walk; scan each
-  // outermost substitution body as a command of its own (nested ones recurse).
-  for (const body of substitutionBodies(cmd)) {
-    const hit = scanBashForSecretPath(body);
-    if (hit) return hit;
+  const work = [{ text: String(cmd), depth: 0 }];
+  let bytes = 0;
+  for (let w = 0; w < work.length; w++) {
+    const { text, depth } = work[w];
+    if (depth > 0) bytes += text.length;
+    if (depth > MAX_SUB_DEPTH || bytes > MAX_SUB_BYTES) {
+      const hit = crudeSecretToken(text);
+      if (hit) return hit;
+      continue;
+    }
+    for (const stmt of splitStatements(text)) {
+      const hit = scanStatementForSecretPath(stmt);
+      if (hit) return hit;
+    }
+    // #214: a statement cut inside `"$(..)"` loses the closing context, and a
+    // double-quoted token hides its body from the per-token walk; scan each
+    // outermost substitution body as a command of its own (nested ones next).
+    for (const body of substitutionBodies(text)) work.push({ text: body, depth: depth + 1 });
   }
   return null;
 }

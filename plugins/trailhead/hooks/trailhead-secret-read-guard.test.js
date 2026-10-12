@@ -193,6 +193,32 @@ allowCmd('echo "$(echo hi)"');
 allowCmd('echo "$((1+2))"');
 allowCmd('git commit -m "document .env usage"');
 
+// #214 review: heredoc inside a substitution, substitution inside arithmetic
+for (const c of ['echo "$(cat <<E\nfoo\nE\n; cat .env)"', 'echo $(cat <<E\nfoo\nE\n; cat .env)',
+  'echo "$(( $(cat .env) ))"', 'echo $(( $(cat .env) ))', 'echo "$[ $(cat .env) ]"']) {
+  ok(`Bash \`${c}\` is denied with path .env (#214 review)`, hit214(c));
+}
+allowCmd('echo "$((1+2))"');
+allowCmd('echo $((a+(b)))');
+allowCmd('echo "$(( $(echo 1) + 1 ))"');
+
+// #214: deep nesting is bounded (explicit work-list, capped), never a stack overflow
+{
+  const nest = (n, inner) => 'echo ' + '"$('.repeat(n) + inner + ')"'.repeat(n);
+  for (const n of [40, 2000, 6000]) {
+    const t0 = Date.now();
+    const r = detectSecretRead('Bash', { command: nest(n, 'cat .env') });
+    const ms = Date.now() - t0;
+    ok(`nesting n=${n} with a secret is denied with path .env`, !!r && r.path === '.env');
+    ok(`nesting n=${n} with a secret completes under 1s (${ms}ms)`, ms < 1000);
+  }
+  const t1 = Date.now();
+  const clean = detectSecretRead('Bash', { command: nest(6000, 'cat README.md') });
+  const ms1 = Date.now() - t1;
+  ok('deep nesting with no secret is allowed', clean === null);
+  ok(`deep nesting with no secret completes under 1s (${ms1}ms)`, ms1 < 1000);
+}
+
 const a6 = runHook('Bash', { command: 'git check-ignore -v .env' });
 ok('hook allows Bash(git check-ignore -v .env) end-to-end (exit 0, no output)', a6.code === 0 && a6.out.trim() === '');
 const a7 = runHook('Bash', { command: 'cp .env.example .env' });
