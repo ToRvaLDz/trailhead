@@ -86,6 +86,14 @@
 // a link prepared under a non-secret name onto `.env`
 // (`ln -s .env.example l && mv l .env`).
 //
+// #227: a construct the guard cannot interpret with certainty (eval, source / `.`, a
+// bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted gh api body
+// key, a backslash-newline inside a word) is not emulated. As a FINAL gate, after the
+// precise scan, one that sits next to a secret-looking piece (`.env`, `.e""nv`, ...)
+// denies with SECRET_READ_UNMODELLED_CONSTRUCT and asks for the simple form; with no
+// such piece (`. venv/bin/activate && make`) it passes. The closed list is
+// lib/unmodelled.js.
+//
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
 // trailhead-search-guard.js's job) — it only asks "does any token here
@@ -112,6 +120,7 @@ const {
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
 } = require('./lib/shell-scan.js');
+const { findUnmodelled, unmodelledReason } = require('./lib/unmodelled.js');
 
 // --- path helpers ------------------------------------------------------------
 
@@ -518,6 +527,29 @@ function scanBashForSecretPath(cmd) {
   return null;
 }
 
+// --- unmodelled constructs (#227) ----------------------------------------------
+
+// Does a text hold a secret-looking piece once live backslash-newlines are joined and
+// quote characters dropped (`.e""nv` is `.env` to the shell)? Crude by design: the
+// precise scan above is exact and runs first, this only has to catch what it cannot see.
+function crudeSecretPiece(text) {
+  return crudeSecretToken(String(text).replace(/\\\n/g, '').replace(/["'`]/g, ''));
+}
+
+// A construct the guard cannot interpret (eval, source / `.`, a bash 5.3 `${ cmd; }`,
+// printf -v, a function definition, an alias, a quoted gh api body key, a backslash-newline
+// inside a word) next to a secret-looking piece: { hit, piece } or null. The piece only has
+// to sit in the construct's own statement or in the code it hides, which is not proof of a
+// read (`printf -v x %s .env` blocks too): the uncertain shape is blocked and the simple
+// form asked for, not emulated.
+function unmodelledSecretPiece(cmd) {
+  for (const hit of findUnmodelled(cmd)) {
+    const piece = crudeSecretPiece(hit.stmt) || crudeSecretPiece(hit.payload);
+    if (piece) return { hit, piece };
+  }
+  return null;
+}
+
 // --- top-level detection -----------------------------------------------------
 
 // Detect a secret-file read across a Read or Bash tool call. Returns
@@ -532,12 +564,27 @@ function detectSecretRead(toolName, toolInput) {
   if (toolName === 'Bash') {
     const cmd = input.command || '';
     const hit = scanBashForSecretPath(cmd);
-    return hit ? { path: hit } : null;
+    if (hit) return { path: hit };
+    const um = unmodelledSecretPiece(cmd); // a final gate: the precise scan keeps priority
+    return um ? { path: um.piece, unmodelled: um.hit } : null;
   }
   return null;
 }
 
+function blockUnmodelled(hit) {
+  let redact; // the secret-guard's redactor; without it the message omits the sample
+  try {
+    ({ redact } = require('./trailhead-secret-guard.js'));
+  } catch {
+    redact = undefined;
+  }
+  const reason = unmodelledReason('secret-read guard', 'that it does not read a secret file (.env / .env.* / .secrets)', hit.unmodelled, redact);
+  process.stdout.write(JSON.stringify({ decision: 'block', code: 'SECRET_READ_UNMODELLED_CONSTRUCT', reason }));
+  process.exit(2);
+}
+
 function block(hit) {
+  if (hit.unmodelled) blockUnmodelled(hit);
   const reason =
     `trailhead secret-read guard: blocked a read of secret file \`${hit.path}\` ` +
     '(.env / .env.* / .secrets). This replaces the Read() deny permission rules ' +

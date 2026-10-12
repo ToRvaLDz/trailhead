@@ -290,6 +290,53 @@ ok('hook allows Bash(git check-ignore -v .env) end-to-end (exit 0, no output)', 
 const a7 = runHook('Bash', { command: 'cp .env.example .env' });
 ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.code === 0 && a7.out.trim() === '');
 
+// --- #227: constructs the guard cannot interpret, near a secret-looking piece ---
+{
+  const CODE = 'SECRET_READ_UNMODELLED_CONSTRUCT';
+  const code = (command) => { const r = runHook('Bash', { command }); return r.code === 2 ? JSON.parse(r.out).code : null; };
+  for (const c of [
+    'eval cat .e""nv',
+    'eval "cat .e\'\'nv"',
+    'echo ${ cat .e""nv; }',
+    'echo ${| cat .e""nv; }',
+    'source .e""nv',
+    '. .e""nv && make',
+    'printf -v x %s .e""nv',
+    "alias c='cat .e\"\"nv'",
+    "alias c='cat .env'; c",
+    'f() { cat .e""nv; }; f',
+    'echo "${ cat .e""nv; }"',
+    'x=$(source .e""nv)',
+  ]) {
+    const hit = detectSecretRead('Bash', { command: c });
+    ok(`denies an unmodelled construct near a secret piece: ${c}`, !!hit && !!hit.unmodelled);
+    ok(`... with the unmodelled code (exit 2): ${c}`, code(c) === CODE);
+  }
+  // The precise scan keeps priority and its code.
+  ok('a precise read keeps SECRET_READ_BLOCKED', code('eval cat .env') === 'SECRET_READ_BLOCKED');
+  ok('a precise read inside a function body keeps SECRET_READ_BLOCKED', code('f() { cat .env; }; f') === 'SECRET_READ_BLOCKED');
+  ok('detectSecretRead keeps { path } for a precise read', (() => { const h = detectSecretRead('Bash', { command: 'cat .env' }); return h && h.path === '.env' && !h.unmodelled; })());
+  // Plain controls pass: the construct has no secret-looking piece near it.
+  for (const c of [
+    '. venv/bin/activate && make',
+    'source ~/.venv/bin/activate && pytest',
+    "alias ll='ls -l'",
+    'alias g=gh; g issue list',
+    'eval "$(ssh-agent)"',
+    'printf -v x %s y; echo $x',
+    'f() { ls; }; f',
+    'echo ${ date; }',
+    'echo "alias .environment"',
+    'cat .e\\\n  nv.md',
+  ]) ok(`allows a construct with no secret piece: ${c}`, detectSecretRead('Bash', { command: c }) === null && runHook('Bash', { command: c }).code === 0);
+  const r = runHook('Bash', { command: 'echo ${ cat .e""nv; }' });
+  const reason = JSON.parse(r.out).reason;
+  ok('the message names the guard and asks for the simple form', /^trailhead secret-read guard: /.test(reason) && /Rewrite it in a simple form/.test(reason));
+  const T = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'.slice(0, 36);
+  const leak = JSON.parse(runHook('Bash', { command: `echo \${ cat .e""nv; echo ${T}; }` }).out).reason;
+  ok('the message never echoes a token', !leak.includes(T) && !leak.includes('ghp_'));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
