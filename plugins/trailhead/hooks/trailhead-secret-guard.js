@@ -449,7 +449,12 @@ function gatherText(cmd, writes, env, cwd) {
   for (const history of histories) {
     try {
       for (const word of resolvedWords(history)) text += '\n' + word;
-    } catch {
+    } catch (e) {
+      // A brace expansion too large to enumerate cannot be scanned: fail closed.
+      if (e && e.code === 'BRACE_OVERFLOW') {
+        const kind = writes.find((w) => w.history === history).kind;
+        return { block: inlineBodyBlock(kind, 'cannot resolve statically (brace expansion too large)') };
+      }
       for (const rec of history) text += '\n' + stripQuoteChars(rec.text);
     }
   }

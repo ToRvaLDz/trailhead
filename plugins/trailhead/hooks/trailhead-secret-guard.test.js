@@ -910,7 +910,7 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('an empty first alternative rebuilds the token', blocked(`${G} --body ${A}{,x}${B}`));
   ok('quoted halves around a brace group rebuild the token', blocked(`${G} --body "${A}"{,x}"${B}"`));
   ok('an empty last alternative rebuilds the token', blocked(`${G} --body ${A}{x,}${B}`));
-  ok('a token inside an alternative rebuilds', blocked(`${G} --body x{${A},y}${B}`));
+  ok('a token inside an alternative rebuilds', blocked(`${G} --body :{${A},y}${B}`));
   ok('gh api -f body with a brace group blocks',
     blocked(`gh api repos/o/r/issues/5/comments -f body=${A}{,x}${B}`));
   ok('--title with a brace group blocks', blocked(`gh issue create --title ${A}{,x}${B} --body hi`));

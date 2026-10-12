@@ -149,6 +149,119 @@ function expandWord(word, vars, env) {
   return { value: out };
 }
 
+// --- brace expansion (bash expands {a,b} and {1..3} before quote removal) ---------
+
+const BRACE_LIMIT = 256;
+const BRACE_OVERFLOW = Symbol('brace overflow');
+
+// If a quoted span, an escape or a `${...}` starts at s[i], the index just past it;
+// otherwise -1. Braces and commas inside these are never part of a brace group.
+function skipProtected(s, i) {
+  const c = s[i];
+  if (c === '\\') return Math.min(i + 2, s.length);
+  if (c === "'") {
+    const close = s.indexOf("'", i + 1);
+    return close === -1 ? s.length : close + 1;
+  }
+  if (c === '"') {
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === '\\') j++;
+      else if (s[j] === '"') return j + 1;
+    }
+    return s.length;
+  }
+  if (c === '$' && s[i + 1] === "'") {
+    for (let j = i + 2; j < s.length; j++) {
+      if (s[j] === '\\') j++;
+      else if (s[j] === "'") return j + 1;
+    }
+    return s.length;
+  }
+  if (c === '$' && s[i + 1] === '{') {
+    let depth = 1;
+    let j = i + 2;
+    while (j < s.length && depth > 0) {
+      const k = skipProtected(s, j);
+      if (k >= 0) { j = k; continue; }
+      if (s[j] === '{') depth++;
+      else if (s[j] === '}') depth--;
+      j++;
+    }
+    return j;
+  }
+  return -1;
+}
+
+// The values of a `{x..y}` / `{x..y..step}` body, or null when it is not a sequence.
+function sequenceValues(body, limit) {
+  let m = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/.exec(body);
+  const letters = !m;
+  if (!m) m = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(body);
+  if (!m) return null;
+  const from = letters ? m[1].charCodeAt(0) : parseInt(m[1], 10);
+  const to = letters ? m[2].charCodeAt(0) : parseInt(m[2], 10);
+  const step = Math.abs(m[3] ? parseInt(m[3], 10) : 1) || 1;
+  const count = Math.floor(Math.abs(to - from) / step) + 1;
+  if (count > limit) throw BRACE_OVERFLOW;
+  const padded = !letters && (/^-?0\d/.test(m[1]) || /^-?0\d/.test(m[2]));
+  const pad = padded ? Math.max(m[1].length, m[2].length) : 0;
+  const out = [];
+  const dir = to >= from ? step : -step;
+  for (let n = 0, v = from; n < count; n++, v += dir) {
+    out.push(letters ? String.fromCharCode(v) : String(v).padStart(pad, '0'));
+  }
+  return out;
+}
+
+// Expand the first expandable group of `s` (and, recursively, the rest). Throws
+// BRACE_OVERFLOW past `limit` results.
+function braceWords(s, limit) {
+  for (let i = 0; i < s.length;) {
+    const k = skipProtected(s, i);
+    if (k >= 0) { i = k; continue; }
+    if (s[i] !== '{') { i++; continue; }
+    let depth = 1;
+    let j = i + 1;
+    const commas = [];
+    while (j < s.length) {
+      const q = skipProtected(s, j);
+      if (q >= 0) { j = q; continue; }
+      if (s[j] === '{') depth++;
+      else if (s[j] === '}' && --depth === 0) break;
+      else if (s[j] === ',' && depth === 1) commas.push(j);
+      j++;
+    }
+    if (j >= s.length) { i++; continue; } // unmatched: literal
+    let alts;
+    if (commas.length) {
+      alts = [];
+      let from = i + 1;
+      for (const c of [...commas, j]) { alts.push(s.slice(from, c)); from = c + 1; }
+      alts = alts.flatMap((a) => braceWords(a, limit));
+    } else {
+      alts = sequenceValues(s.slice(i + 1, j), limit);
+    }
+    if (!alts) { i++; continue; } // {} / {x}: literal, keep scanning inside
+    const post = braceWords(s.slice(j + 1), limit);
+    if (alts.length * post.length > limit) throw BRACE_OVERFLOW;
+    const pre = s.slice(0, i);
+    return alts.flatMap((a) => post.map((p) => pre + a + p));
+  }
+  return [s];
+}
+
+// Bash brace expansion of a RAW shell word (quotes still in place, so they stay
+// literal): { words } or { overflow: true } past `limit` results (#220).
+function braceExpand(word, limit = BRACE_LIMIT) {
+  try {
+    const out = braceWords(String(word), limit);
+    return out.length > limit ? { overflow: true } : { words: out };
+  } catch (e) {
+    if (e === BRACE_OVERFLOW) return { overflow: true };
+    throw e;
+  }
+}
+
 // Quote-aware word splitter. Like shell-scan's tokenize, but a `$(...)`, `<(...)`,
 // `>(...)` or backtick span stays inside ONE word even when it holds spaces.
 function words(stmt) {
@@ -480,6 +593,13 @@ function producerItems(rec, ctx) {
 // $VAR is expanded, and anything else is unresolvable. Literal text needs no item:
 // the whole command is scanned.
 function valueItems(raw, rec, ctx, literalQuotes = false) {
+  if (literalQuotes) return valueItemsOf(raw, rec, ctx, true); // heredoc bodies are not brace-expanded
+  const b = braceExpand(raw);
+  if (b.overflow) return inlineUnresolved('brace expansion too large');
+  return b.words.flatMap((w) => valueItemsOf(w, rec, ctx, false));
+}
+
+function valueItemsOf(raw, rec, ctx, literalQuotes) {
   if (!/[$`]/.test(raw) || (!literalQuotes && /^'[\s\S]*'$/.test(raw))) return [];
   const items = [];
   let rest = '';
@@ -573,13 +693,18 @@ const stripQuoteChars = (word) => word.replace(/\$(?=['"])/g, '').replace(/['"]/
 // sources. Variables are deliberately not expanded (empty scope): a `$NAME` stays
 // literal here, so an env value is never pulled into a field the guard does not
 // scan (valueItems expands those a body takes). The raw command keeps the quotes
-// between the halves, so the caller scans this too (#217).
+// between the halves, so the caller scans this too (#217). Unquoted brace groups are
+// expanded first (#220); past the limit it throws an Error with code BRACE_OVERFLOW.
 function resolvedWords(history) {
   const out = [];
   for (const rec of history) {
-    for (const word of words(rec.text)) {
-      const r = expandWord(word, {}, {});
-      out.push(r.unresolved ? stripQuoteChars(word) : r.value);
+    for (const raw of words(rec.text)) {
+      const b = braceExpand(raw);
+      if (b.overflow) throw Object.assign(new Error('brace expansion too large'), { code: 'BRACE_OVERFLOW' });
+      for (const word of b.words) {
+        const r = expandWord(word, {}, {});
+        out.push(r.unresolved ? stripQuoteChars(word) : r.value);
+      }
     }
   }
   return out;
@@ -604,6 +729,8 @@ module.exports = {
   STDIN_PATHS,
   words,
   expandWord,
+  braceExpand,
+  BRACE_LIMIT,
   parseRedirects,
   flagValues,
   resolveWord,
