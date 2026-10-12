@@ -122,6 +122,10 @@ ok("gh 'repo' view still resolves repo",
   ok('dequote decodes an octal escape', dequote(`$'\\151ssue'`) === 'issue');
   ok('dequote decodes a unicode escape', dequote(`$'\\u0067h'`) === 'gh');
   ok('dequote decodes single-letter escapes', dequote(`$'a\\tb\\\\c\\'d'`) === "a\tb\\c'd");
+  ok('dequote keeps a backslash that bash keeps inside double quotes', dequote('"\\nn"') === '\\nn');
+  ok('dequote drops the backslash of \\$ inside double quotes', dequote('"\\$x"') === '$x');
+  ok('dequote drops a backslash-newline inside double quotes', dequote('"a\\\nb"') === 'ab');
+  ok('dequote keeps a backslash literal inside single quotes', dequote("'a\\b'") === 'a\\b');
   ok('dequote drops the $ of a locale-quoted span', dequote('$"gh"') === 'gh');
   ok('dequote leaves a bare variable alone', dequote('$HOME') === '$HOME');
   const { dequoteSpans } = require('./gh-subcommand.js');

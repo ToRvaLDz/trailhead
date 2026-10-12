@@ -879,6 +879,11 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
       ok("-'F'\"/p a\" blocks", blocked(`${G} -'F'"${FS}"`));
       ok('-F"/p a" blocks (control)', blocked(`${G} -F"${FS}"`));
       ok('"-F handling" with a space in the flag span still passes', allowed(`${G} --title "-F ${FS}" --body hi`));
+      // A whole-token quoted attached flag keeps its spaced path: only a space DIRECTLY after the letter is text.
+      ok('"-F<path with space>" blocks', blocked(`${G} "-F${FS}"`));
+      ok("'-F<path with space>' blocks", blocked(`${G} '-F${FS}'`));
+      ok('-"F<path with space>" blocks', blocked(`${G} -"F${FS}"`));
+      ok('"-F x" is still free text', allowed(`${G} --title "-F x" --body hi`));
       fs.rmSync(dirSp, { recursive: true, force: true });
     }
     // -r and -a are boolean in `gh pr review`: the -F after them is still the body file.
