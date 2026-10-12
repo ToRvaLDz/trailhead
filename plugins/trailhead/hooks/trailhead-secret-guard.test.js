@@ -899,4 +899,62 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   }
 }
 
+// --- #220: a token rebuilt by brace expansion ---
+{
+  const A = 'ghp_' + 'A1b2C3d4E5f6G7h8';
+  const B = 'I9j0K1l2M3n4O5p6Q7r8';
+  const BS = '\\'; // one backslash
+  const blocked = (cmd, env) => { const r = runHook(cmd, env); return r.code === 2 && /GitHub token/.test(r.out); };
+  const allowed = (cmd) => { const r = runHook(cmd); return r.code === 0 && r.out.trim() === ''; };
+  const G = 'gh issue comment 5';
+  ok('an empty first alternative rebuilds the token', blocked(`${G} --body ${A}{,x}${B}`));
+  ok('quoted halves around a brace group rebuild the token', blocked(`${G} --body "${A}"{,x}"${B}"`));
+  ok('an empty last alternative rebuilds the token', blocked(`${G} --body ${A}{x,}${B}`));
+  ok('a token inside an alternative rebuilds', blocked(`${G} --body x{${A},y}${B}`));
+  ok('gh api -f body with a brace group blocks',
+    blocked(`gh api repos/o/r/issues/5/comments -f body=${A}{,x}${B}`));
+  ok('--title with a brace group blocks', blocked(`gh issue create --title ${A}{,x}${B} --body hi`));
+  ok('an echo producer with a brace group blocks', blocked(`echo ${A}{,x}${B} | ${G} --body-file -`));
+  ok('a nested brace group blocks', blocked(`${G} --body ${A}{x,{,y}}${B}`));
+  {
+    const A16 = 'ghp_' + 'A1b2C3d4E5f6G7h8';
+    const B19 = 'I9j0K1l2M3n4O5p6Q7r';
+    ok('a letter sequence rebuilds the token', blocked(`${G} --body ${A16}{Z..Z}${B19}`));
+  }
+  ok('$VAR halves around a brace group block',
+    blocked(`${G} --body "$P"{,x}"$Q"`, { P: A, Q: B }));
+  // Quoted or escaped braces are literal.
+  ok('a double-quoted brace group passes', allowed(`${G} --body "${A}{,x}${B}"`));
+  ok('a single-quoted brace group passes', allowed(`${G} --body '${A}{,x}${B}'`));
+  ok('an escaped brace group passes', allowed(`${G} --body ${A}${BS}{,x${BS}}${B}`));
+  ok('{x} without a comma passes', allowed(`${G} --body ${A}{x}${B}`));
+  ok('{} passes', allowed(`${G} --body ${A}{}${B}`));
+  ok('an unquoted heredoc is not brace-expanded', allowed(`${G} --body-file - <<EOF\n${A}{,x}${B}\nEOF`));
+  // Too many results: fail closed.
+  ok('a brace product over the limit fails closed',
+    runHook(`${G} --body ${'{a,b}'.repeat(9)}`).code === 2);
+  ok('a huge sequence fails closed', runHook(`${G} --body {1..999999999}`).code === 2);
+  ok('a small brace group of clean text passes', allowed(`${G} --body {a,b}`));
+  {
+    const { braceExpand } = require('./lib/body-sources.js');
+    const J = JSON.stringify;
+    const w = (s) => J(braceExpand(s).words);
+    ok('braceExpand: comma list', w('a{b,c}d') === J(['abd', 'acd']));
+    ok('braceExpand: empty alternative', w('a{,x}b') === J(['ab', 'axb']));
+    ok('braceExpand: nested', w('{x,{,y}}') === J(['x', '', 'y']));
+    ok('braceExpand: numeric sequence', w('{1..3}') === J(['1', '2', '3']));
+    ok('braceExpand: descending sequence with step', w('{5..1..2}') === J(['5', '3', '1']));
+    ok('braceExpand: letter sequence', w('{a..c}') === J(['a', 'b', 'c']));
+    ok('braceExpand: cartesian product', w('{a,b}{1,2}') === J(['a1', 'a2', 'b1', 'b2']));
+    ok('braceExpand: ${HOME} is untouched', w('${HOME}') === J(['${HOME}']));
+    ok('braceExpand: a quoted comma is not a group', w('"{a,b}"') === J(['"{a,b}"']));
+    ok('braceExpand: an escaped brace is not a group', w('\\{a,b}') === J(['\\{a,b}']));
+    ok('braceExpand: {x} and {} are literal', w('{x}{}') === J(['{x}{}']));
+    ok('braceExpand: quotes are kept', w('"a"{b,c}') === J(['"a"b', '"a"c']));
+    ok('braceExpand: overflow', braceExpand('{a,b}'.repeat(9)).overflow === true);
+    ok('braceExpand: a huge sequence overflows', braceExpand('{1..999999999}').overflow === true);
+    ok('braceExpand: the limit is a parameter', braceExpand('{a,b,c}', 2).overflow === true);
+  }
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);
