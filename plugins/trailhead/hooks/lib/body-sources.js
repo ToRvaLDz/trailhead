@@ -165,7 +165,7 @@ function words(stmt) {
       // An ANSI-C `$'...'` span honours backslash escapes (`$'a\'b'`).
       if (quote === "'" && ansi && c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
       // Inside double quotes bash removes a backslash-newline continuation.
-      if (quote === '"' && c === '\\' && s[i + 1] === '\n') { i++; continue; }
+      if (quote === '"' && c === '\\' && s[i + 1] === '\n') { i++; bare = afterBare; continue; }
       cur += c;
       if (quote === '"' && c === '\\' && i + 1 < s.length) cur += s[++i];
       else if (c === quote) { quote = null; ansi = false; }
@@ -173,7 +173,7 @@ function words(stmt) {
     }
     if (c === "'" || c === '"') { ansi = c === "'" && afterBare; quote = c; cur += c; continue; }
     // A backslash-newline continuation vanishes (`a\<nl>b` is `ab`, `a \<nl>b` is two words).
-    if (c === '\\' && s[i + 1] === '\n') { i++; continue; }
+    if (c === '\\' && s[i + 1] === '\n') { i++; bare = afterBare; continue; } // the bare-dollar state carries over
     if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
     if ((c === '$' || c === '<' || c === '>') && s[i + 1] === '(') {
       let depth = 0;

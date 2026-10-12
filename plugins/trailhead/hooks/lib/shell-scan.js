@@ -91,8 +91,11 @@ function scanLine(line, st, seps, subs) {
   const parens = {}; // parenIsArith's per-line match cache
   const cont0 = st.cont; // the previous line ended in a backslash: this one continues it
   let escAt = -2; // index of the last escaped char
-  let bareAt = -2; // index of the last bare `$` (not escaped, not the 2nd of `$$`)
+  // Index of the last bare `$` (not escaped, not the 2nd of `$$`). A bare `$` that
+  // ended the previous line before its `\<nl>` is still adjacent: it counts as index -1.
+  let bareAt = cont0 && st.bareEnd ? -1 : -2;
   st.cont = false;
+  st.bareEnd = false;
   // Is the char before index i a word boundary? An escaped char (`\ #x`) is not.
   // The `)` that closes an expansion (`$(..)`, `<(..)`, `$((..))`) ends no word
   // either: `$(x)# y` is not a comment, `(x)# y` is.
@@ -134,6 +137,7 @@ function scanLine(line, st, seps, subs) {
         // char before the backslash was a boundary (`a \<nl>#x` is a comment,
         // `a\<nl>#x` is not). A line of just `\` inherits the earlier answer.
         st.contBoundary = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
+        st.bareEnd = i === 0 ? bareAt === -1 : bareAt === i - 1; // carry the bare-dollar bit over
       }
       i++;
       escAt = i;
@@ -160,6 +164,8 @@ function scanLine(line, st, seps, subs) {
       if (bare) bareAt = i;
       if (bare && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
     }
+    // A `'` glued to a bare `$` that ended the previous line (`$\<nl>'..'`) is ANSI-C too.
+    if (c === "'" && i === 0 && bareAt === -1) { stack.push({ k: 'ansi' }); continue; }
     if (c === "'") { stack.push({ k: 'sq' }); continue; }
     if (c === '"') { stack.push({ k: 'dq' }); continue; }
     if (c === '$' && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
