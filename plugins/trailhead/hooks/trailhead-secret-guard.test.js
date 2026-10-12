@@ -735,6 +735,20 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('a single-quoted part glued to an ANSI-C part blocks', blocked(`${G} --body '${A}'$'${B}'`));
   ok('an unquoted heredoc keeps quotes literal and passes',
     allowed(`${G} --body-file - <<EOF\n${A}''${B}\nEOF`));
+  // A `$` that is escaped or the second char of `$$` does not open an ANSI-C span.
+  {
+    const dir217 = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-217-'));
+    const F = path.join(dir217, 'f1.txt');
+    fs.writeFileSync(F, `${A}${B}\n`);
+    const C = 'gh issue create --title';
+    ok('an escaped dollar before a quote keeps later flags visible',
+      blocked(`${C} ${BS}$'x${BS}' --body-file ${F} --label 'z'`));
+    ok('a doubled dollar before a quote keeps later flags visible',
+      blocked(`${C} $$'x${BS}' --body-file ${F} --label 'z'`));
+    ok('an escaped dollar before a quote at the end still reads the file',
+      blocked(`${C} ${BS}$'x${BS}' --body-file ${F}`));
+    fs.rmSync(dir217, { recursive: true, force: true });
+  }
 }
 
 console.log(`✓ secret-guard: ${passed} assertions passed`);
