@@ -76,10 +76,15 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // A backtick span is NOT a stack frame: it lives in `st.bq` ({ outer } or unset)
 // and is opened by an unescaped backtick in code, `dq`, `br` or `sub` context
 // (never in `sq`, `ansi`, arithmetic or a comment) and closed by the next
-// unescaped one. Keeping it off the stack makes it transparent to splitting and
-// heredoc depth: the span's text is lexed exactly as it was when backticks were
-// invisible, so the splitters' output is unchanged. A span that never closes
-// runs to the end of the input.
+// unescaped one. The span is OPAQUE: while it is open only a backslash (skips
+// the next char) and the closing backtick are looked at, as in the shell, which
+// finds the closing backtick first and parses the body separately (so a quote
+// inside it cannot desync this lexer). Its separators and heredocs therefore
+// do not count; the guards recurse into the body via substitutionBodies. It is
+// kept off the stack so heredoc depth is untouched. `st.bq.dq` records whether
+// it sits in double quotes (nearest `dq`/`sub` frame is `dq`), where the shell
+// also unescapes `\"` in the body. A span that never closes runs to the end of
+// the input.
 function scanLine(line, st, seps, subs) {
   const found = [];
   const stack = st.stack;
@@ -93,13 +98,18 @@ function scanLine(line, st, seps, subs) {
   let expCloseAt = -2;
   // Push a `$(..)` / `<(..)` frame; the outermost one is reported to `subs`.
   const openSub = (bodyAt) => {
-    const outer = !st.bq && !stack.some((f) => f.k === 'sub');
+    const outer = !stack.some((f) => f.k === 'sub');
     stack.push({ k: 'sub', n: 0, outer });
     if (subs && outer) subs.open(bodyAt);
   };
   const isBoundary = (i) => WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1 && expCloseAt !== i - 1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
+    if (st.bq) { // opaque backtick span: only a backslash and the closing backtick matter
+      if (c === '\\') i++;
+      else if (c === '`') { if (subs && st.bq.outer) subs.close(i); st.bq = null; }
+      continue;
+    }
     const top = stack[stack.length - 1];
     if (top && top.k === 'sq') { if (c === "'") stack.pop(); continue; }
     if (top && top.k === 'ansi') { // $'..': a backslash escapes the next char, even a quote
@@ -128,13 +138,12 @@ function scanLine(line, st, seps, subs) {
       escAt = i;
       continue;
     }
-    if (c === '`') { // a backtick substitution opens here or closes the open one
-      if (st.bq) { if (subs && st.bq.outer) subs.close(i); st.bq = null; }
-      else {
-        const outer = !stack.some((f) => f.k === 'sub');
-        st.bq = { outer };
-        if (subs && outer) subs.open(i + 1, true);
-      }
+    if (c === '`') { // a backtick substitution opens here (its close is handled above)
+      const outer = !stack.some((f) => f.k === 'sub');
+      const near = stack.slice().reverse().find((f) => f.k === 'dq' || f.k === 'sub');
+      const dq = !!near && near.k === 'dq';
+      st.bq = { outer, dq };
+      if (subs && outer) subs.open(i + 1, true, dq);
       continue;
     }
     if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
@@ -239,7 +248,7 @@ function scanHeredocs(cmd) {
   for (let i = 0; i < lines.length; i++) {
     const found = scanLine(lines[i], st, seps[i]);
     hd[i] = found.map((f) => f.at);
-    nl[i] = !st.cont && splittable(st.stack);
+    nl[i] = !st.cont && !st.bq && splittable(st.stack);
     // A line ending in a backslash continues on the next: that is ONE logical
     // line, and any heredoc body starts after its last physical line. So does a
     // quote opened after the introducer (`cat <<E 'a<nl>b'`): bash starts the
@@ -247,12 +256,12 @@ function scanHeredocs(cmd) {
     // A heredoc introduced inside the innermost open `$(..)` (the `"$(cat <<EOF`
     // idiom) starts its body on the next physical line; one introduced at an
     // outer depth waits until every context opened after it has closed.
-    while ((st.cont || found.some((f) => st.stack.length > f.depth)) && i + 1 < lines.length) {
+    while ((st.cont || (st.bq && found.length > 0) || found.some((f) => st.stack.length > f.depth)) && i + 1 < lines.length) {
       i++;
       const more = scanLine(lines[i], st, seps[i]);
       hd[i] = more.map((f) => f.at);
       found.push(...more);
-      nl[i] = !st.cont && splittable(st.stack);
+      nl[i] = !st.cont && !st.bq && splittable(st.stack);
     }
     // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
     // bodies follow in order.
@@ -303,7 +312,7 @@ function countHeredocs(stmt) {
 // shell runs them), never one in single quotes, `$'..'`, arithmetic, a comment or a
 // heredoc body. Nested ones are not returned: callers recurse into a body to
 // reach them. A backtick body is returned as the shell would run it: `\``,
-// `\\` and `\$` are unescaped, so a nested `\`..\`` becomes a real backtick
+// `\\` and `\$` (and `\"` inside double quotes) are unescaped, so a nested `\`..\`` becomes a real backtick
 // span in the body. A body can span lines (joined with '\n'); one that never closes
 // runs to the end of the input (fail toward scanning). Read off scanLine's
 // `sub` frames, so it agrees with the splitters on what is code.
@@ -316,10 +325,10 @@ function substitutionBodies(cmd) {
   const out = [];
   let cur = null; // text of the open body so far, or null
   let from = 0; // where the open body's text starts on the current line
-  let bq = false; // the open body is a backtick span
-  const unescape = (t) => (bq ? t.replace(/\\([`\\$])/g, '$1') : t);
+  let bq = null; // the open body is a backtick span: null, or { dq } (in double quotes)
+  const unescape = (t) => (bq ? t.replace(bq.dq ? /\\([`\\$"])/g : /\\([`\\$])/g, '$1') : t);
   const subs = {
-    open: (at, isBq) => { cur = ''; from = at; bq = !!isBq; },
+    open: (at, isBq, dq) => { cur = ''; from = at; bq = isBq ? { dq: !!dq } : null; },
     close: (at) => { out.push(unescape(cur + lines[li].slice(from, at))); cur = null; },
   };
   let li = 0;

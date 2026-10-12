@@ -207,9 +207,13 @@ for (const c of ['echo "`cat .env`"', 'x="`cat .env`"', 'echo "${x:-`cat .env`}"
   'echo "$(echo `cat .env`)"', 'echo `echo $(cat .env)`', 'echo `echo \\`cat .env\\``']) {
   ok(`Bash \`${c}\` is denied with path .env (#216)`, hit214(c));
 }
-for (const c of ['echo "`echo \'"\'`"; cat .env', 'echo "`cat \\".env\\"`"', 'echo `true\ncat .env\n`',
+for (const c of ['echo "`echo \'"\'`"; cat .env', 'echo `true\ncat .env\n`',
   'echo `echo \\`echo \\\\\\`cat .env\\\\\\`\\``']) {
   ok(`Bash \`${c}\` is denied with path .env (#216 review)`, hit214(c));
+}
+{ // \" inside a double-quoted backtick body: bash reads the quoted .env (the path keeps its quotes)
+  const r = detectSecretRead('Bash', { command: 'echo "`cat \\".env\\"`"' });
+  ok('Bash `echo "`cat \\".env\\"`"` is denied (#216 review)', !!r && /\.env/.test(r.path));
 }
 allowCmd('echo "run `ls` then `pwd`"');
 allowCmd("echo '`cat .env`'");
