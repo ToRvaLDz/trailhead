@@ -856,8 +856,14 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     // A quoted free-text VALUE that looks like a flag is a value, not a flag.
     ok('a title that starts with a flag-like word passes', allowed('gh issue create --title "-F handling" --body hi'));
     ok('a body that starts with a flag-like word passes', allowed('gh issue create --title "Fix thing" --body "-F is a flag"'));
-    ok('a --body value that looks like --body-file=x passes', allowed(`${G} --body '--body-file=x'`));
-    ok('a -b value that looks like -F passes', allowed(`${G} -b '-F'`));
+    // A quoted value equal to a body-file flag is read as the flag, erring toward detection
+    // (the unquoted form already did): a flag arity table without subcommand awareness is unsafe.
+    ok('a --body value equal to --body-file=x is read as the flag', runHook(`${G} --body '--body-file=x'`).code === 2);
+    ok('a -b value equal to -F is read as the flag', runHook(`${G} -b '-F' x`).code === 2);
+    // -r and -a are boolean in `gh pr review`: the -F after them is still the body file.
+    ok('gh pr review -r -F file blocks', blocked(`gh pr review 5 -r -F ${F}`));
+    ok('gh pr review -a -F file blocks', blocked(`gh pr review 5 -a -F ${F}`));
+    ok('gh pr review -c -F file blocks', blocked(`gh pr review 5 -c -F ${F}`));
     // ANSI-C escapes in a word are decoded by bash.
     ok('a hex-escaped command word blocks', blocked(`$'\\x67h' issue comment 5 --body ${T}`));
     ok('a hex-escaped verb blocks', blocked(`gh issue $'comm\\x65nt' 5 --body ${T}`));
