@@ -686,8 +686,8 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   const B = 'I9j0K1l2M3n4O5p6Q7r8';
   const BS = '\\'; // one backslash
   const split = A + BS + '\n' + B;
-  const blocked = (cmd) => runHook(cmd).code === 2 && /GitHub token/.test(runHook(cmd).out);
-  const allowed = (cmd) => runHook(cmd).code === 0 && runHook(cmd).out.trim() === '';
+  const blocked = (cmd) => { const r = runHook(cmd); return r.code === 2 && /GitHub token/.test(r.out); };
+  const allowed = (cmd) => { const r = runHook(cmd); return r.code === 0 && r.out.trim() === ''; };
   ok('double-quoted --body split by backslash-newline blocks', blocked(`gh issue comment 5 --body "${split}"`));
   ok('unquoted --body split by backslash-newline blocks', blocked(`gh issue comment 5 --body ${split}`));
   ok('single-quoted --body split stays literal and passes', allowed(`gh issue comment 5 --body '${split}'`));
