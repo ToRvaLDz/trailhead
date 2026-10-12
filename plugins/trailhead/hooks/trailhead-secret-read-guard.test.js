@@ -245,6 +245,19 @@ for (const c of ["cat <<'EOF'\n$(cat .env)\nEOF", 'cat <<"EOF"\n$(cat .env)\nEOF
   allowCmd(c);
 }
 
+// #223: a heredoc body fed to a shell interpreter on stdin is a script, whatever the delimiter quoting
+for (const c of ["bash <<'EOF'\ncat .env\nEOF", 'sh <<EOF\ncat .env\nEOF', 'bash <<EOF\ncat .env\nEOF',
+  'cat <<EOF | bash\ncat .env\nEOF', 'zsh -s <<EOF\ncat .env\nEOF', 'VAR=1 bash <<EOF\ncat .env\nEOF',
+  'env FOO=1 bash <<EOF\ncat .env\nEOF', '/bin/bash <<EOF\ncat .env\nEOF', 'dash <<EOF\ncat .env\nEOF',
+  'env -i FOO=1 ksh <<EOF\ncat .env\nEOF', "cat <<'EOF' | sh\ncat .env\nEOF", 'bash -x <<EOF\necho $(cat .env)\nEOF',
+  'echo hi; bash <<EOF\ncat .env\nEOF']) {
+  ok(`Bash \`${c}\` is denied with path .env (#223)`, hit214(c));
+}
+for (const c of ["cat <<'EOF'\ncat .env\nEOF", 'cat <<EOF\ncat .env\nEOF', "tee f <<'EOF'\ncat .env\nEOF",
+  'cat <<EOF; bash x.sh\ncat .env\nEOF', "bash <<'EOF'\necho hi\nEOF", 'cat <<EOF | bash\necho hi\nEOF']) {
+  allowCmd(c);
+}
+
 // #214: deep nesting is bounded (explicit work-list, capped), never a stack overflow
 {
   const nest = (n, inner) => 'echo ' + '"$('.repeat(n) + inner + ')"'.repeat(n);
