@@ -28,8 +28,9 @@ const { parseGhSubcommand, dequote } = require('./gh-subcommand.js');
 // The closed list. `reach` says what makes a hit relevant to a guard:
 //   payload  the code it hides holds a write (eval, funsub), or the construct is
 //            CALLED later and what it runs holds a write (function, alias);
-//   state    a write comes AFTER it (source, printf -v: they change what the later
-//            write sees);
+//   state    a write comes AFTER it and can depend on state it changed (source,
+//            printf -v: an expansion, a ~ or a relative path in the write; a fully
+//            literal write is out of reach);
 //   local    its own statement (with its pipeline) is a write;
 //   self     the construct is itself a body-field write (a quoted gh api key).
 const UNMODELLED = {
@@ -190,14 +191,14 @@ function printfAssigns(args) {
 
 function makeHit(id, fields) {
   const { label, hint, reach } = UNMODELLED[id];
-  return { id, label, hint, reach, sample: '', stmt: '', stmtIndex: -1, payload: '', name: '', calls: [], after: '', ...fields };
+  return { id, label, hint, reach, sample: '', stmt: '', stmtIndex: -1, payload: '', name: '', calls: [], after: '', afterStmts: [], ...fields };
 }
 
 // Hits that belong to one statement (its command word and what it defines).
 function statementHits(entries, idx) {
   const e = entries[idx];
   const { toks, cmd, args } = commandInfo(e.text);
-  const base = { stmt: e.text, stmtIndex: idx, sample: compact(e.text), after: entries.slice(idx + 1).map((x) => x.text).join('\n') };
+  const base = { stmt: e.text, stmtIndex: idx, sample: compact(e.text), afterStmts: entries.slice(idx + 1).map((x) => x.text), after: entries.slice(idx + 1).map((x) => x.text).join('\n') };
   const fnName = functionHeadName(toks);
   if (fnName) {
     return [makeHit('function', { ...base, name: fnName, payload: functionBody(entries, idx), calls: callsOf(fnName, entries, idx).map((c) => c.text) })];
@@ -256,6 +257,22 @@ function findUnmodelled(cmd) {
   return out;
 }
 
+// Can what a statement posts depend on state a sourced script or printf -v may have
+// changed? An expansion outside single quotes (`$`, a backtick), a `~`, or a relative
+// body-file / `-F` / `--input` / api `@path` can; a fully literal write cannot.
+function stateDependent(text) {
+  const t = String(text).replace(/'[^']*'/g, "''"); // single-quoted text is literal
+  if (/[$`]/.test(t) || /(^|[\s=:"])~/.test(t)) return true;
+  const d = dequote(String(text));
+  const relative = (v) => v !== '-' && !v.startsWith('/');
+  for (const m of d.matchAll(/(--body-file|-F|--input)(?:=|\s+)(\S+)/g)) {
+    if (m[1] === '-F' && m[2].includes('=')) continue; // a field, not a file
+    if (relative(m[2])) return true;
+  }
+  for (const m of d.matchAll(/body=@(\S+)/g)) if (relative(m[1])) return true;
+  return false;
+}
+
 // --- relevance, per hit, by the construct's reach ----------------------------------
 
 // `isWrite(text)` is the CALLING guard's own write classifier.
@@ -266,7 +283,7 @@ function isRelevant(hit, isWrite) {
     case 'function': return hit.calls.length > 0 && isWrite(hit.payload);
     case 'alias': return hit.calls.some((c) => isWrite(c));
     case 'source':
-    case 'printf-v': return hit.after !== '' && isWrite(hit.after);
+    case 'printf-v': return hit.afterStmts.some((t) => isWrite(t) && stateDependent(t));
     case 'continuation': return isWrite(hit.stmt);
     default: return true; // api-field: the statement is itself a body write
   }

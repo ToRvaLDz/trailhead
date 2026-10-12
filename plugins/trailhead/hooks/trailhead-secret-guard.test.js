@@ -1050,12 +1050,12 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     `echo \${ gh issue comment 1 --body-file ${clean}; }`,
     `echo \${| gh issue comment 1 --body x; }`,
     'alias g=gh; g issue comment 1 --body x',
-    `source ./post.sh; gh issue comment 1 --body-file ${clean}`,
-    `. ./post.sh && gh issue comment 1 --body-file ${clean}`,
+    `source ./post.sh; gh issue comment 1 --body-file ~/${path.basename(clean)}`, // HOME is the tmp dir below
+    `. ./post.sh && gh issue comment 1 --body-file ~/${path.basename(clean)}`,
     `f() { gh issue comment 1 --body-file ${clean}; }; f`,
     `function f { gh issue comment 1 --body x; }\nf`,
     `gh issue com\\\nment 1 --body-file ${clean}`,
-  ]) ok(`blocks an unmodelled construct: ${c.slice(0, 50).replace(/\n/g, ' ')}`, code(c) === CODE);
+  ]) ok(`blocks an unmodelled construct: ${c.slice(0, 50).replace(/\n/g, ' ')}`, code(c, { HOME: os.tmpdir() }) === CODE);
 
   // Existing verdicts keep priority over the new gate.
   ok('eval + gh write stays an opaque-write block', code(`eval 'gh issue comment 1 --body-file ${clean}'`) === 'SECRET_GUARD_OPAQUE_WRITE');
@@ -1063,7 +1063,7 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('a secret file next to source stays a secret block', code(`source ./x.sh; gh issue comment 1 --body-file ${dirty}`) === 'SECRET_IN_ISSUE_WRITE');
   ok('an unreadable body file next to source keeps its code', code('source ./x.sh; gh issue comment 1 --body-file /nonexistent/sg-um.md') === 'SECRET_GUARD_UNREADABLE_BODY_FILE');
   ok('printf -v feeding a body still blocks (unresolved)', code('printf -v B %s x; gh issue edit 1 --body "$B"') !== null);
-  ok('the gate also replaces the could-not-scan advisory', code(`source ./x.sh; gh issue comment 1 --body-file ${clean}`, { TRAILHEAD_SECRETGUARD_THROW: '1' }) === CODE);
+  ok('the gate also replaces the could-not-scan advisory', code(`source ./x.sh; gh issue comment 1 --body-file ~/${path.basename(clean)}`, { TRAILHEAD_SECRETGUARD_THROW: '1', HOME: os.tmpdir() }) === CODE);
 
   // Plain controls pass.
   for (const c of [
@@ -1079,6 +1079,8 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     'f() { ls; }; gh issue comment 1 --body-file ' + clean,
     `echo \${ date; }; gh issue comment 1 --body-file ${clean}`,
     `gh issue comment 1 --body-file ${clean}; source ./post.sh`,
+    `. venv/bin/activate && gh issue edit 1 --body 'hello'`,
+    `source venv/bin/activate && gh issue comment 1 --body-file ${clean}`,
     `gh issue comment 1 --body-file ${clean}; printf -v x %s y`,
     `gh issue comment 1 --body 'use eval and source and alias here'`,
     `gh issue comment 1 --body-file ${clean} # eval x`,

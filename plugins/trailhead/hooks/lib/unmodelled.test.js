@@ -119,11 +119,20 @@ ok("alias ll='ls -l' next to a write is not", !relevant("alias ll='ls -l'; gh is
 ok('a write quoted in prose next to an alias is not', !relevant('echo "gh issue edit 1"; alias ll=ls'));
 
 // --- relevance: state constructs ---
-ok('source before a write is relevant', relevant('source ./post.sh; gh issue comment 1 --body-file /tmp/clean.md'));
+ok('source before a state-dependent write is relevant', relevant('source ./post.sh; gh issue comment 1 --body "$B"'));
+ok('source before a relative body file is relevant', relevant('source x; gh issue comment 1 --body-file rel.md'));
+ok('source before a ~ body file is relevant', relevant('source x; gh issue comment 1 --body-file ~/b.md'));
+ok('source before a relative api @path is relevant', relevant('source x; gh issue edit 1 --body-file ./b.md'));
+ok('source before a backtick body is relevant', relevant('source x; gh issue comment 1 --body `date`'));
+ok('source before a literal write is not', !relevant('source venv/bin/activate && gh issue comment 1 --body-file /tmp/clean.md'));
+ok('. before a literal inline body is not', !relevant(". venv/bin/activate && gh issue edit 1 --body 'hello'"));
+ok('a single-quoted dollar is literal', !relevant("source x; gh issue comment 1 --body 'costs $5'"));
+ok('an unrelated expansion beside a literal write is not', !relevant('source x; echo $HOME; gh issue comment 1 --body-file /tmp/clean.md'));
 ok('source after the write is not', !relevant('gh issue comment 1 --body-file /tmp/clean.md; source ./post.sh'));
 ok('source with no write is not', !relevant('source ~/.venv/bin/activate && pytest'));
 ok('printf -v before a write is relevant', relevant('printf -v B %s x; gh issue comment 1 --body "$B"'));
 ok('printf -v after the write is not', !relevant('gh issue comment 1 --body-file /tmp/clean.md; printf -v B %s x'));
+ok('printf -v before a literal write is not', !relevant("printf -v B %s x; gh issue edit 1 --body 'hello'"));
 ok('printf -v with no write is not', !relevant('printf -v x %s y; echo $x'));
 
 // --- relevance: statement-local constructs ---
