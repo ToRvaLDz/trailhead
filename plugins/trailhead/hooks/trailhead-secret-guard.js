@@ -92,17 +92,27 @@ function writeKind(stmt) {
   return null;
 }
 
-// Does a brace group in a statement's words build a gh write? The statement's argv is
-// already brace-expanded in place (see unwrap), which is what bash runs; this also tries
-// each alternative of each group on its own (`gh {issue,issue} comment` runs
-// `gh issue issue comment`, but a one-alternative reading is a write), so a braced
-// command, global flag, subcommand or verb word never hides a write (#220). Fail closed:
-// a statement too large to enumerate that reads like a gh write counts.
-function braceBuiltWrite(text) {
-  if (!/gh/.test(text)) return false;
+// Is some word of the statement `gh` (or a path ending in /gh) once quotes and brace
+// groups are resolved (`gh`, `{gh,gh}`, `g{h,h}`)? A word too large to expand never
+// counts: it cannot be told apart from any other big group.
+function hasGhWord(text) {
+  return words(text).some((t) => {
+    const b = braceExpand(t);
+    return !b.overflow && b.words.some((w) => /(^|\/)gh$/.test(dequote(w)));
+  });
+}
+
+// Could this statement, with a brace group in its words, be a gh write (#220)? The
+// statement's argv is already brace-expanded in place (see unwrap), which is what bash
+// runs; this also tries each alternative of each group on its own (`gh {issue,issue}
+// comment` runs `gh issue issue comment`, but a one-alternative reading is a write), so
+// a braced command, global flag, subcommand or verb word never hides a write. Fail
+// closed: a statement too large to enumerate counts when it reads like a write.
+function braceBuiltWrite(text, overflow) {
+  if (!hasGhWord(text)) return false;
   const alts = words(text).map((t) => braceExpand(t));
-  if (alts.every((a) => !a.overflow && a.words.length === 1)) return false;
-  if (alts.some((a) => a.overflow)) return true;
+  if (overflow || alts.some((a) => a.overflow)) return WRITE_WORDS_RE.test(dequote(text));
+  if (alts.every((a) => a.words.length === 1)) return false;
   if (alts.reduce((n, a) => n * a.words.length, 1) > BRACE_COMBO_LIMIT) return WRITE_WORDS_RE.test(dequote(text));
   const combos = alts.reduce((acc, a) => acc.flatMap((c) => a.words.map((w) => [...c, w])), [[]]);
   return combos.some((c) => writeKind(c.join(' ')) !== null);
@@ -320,7 +330,7 @@ function collectWrites(cmd, env, start) {
     history.push({ text, sep, vars, cwdKnown, index, heredocs });
     const kind = writeKind(text);
     // `{gh,gh} issue comment`, `gh {issue,issue} comment`, an unexpandable brace word (#220)
-    if (!kind && (braceOverflow || braceBuiltWrite(unwrap(raw, vars, env, false).text)) && /gh/.test(raw)) {
+    if (!kind && braceBuiltWrite(unwrap(raw, vars, env, false).text, braceOverflow)) {
       writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
