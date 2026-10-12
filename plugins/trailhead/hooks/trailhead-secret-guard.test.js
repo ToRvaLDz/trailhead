@@ -1033,4 +1033,80 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('allows gh issue -R o/r view 5', runHook('gh issue -R o/r view 5').code === 0);
 }
 
+// --- #227: constructs the guard cannot interpret are blocked, not emulated ---
+{
+  const CODE = 'SECRET_GUARD_UNMODELLED_CONSTRUCT';
+  const clean = path.join(os.tmpdir(), `sg-um-clean-${process.pid}.md`);
+  const dirty = path.join(os.tmpdir(), `sg-um-dirty-${process.pid}.md`);
+  fs.writeFileSync(clean, 'All good, 12 tests green.\n');
+  fs.writeFileSync(dirty, 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  const T = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'.slice(0, 36);
+  const code = (c, env) => { const r = runHook(c, env); return r.code === 2 ? (JSON.parse(r.out).code || '?') : null; };
+  const msg = (c) => { const r = runHook(c); return r.code === 2 ? JSON.parse(r.out).reason : ''; };
+
+  // Gaps that used to pass: the write hides behind a construct.
+  for (const c of [
+    `echo \${ gh issue comment 1 --body-file ${dirty}; }`,
+    `echo \${ gh issue comment 1 --body-file ${clean}; }`,
+    `echo \${| gh issue comment 1 --body x; }`,
+    'alias g=gh; g issue comment 1 --body x',
+    `source ./post.sh; gh issue comment 1 --body-file ${clean}`,
+    `. ./post.sh && gh issue comment 1 --body-file ${clean}`,
+    `f() { gh issue comment 1 --body-file ${clean}; }; f`,
+    `function f { gh issue comment 1 --body x; }\nf`,
+    `gh issue com\\\nment 1 --body-file ${clean}`,
+  ]) ok(`blocks an unmodelled construct: ${c.slice(0, 50).replace(/\n/g, ' ')}`, code(c) === CODE);
+
+  // Existing verdicts keep priority over the new gate.
+  ok('eval + gh write stays an opaque-write block', code(`eval 'gh issue comment 1 --body-file ${clean}'`) === 'SECRET_GUARD_OPAQUE_WRITE');
+  ok('a function body with a literal secret stays a secret block', code(`f() { gh issue comment 1 --body ${T}; }; f`) === 'SECRET_IN_ISSUE_WRITE');
+  ok('a secret file next to source stays a secret block', code(`source ./x.sh; gh issue comment 1 --body-file ${dirty}`) === 'SECRET_IN_ISSUE_WRITE');
+  ok('an unreadable body file next to source keeps its code', code('source ./x.sh; gh issue comment 1 --body-file /nonexistent/sg-um.md') === 'SECRET_GUARD_UNREADABLE_BODY_FILE');
+  ok('printf -v feeding a body still blocks (unresolved)', code('printf -v B %s x; gh issue edit 1 --body "$B"') !== null);
+  ok('the gate also replaces the could-not-scan advisory', code(`source ./x.sh; gh issue comment 1 --body-file ${clean}`, { TRAILHEAD_SECRETGUARD_THROW: '1' }) === CODE);
+
+  // Plain controls pass.
+  for (const c of [
+    "alias ll='ls -l'",
+    'alias g=gh',
+    "alias ll='ls -l'; gh issue comment 1 --body-file " + clean,
+    'alias g=gh; g issue list',
+    'source ~/.venv/bin/activate && pytest',
+    'eval "$(ssh-agent)"',
+    'eval "$(ssh-agent)"; gh issue comment 1 --body-file ' + clean,
+    'printf -v x %s y; echo $x',
+    'f() { gh issue comment 1 --body x; }',
+    'f() { ls; }; gh issue comment 1 --body-file ' + clean,
+    `echo \${ date; }; gh issue comment 1 --body-file ${clean}`,
+    `gh issue comment 1 --body-file ${clean}; source ./post.sh`,
+    `gh issue comment 1 --body-file ${clean}; printf -v x %s y`,
+    `gh issue comment 1 --body 'use eval and source and alias here'`,
+    `gh issue comment 1 --body-file ${clean} # eval x`,
+    'echo "gh issue edit 1"; alias ll=ls',
+    `gh issue comment 1 \\\n  --body-file ${clean}`,
+    `gh api repos/o/r/issues/1/comments -f body=x`,
+    `gh api repos/o/r/issues/1/comments -f 'body'=x`, // followed exactly since #219
+    `gh api repos/o/r/issues/1/comments -f bo""dy=x`,
+    `gh api repos/o/r/issues/1/comments -f "body=x"`,
+    `gh api repos/o/r/issues/1/comments -F title=x`,
+  ]) ok(`passes a plain form: ${c.slice(0, 50).replace(/\n/g, ' ')}`, runHook(c).code === 0);
+
+  const m = msg(`echo \${ gh issue comment 1 --body ${T}; }`);
+  ok('the message explains the rewrite', /cannot interpret with certainty/.test(m) && /Rewrite it in a simple form/.test(m));
+  ok('the message never echoes the token', m !== '' && !m.includes(T) && !m.includes('ghp_'));
+
+  // Regression (#226): a variable-held directory resolves; clean passes, secret and missing block.
+  const dir = path.join(os.tmpdir(), `sg-um-dir-${process.pid}`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'x.md'), 'All good.\n');
+  ok('S=<dir>; --body-file $S/x.md passes on a clean file', runHook(`S=${dir}; gh issue edit 13 --body-file $S/x.md`).code === 0);
+  fs.writeFileSync(path.join(dir, 'x.md'), 'Deploy: AKIAIOSFODNN7EXAMPLE\n');
+  ok('S=<dir>; --body-file $S/x.md blocks on a secret file', code(`S=${dir}; gh issue edit 13 --body-file $S/x.md`) === 'SECRET_IN_ISSUE_WRITE');
+  fs.rmSync(path.join(dir, 'x.md'));
+  ok('S=<dir>; --body-file $S/x.md blocks when the file is missing', code(`S=${dir}; gh issue edit 13 --body-file $S/x.md`) === 'SECRET_GUARD_UNREADABLE_BODY_FILE');
+  fs.rmSync(dir, { recursive: true });
+  fs.rmSync(clean);
+  fs.rmSync(dirty);
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

@@ -265,8 +265,10 @@ function isRelevant(hit, isWrite) {
   }
 }
 
-function firstRelevant(hits, isWrite) {
-  return hits.find((h) => isRelevant(h, isWrite)) || null;
+// The first relevant hit, or null. `modelled` lists ids of constructs the calling guard
+// already follows exactly (its frozen emulation), so they are not blocked there.
+function firstRelevant(hits, isWrite, modelled = []) {
+  return hits.find((h) => !modelled.includes(h.id) && isRelevant(h, isWrite)) || null;
 }
 
 // --- the message -----------------------------------------------------------------

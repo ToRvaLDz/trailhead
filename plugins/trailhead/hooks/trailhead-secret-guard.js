@@ -20,6 +20,13 @@
 // Known limits, accepted (fail closed or best-effort, never silent):
 //   - a gh write run through bash -c / sh -c / zsh -c / eval / xargs is not analysed:
 //     it blocks as SECRET_GUARD_OPAQUE_WRITE (run gh directly instead);
+//   - a construct the guard cannot interpret with certainty (eval, source / `.`,
+//     a bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted or
+//     split `gh api` body key, a backslash-newline inside a word) is not emulated: as a
+//     FINAL gate, after every verdict above, it blocks with
+//     SECRET_GUARD_UNMODELLED_CONSTRUCT when it can matter (the code it hides or runs
+//     later is a gh write, a write follows it, or its own statement is one). The
+//     message asks for the simple form (lib/unmodelled.js is the one closed list; #227);
 //   - a body file produced by an unrecognised writer (curl -o, a script, ...) in the
 //     same command is not traced: the file must already exist, or the write blocks.
 // Fail-CLOSED on a body file it cannot vouch for: a path that cannot be resolved
@@ -38,6 +45,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
+const { findUnmodelled, firstRelevant, unmodelledReason } = require('./lib/unmodelled.js');
 const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize, stripQuotes } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
@@ -514,6 +522,31 @@ function gatherText(cmd, writes, env, cwd) {
   return { text };
 }
 
+// The text with every secret-looking piece replaced, for a message that quotes the command.
+function redact(text) {
+  let out = String(text);
+  for (const { re } of SECRET_PATTERNS) out = out.replace(new RegExp(re.source, 'g'), '<REDACTED>');
+  return out.replace(new RegExp(ASSIGN_RE.source, 'gi'), (m, key) => `${key}=<REDACTED>`);
+}
+
+// A quoted or split gh api body key (`-f 'body'=`, `bo""dy=`) is followed exactly since
+// #219 (writeKind and the body sources read the quote-removed key), so it is no gap here.
+const MODELLED_HERE = ['api-field'];
+
+// The final gate (#227): a construct the guard cannot interpret (eval, source, a
+// function substitution, printf -v, a function definition, an alias, a quoted gh api
+// body key, a backslash-newline inside a word) is blocked, never emulated, when it can
+// matter here: its payload, its later calls, a write after it or its own statement is a
+// gh write by ghWrites. Returns a block verdict or null.
+function unmodelledGate(cmd, env) {
+  const hit = firstRelevant(findUnmodelled(cmd), (text) => ghWrites(text, env).length > 0, MODELLED_HERE);
+  if (!hit) return null;
+  return blockVerdict(
+    'SECRET_GUARD_UNMODELLED_CONSTRUCT',
+    unmodelledReason('secret-guard', 'that the body it posts is secret-free', hit, redact),
+  );
+}
+
 // Pure verdict for one command: allow | block {payload} | advise {payload, stderr}.
 // Never exits or writes. `env` carries the test seam so the merged runner's
 // environment is the one honoured; `cwd` is the hook input's working directory
@@ -522,6 +555,12 @@ function gatherText(cmd, writes, env, cwd) {
 // resolved file cannot be read, the write is blocked (it would otherwise post an
 // unscanned body). Only an internal scanner fault is an advisory.
 function evaluate(cmd, { env = process.env, cwd } = {}) {
+  const verdict = evaluateWrites(cmd, env, cwd);
+  if (verdict.kind === 'block') return verdict; // every earlier verdict keeps priority
+  return unmodelledGate(cmd, env) || verdict;
+}
+
+function evaluateWrites(cmd, env, cwd) {
   const writes = ghWrites(cmd, env);
   if (writes.length === 0) return { kind: 'allow' }; // not a tracker write: out of scope
   if (writes.some((w) => w.kind === 'opaque')) return opaqueBlock();
@@ -571,4 +610,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ghIssueWrite, ghWrites, resolveBodyFile, bodyFileText, scan, evaluate, SECRET_PATTERNS };
+module.exports = { ghIssueWrite, ghWrites, resolveBodyFile, bodyFileText, scan, evaluate, redact, SECRET_PATTERNS };

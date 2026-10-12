@@ -130,6 +130,8 @@ ok('an in-word continuation in a write is relevant', relevant('gh issue com\\\nm
 ok('an in-word continuation outside a write is not', !relevant('cat .e\\\nnv; gh issue comment 1 --body-file /tmp/clean.md'));
 ok('an in-word continuation in a piped write is relevant', relevant('cat .e\\\nnv | gh issue comment 1 --body-file -'));
 
+ok('a construct the guard already models is skipped', firstRelevant(findUnmodelled("gh api repos/o/r/issues/1 -f 'body'=x"), isWrite, ['api-field']) === null);
+
 // --- the message ---
 {
   const hit = findUnmodelled('eval "gh issue comment 1 --body ghp_' + 'a'.repeat(36) + '"')[0];
