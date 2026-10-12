@@ -312,6 +312,8 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
     ok(`denies an unmodelled construct near a secret piece: ${c}`, !!hit && !!hit.unmodelled);
     ok(`... with the unmodelled code (exit 2): ${c}`, code(c) === CODE);
   }
+  ok('a quoted api body key mentioning .env in prose is not a read', detectSecretRead('Bash', { command: "gh api -X PATCH repos/a/b/issues/1 -f 'body'='document the .env file'" }) === null);
+  ok('... and the hook allows it', runHook('Bash', { command: "gh api -X PATCH repos/a/b/issues/1 -f 'body'='document the .env file'" }).code === 0);
   // The precise scan keeps priority and its code.
   ok('a precise read keeps SECRET_READ_BLOCKED', code('eval cat .env') === 'SECRET_READ_BLOCKED');
   ok('a precise read inside a function body keeps SECRET_READ_BLOCKED', code('f() { cat .env; }; f') === 'SECRET_READ_BLOCKED');
@@ -340,5 +342,21 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
+
+// --- #227: a missing unmodelled lib degrades to the previous behaviour ---
+{
+  const fs = require('fs');
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srg-nolib-'));
+  fs.mkdirSync(path.join(dir, 'lib'));
+  for (const f of fs.readdirSync(path.join(__dirname, 'lib'))) {
+    if (/\.(js|json)$/.test(f) && !f.endsWith('.test.js') && f !== 'unmodelled.js') fs.copyFileSync(path.join(__dirname, 'lib', f), path.join(dir, 'lib', f));
+  }
+  fs.copyFileSync(path.join(__dirname, 'trailhead-secret-read-guard.js'), path.join(dir, 'trailhead-secret-read-guard.js'));
+  const bare = require(path.join(dir, 'trailhead-secret-read-guard.js'));
+  ok('without the unmodelled lib the guard still loads and denies a precise read', !!bare.detectSecretRead('Bash', { command: 'cat .env' }));
+  ok('without the unmodelled lib the unmodelled gate is off', bare.detectSecretRead('Bash', { command: 'source .e""nv' }) === null);
+  fs.rmSync(dir, { recursive: true });
+}
 
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);

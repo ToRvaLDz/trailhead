@@ -120,7 +120,6 @@ const {
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
 } = require('./lib/shell-scan.js');
-const { findUnmodelled, unmodelledReason } = require('./lib/unmodelled.js');
 
 // --- path helpers ------------------------------------------------------------
 
@@ -543,7 +542,14 @@ function crudeSecretPiece(text) {
 // read (`printf -v x %s .env` blocks too): the uncertain shape is blocked and the simple
 // form asked for, not emulated.
 function unmodelledSecretPiece(cmd) {
-  for (const hit of findUnmodelled(cmd)) {
+  let lib; // loaded lazily: a missing or broken lib only switches this gate off
+  try {
+    lib = require('./lib/unmodelled.js');
+  } catch {
+    return null;
+  }
+  for (const hit of lib.findUnmodelled(cmd)) {
+    if (hit.id === 'api-field') continue; // a body-write concern (body-guard), not a read
     const piece = crudeSecretPiece(hit.stmt) || crudeSecretPiece(hit.payload);
     if (piece) return { hit, piece };
   }
@@ -578,7 +584,7 @@ function blockUnmodelled(hit) {
   } catch {
     redact = undefined;
   }
-  const reason = unmodelledReason('secret-read guard', 'that it does not read a secret file (.env / .env.* / .secrets)', hit.unmodelled, redact);
+  const reason = require('./lib/unmodelled.js').unmodelledReason('secret-read guard', 'that it does not read a secret file (.env / .env.* / .secrets)', hit.unmodelled, redact);
   process.stdout.write(JSON.stringify({ decision: 'block', code: 'SECRET_READ_UNMODELLED_CONSTRUCT', reason }));
   process.exit(2);
 }

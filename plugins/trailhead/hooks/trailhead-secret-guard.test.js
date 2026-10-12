@@ -1111,4 +1111,19 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   fs.rmSync(dirty);
 }
 
+// --- #227: a missing unmodelled lib degrades to the previous behaviour ---
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-nolib-'));
+  fs.mkdirSync(path.join(dir, 'lib'));
+  for (const f of fs.readdirSync(path.join(__dirname, 'lib'))) {
+    if (/\.(js|json)$/.test(f) && !f.endsWith('.test.js') && f !== 'unmodelled.js') fs.copyFileSync(path.join(__dirname, 'lib', f), path.join(dir, 'lib', f));
+  }
+  fs.copyFileSync(path.join(__dirname, 'trailhead-secret-guard.js'), path.join(dir, 'trailhead-secret-guard.js'));
+  const bare = require(path.join(dir, 'trailhead-secret-guard.js'));
+  const T = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'.slice(0, 36);
+  ok('without the unmodelled lib the guard still blocks a secret', bare.evaluate(`gh issue comment 1 --body ${T}`).kind === 'block');
+  ok('without the unmodelled lib the unmodelled gate is off', bare.evaluate('alias g=gh; g issue comment 1 --body x').kind === 'allow');
+  fs.rmSync(dir, { recursive: true });
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

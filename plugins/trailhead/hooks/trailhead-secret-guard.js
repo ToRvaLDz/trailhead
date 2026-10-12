@@ -45,7 +45,6 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { findUnmodelled, firstRelevant, unmodelledReason } = require('./lib/unmodelled.js');
 const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize, stripQuotes } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
@@ -539,6 +538,13 @@ const MODELLED_HERE = ['api-field'];
 // matter here: its payload, its later calls, a write after it or its own statement is a
 // gh write by ghWrites. Returns a block verdict or null.
 function unmodelledGate(cmd, env) {
+  let lib; // loaded lazily: a missing or broken lib only switches this gate off
+  try {
+    lib = require('./lib/unmodelled.js');
+  } catch {
+    return null;
+  }
+  const { findUnmodelled, firstRelevant, unmodelledReason } = lib;
   const hit = firstRelevant(findUnmodelled(cmd), (text) => ghWrites(text, env).length > 0, MODELLED_HERE);
   if (!hit) return null;
   return blockVerdict(
