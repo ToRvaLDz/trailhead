@@ -15,6 +15,11 @@
 // ANY provably empty body blocks. Opaque writes (eval, sh -c, ...) are ignored
 // (fail-open). After a cd the working directory is unknown, so a relative
 // --body-file / api `@path` is unknowable and never blocks.
+// A construct it cannot interpret with certainty (eval, source / `.`, a bash 5.3
+// `${ cmd; }`, printf -v, a function definition, an alias, a quoted or split `gh api`
+// body key, a backslash-newline inside a word) is not emulated: as a FINAL gate, after
+// the empty-body verdict, it blocks with BODY_GUARD_UNMODELLED_CONSTRUCT when a body
+// write hides behind it or follows it (lib/unmodelled.js is the one closed list; #227).
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
 // Fail-OPEN on any error (exit 0): this is a cheap backstop, not a hard
 // dependency, and a crash here must never block a legitimate write.
@@ -222,15 +227,50 @@ function blockVerdict(kind) {
   };
 }
 
+// The final gate (#227): a construct the guard cannot interpret (eval, source / `.`, a
+// bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted or split
+// `gh api` body key, a backslash-newline inside a word) is blocked, not emulated, when
+// it can matter here: its payload, its later calls, a write after it or its own
+// statement is a body write by ghBodyWrites (a quoted api key only when the body it sets is
+// empty or unknowable).
+// Returns a block verdict or null.
+function unmodelledGate(cmd) {
+  const { findUnmodelled, firstRelevant, unmodelledReason } = require('./lib/unmodelled.js');
+  const hits = findUnmodelled(cmd);
+  // A quoted api key is no gap when the body it sets is known and not empty
+  // (`-f 'body'=@file` is read like the plain form); only an empty or unknowable one is.
+  const emptyOrUnknown = (h) => ghBodyWrites(h.payload).some((w) => w.body === null || w.body === undefined || isEmptyBody(w.body));
+  const hit = firstRelevant(hits, (text) => ghBodyWrites(text).length > 0, ['api-field']) ||
+    hits.find((h) => h.id === 'api-field' && emptyOrUnknown(h));
+  if (!hit) return null;
+  let redact; // the secret-guard's redactor; without it the message omits the sample
+  try {
+    ({ redact } = require('./trailhead-secret-guard.js'));
+  } catch {
+    redact = undefined;
+  }
+  return {
+    kind: 'block',
+    payload: {
+      decision: 'block',
+      code: 'BODY_GUARD_UNMODELLED_CONSTRUCT',
+      reason: unmodelledReason('body-guard', 'that it does not overwrite a body with an empty one', hit, redact),
+    },
+  };
+}
+
 // Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
 // exits or writes; any internal error falls through to allow (a crash here must
-// never block a legitimate write).
+// never block a legitimate write). The unmodelled-construct gate runs last, so an
+// empty body found above keeps its own verdict.
 function evaluate(cmd) {
   try {
     for (const hit of ghBodyWrites(cmd)) {
       if (hit.body === null || hit.body === undefined) continue; // a body we cannot prove empty
       if (isEmptyBody(hit.body)) return blockVerdict(hit.kind);
     }
+    const gate = unmodelledGate(cmd);
+    if (gate) return gate;
   } catch {
     // never let a crash here block a legitimate write
   }

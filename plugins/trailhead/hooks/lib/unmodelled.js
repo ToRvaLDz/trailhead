@@ -150,23 +150,30 @@ const API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field']);
 
 // A `gh api` statement with a body field whose key is `body` once quotes are removed
 // but is not written as the bare key (`'body'=`, `bo""dy=`, `b\ody=`). A fully quoted
-// pair (`-f "body=x"`, `-f 'body=x'`) is the plain form.
-function hasQuotedBodyField(toks) {
+// pair (`-f "body=x"`, `-f 'body=x'`) is the plain form. Returns the statement
+// rewritten with the plain field (`-f 'body=<value>'`), or null when there is no such
+// field, so a guard can judge the body the field sets.
+function quotedBodyFieldStatement(toks) {
   const parsed = parseGhSubcommand(toks.join(' '));
-  if (!parsed || parsed.sub !== 'api') return false;
+  if (!parsed || parsed.sub !== 'api') return null;
   for (let k = 0; k < toks.length; k++) {
     const flag = dequote(toks[k]);
     let raw = null;
-    if (API_FIELD_FLAGS.has(flag)) raw = toks[++k];
-    else if (/^--(?:raw-)?field=/.test(flag)) raw = toks[k].slice(toks[k].indexOf('=') + 1);
-    else if (/^-[fF]./.test(toks[k])) raw = toks[k].slice(2);
-    if (raw === null || raw === undefined) continue;
+    let lead = ''; // what stays in front of the rewritten field when the flag and value are glued
+    let at = k; // index of the token holding the value
+    if (API_FIELD_FLAGS.has(flag) && k + 1 < toks.length) { raw = toks[k + 1]; at = k + 1; k++; }
+    else if (/^--(?:raw-)?field=/.test(flag)) { raw = toks[k].slice(toks[k].indexOf('=') + 1); lead = `${flag.slice(0, flag.indexOf('='))} `; }
+    else if (/^-[fF]./.test(toks[k])) { raw = toks[k].slice(2); lead = `${toks[k].slice(0, 2)} `; }
+    if (raw === null) continue;
     const value = dequote(raw);
-    if (value.slice(0, value.indexOf('=')) !== 'body' || value.indexOf('=') < 0) continue;
+    const eq = value.indexOf('=');
+    if (eq < 0 || value.slice(0, eq) !== 'body') continue;
     const plain = /^body=/.test(raw) || /^"body=(?:[^"\\]|\\[\s\S])*"$/.test(raw) || /^'body=[^']*'$/.test(raw);
-    if (!plain) return true;
+    if (plain) continue;
+    const field = `${lead}'body=${value.slice(eq + 1).replace(/'/g, "'\\''")}'`;
+    return [...toks.slice(0, at), field, ...toks.slice(at + 1)].join(' ');
   }
-  return false;
+  return null;
 }
 
 // printf with a -v option before its format.
@@ -203,8 +210,8 @@ function statementHits(entries, idx) {
     const calls = defs.flatMap(([name, value]) => callsOf(name, entries, idx).map((c) => `${value} ${c.args.join(' ')}`.trim()));
     return [makeHit('alias', { ...base, name: defs.length ? defs[0][0] : '', payload: defs.map((d) => d[1]).join('\n'), calls })];
   }
-  if (cmd && hasQuotedBodyField(toks)) return [makeHit('api-field', base)];
-  return [];
+  const normalized = cmd ? quotedBodyFieldStatement(toks) : null;
+  return normalized ? [makeHit('api-field', { ...base, payload: normalized })] : [];
 }
 
 // The pipeline a statement belongs to, joined (`a | b | c`).

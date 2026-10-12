@@ -77,6 +77,8 @@ ok('-f b\\ody= is detected', has('gh api repos/o/r/issues/1 -f b\\ody=x', 'api-f
 ok('--field "body"= is detected', has('gh api repos/o/r/issues/1 --field "body"=x', 'api-field'));
 ok('--raw-field=bo""dy=x is detected', has('gh api repos/o/r/issues/1 --raw-field=bo""dy=x', 'api-field'));
 ok('-Fb\'ody\'=x glued is detected', has("gh api repos/o/r/issues/1 -F'body'=x", 'api-field'));
+ok('the api-field payload is the statement with a plain field', findUnmodelled("gh api -X PATCH r -f 'body'=\"\"")[0].payload === "gh api -X PATCH r -f 'body='");
+ok('the api-field payload keeps a glued form plain too', findUnmodelled('gh api r --field=bo""dy=hi')[0].payload === "gh api r --field 'body=hi'");
 ok('-f body=x is plain', none('gh api repos/o/r/issues/1 -f body=x'));
 ok('-f "body=x" is plain', none('gh api repos/o/r/issues/1 -f "body=x"'));
 ok("-f 'body=x' is plain", none("gh api repos/o/r/issues/1 -f 'body=x'"));

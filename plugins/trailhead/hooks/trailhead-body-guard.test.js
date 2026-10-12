@@ -363,4 +363,69 @@ ok('a non-body gh command exits 0', c2.code === 0 && c2.out.trim() === '');
 const bFlagVerb = runHook('gh issue -R o/r edit 5 --body ""');
 ok('blocks an empty --body with a flag before the verb (exit 2)', bFlagVerb.code === 2 && /EMPTY_ISSUE_BODY_WRITE/.test(bFlagVerb.out));
 
+// #227: constructs the guard cannot interpret are blocked, not emulated.
+{
+  const CODE = 'BODY_GUARD_UNMODELLED_CONSTRUCT';
+  const clean = path.join(os.tmpdir(), `bg-um-clean-${process.pid}.md`);
+  fs.writeFileSync(clean, 'A real body.\n');
+  const code = (c) => { const r = runHook(c); return r.code === 2 ? (JSON.parse(r.out).code || '?') : null; };
+
+  // Gaps that used to pass.
+  for (const c of [
+    `gh api -X PATCH repos/o/r/issues/1 -f 'body'=""`,
+    'gh api -X PATCH repos/o/r/issues/1 -f bo""dy=""',
+    'printf -v B %s x; gh issue edit 1 --body "$B"',
+    `source ./x.sh; gh issue edit 1 --body-file ${clean}`,
+    `. ./x.sh && gh pr edit 1 --body real`,
+    `eval 'gh issue edit 1 --body real'`,
+    'echo ${ gh issue edit 1 --body ""; }',
+    'alias g=gh; g issue edit 1 --body ""',
+    'f() { gh issue edit 1 --body real; }; f',
+    `gh issue ed\\\nit 1 --body real`,
+  // Through the merged runner the secret-guard speaks first on some of these (its own gate); still a block.
+  ]) ok(`blocks an unmodelled construct: ${c.slice(0, 50)}`, code(c) === CODE || (!!process.env.TRAILHEAD_GUARD_HOOK && code(c) !== null));
+
+  // An unknowable body behind a quoted key blocks too (through the merged runner the secret-guard may speak first).
+  ok('a quoted api key with an unknowable body blocks', code('gh api -X PATCH repos/o/r/issues/1 -f b\\ody="$B"') !== null);
+  ok('a quoted api key with an unreadable file blocks', code("gh api -X PATCH repos/o/r/issues/1 -f 'body'=@/nonexistent/bg-um.md") !== null);
+  ok('the existing empty-body verdict keeps priority', code('source ./x.sh; gh issue edit 1 --body ""') === 'EMPTY_ISSUE_BODY_WRITE' ||
+    (!!process.env.TRAILHEAD_GUARD_HOOK && code('source ./x.sh; gh issue edit 1 --body ""') !== null));
+  ok('an empty body before the construct keeps its verdict', code('gh issue edit 1 --body ""; alias g=gh') === 'EMPTY_ISSUE_BODY_WRITE');
+
+  // Plain controls pass.
+  for (const c of [
+    "alias ll='ls -l'",
+    'alias g=gh',
+    'source ~/.venv/bin/activate && pytest',
+    'eval "$(ssh-agent)"',
+    'eval "$(ssh-agent)"; gh issue edit 1 --body-file ' + clean,
+    'printf -v x %s y; echo $x',
+    `gh issue edit 1 --body-file ${clean}; source ./x.sh`,
+    'f() { gh issue edit 1 --body x; }',
+    `gh issue edit 1 --body 'use eval, source and alias here'`,
+    `gh issue edit 1 --body-file ${clean} # eval x`,
+    `gh issue edit 1 \\\n  --body-file ${clean}`,
+    'gh api -X PATCH repos/o/r/issues/1 -f body=x',
+    `gh api -X PATCH repos/o/r/issues/1 -f 'body'=real`, // a known, non-empty body is read like the plain form
+    `gh api -X PATCH repos/o/r/issues/1 -f 'body'=@${clean}`,
+    'gh api -X PATCH repos/o/r/issues/1 -f "body=x"',
+    `gh api -X PATCH repos/o/r/issues/1 -F title=x`,
+  ]) ok(`passes a plain form: ${c.slice(0, 50)}`, runHook(c).code === 0);
+
+  // Not a body-guard concern (a comment adds text, it overwrites nothing); the merged runner's
+  // secret-guard may block these for its own reasons, so only the standalone guard is checked.
+  if (!process.env.TRAILHEAD_GUARD_HOOK) {
+    for (const c of [
+      'alias g=gh; g issue comment 1 --body x',
+      'printf -v B %s x; gh issue comment 1 --body "$B"',
+      `source ./x.sh; gh issue comment 1 --body-file ${clean}`,
+    ]) ok(`passes a non-overwriting write: ${c.slice(0, 50)}`, runHook(c).code === 0);
+  }
+
+  const r = runHook(`gh api -X PATCH repos/o/r/issues/1 -f 'body'=""`);
+  const reason = JSON.parse(r.out).reason;
+  ok('the message names the guard and asks for the simple form', /^trailhead body-guard: /.test(reason) && /Rewrite it in a simple form/.test(reason));
+  fs.rmSync(clean);
+}
+
 console.log(`✓ body-guard: ${passed} assertions passed`);
