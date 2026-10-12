@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { MapInfo, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, MapInfo, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -17,6 +17,8 @@ export type RefreshDecision = { run: true } | { run: false; waitMs: number }
 
 // The most rows one `gh issue list` is asked for.
 export const LIST_LIMIT = 200
+// Same for the history read (`--state all`); newest first, so a cap loses the oldest tickets.
+export const HISTORY_LIMIT = 5000
 
 const LABEL_PREFIX = 'trailhead:'
 
@@ -208,4 +210,141 @@ export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
     isDim: t.state === 'blocked',
     isInPlay: ctx.isInPlay,
   }
+}
+
+const REMOVED_LABELS = [`${LABEL_PREFIX}superseded`, `${LABEL_PREFIX}out-of-scope`]
+
+const parseTime = (raw: unknown): number | null => {
+  if (typeof raw !== 'string') return null
+  const ms = Date.parse(raw)
+  return Number.isNaN(ms) ? null : ms
+}
+
+// gh prints an open issue's closedAt as the zero date: anything before the epoch means open.
+const closedTime = (raw: unknown): number | null => {
+  const ms = parseTime(raw)
+  return ms === null || ms <= 0 ? null : ms
+}
+
+const historyIssue = (r: Record<string, unknown>): BurndownIssue[] => {
+  const names = labelNames(r.labels)
+  if (names.includes(`${LABEL_PREFIX}unverified`) || names.includes(`${LABEL_PREFIX}whiteboard`)) return []
+  const openedAt = parseTime(r.createdAt)
+  const closedAt = closedTime(r.closedAt)
+  if (openedAt === null || (closedAt !== null && closedAt < openedAt)) return []
+  return [{ openedAt, closedAt, isRemoved: REMOVED_LABELS.some(l => names.includes(l)) }]
+}
+
+// `gh issue list --state all --json number,labels,createdAt,closedAt`.
+export const parseHistory = (stdout: string): BurndownHistory | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  return { issues: raw.filter(isRecord).flatMap(historyIssue), isCapped: raw.length >= HISTORY_LIMIT }
+}
+
+export type BurndownSeries = {
+  values: readonly number[]
+  open: number
+  peak: number
+  done: number
+  removed: number
+  startedAt: number
+}
+
+// Open tickets at `buckets` evenly spaced times from the first ticket to `now` (the last sample).
+export const burndownSeries = (history: BurndownHistory, now: number, buckets: number): BurndownSeries | null => {
+  if (history.issues.length === 0 || buckets <= 0) return null
+  const issues = history.issues.map(i => ({
+    ...i,
+    openedAt: Math.min(i.openedAt, now),
+    closedAt: i.closedAt === null ? null : Math.min(i.closedAt, now),
+  }))
+  const startedAt = Math.min(...issues.map(i => i.openedAt))
+  const timeAt = (n: number) => (n === buckets - 1 ? now : startedAt + ((now - startedAt) * n) / (buckets - 1))
+  const values = Array.from({ length: buckets }, (_, n) => {
+    const t = timeAt(n)
+    return issues.filter(i => i.openedAt <= t).length - issues.filter(i => i.closedAt !== null && i.closedAt <= t).length
+  })
+  const closed = issues.filter(i => i.closedAt !== null)
+  return {
+    values,
+    open: values[values.length - 1] as number,
+    peak: Math.max(...values),
+    done: closed.filter(i => !i.isRemoved).length,
+    removed: closed.filter(i => i.isRemoved).length,
+    startedAt,
+  }
+}
+
+const EIGHTHS = '▁▂▃▄▅▆▇█'
+
+// Bar height in eighths of a cell over `levels`: zero stays zero, any other value is at least one.
+const heightOf = (value: number, peak: number, levels: number): number =>
+  value <= 0 || peak <= 0 ? 0 : Math.min(levels, Math.max(1, Math.round((value / peak) * levels)))
+
+// One row of eighth blocks; a zero is a space.
+export const sparkline = (values: readonly number[], peak: number): string =>
+  values.map(v => (heightOf(v, peak, 8) === 0 ? ' ' : (EIGHTHS[heightOf(v, peak, 8) - 1] as string))).join('')
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const DEFAULT_COLOR = 0x01000000
+const SPACE = 0x20
+const FULL_BLOCK = 0x2588
+const LOWER_BLOCK_BASE = 0x2580
+
+// Padded base64 written here: the mod runtime is not promised Buffer, btoa or toBase64.
+const base64 = (bytes: Uint8Array): string => {
+  const chars: string[] = []
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i] as number
+    const b1 = bytes[i + 1]
+    const b2 = bytes[i + 2]
+    const n = (b0 << 16) | ((b1 ?? 0) << 8) | (b2 ?? 0)
+    chars.push(BASE64[(n >> 18) & 63] as string, BASE64[(n >> 12) & 63] as string)
+    chars.push(b1 === undefined ? '=' : (BASE64[(n >> 6) & 63] as string), b2 === undefined ? '=' : (BASE64[n & 63] as string))
+  }
+  return chars.join('')
+}
+
+// The glyph of one cell: `fromBottom` rows below it are full, `eighths` is the bar height.
+const glyphAt = (eighths: number, fromBottom: number): number => {
+  const full = Math.floor(eighths / 8)
+  if (fromBottom < full) return FULL_BLOCK
+  return fromBottom === full && eighths % 8 > 0 ? LOWER_BLOCK_BASE + (eighths % 8) : SPACE
+}
+
+// The Raster `cells` prop: row-major (top first) little-endian u32 triplets [codePoint, fg, bg].
+export const rasterCells = (values: readonly number[], peak: number, rows: number, fg: number): string => {
+  const columns = values.length
+  const heights = values.map(v => heightOf(v, peak, rows * 8))
+  const bytes = new Uint8Array(columns * rows * 12)
+  const view = new DataView(bytes.buffer)
+  for (let row = 0; row < rows; row += 1) {
+    heights.forEach((h, col) => {
+      const at = (row * columns + col) * 12
+      view.setUint32(at, glyphAt(h, rows - 1 - row), true)
+      view.setUint32(at + 4, fg, true)
+      view.setUint32(at + 8, DEFAULT_COLOR, true)
+    })
+  }
+  return base64(bytes)
+}
+
+export const chartKind = (hasRaster: boolean): 'raster' | 'text' => (hasRaster ? 'raster' : 'text')
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const DAY_MS = 86_400_000
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+// Left axis label, in UTC so it is the same everywhere: `Sep 18`, or `today 09:05` under a day.
+export const axisStart = (startedAt: number, now: number): string => {
+  const d = new Date(startedAt)
+  return now - startedAt < DAY_MS
+    ? `today ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`
+    : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`
 }

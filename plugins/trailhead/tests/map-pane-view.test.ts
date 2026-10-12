@@ -357,8 +357,21 @@ test('sparkline draws eighth blocks scaled to the peak, a zero as a space', () =
 })
 
 // The Raster `cells` prop back into [codePoint, fg, bg] words
+// The test runtime has no Buffer, so the decoder is written here, apart from the encoder under test
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const unbase64 = (text: string): Uint8Array => {
+  const sextets = Array.from(text.replace(/=+$/, ''), c => ALPHABET.indexOf(c))
+  const out: number[] = []
+  for (let i = 0; i + 1 < sextets.length; i += 4) {
+    const [a, b, c, d] = [sextets[i] as number, sextets[i + 1] as number, sextets[i + 2], sextets[i + 3]]
+    out.push((a << 2) | (b >> 4))
+    if (c !== undefined) out.push(((b & 15) << 4) | (c >> 2))
+    if (c !== undefined && d !== undefined) out.push(((c & 3) << 6) | d)
+  }
+  return Uint8Array.from(out)
+}
 const decode = (cells: string) => {
-  const bytes = Buffer.from(cells, 'base64')
+  const bytes = unbase64(cells)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   return Array.from({ length: bytes.byteLength / 4 }, (_, i) => view.getUint32(i * 4, true))
 }
@@ -372,9 +385,11 @@ test('rasterCells packs columns * rows little-endian triplets, top row first', (
   expect(glyphs(words)).toEqual([' ', ' ', '█', ' ', '█', '█'])
   expect(words[2]).toBe(0x01000000)
   expect(words[5]).toBe(0x01000000)
-  expect(words[8]).toBe(0x7aa2f7)
+  expect(words[7]).toBe(0x7aa2f7)
   expect(cells).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
   expect(cells.length % 4).toBe(0)
+  // one full cell in the terminal's own example: 0x2588, 0xff8800, 0x01000000 (little-endian)
+  expect(rasterCells([1], 1, 1, 0xff8800)).toBe('iCUAAACI/wAAAAAB')
 })
 
 test('rasterCells draws a partial top cell with an eighth block and keeps a non-zero value visible', () => {
@@ -385,10 +400,11 @@ test('rasterCells draws a partial top cell with an eighth block and keeps a non-
   expect(decode(rasterCells([], 3, 3, 0xffffff))).toEqual([])
 })
 
-test('rasterCells encodes padded base64 for every cell count', () => {
+test('rasterCells encodes whole base64 for every cell count', () => {
   for (const n of [1, 2, 3, 4, 5]) {
     const cells = rasterCells(Array.from({ length: n }, () => 1), 1, 1, 0x112233)
-    expect(cells).toBe(Buffer.from(Buffer.from(cells, 'base64')).toString('base64'))
+    // 12 bytes per cell: a multiple of 3, so never padded; a known literal pins the alphabet
+    expect(cells.length).toBe(n * 16)
     expect(decode(cells)).toHaveLength(n * 3)
   }
 })

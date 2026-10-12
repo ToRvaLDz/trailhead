@@ -28,12 +28,20 @@ export type PaneTicket = {
 
 export type MapInfo = { number: number; title: string; destination: string | null; url: string }
 
+// One ticket of the map's history, in epoch ms; `closedAt` null while open.
+export type BurndownIssue = { openedAt: number; closedAt: number | null; isRemoved: boolean }
+// `isCapped`: gh returned as many rows as it was asked for, so the oldest tickets may be missing.
+export type BurndownHistory = { issues: readonly BurndownIssue[]; isCapped: boolean }
+
 // `map` and `tickets` keep the last good read through a failure; `error` is its reason (null: healthy).
+// `history` has its own last good read and time (`historyAt`): a history-only failure keeps it.
 export type MapPaneData = {
   map: MapInfo | null
   tickets: readonly PaneTicket[]
   unverifiedCount: number
   isCapped: boolean
+  history: BurndownHistory | null
+  historyAt: number | null
   fetchedAt: number | null
   error: string | null
   isLoading: boolean
