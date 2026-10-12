@@ -263,7 +263,7 @@ const ENTRYPOINT_FILES = HOOK_FILES.filter((f) => !BASH_GUARD_MODULES.includes(f
 // require('./lib/mockup-link.js')). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must
 // not clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'body-sources.js', 'model-defaults-review.js', 'model-defaults.json', 'mockup-link.js'];
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'body-sources.js', 'unmodelled.js', 'model-defaults-review.js', 'model-defaults.json', 'mockup-link.js'];
 // search-guard is Claude-Code-specific (#169), and so is mockup-link-guard
 // (it gates the AskUserQuestion tool, which Codex lacks): excluded from both
 // the Codex hook copy and the Codex verify spec's expected hookFiles, so a
