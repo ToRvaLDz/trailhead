@@ -301,13 +301,15 @@ function parseRedirects(toks) {
   return { args, outs, stdin };
 }
 
-// A quoted or split token that is EXACTLY this flag (`'-F'`, `--body-fi""le`,
-// `"--body-file=F"`); never the attached shorthand, so a quoted free-text value that
-// merely starts like a flag is not mistaken for one (#219).
+// A quoted or split token that is this flag (`'-F'`, `--body-fi""le`, `"--body-file=F"`,
+// `"-F/p"`); free text with whitespace after a flag-like start is not (#219).
 function dequotedFlag(raw, long, short) {
   const d = dequote(raw);
   const hit = d === long || (short && d === short) || d.startsWith(`${long}=`) || (short && d.startsWith(`${short}=`));
-  return hit ? d : null;
+  // The attached shorthand (`"-F/p"`, `-"F"/p`) only with no whitespace after the flag:
+  // `"-F handling"` is free text. A quoted `"-Fixes"` is read as the flag (detection).
+  const attached = short && d.startsWith(short) && !d.startsWith('--') && d.length > short.length && !/\s/.test(d.slice(short.length));
+  return hit || attached ? d : null;
 }
 
 // Values of a gh flag (long form, optional short form), in order: `--long v`,
