@@ -969,6 +969,20 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     ok('a braced gh command word on a read passes', allowed('{gh,gh} issue view 5'));
     ok('a braced --label with a clean body passes', allowed(`${G} --label {a,b} --body hello`));
   }
+  // Only a gh WORD makes a braced statement a candidate write; an overflow only blocks a write-shaped one.
+  {
+    const T = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8';
+    ok('"gh" inside another word is not a gh command (echo)', allowed('echo {a..z}{a..z}{a..z} high'));
+    ok('"gh" inside a path is not a gh command (cp)', allowed('cp f{1..1000} ~/highway/'));
+    ok('"gh" inside a quoted arg is not a gh command (npm)',
+      allowed(`npm run test -- --grep "right" ${'{a,b}'.repeat(9)}`));
+    ok('a read-only gh command with an oversized group passes', allowed('gh issue view {1..300}'));
+    ok('a read-only gh list with nine groups passes', allowed(`gh issue list ${'{a,b}'.repeat(9)}`));
+    ok('a gh comment with an oversized group blocks', runHook(`${G} --body hi {1..300}`).code === 2);
+    ok('a gh api body with nine groups blocks', runHook(`gh api x -f body=hi ${'{a,b}'.repeat(9)}`).code === 2);
+    ok('a braced gh command word still blocks', runHook(`{gh,gh} issue comment 5 --body ${T}`).code === 2);
+    ok('a split braced gh command word still blocks', runHook(`g{h,h} issue comment 5 --body ${T}`).code === 2);
+  }
   {
     const { braceExpand } = require('./lib/body-sources.js');
     const J = JSON.stringify;
