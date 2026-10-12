@@ -141,4 +141,14 @@ ok("gh 'repo' view still resolves repo",
   ok('flagValues keeps a raw value untouched', J(flagValues(['--body', `'a b'`], '--body', '-b')) === J([`'a b'`]));
 }
 
+// --- #225: a flag between the subcommand and the verb is skipped ---
+{
+  const r = (c) => { const x = parseGhSubcommand(c); return x.sub + '/' + x.verb; };
+  ok('gh issue -R o/r comment 5 resolves issue/comment', r('gh issue -R o/r comment 5') === 'issue/comment');
+  ok('gh pr --repo o/r edit 5 resolves pr/edit', r('gh pr --repo o/r edit 5') === 'pr/edit');
+  ok('gh issue --repo=o/r comment 5 resolves issue/comment', r('gh issue --repo=o/r comment 5') === 'issue/comment');
+  ok('gh -R a/b issue -R o/r edit 5 resolves issue/edit', r('gh -R a/b issue -R o/r edit 5') === 'issue/edit');
+  ok('gh issue --help comment: boolean flag takes no value', r('gh issue --help comment') === 'issue/comment');
+}
+
 console.log(`✓ gh-subcommand: ${passed} assertions passed`);

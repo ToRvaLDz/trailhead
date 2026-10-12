@@ -1018,4 +1018,19 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   }
 }
 
+// #225: a flag between the subcommand and the verb must not hide the write.
+{
+  const T = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'.slice(0, 36);
+  for (const c of [
+    `gh issue -R o/r comment 5 --body ${T}`,
+    `gh pr -R o/r comment 5 --body ${T}`,
+    `gh issue --repo o/r comment 5 --body ${T}`,
+    `gh issue --repo=o/r comment 5 --body ${T}`,
+  ]) {
+    const r = runHook(c);
+    ok(`blocks a secret with a flag before the verb: ${c.slice(0, 40)} (exit 2)`, r.code === 2 && /"decision":"block"/.test(r.out));
+  }
+  ok('allows gh issue -R o/r view 5', runHook('gh issue -R o/r view 5').code === 0);
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

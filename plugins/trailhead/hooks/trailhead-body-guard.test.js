@@ -359,4 +359,8 @@ try {
 const c2 = runHook('gh issue edit 5 --add-label x'); // non-body gh command
 ok('a non-body gh command exits 0', c2.code === 0 && c2.out.trim() === '');
 
+// #225: a flag between the subcommand and the verb must not hide the write.
+const bFlagVerb = runHook('gh issue -R o/r edit 5 --body ""');
+ok('blocks an empty --body with a flag before the verb (exit 2)', bFlagVerb.code === 2 && /EMPTY_ISSUE_BODY_WRITE/.test(bFlagVerb.out));
+
 console.log(`✓ body-guard: ${passed} assertions passed`);
