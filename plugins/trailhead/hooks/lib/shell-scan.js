@@ -151,24 +151,23 @@ function scanLine(line, st, seps, subs) {
       if (subs && outer) subs.open(i + 1, true, dq);
       continue;
     }
-    if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
-    if (c === '$' && line[i + 1] === '(') { openSub(i + 2); i++; continue; }
-    if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
+    // Only a bare `$` opens `$'..'`, `${..}`, `$[..]`, `$(..)` or `$((..))`: not an escaped one
+    // (skipped above) and not the 2nd of `$$` (the PID, so `$${` is PID + a literal brace).
+    const bare = c === '$' && bareAt !== i - 1;
+    if (bare) bareAt = i;
+    if (bare && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
+    if (bare && line[i + 1] === '(') { openSub(i + 2); i++; continue; }
+    if (bare && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
     if (top && top.k === 'dq') {
       if (c === '"') stack.pop();
       continue;
     }
-    if (c === '$') {
-      // Only a bare `$` opens `$'..'`: not an escaped one (skipped above) and not the 2nd of `$$` (the PID).
-      const bare = bareAt !== i - 1;
-      if (bare) bareAt = i;
-      if (bare && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
-    }
+    if (bare && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
     // A `'` glued to a bare `$` that ended the previous line (`$\<nl>'..'`) is ANSI-C too.
     if (c === "'" && i === 0 && bareAt === -1) { stack.push({ k: 'ansi' }); continue; }
     if (c === "'") { stack.push({ k: 'sq' }); continue; }
     if (c === '"') { stack.push({ k: 'dq' }); continue; }
-    if (c === '$' && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
+    if (bare && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
     if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
     const wordStart = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
     if (c === '#' && wordStart) break; // comment to end of line
