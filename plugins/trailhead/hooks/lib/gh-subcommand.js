@@ -89,22 +89,41 @@ function ansiEscape(word, i) {
 
 // A word as bash passes it once quoting is removed: a `$'...'` span is decoded
 // (\xHH, \NNN, \uHHHH, \n ...), `$` before a `"` is dropped, a backslash escape keeps
-// the escaped char, `'` and `"` are dropped (#219).
-function dequote(word) {
+// the escaped char, quote characters are dropped (#219). Also returns, per output
+// char, the id of the quoted span it came from (-1 for unquoted text), so a caller can
+// tell `"-F x"` (one span, free text) from `-"F"/"p a"` (the flag, then a value).
+function dequoteSpans(word) {
   const w = String(word);
-  let out = '';
+  let text = '';
+  const spans = [];
+  const put = (str, id) => { text += str; for (let k = 0; k < str.length; k++) spans.push(id); };
+  let q = null; // the open quote: ' or "
+  let id = 0;
   for (let i = 0; i < w.length; i++) {
     const c = w[i];
+    if (q === "'") { if (c === "'") q = null; else put(c, id); continue; }
+    if (q === '"') {
+      if (c === '"') q = null;
+      else if (c === '\\' && i + 1 < w.length) put(w[++i], id);
+      else put(c, id);
+      continue;
+    }
     if (c === '$' && w[i + 1] === "'") {
+      id++;
       i += 2;
       while (i < w.length && w[i] !== "'") {
-        if (w[i] === '\\' && i + 1 < w.length) { const e = ansiEscape(w, i + 1); out += e.out; i = e.next; } else out += w[i++];
+        if (w[i] === '\\' && i + 1 < w.length) { const e = ansiEscape(w, i + 1); put(e.out, id); i = e.next; } else put(w[i++], id);
       }
-    } else if (c === '\\' && i + 1 < w.length) out += w[++i];
-    else if (c !== "'" && c !== '"' && !(c === '$' && w[i + 1] === '"')) out += c;
+    } else if (c === '$' && w[i + 1] === '"') {
+      continue; // locale quoting: the `$` vanishes, the double-quoted span follows
+    } else if (c === '\\' && i + 1 < w.length) put(w[++i], -1);
+    else if (c === "'" || c === '"') { q = c; id++; }
+    else put(c, -1);
   }
-  return out;
+  return { text, spans };
 }
+
+const dequote = (word) => dequoteSpans(word).text;
 
 // Parse a raw shell command string and locate the gh subcommand/verb.
 // Returns { sub, verb } (verb may be undefined) or null when this is not a
@@ -143,4 +162,4 @@ function parseGhSubcommand(cmd) {
   return { sub, verb };
 }
 
-module.exports = { parseGhSubcommand, dequote, BOOLEAN_GLOBAL_FLAGS, WRITE_SUBCOMMANDS };
+module.exports = { parseGhSubcommand, dequote, dequoteSpans, BOOLEAN_GLOBAL_FLAGS, WRITE_SUBCOMMANDS };

@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { dequote } = require('./gh-subcommand.js');
+const { dequote, dequoteSpans } = require('./gh-subcommand.js');
 
 const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
 
@@ -302,14 +302,19 @@ function parseRedirects(toks) {
 }
 
 // A quoted or split token that is this flag (`'-F'`, `--body-fi""le`, `"--body-file=F"`,
-// `"-F/p"`); free text with whitespace after a flag-like start is not (#219).
+// `"-F/p"`); free text in the flag's own quoted span (`"-F handling"`) is not (#219).
 function dequotedFlag(raw, long, short) {
-  const d = dequote(raw);
+  const { text: d, spans } = dequoteSpans(raw);
   const hit = d === long || (short && d === short) || d.startsWith(`${long}=`) || (short && d.startsWith(`${short}=`));
-  // The attached shorthand (`"-F/p"`, `-"F"/p`) only with no whitespace after the flag:
-  // `"-F handling"` is free text. A quoted `"-Fixes"` is read as the flag (detection).
-  const attached = short && d.startsWith(short) && !d.startsWith('--') && d.length > short.length && !/\s/.test(d.slice(short.length));
-  return hit || attached ? d : null;
+  if (hit) return d;
+  if (!short || !d.startsWith(short) || d.startsWith('--') || d.length <= short.length) return null;
+  // The attached shorthand (`"-F/p"`, `-"F"/"p a"`). Whitespace after the flag letter in
+  // the SAME quoted span is free text (`"-F handling"`); anywhere else it is the value.
+  const letter = spans[short.length - 1];
+  for (let j = short.length; j < d.length; j++) {
+    if (/\s/.test(d[j]) && letter !== -1 && spans[j] === letter) return null;
+  }
+  return d;
 }
 
 // Values of a gh flag (long form, optional short form), in order: `--long v`,
