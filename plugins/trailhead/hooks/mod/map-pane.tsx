@@ -11,7 +11,6 @@ import {
   type BurndownSeries,
   burndownEnd,
   burndownSeries,
-  chartKind,
   failureReason,
   groupTickets,
   HISTORY_LIMIT,
@@ -428,7 +427,7 @@ export function registerMapPane(on: On) {
       <Box key="burndown-section" flexDirection="column" marginTop={gap}>
         {text('burndown-head', bold, 'Burn-down')}
         {text('burndown-counts', dim, fit(`open ${s.open} · done ${s.done} · removed ${s.removed} · peak ${s.peak}`, cols))}
-        {chartKind(Raster !== undefined) === 'raster' && Raster !== undefined ? (
+        {Raster !== undefined ? (
           <Raster key="burndown" columns={cols} rows={CHART_ROWS} cells={rasterCells(s.values, s.peak, CHART_ROWS, ACCENT_RGB)} />
         ) : (
           text('burndown-spark', { color: ACCENT }, sparkline(s.values, s.peak))

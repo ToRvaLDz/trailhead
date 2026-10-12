@@ -357,8 +357,6 @@ export const rasterCells = (values: readonly number[], peak: number, rows: numbe
   return base64(bytes)
 }
 
-export const chartKind = (hasRaster: boolean): 'raster' | 'text' => (hasRaster ? 'raster' : 'text')
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAY_MS = 86_400_000
 const pad2 = (n: number) => String(n).padStart(2, '0')

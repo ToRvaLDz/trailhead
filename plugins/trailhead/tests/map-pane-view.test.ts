@@ -5,7 +5,6 @@ import {
   axisStart,
   burndownEnd,
   burndownSeries,
-  chartKind,
   failureReason,
   groupTickets,
   HISTORY_LIMIT,
@@ -439,11 +438,6 @@ test('rasterCells encodes whole base64 for every cell count', () => {
     expect(cells.length).toBe(n * 16)
     expect(decode(cells)).toHaveLength(n * 3)
   }
-})
-
-test('chartKind picks the raster only where the surface has one', () => {
-  expect(chartKind(true)).toBe('raster')
-  expect(chartKind(false)).toBe('text')
 })
 
 test('axisStart words the left label as a date, or a time when the history is under a day', () => {
