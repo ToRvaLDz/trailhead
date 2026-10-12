@@ -166,6 +166,20 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
   ok('a process substitution separator splits inside it', J(splitStatements('cat <(a; b)')) === J(['cat <(a', 'b)']));
 }
 
+// --- a doubled or escaped dollar opens no ANSI-C span (#217) ---
+{
+  const J = JSON.stringify;
+  const BS = '\\';
+  ok('$$ before a quote: the quote is plain, so the later statement is split',
+    J(splitStatements(`echo $$'x${BS}' ; echo ran # '`)) === J([`echo $$'x${BS}'`, 'echo ran # \'']));
+  ok('an escaped $ before a quote is plain too',
+    J(splitStatements(`echo ${BS}$'x${BS}' ; echo ran # '`)) === J([`echo ${BS}$'x${BS}'`, 'echo ran # \'']));
+  ok('a bare $\' span still honours an escaped quote',
+    splitStatements(`echo $'x${BS}' ; y' ; echo ran`).length === 2);
+  ok('$$$\' opens a span (the third dollar is bare)',
+    splitStatements(`echo $$$'x${BS}' ; y' ; echo ran`).length === 2);
+}
+
 // --- nested subshells and substitutions inside quotes / ${..} (#212) ---
 {
   const J = JSON.stringify;

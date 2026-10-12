@@ -747,6 +747,15 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
       blocked(`${C} $$'x${BS}' --body-file ${F} --label 'z'`));
     ok('an escaped dollar before a quote at the end still reads the file',
       blocked(`${C} ${BS}$'x${BS}' --body-file ${F}`));
+    // A fake ANSI-C span after `$$` must not hide a later write (`$$'x\'` is PID + 'x\').
+    const W = `gh issue comment 1 --body-file ${F}`;
+    const Wq = `gh issue comment 1 --body '${A}''${B}'`;
+    ok('a doubled dollar before a quote does not hide a later --body-file write',
+      blocked(`echo $$'x${BS}' ; ${W} # '`));
+    ok('a doubled dollar before a quote does not hide a later split-quote write',
+      blocked(`echo $$'x${BS}' ; ${Wq} # '`));
+    ok('an escaped dollar before a quote does not hide a later write',
+      blocked(`echo ${BS}$'x${BS}' ; ${W} # '`));
     fs.rmSync(dir217, { recursive: true, force: true });
   }
 }
