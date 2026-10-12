@@ -301,15 +301,6 @@ function parseRedirects(toks) {
   return { args, outs, stdin };
 }
 
-// gh flags that take a separate value. A token after one of them is its value, never
-// a flag, even when it looks like one (`--body '--body-file=x'`).
-const VALUE_FLAGS = new Set([
-  '--body', '-b', '--title', '-t', '--body-file', '-F', '--field', '--raw-field', '-f', '--input',
-  '--label', '-l', '--assignee', '-a', '--milestone', '-m', '--project', '-p', '--repo', '-R',
-  '--template', '--reviewer', '-r', '--base', '-B', '--head', '-H', '--method', '-X', '--header',
-  '--hostname', '--jq', '-q',
-]);
-
 // A quoted or split token that is EXACTLY this flag (`'-F'`, `--body-fi""le`,
 // `"--body-file=F"`); never the attached shorthand, so a quoted free-text value that
 // merely starts like a flag is not mistaken for one (#219).
@@ -334,7 +325,6 @@ function flagValues(args, long, short) {
     } else if (t.startsWith(`${long}=`)) out.push(t.slice(long.length + 1));
     else if (short && t.startsWith(`${short}=`)) out.push(t.slice(short.length + 1));
     else if (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2) out.push(t.slice(2));
-    else if (VALUE_FLAGS.has(dequote(args[i]))) i++; // another flag's value is not a flag
   }
   return out;
 }
