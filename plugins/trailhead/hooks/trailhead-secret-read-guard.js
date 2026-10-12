@@ -56,6 +56,13 @@
 // span and substitutionBodies returns its body (unescaped as the shell would
 // run it) alongside the `$(..)` ones, so the work-list scans it too.
 //
+// #218 fix: the same miss for a substitution in the body of an UNQUOTED heredoc
+// (`cat <<EOF` with `$(cat .env)` or a backtick inside): the shell runs it, but
+// heredoc bodies are data to the splitter and were never lexed. Each unquoted
+// body is now lexed as the shell reads one (heredocSubstitutionBodies: quotes
+// are literal there) and its outermost substitution bodies join the work-list.
+// A quoted delimiter (`<<'EOF'`) and an escaped `\$(..)` stay literal.
+//
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only
 // that flag's value is exempted, and only for docker/podman verbs; see
@@ -90,6 +97,8 @@ const {
   stripQuotes,
   splitStatements,
   substitutionBodies,
+  heredocBodies,
+  heredocSubstitutionBodies,
   tokenize,
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
@@ -446,6 +455,12 @@ function scanBashForSecretPath(cmd) {
     // double-quoted token hides its body from the per-token walk; scan each
     // outermost substitution body as a command of its own (nested ones next).
     for (const body of substitutionBodies(text)) work.push({ text: body, depth: depth + 1 });
+    // #218: an unquoted heredoc body is data to the splitter, but the shell runs
+    // the substitutions in it; a quoted delimiter makes the body literal.
+    for (const doc of heredocBodies(text)) {
+      if (doc.quoted) continue;
+      for (const body of heredocSubstitutionBodies(doc.body)) work.push({ text: body, depth: depth + 1 });
+    }
   }
   return null;
 }

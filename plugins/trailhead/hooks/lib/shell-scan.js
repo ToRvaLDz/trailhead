@@ -56,7 +56,9 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // comment, `$((..))`, `$[..]`, `((..))` or after a backslash is not an
 // introducer, and `<<<` is a herestring. `st.stack` holds the open contexts as
 // uniform { k, ... } frames: k is 'sq', 'dq', 'ansi' (`$'..'`), 'br' (`${..}`),
-// 'sub' (`$(..)`, with a paren count n) or 'ar' (an arithmetic span); `st.cont` is set when the line
+// 'sub' (`$(..)`, with a paren count n), 'ar' (an arithmetic span) or 'hd' (the
+// body of an unquoted heredoc, only ever the bottom frame of a dedicated scan,
+// see heredocSubstitutionBodies); `st.cont` is set when the line
 // ends in a backslash-newline continuation. It is mutated and carried to the next line, so a quote or arithmetic
 // span that runs across lines keeps suppressing introducers. A `$(..)` is code
 // again, even inside double quotes, so its heredocs count. Returns
@@ -162,6 +164,10 @@ function scanLine(line, st, seps, subs) {
       if (c === '"') stack.pop();
       continue;
     }
+    // An unquoted heredoc body is like double quotes without a closing `"`: the
+    // expansions above stay live, but quotes, comments, separators and
+    // introducers are literal text.
+    if (top && top.k === 'hd') continue;
     if (bare && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
     // A `'` glued to a bare `$` that ended the previous line (`$\<nl>'..'`) is ANSI-C too.
     if (c === "'" && i === 0 && bareAt === -1) { stack.push({ k: 'ansi' }); continue; }
@@ -332,7 +338,26 @@ function substitutionBodies(cmd) {
   // terminator lines there (the caller's own scan strips them), while lines
   // that are heredoc body are never lexed, so a `$(..)` in one is not returned.
   const { lines, keep } = scanHeredocs(cmd);
-  const st = { stack: [] };
+  return collectSubstitutionBodies(lines, keep, { stack: [] });
+}
+
+// The outermost substitution bodies of an UNQUOTED heredoc body (#218): the
+// shell runs `$(..)` and backticks there, though substitutionBodies never lexes
+// a body line. The body is lexed as the shell reads a heredoc body, not as
+// command text: quotes are literal (`it's $(cat .env)` still has its
+// substitution), `\$` and `\`` stay escaped. Every line is lexed (a heredoc
+// introducer in the body is text, not another heredoc). Same result shape and
+// backtick unescaping as substitutionBodies. A quoted-delimiter body is literal
+// and must not be passed here.
+function heredocSubstitutionBodies(body) {
+  const lines = String(body).split('\n');
+  return collectSubstitutionBodies(lines, lines.map(() => true), { stack: [{ k: 'hd' }] });
+}
+
+// The one collector behind substitutionBodies and heredocSubstitutionBodies:
+// lex the `keep`-marked lines from the start state `st` and read the outermost
+// body texts off scanLine's `subs` callbacks.
+function collectSubstitutionBodies(lines, keep, st) {
   const out = [];
   let cur = null; // text of the open body so far, or null
   let from = 0; // where the open body's text starts on the current line
@@ -531,6 +556,7 @@ module.exports = {
   splitStatements,
   splitStatementsWithSeparators,
   substitutionBodies,
+  heredocSubstitutionBodies,
   tokenize,
   skipEnvPrefix,
   GREP_VALUE_FLAGS,
