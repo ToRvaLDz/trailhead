@@ -317,6 +317,13 @@ test('burndownSeries counts an event exactly on a sample at that sample', () => 
   expect(s?.values).toEqual([1, 2, 1, 1, 1, 1])
 })
 
+test('burndownSeries: the peak is the most open at once, even between two samples', () => {
+  // samples at 0 50 100; three open at once only around 20
+  const s = burndownSeries(hist({ openedAt: 0, closedAt: 30 }, { openedAt: 10, closedAt: 40 }, { openedAt: 20, closedAt: 45 }), 100, 3)
+  expect(s?.values).toEqual([1, 0, 0])
+  expect(s?.peak).toBe(3)
+})
+
 test('burndownSeries: no samples without history or buckets, one sample is now', () => {
   expect(burndownSeries(hist(), 100, 10)).toBeNull()
   expect(burndownSeries(hist({ openedAt: 0, closedAt: null }), 100, 0)).toBeNull()

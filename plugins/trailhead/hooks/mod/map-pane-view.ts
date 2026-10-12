@@ -272,6 +272,18 @@ export type BurndownSeries = {
 }
 
 // Open tickets at `buckets` evenly spaced times from the first ticket to `now` (the last sample).
+// The most open at once over every event, not only at the samples: same rule as a sample,
+// a time counts every open and close at or before it.
+const truePeak = (opened: readonly number[], closedTimes: readonly number[]): number => {
+  let peak = 0
+  let closes = 0
+  opened.forEach((t, n) => {
+    while (closes < closedTimes.length && (closedTimes[closes] as number) <= t) closes += 1
+    peak = Math.max(peak, n + 1 - closes)
+  })
+  return peak
+}
+
 export const burndownSeries = (history: BurndownHistory, now: number, buckets: number): BurndownSeries | null => {
   if (history.issues.length === 0 || buckets <= 0) return null
   const issues = history.issues.map(i => ({
@@ -296,7 +308,7 @@ export const burndownSeries = (history: BurndownHistory, now: number, buckets: n
   return {
     values,
     open: values[values.length - 1] as number,
-    peak: Math.max(...values),
+    peak: Math.max(truePeak(opened, closedTimes), ...values),
     done: closed.filter(i => !i.isRemoved).length,
     removed: closed.filter(i => i.isRemoved).length,
     startedAt,
