@@ -191,14 +191,14 @@ function printfAssigns(args) {
 
 function makeHit(id, fields) {
   const { label, hint, reach } = UNMODELLED[id];
-  return { id, label, hint, reach, sample: '', stmt: '', stmtIndex: -1, payload: '', name: '', calls: [], after: '', afterStmts: [], ...fields };
+  return { id, label, hint, reach, sample: '', stmt: '', stmtIndex: -1, payload: '', name: '', calls: [], after: '', afterEntries: [], ...fields };
 }
 
 // Hits that belong to one statement (its command word and what it defines).
 function statementHits(entries, idx) {
   const e = entries[idx];
   const { toks, cmd, args } = commandInfo(e.text);
-  const base = { stmt: e.text, stmtIndex: idx, sample: compact(e.text), afterStmts: entries.slice(idx + 1).map((x) => x.text), after: entries.slice(idx + 1).map((x) => x.text).join('\n') };
+  const base = { stmt: e.text, stmtIndex: idx, sample: compact(e.text), afterEntries: entries.slice(idx + 1).map((x, i, rest) => ({ text: x.text, piped: (i === 0 ? e.sep : rest[i - 1].sep) === '|', heredocs: x.heredocs })), after: entries.slice(idx + 1).map((x) => x.text).join('\n') };
   const fnName = functionHeadName(toks);
   if (fnName) {
     return [makeHit('function', { ...base, name: fnName, payload: functionBody(entries, idx), calls: callsOf(fnName, entries, idx).map((c) => c.text) })];
@@ -257,19 +257,56 @@ function findUnmodelled(cmd) {
   return out;
 }
 
-// Can what a statement posts depend on state a sourced script or printf -v may have
-// changed? An expansion outside single quotes (`$`, a backtick), a `~`, or a relative
-// body-file / `-F` / `--input` / api `@path` can; a fully literal write cannot.
-function stateDependent(text) {
-  const t = String(text).replace(/'[^']*'/g, "''"); // single-quoted text is literal
-  if (/[$`]/.test(t) || /(^|[\s=:"])~/.test(t)) return true;
-  const d = dequote(String(text));
-  const relative = (v) => v !== '-' && !v.startsWith('/');
-  for (const m of d.matchAll(/(--body-file|-F|--input)(?:=|\s+)(\S+)/g)) {
-    if (m[1] === '-F' && m[2].includes('=')) continue; // a field, not a file
-    if (relative(m[2])) return true;
+// Does a raw shell word hold an expansion the shell would run (`$`, a backtick) outside
+// single quotes? Double-quoted text counts; `$'..'` and `$".."` are quoting, not expansion.
+function hasLiveExpansion(raw) {
+  let q = null; // ' or "
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (q === "'") { if (c === "'") q = null; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === '`') return true;
+    if (c === '$') {
+      if (raw[i + 1] === "'" && q === null) { // ANSI-C span: literal, backslash escapes inside
+        for (i += 2; i < raw.length && raw[i] !== "'"; i++) if (raw[i] === '\\') i++;
+        continue;
+      }
+      if (raw[i + 1] === '"' && q === null) continue;
+      return true;
+    }
+    if (q === '"') { if (c === '"') q = null; continue; }
+    if (c === "'" || c === '"') q = c;
   }
-  for (const m of d.matchAll(/body=@(\S+)/g)) if (relative(m[1])) return true;
+  return false;
+}
+
+const STDIN_VALUES = new Set(['-', '/dev/stdin', '/dev/fd/0']);
+
+// Can what a statement posts depend on state a sourced script or printf -v may have
+// changed? An expansion outside single quotes, a `~`, a relative body-file / `-F` /
+// `--input` / api `@path`, or a body read from stdin (`-`, /dev/stdin, `@-`, an input
+// redirect, here-string or heredoc, or the right side of a pipe, whose input another
+// statement builds) can; a fully literal write cannot. Judged token by token.
+// `entry` is { text, piped, heredocs }.
+function stateDependent(entry) {
+  if (entry.piped || entry.heredocs > 0) return true;
+  const toks = words(entry.text);
+  const fileValue = (flag, v) => { // a file the flag reads: stdin or a relative path
+    if (flag === '-F' && v.includes('=')) return false; // a field, not a file
+    return STDIN_VALUES.has(v) || !v.startsWith('/');
+  };
+  for (let k = 0; k < toks.length; k++) {
+    const raw = toks[k];
+    if (hasLiveExpansion(raw) || /^~|[=:]~/.test(raw) || /^<(?!\()/.test(raw)) return true;
+    const d = dequote(raw);
+    const flag = /^(--body-file|-F|--input)(?:=([\s\S]*))?$/.exec(d);
+    if (flag) {
+      const v = flag[2] !== undefined ? flag[2] : (k + 1 < toks.length ? dequote(toks[k + 1]) : null);
+      if (v !== null && fileValue(flag[1], v)) return true;
+    }
+    const field = /body=@([\s\S]*)$/.exec(d);
+    if (field && (field[1] === '-' || !field[1].startsWith('/'))) return true;
+  }
   return false;
 }
 
@@ -283,7 +320,7 @@ function isRelevant(hit, isWrite) {
     case 'function': return hit.calls.length > 0 && isWrite(hit.payload);
     case 'alias': return hit.calls.some((c) => isWrite(c));
     case 'source':
-    case 'printf-v': return hit.afterStmts.some((t) => isWrite(t) && stateDependent(t));
+    case 'printf-v': return hit.afterEntries.some((e) => isWrite(e.text) && stateDependent(e));
     case 'continuation': return isWrite(hit.stmt);
     default: return true; // api-field: the statement is itself a body write
   }

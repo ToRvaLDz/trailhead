@@ -132,6 +132,22 @@ ok('source after the write is not', !relevant('gh issue comment 1 --body-file /t
 ok('source with no write is not', !relevant('source ~/.venv/bin/activate && pytest'));
 ok('printf -v before a write is relevant', relevant('printf -v B %s x; gh issue comment 1 --body "$B"'));
 ok('printf -v after the write is not', !relevant('gh issue comment 1 --body-file /tmp/clean.md; printf -v B %s x'));
+ok('W2: an apostrophe inside double quotes does not hide an expansion', relevant(`printf -v B %s ''; gh issue edit 1 --body "it's $B and 'x'"`));
+ok('W2: the same after source', relevant(`source x.sh; gh issue edit 1 --body "it's $B and 'x'"`));
+ok('W2: stdin fed by a pipe from another statement', relevant('printf -v B %s ""; printf %s "$B" | gh issue edit 1 --body-file -'));
+ok('W2: stdin fed by an unquoted heredoc', relevant('printf -v B %s ""; gh issue edit 1 --body-file - <<EOF\n$B\nEOF'));
+ok('W2: stdin fed by a redirect', relevant('source x; gh issue edit 1 --body-file - < in.md'));
+ok('W2: stdin fed by a here-string', relevant('source x; gh issue edit 1 --body-file - <<< "$B"'));
+ok('W2: --body-file /dev/stdin', relevant('source x; gh issue edit 1 --body-file /dev/stdin'));
+ok('W2: --input - (the stand-in classifier knows issue writes only)', relevant('source x; gh issue edit 1 --input -'));
+ok('W2: api body=@-', relevant('source x; gh issue edit 1 -F body=@-'));
+ok('W2: a quoted relative -F value is one token', relevant("source x; gh issue edit 1 -F 'a b.md'"));
+ok('W2: a double-quoted dollar counts', relevant('source x; gh issue edit 1 --body "$B"'));
+ok('W2: a literal body with an apostrophe in double quotes is not', !relevant(`source x; gh issue edit 1 --body "it's fine"`));
+ok('W2: a plain word body is not', !relevant('source x; gh issue edit 1 --body lit'));
+ok('W2: a single-quoted body is not', !relevant("source x; gh issue edit 1 --body 'lit'"));
+ok('W2: an absolute body file is not', !relevant('source x; gh issue edit 1 --body-file /abs/clean.md'));
+ok('W2: tokens are not matched across each other', !relevant("source x; gh issue edit 1 --body 'a -F b' --title t"));
 ok('printf -v before a literal write is not', !relevant("printf -v B %s x; gh issue edit 1 --body 'hello'"));
 ok('printf -v with no write is not', !relevant('printf -v x %s y; echo $x'));
 

@@ -1062,6 +1062,15 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('a function body with a literal secret stays a secret block', code(`f() { gh issue comment 1 --body ${T}; }; f`) === 'SECRET_IN_ISSUE_WRITE');
   ok('a secret file next to source stays a secret block', code(`source ./x.sh; gh issue comment 1 --body-file ${dirty}`) === 'SECRET_IN_ISSUE_WRITE');
   ok('an unreadable body file next to source keeps its code', code('source ./x.sh; gh issue comment 1 --body-file /nonexistent/sg-um.md') === 'SECRET_GUARD_UNREADABLE_BODY_FILE');
+  for (const c of [
+    `printf -v B %s ''; gh issue edit 1 --body "it's $B and 'x'"`,
+    `source x.sh; gh issue edit 1 --body "it's $B and 'x'"`,
+    `printf -v B %s ''; printf %s "$B" | gh issue edit 1 --body-file -`,
+    `printf -v B %s ''; gh issue edit 1 --body-file - <<EOF\n$B\nEOF`,
+  ]) ok(`W2: a state-dependent write after the construct still blocks: ${c.slice(0, 40).replace(/\n/g, ' ')}`, code(c) !== null);
+  for (const c of ["source x; gh issue edit 1 --body 'lit'", 'source x; gh issue edit 1 --body lit', `source x; gh issue edit 1 --body "it's fine"`]) {
+    ok(`W2: a literal write after source passes: ${c}`, runHook(c).code === 0);
+  }
   ok('printf -v feeding a body still blocks (unresolved)', code('printf -v B %s x; gh issue edit 1 --body "$B"') !== null);
   ok('the gate also replaces the could-not-scan advisory', code(`source ./x.sh; gh issue comment 1 --body-file ~/${path.basename(clean)}`, { TRAILHEAD_SECRETGUARD_THROW: '1', HOME: os.tmpdir() }) === CODE);
 

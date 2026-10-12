@@ -389,6 +389,15 @@ ok('blocks an empty --body with a flag before the verb (exit 2)', bFlagVerb.code
   // An unknowable body behind a quoted key blocks too (through the merged runner the secret-guard may speak first).
   ok('a quoted api key with an unknowable body blocks', code('gh api -X PATCH repos/o/r/issues/1 -f b\\ody="$B"') !== null);
   ok('a quoted api key with an unreadable file blocks', code("gh api -X PATCH repos/o/r/issues/1 -f 'body'=@/nonexistent/bg-um.md") !== null);
+  for (const c of [
+    `printf -v B %s ''; gh issue edit 1 --body "it's $B and 'x'"`,
+    `source x.sh; gh issue edit 1 --body "it's $B and 'x'"`,
+    `printf -v B %s ''; printf %s "$B" | gh issue edit 1 --body-file -`,
+    `printf -v B %s ''; gh issue edit 1 --body-file - <<EOF\n$B\nEOF`,
+  ]) ok(`W2: a state-dependent write after the construct still blocks: ${c.slice(0, 40).replace(/\n/g, ' ')}`, code(c) !== null);
+  for (const c of ["source x; gh issue edit 1 --body 'lit'", 'source x; gh issue edit 1 --body lit', `source x; gh issue edit 1 --body "it's fine"`]) {
+    ok(`W2: a literal write after source passes: ${c}`, runHook(c).code === 0);
+  }
   ok('the existing empty-body verdict keeps priority', code('source ./x.sh; gh issue edit 1 --body ""') === 'EMPTY_ISSUE_BODY_WRITE' ||
     (!!process.env.TRAILHEAD_GUARD_HOOK && code('source ./x.sh; gh issue edit 1 --body ""') !== null));
   ok('an empty body before the construct keeps its verdict', code('gh issue edit 1 --body ""; alias g=gh') === 'EMPTY_ISSUE_BODY_WRITE');
