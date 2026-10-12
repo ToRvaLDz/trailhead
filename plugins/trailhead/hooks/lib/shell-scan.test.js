@@ -396,6 +396,13 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('heredocSubstitutionBodies finds substitutions on several lines', hb('a $(one)\nb\n`two`') === JSON.stringify(['one', 'two']));
   ok('heredocSubstitutionBodies returns only the outer of a nest', hb('$(a $(b))') === JSON.stringify(['a $(b)']));
   ok('heredocSubstitutionBodies finds a $(..) inside ${..}', hb('${x:-$(cat .env)}') === cat);
+  ok('heredocSubstitutionBodies joins a backslash-newline before lexing', hb('$(cat .e\\\nnv)') === cat);
+  ok('heredocSubstitutionBodies joins a backslash-newline inside the opener', hb('$\\\n(cat .env)') === cat);
+  ok('heredocSubstitutionBodies keeps a newline after an escaped backslash', hb('a\\\\\n$(cat .env)') === cat);
+  ok('heredocSubstitutionBodies does not join an escaped backslash with its newline', hb('$(a \\\\\nb)') === JSON.stringify(['a \\\\\nb']));
+  ok('heredocSubstitutionBodies keeps a heredoc nested in a substitution with its own body',
+    hb('$(cat <<B\n)\nB\ncat .env)') === JSON.stringify(['cat <<B\n)\nB\ncat .env']));
+  ok('heredocSubstitutionBodies finds a tab-indented $(..)', hb('\t$(cat .env)') === cat);
   ok('heredocSubstitutionBodies is empty for plain text', hb('cat .env') === '[]');
   ok('heredocSubstitutionBodies treats <(..) as literal text', hb('diff <(cat .env)') === '[]');
   ok('heredocSubstitutionBodies treats a # as literal text', hb('# $(cat .env)') === cat);

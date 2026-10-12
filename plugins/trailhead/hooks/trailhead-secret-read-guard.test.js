@@ -222,10 +222,13 @@ allowCmd('echo "\\`cat .env\\`"');
 // #218: a secret read inside the body of an UNQUOTED heredoc (the shell runs $(..) and backticks there)
 for (const c of ['cat <<EOF\n$(cat .env)\nEOF', 'cat <<EOF\n`cat .env`\nEOF', 'cat <<-EOF\n\t$(cat .env)\n\tEOF',
   "cat <<EOF\nit's $(cat .env)\nEOF", 'cat <<EOF\nsay "hi $(cat .env)\nEOF', 'cat <<EOF\n${x:-$(cat .env)}\nEOF',
-  'cat <<EOF\nfirst line\nthen text $(cat .env) more\nEOF', 'x=$(cat <<EOF\n$(cat .env)\nEOF\n)']) {
+  'cat <<EOF\nfirst line\nthen text $(cat .env) more\nEOF', 'x=$(cat <<EOF\n$(cat .env)\nEOF\n)',
+  'cat <<A\n$(cat <<B\n)\nB\ncat .env)\nA', 'cat <<EOF\n$\\\n(cat .env)\nEOF', 'cat <<EOF\n$(cat .e\\\nnv)\nEOF',
+  'cat <<EOF\n$(cat \\\n.env)\nEOF', "cat <<A <<'B'\n$(cat .env)\nA\nx\nB"]) {
   ok(`Bash \`${c}\` is denied with path .env (#218)`, hit214(c));
 }
 for (const c of ["cat <<'EOF'\n$(cat .env)\nEOF", 'cat <<"EOF"\n$(cat .env)\nEOF', "cat <<'EOF'\n`cat .env`\nEOF",
+  'cat <<EOF\n$$(cat .env)\nEOF', "cat <<A <<'B'\nx\nA\n$(cat .env)\nB",
   'cat <<EOF\n\\$(cat .env)\nEOF', 'cat <<EOF\n\\`cat .env\\`\nEOF', 'cat <<EOF\ncat .env\nEOF']) {
   allowCmd(c);
 }
