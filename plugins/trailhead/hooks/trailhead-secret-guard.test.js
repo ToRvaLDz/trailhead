@@ -705,4 +705,26 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     allowed(`cat <<'EOF' > ${N}\n${split}\nEOF\ngh issue comment 5 --body-file ${N}`));
 }
 
+// --- #217: a token split by adjacent quoted parts is one word for bash ---
+{
+  const A = 'ghp_' + 'A1b2C3d4E5f6G7h8';
+  const B = 'I9j0K1l2M3n4O5p6Q7r8';
+  const BS = '\\'; // one backslash
+  const blocked = (cmd) => { const r = runHook(cmd); return r.code === 2 && /GitHub token/.test(r.out); };
+  const allowed = (cmd) => { const r = runHook(cmd); return r.code === 0 && r.out.trim() === ''; };
+  const G = 'gh issue comment 5';
+  ok('two adjacent double-quoted parts block', blocked(`${G} --body "${A}""${B}"`));
+  ok('a double-quoted part glued to a bare part blocks', blocked(`${G} --body "${A}"${B}`));
+  ok('a bare part and an empty single-quote pair block', blocked(`${G} --body ${A}''${B}`));
+  ok('bare, continuation, empty quotes block', blocked(`${G} --body ${A}${BS}\n''${B}`));
+  ok('quoted, continuation, quoted block', blocked(`${G} --body "${A}"${BS}\n"${B}"`));
+  ok('gh api -f body with adjacent quoted parts blocks',
+    blocked(`gh api repos/o/r/issues/5/comments -f body="${A}"'${B}'`));
+  ok('an echo producer with adjacent quoted parts blocks',
+    blocked(`echo "${A}""${B}" | ${G} --body-file -`));
+  ok('an unresolvable piece next to split literals is not allowed',
+    runHook(`${G} --body "$TRAILHEAD_UNSET_217"${A}''${B}`).code === 2);
+  ok('two separate quoted words do not join', allowed(`${G} --body "${A}" "${B}"`));
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);
