@@ -40,6 +40,11 @@ ok('Bash echo $(cat \\<nl>.env) is denied', !!detectSecretRead('Bash', { command
 ok('Bash cat .e\\<nl>nv is denied', !!detectSecretRead('Bash', { command: 'cat .e\\\nnv' }));
 ok('Bash cat .e\\\\<nl>nv (escaped backslash) is allowed', !detectSecretRead('Bash', { command: 'cat .e\\\\\nnv' }));
 ok('Bash continuation inside single quotes stays literal', !detectSecretRead('Bash', { command: "echo 'x\\\n.env'" }));
+ok('Bash consecutive continuations cat \\<nl>\\<nl>.env are denied', !!detectSecretRead('Bash', { command: 'cat \\\n\\\n.env' }));
+ok('Bash separator on the continuation line is denied', !!detectSecretRead('Bash', { command: 'echo a \\\n; cat .env' }));
+ok('Bash continuation inside a backtick span is denied', !!detectSecretRead('Bash', { command: 'echo `cat \\\n.env`' }));
+ok('Bash continuation inside "$(..)" is denied', !!detectSecretRead('Bash', { command: 'echo "$(cat .e\\\nnv)"' }));
+ok('Bash trailing backslash on the last line is allowed', !detectSecretRead('Bash', { command: 'echo done \\' }));
 
 // --- ALLOW cases (no false positives) ---
 ok('Read src/app.ts is allowed', !detectSecretRead('Read', { file_path: 'src/app.ts' }));
