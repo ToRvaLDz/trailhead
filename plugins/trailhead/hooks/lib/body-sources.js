@@ -156,8 +156,11 @@ function words(stmt) {
   let cur = '';
   let quote = null; // ' or "
   let ansi = false; // inside a `$'...'` span
+  let bare = false; // the previous char is a bare `$` (not escaped, not the 2nd of `$$`)
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
+    const afterBare = bare;
+    bare = false;
     if (quote) {
       // An ANSI-C `$'...'` span honours backslash escapes (`$'a\'b'`).
       if (quote === "'" && ansi && c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
@@ -168,7 +171,7 @@ function words(stmt) {
       else if (c === quote) { quote = null; ansi = false; }
       continue;
     }
-    if (c === "'" || c === '"') { ansi = c === "'" && s[i - 1] === '$'; quote = c; cur += c; continue; }
+    if (c === "'" || c === '"') { ansi = c === "'" && afterBare; quote = c; cur += c; continue; }
     // A backslash-newline continuation vanishes (`a\<nl>b` is `ab`, `a \<nl>b` is two words).
     if (c === '\\' && s[i + 1] === '\n') { i++; continue; }
     if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
@@ -203,6 +206,7 @@ function words(stmt) {
       i += op.length - 1;
       continue;
     }
+    if (c === '$') bare = !afterBare; // `$$` is the PID: its 2nd `$` opens nothing
     cur += c;
   }
   if (cur) out.push(cur);
