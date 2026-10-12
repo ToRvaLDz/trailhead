@@ -935,6 +935,24 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     runHook(`${G} --body ${'{a,b}'.repeat(9)}`).code === 2);
   ok('a huge sequence fails closed', runHook(`${G} --body {1..999999999}`).code === 2);
   ok('a small brace group of clean text passes', allowed(`${G} --body {a,b}`));
+  // Signed sequences, as bash reads them.
+  ok('a +0..0 sequence rebuilds the token', blocked(`${G} --body ${A}{+0..0}${B}`));
+  ok('a 0..+0 sequence rebuilds the token', blocked(`${G} --body ${A}{0..+0}${B}`));
+  ok('a signed step sequence rebuilds the token', blocked(`${G} --body ${A}{1..+1..+1}${B}`));
+  ok('a -0..0 sequence still lists its values', blocked(`${G} --body ${A}{0..-0}${B}`));
+  // Deep nesting is a decoy word or a body: fail closed, never a crash or a skipped scan.
+  {
+    const deep = '{x,'.repeat(5000) + 'y' + '}'.repeat(5000);
+    ok('a deeply nested decoy word does not hide a rebuilt token', runHook(`${G} --body ${A}{,x}${B} ${deep}`).code === 2);
+    ok('a deeply nested body fails closed', runHook(`${G} --body ${deep}`).code === 2);
+    ok('a deeply nested ${ body fails closed', runHook(`${G} --body ${'${a'.repeat(5000)}`).code === 2);
+  }
+  // Brace groups in the command, subcommand or verb word.
+  ok('a brace group in the subcommand blocks', runHook(`gh {issue,issue} comment 5 --body ${A}${B}`).code === 2);
+  ok('a brace group in the command word blocks', runHook(`{gh,gh} issue comment 5 --body ${A}${B}`).code === 2);
+  ok('a brace group in the verb blocks', runHook(`gh issue {comment,comment} 5 --body ${A}${B}`).code === 2);
+  ok('a brace group that builds only one write verb blocks', runHook(`gh issue {view,comment} 5 --body ${A}${B}`).code === 2);
+  ok('a brace group in a read-only verb passes', allowed('gh issue {view,list} 5'));
   {
     const { braceExpand } = require('./lib/body-sources.js');
     const J = JSON.stringify;
@@ -951,6 +969,17 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     ok('braceExpand: an escaped brace is not a group', w('\\{a,b}') === J(['\\{a,b}']));
     ok('braceExpand: {x} and {} are literal', w('{x}{}') === J(['{x}{}']));
     ok('braceExpand: quotes are kept', w('"a"{b,c}') === J(['"a"b', '"a"c']));
+    ok('braceExpand: a +0 sequence', w('a{+0..0}b') === J(['a0b']));
+    ok('braceExpand: a signed step', w('{1..+3..+1}') === J(['1', '2', '3']));
+    ok('braceExpand: padding counts the sign', w('{-01..2}') === J(['-01', '000', '001', '002']));
+    ok('braceExpand: padding of a negative range', w('{-5..-01}') === J(['-05', '-04', '-03', '-02', '-01']));
+    ok('braceExpand: padding down through zero', w('{01..-3}') === J(['01', '00', '-1', '-2', '-3']));
+    ok('braceExpand: -0 is not padded', w('{-0..2}') === J(['0', '1', '2']));
+    ok('braceExpand: a $(...) span is not split', w('$(echo {a,b})x') === J(['$(echo {a,b})x']));
+    ok('braceExpand: a backtick span is not split', w('`echo {a,b}`') === J(['`echo {a,b}`']));
+    ok('braceExpand: deep nesting overflows', braceExpand('{x,'.repeat(5000) + 'y' + '}'.repeat(5000)).overflow === true);
+    ok('braceExpand: deep ${ overflows', braceExpand('${a'.repeat(5000)).overflow === true);
+    ok('braceExpand: many unmatched braces stay fast', (() => { const t = Date.now(); braceExpand('{'.repeat(100000)); return Date.now() - t < 5000; })());
     ok('braceExpand: overflow', braceExpand('{a,b}'.repeat(9)).overflow === true);
     ok('braceExpand: a huge sequence overflows', braceExpand('{1..999999999}').overflow === true);
     ok('braceExpand: the limit is a parameter', braceExpand('{a,b,c}', 2).overflow === true);

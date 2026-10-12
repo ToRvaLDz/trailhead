@@ -44,13 +44,13 @@ const {
   STDIN_PATHS,
   words,
   expandWord,
+  braceExpand,
   parseRedirects,
   flagValues,
   resolveWord,
   substitutionSpans,
   joinedText,
   resolvedWords,
-  stripQuoteChars,
   dequote,
   bodySources,
   readBodyFile,
@@ -89,6 +89,23 @@ function writeKind(stmt) {
   if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)(?:\s+|=)?body=/.test(dequote(stmt))) return 'api';
   if (sub === 'api' && /(?:^|\s)--input(?:=|\s|$)/.test(dequote(stmt))) return 'api'; // --input sends a request body from a file
   return null;
+}
+
+// Does a brace group in the command, subcommand or verb word build a gh write
+// (`{gh,gh} issue comment`, `gh issue {comment,edit}`)? Each expansion of those three
+// words is classified; a write found, or a group too large to enumerate on a statement
+// that reads like a write, counts (the caller blocks it as an opaque write).
+function braceBuiltWrite(text) {
+  const toks = words(text);
+  let k = 0;
+  while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
+  const head = toks.slice(k, k + 3).map((t) => braceExpand(t));
+  if (head.every((h) => !h.overflow && h.words.length === 1)) return false;
+  if (head.some((h) => h.overflow)) return WRITE_WORDS_RE.test(dequote(text));
+  if (head.reduce((n, h) => n * h.words.length, 1) > 4096) return WRITE_WORDS_RE.test(dequote(text));
+  const combos = head.reduce((acc, h) => acc.flatMap((c) => h.words.map((w) => [...c, w])), [[]]);
+  const tail = toks.slice(k + 3);
+  return combos.some((c) => writeKind([...toks.slice(0, k), ...c, ...tail].join(' ')) !== null);
 }
 
 // --- statement normalisation ---------------------------------------------------
@@ -298,6 +315,10 @@ function collectWrites(cmd, env, start) {
     nextBody += heredocs.length;
     history.push({ text, sep, vars, cwdKnown, index, heredocs });
     const kind = writeKind(text);
+    if (!kind && braceBuiltWrite(text)) { // `{gh,gh} issue comment`, `gh {issue,issue} comment` (#220)
+      writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
+      continue;
+    }
     if (kind) {
       writes.push({ kind, text, vars, cwdKnown, index, history });
       continue;
@@ -445,18 +466,18 @@ function gatherText(cmd, writes, env, cwd) {
     }
   }
   // Adjacent quoted parts (`"a""b"`) are one word for bash; scan the quote-resolved words (#217).
-  // A throw in the resolution must never skip the scan: fall back to plain quote removal.
+  // Brace groups are expanded first (#220); a word too large to expand, or a fault, fails closed.
   for (const history of histories) {
+    const kind = (writes.find((w) => w.history === history) || writes[0]).kind;
+    const tooLarge = { block: inlineBodyBlock(kind, 'cannot resolve statically (brace expansion too large)') };
+    let r;
     try {
-      for (const word of resolvedWords(history)) text += '\n' + word;
-    } catch (e) {
-      // A brace expansion too large to enumerate cannot be scanned: fail closed.
-      if (e && e.code === 'BRACE_OVERFLOW') {
-        const kind = writes.find((w) => w.history === history).kind;
-        return { block: inlineBodyBlock(kind, 'cannot resolve statically (brace expansion too large)') };
-      }
-      for (const rec of history) text += '\n' + stripQuoteChars(rec.text);
+      r = resolvedWords(history);
+    } catch {
+      return tooLarge; // an unexpected fault must not skip the scan: fail closed
     }
+    if (r.overflow) return tooLarge;
+    for (const word of r.words) text += '\n' + word;
   }
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {

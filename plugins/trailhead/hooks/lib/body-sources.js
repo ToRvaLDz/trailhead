@@ -152,11 +152,35 @@ function expandWord(word, vars, env) {
 // --- brace expansion (bash expands {a,b} and {1..3} before quote removal) ---------
 
 const BRACE_LIMIT = 256;
+const BRACE_MAX_DEPTH = 64; // nesting of groups / expansions inside a word
+const BRACE_MAX_STEPS = 2_000_000; // scan work per word, so a hostile word cannot stall the hook
 const BRACE_OVERFLOW = Symbol('brace overflow');
 
-// If a quoted span, an escape or a `${...}` starts at s[i], the index just past it;
-// otherwise -1. Braces and commas inside these are never part of a brace group.
-function skipProtected(s, i) {
+// Count one unit of scan work and one level of nesting; past either cap the word is "too large".
+const braceTick = (st) => { if (++st.steps > BRACE_MAX_STEPS) throw BRACE_OVERFLOW; };
+const braceDeeper = (st) => { if (++st.depth > BRACE_MAX_DEPTH) throw BRACE_OVERFLOW; };
+
+// Index just past the balanced close of a `(...)`/`${...}` opened before s[from], quote aware.
+function skipBalanced(s, from, open, close, st) {
+  braceDeeper(st);
+  let depth = 1;
+  let j = from;
+  while (j < s.length && depth > 0) {
+    braceTick(st);
+    const k = skipProtected(s, j, st);
+    if (k >= 0) { j = k; continue; }
+    if (s[j] === open) depth++;
+    else if (s[j] === close) depth--;
+    j++;
+  }
+  st.depth--;
+  return j;
+}
+
+// If a quoted span, an escape, a `${...}`, a `$(...)`/`<(...)`/`>(...)` or a backtick span
+// starts at s[i], the index just past it; otherwise -1. Braces and commas inside these
+// are never part of a brace group.
+function skipProtected(s, i, st) {
   const c = s[i];
   if (c === '\\') return Math.min(i + 2, s.length);
   if (c === "'") {
@@ -170,6 +194,13 @@ function skipProtected(s, i) {
     }
     return s.length;
   }
+  if (c === '`') {
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === '\\') j++;
+      else if (s[j] === '`') return j + 1;
+    }
+    return s.length;
+  }
   if (c === '$' && s[i + 1] === "'") {
     for (let j = i + 2; j < s.length; j++) {
       if (s[j] === '\\') j++;
@@ -177,54 +208,49 @@ function skipProtected(s, i) {
     }
     return s.length;
   }
-  if (c === '$' && s[i + 1] === '{') {
-    let depth = 1;
-    let j = i + 2;
-    while (j < s.length && depth > 0) {
-      const k = skipProtected(s, j);
-      if (k >= 0) { j = k; continue; }
-      if (s[j] === '{') depth++;
-      else if (s[j] === '}') depth--;
-      j++;
-    }
-    return j;
-  }
+  if (c === '$' && s[i + 1] === '{') return skipBalanced(s, i + 2, '{', '}', st);
+  if ((c === '$' || c === '<' || c === '>') && s[i + 1] === '(') return skipBalanced(s, i + 2, '(', ')', st);
   return -1;
 }
 
+const SEQ_INT = '[-+]?\\d+';
+
 // The values of a `{x..y}` / `{x..y..step}` body, or null when it is not a sequence.
 function sequenceValues(body, limit) {
-  let m = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/.exec(body);
+  let m = new RegExp(`^(${SEQ_INT})\\.\\.(${SEQ_INT})(?:\\.\\.(${SEQ_INT}))?$`).exec(body);
   const letters = !m;
-  if (!m) m = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(body);
+  if (!m) m = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.([-+]?\d+))?$/.exec(body);
   if (!m) return null;
   const from = letters ? m[1].charCodeAt(0) : parseInt(m[1], 10);
   const to = letters ? m[2].charCodeAt(0) : parseInt(m[2], 10);
   const step = Math.abs(m[3] ? parseInt(m[3], 10) : 1) || 1;
   const count = Math.floor(Math.abs(to - from) / step) + 1;
   if (count > limit) throw BRACE_OVERFLOW;
-  const padded = !letters && (/^-?0\d/.test(m[1]) || /^-?0\d/.test(m[2]));
-  const pad = padded ? Math.max(m[1].length, m[2].length) : 0;
+  // Bash pads to the longest endpoint (sign included) when one has a leading zero, like
+  // printf %0Nd: `{-01..2}` is `-01 000 001 002`.
+  const zeroLed = (e) => (e[0] === '0' && e.length > 1) || (e[0] === '-' && e[1] === '0' && e.length > 2);
+  const width = !letters && (zeroLed(m[1]) || zeroLed(m[2])) ? Math.max(m[1].length, m[2].length) : 0;
+  const fmt = (v) => (v < 0 ? '-' + String(-v).padStart(Math.max(width - 1, 0), '0') : String(v).padStart(width, '0'));
   const out = [];
   const dir = to >= from ? step : -step;
-  for (let n = 0, v = from; n < count; n++, v += dir) {
-    out.push(letters ? String.fromCharCode(v) : String(v).padStart(pad, '0'));
-  }
+  for (let n = 0, v = from; n < count; n++, v += dir) out.push(letters ? String.fromCharCode(v) : fmt(v));
   return out;
 }
 
 // Expand the first expandable group of `s` (and, recursively, the rest). Throws
-// BRACE_OVERFLOW past `limit` results.
-function braceWords(s, limit) {
+// BRACE_OVERFLOW past `limit` results, the depth cap or the scan budget.
+function braceWords(s, limit, st) {
   for (let i = 0; i < s.length;) {
-    const k = skipProtected(s, i);
+    braceTick(st);
+    const k = skipProtected(s, i, st);
     if (k >= 0) { i = k; continue; }
     if (s[i] !== '{') { i++; continue; }
     let depth = 1;
     let j = i + 1;
     const commas = [];
     while (j < s.length) {
-      const q = skipProtected(s, j);
+      braceTick(st);
+      const q = skipProtected(s, j, st);
       if (q >= 0) { j = q; continue; }
       if (s[j] === '{') depth++;
       else if (s[j] === '}' && --depth === 0) break;
@@ -237,12 +263,17 @@ function braceWords(s, limit) {
       alts = [];
       let from = i + 1;
       for (const c of [...commas, j]) { alts.push(s.slice(from, c)); from = c + 1; }
-      alts = alts.flatMap((a) => braceWords(a, limit));
+      braceDeeper(st);
+      alts = alts.flatMap((a) => braceWords(a, limit, st));
+      st.depth--;
+      if (alts.length > limit) throw BRACE_OVERFLOW;
     } else {
       alts = sequenceValues(s.slice(i + 1, j), limit);
     }
     if (!alts) { i++; continue; } // {} / {x}: literal, keep scanning inside
-    const post = braceWords(s.slice(j + 1), limit);
+    braceDeeper(st);
+    const post = braceWords(s.slice(j + 1), limit, st);
+    st.depth--;
     if (alts.length * post.length > limit) throw BRACE_OVERFLOW;
     const pre = s.slice(0, i);
     return alts.flatMap((a) => post.map((p) => pre + a + p));
@@ -251,14 +282,14 @@ function braceWords(s, limit) {
 }
 
 // Bash brace expansion of a RAW shell word (quotes still in place, so they stay
-// literal): { words } or { overflow: true } past `limit` results (#220).
+// literal): { words } or { overflow: true } past `limit` results, the nesting cap, or
+// on any internal fault (#220): a word it cannot expand is never passed through.
 function braceExpand(word, limit = BRACE_LIMIT) {
   try {
-    const out = braceWords(String(word), limit);
+    const out = braceWords(String(word), limit, { steps: 0, depth: 0 });
     return out.length > limit ? { overflow: true } : { words: out };
-  } catch (e) {
-    if (e === BRACE_OVERFLOW) return { overflow: true };
-    throw e;
+  } catch {
+    return { overflow: true };
   }
 }
 
@@ -694,20 +725,20 @@ const stripQuoteChars = (word) => word.replace(/\$(?=['"])/g, '').replace(/['"]/
 // literal here, so an env value is never pulled into a field the guard does not
 // scan (valueItems expands those a body takes). The raw command keeps the quotes
 // between the halves, so the caller scans this too (#217). Unquoted brace groups are
-// expanded first (#220); past the limit it throws an Error with code BRACE_OVERFLOW.
+// expanded first (#220); `overflow` is true when one is too large to enumerate.
 function resolvedWords(history) {
   const out = [];
   for (const rec of history) {
     for (const raw of words(rec.text)) {
       const b = braceExpand(raw);
-      if (b.overflow) throw Object.assign(new Error('brace expansion too large'), { code: 'BRACE_OVERFLOW' });
+      if (b.overflow) return { words: out, overflow: true };
       for (const word of b.words) {
         const r = expandWord(word, {}, {});
         out.push(r.unresolved ? stripQuoteChars(word) : r.value);
       }
     }
   }
-  return out;
+  return { words: out, overflow: false };
 }
 
 // Read a body file (regular files only: a FIFO or device could hang the hook).
