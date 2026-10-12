@@ -308,12 +308,10 @@ function dequotedFlag(raw, long, short) {
   const hit = d === long || (short && d === short) || d.startsWith(`${long}=`) || (short && d.startsWith(`${short}=`));
   if (hit) return d;
   if (!short || !d.startsWith(short) || d.startsWith('--') || d.length <= short.length) return null;
-  // The attached shorthand (`"-F/p"`, `-"F"/"p a"`). Whitespace after the flag letter in
-  // the SAME quoted span is free text (`"-F handling"`); anywhere else it is the value.
-  const letter = spans[short.length - 1];
-  for (let j = short.length; j < d.length; j++) {
-    if (/\s/.test(d[j]) && letter !== -1 && spans[j] === letter) return null;
-  }
+  // The attached shorthand (`"-F/p"`, `-"F"/"p a"`, `"-F/my dir/b"`). Only a space DIRECTLY
+  // after the flag letter, in the letter's own quoted span, is free text (`"-F handling"`).
+  const next = short.length;
+  if (/\s/.test(d[next]) && spans[next] !== -1 && spans[next] === spans[next - 1]) return null;
   return d;
 }
 

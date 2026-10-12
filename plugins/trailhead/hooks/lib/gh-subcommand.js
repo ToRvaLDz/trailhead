@@ -104,8 +104,11 @@ function dequoteSpans(word) {
     if (q === "'") { if (c === "'") q = null; else put(c, id); continue; }
     if (q === '"') {
       if (c === '"') q = null;
-      else if (c === '\\' && i + 1 < w.length) put(w[++i], id);
-      else put(c, id);
+      else if (c === '\\' && i + 1 < w.length && '$`"\\\n'.includes(w[i + 1])) {
+        // bash: inside "..." a backslash only escapes $ ` " \ and newline (which vanishes)
+        i++;
+        if (w[i] !== '\n') put(w[i], id);
+      } else put(c, id);
       continue;
     }
     if (c === '$' && w[i + 1] === "'") {
