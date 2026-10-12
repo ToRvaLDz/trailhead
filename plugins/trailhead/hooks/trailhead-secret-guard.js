@@ -49,6 +49,7 @@ const {
   resolveWord,
   substitutionSpans,
   joinedText,
+  resolvedWords,
   bodySources,
   readBodyFile,
 } = require('./lib/body-sources.js');
@@ -435,10 +436,15 @@ function secretBlock(kind, hit) {
 function gatherText(cmd, writes, env, cwd) {
   let text = cmd;
   // The raw command keeps a token broken by a backslash-newline; scan it joined as well.
+  const histories = new Set(writes.map((w) => w.history));
   if (cmd.includes('\\\n')) {
-    for (const history of new Set(writes.map((w) => w.history))) {
+    for (const history of histories) {
       for (const part of joinedText(history)) text += '\n' + part;
     }
+  }
+  // Adjacent quoted parts (`"a""b"`) are one word for bash; scan the quote-resolved words (#217).
+  for (const history of histories) {
+    for (const word of resolvedWords(history)) text += '\n' + word;
   }
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {

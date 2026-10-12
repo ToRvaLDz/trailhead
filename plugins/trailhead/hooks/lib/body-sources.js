@@ -496,6 +496,28 @@ function joinedText(history) {
   return parts;
 }
 
+// Literal quote removal for a word that cannot be expanded: drop the ' and "
+// characters and keep the rest, so literal halves around an unresolvable piece join.
+const stripQuoteChars = (word) => word.replace(/['"]/g, '');
+
+// What bash passes as each word once adjacent quoted parts are concatenated
+// (`"a""b"`, `"a"b`, `a''b`), for the statements of one command. An unresolvable
+// word falls back to literal quote removal; blocking on it is left to the body
+// sources. Variables are deliberately not expanded (empty scope): a `$NAME` stays
+// literal here, so an env value is never pulled into a field the guard does not
+// scan (valueItems expands those a body takes). The raw command keeps the quotes
+// between the halves, so the caller scans this too (#217).
+function resolvedWords(history) {
+  const out = [];
+  for (const rec of history) {
+    for (const word of words(rec.text)) {
+      const r = expandWord(word, {}, {});
+      out.push(r.unresolved ? stripQuoteChars(word) : r.value);
+    }
+  }
+  return out;
+}
+
 // Read a body file (regular files only: a FIFO or device could hang the hook).
 // `optional` tolerates a missing file.
 function readBodyFile(p, optional) {
@@ -522,6 +544,7 @@ module.exports = {
   substitutionSpans,
   expandPlain,
   joinedText,
+  resolvedWords,
   bodySources,
   readBodyFile,
 };
