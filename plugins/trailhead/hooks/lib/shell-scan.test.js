@@ -12,6 +12,8 @@ const {
   tokenize,
   substitutionBodies,
   heredocSubstitutionBodies,
+  functionSubstitutions,
+  inWordContinuations,
   scanArgsSkippingPattern,
   SEARCH_VERB_CONFIG,
 } = require('./shell-scan.js');
@@ -412,6 +414,56 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('heredocSubstitutionBodies is empty for plain text', hb('cat .env') === '[]');
   ok('heredocSubstitutionBodies treats <(..) as literal text', hb('diff <(cat .env)') === '[]');
   ok('heredocSubstitutionBodies treats a # as literal text', hb('# $(cat .env)') === cat);
+}
+
+// --- functionSubstitutions (bash 5.3 ${ cmd; } / ${| cmd; }) ---
+{
+  const fs_ = (c) => functionSubstitutions(c).map((f) => f.payload);
+  ok('functionSubstitutions finds ${ cmd; }', JSON.stringify(fs_('echo ${ date; }')) === JSON.stringify([' date; ']));
+  ok('functionSubstitutions finds ${| cmd; } (value substitution)', fs_('echo ${| REPLY=x; }').length === 1);
+  ok('functionSubstitutions finds ${<tab>', fs_('echo ${\tdate; }').length === 1);
+  ok('functionSubstitutions finds ${ at the end of a line', fs_('echo ${\ndate\n}').length === 1);
+  ok('functionSubstitutions reports the offset of the opener', functionSubstitutions('echo ${ date; }')[0].at === 5);
+  ok('functionSubstitutions finds one inside double quotes', fs_('echo "a ${ date; } b"').length === 1);
+  ok('functionSubstitutions finds one inside $(..)', fs_('echo $(echo ${ date; })').length === 1);
+  ok('functionSubstitutions ignores a plain ${x}', fs_('echo ${x} ${x:-y} ${#x}').length === 0);
+  ok('functionSubstitutions ignores single quotes', fs_("echo '${ date; }'").length === 0);
+  ok('functionSubstitutions ignores ANSI-C quotes', fs_("echo $'${ date; }'").length === 0);
+  ok('functionSubstitutions ignores a comment', fs_('echo hi # ${ date; }').length === 0);
+  ok('functionSubstitutions ignores an escaped dollar', fs_('echo \\${ date; }').length === 0);
+  ok('functionSubstitutions ignores the 2nd dollar of $$', fs_('echo $${ date; }').length === 0);
+  ok('functionSubstitutions ignores a quoted-heredoc body', fs_("cat <<'E'\n${ date; }\nE").length === 0);
+  ok('functionSubstitutions finds one in an unquoted heredoc body', fs_('cat <<E\n${ date; }\nE').length === 1);
+  ok('functionSubstitutions ends the payload at the closing brace', fs_('echo ${ a; } ${ b; }').join('|') === ' a; | b; ');
+  ok('functionSubstitutions keeps a nested ${x} in the payload', fs_('echo ${ echo ${x}; }')[0] === ' echo ${x}; ');
+  ok('functionSubstitutions runs an unclosed payload to the end', fs_('echo ${ date')[0] === ' date');
+}
+
+// --- inWordContinuations (a backslash-newline inside a word) ---
+{
+  const iw = (c) => inWordContinuations(c);
+  ok('inWordContinuations finds a split word', iw('cat .e\\\nnv').length === 1);
+  ok('inWordContinuations reports the glued junction', iw('cat .e\\\nnv')[0].junction === '.e' + 'nv');
+  ok('inWordContinuations ignores a continuation after a space', iw('gh issue comment 1 \\\n  --body x').length === 0);
+  ok('inWordContinuations ignores a continuation after a tab', iw('echo\t\\\nhi').length === 0);
+  ok('inWordContinuations ignores a continuation before an indented line', iw('echo a\\\n  b').length === 0);
+  ok('inWordContinuations ignores single-quoted text', iw("echo 'a\\\nb'").length === 0);
+  ok('inWordContinuations ignores double-quoted text', iw('echo "a\\\nb"').length === 0);
+  ok('inWordContinuations ignores a comment', iw('# a\\\nb').length === 0);
+  ok('inWordContinuations ignores an escaped backslash', iw('echo a\\\\\nb').length === 0);
+  ok('inWordContinuations finds one inside $(..)', iw('echo $(cat .e\\\nnv)').length === 1);
+  ok('inWordContinuations ignores a heredoc body', iw('cat <<E\na\\\nb\nE').length === 0);
+  ok('inWordContinuations is empty for plain text', iw('echo hi').length === 0);
+}
+
+// --- the new hooks leave the existing lexer output untouched ---
+{
+  const c = 'a ${ b; } c; d \\\ne | f $(g ${ h; })\ncat <<E\n${ x; }\nE';
+  const before = JSON.stringify([splitStatements(c), splitStatementsWithSeparators(c), substitutionBodies(c), heredocBodies(c)]);
+  functionSubstitutions(c);
+  inWordContinuations(c);
+  ok('functionSubstitutions / inWordContinuations do not change the other exports',
+    before === JSON.stringify([splitStatements(c), splitStatementsWithSeparators(c), substitutionBodies(c), heredocBodies(c)]));
 }
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);

@@ -140,6 +140,7 @@ function scanLine(line, st, seps, subs) {
         // `a\<nl>#x` is not). A line of just `\` inherits the earlier answer.
         st.contBoundary = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
         st.bareEnd = i === 0 ? bareAt === -1 : bareAt === i - 1; // carry the bare-dollar bit over
+        if (st.onCont) st.onCont(i, st.contBoundary, top); // optional observer (inWordContinuations)
       }
       i++;
       escAt = i;
@@ -159,7 +160,16 @@ function scanLine(line, st, seps, subs) {
     if (bare) bareAt = i;
     if (bare && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
     if (bare && line[i + 1] === '(') { openSub(i + 2); i++; continue; }
-    if (bare && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
+    if (bare && line[i + 1] === '{') {
+      // `${ ` / `${<tab>` / `${|` / `${` at the end of a line is a bash 5.3 function
+      // substitution (it runs code); the optional observer `st.funsubs` records it.
+      const funsub = st.funsubs && (i + 2 >= line.length || ' \t|'.includes(line[i + 2]));
+      const entry = funsub ? { line: st.lineNo, at: i } : null;
+      if (entry) st.funsubs.push(entry);
+      stack.push(entry ? { k: 'br', fs: entry } : { k: 'br' });
+      i++;
+      continue;
+    }
     if (top && top.k === 'dq') {
       if (c === '"') stack.pop();
       continue;
@@ -174,7 +184,13 @@ function scanLine(line, st, seps, subs) {
     if (c === "'") { stack.push({ k: 'sq' }); continue; }
     if (c === '"') { stack.push({ k: 'dq' }); continue; }
     if (bare && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
-    if (top && top.k === 'br') { if (c === '}') stack.pop(); continue; } // ${..}: no code until the matching }
+    if (top && top.k === 'br') { // ${..}: no code until the matching }
+      if (c === '}') {
+        stack.pop();
+        if (top.fs) { top.fs.endLine = st.lineNo; top.fs.endAt = i; }
+      }
+      continue;
+    }
     const wordStart = i === 0 ? (cont0 ? st.contBoundary : true) : isBoundary(i);
     if (c === '#' && wordStart) break; // comment to end of line
     if (c === '(' && line[i + 1] === '(' && wordStart && parenIsArith(line, i + 2, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
@@ -406,6 +422,70 @@ function collectSubstitutionBodies(lines, keep, st) {
   return out;
 }
 
+// Lex the `keep`-marked lines of a command from the start state `st`, telling the
+// optional observers on `st` (funsubs, onCont) which line they are on.
+function lexKeptLines(lines, keep, st) {
+  for (let li = 0; li < lines.length; li++) {
+    if (!keep[li]) continue;
+    st.lineNo = li;
+    scanLine(lines[li], st);
+  }
+}
+
+// Every live bash 5.3 function substitution in a command: `${ cmd; }`, `${| cmd; }`
+// and `${` at the end of a line. They run code the statement splitter treats as
+// ordinary text. Read off scanLine, so a `${ ` in single quotes, `$'..'`, a comment,
+// arithmetic or a quoted-delimiter heredoc body is not reported, while one in double
+// quotes, `$(..)` or an unquoted heredoc body is. Returns [{ at, payload }]: `at`
+// is the offset of the `${` in `cmd` (-1 inside a heredoc body), `payload` the code
+// up to the closing brace (to the end of the text when it never closes). A backtick
+// span is opaque to the lexer: callers recurse into substitutionBodies for those.
+function functionSubstitutions(cmd) {
+  const out = [];
+  const lexText = (text, initial, absolute) => {
+    const { lines, keep } = scanHeredocs(text, initial);
+    const starts = [];
+    lines.reduce((n, l, i) => { starts[i] = n; return n + l.length + 1; }, 0);
+    const st = { stack: (initial || []).map((f) => ({ ...f })), funsubs: [] };
+    lexKeptLines(lines, keep, st);
+    for (const f of st.funsubs) {
+      const endLine = f.endLine === undefined ? lines.length - 1 : f.endLine;
+      const endAt = f.endAt === undefined ? lines[endLine].length : f.endAt;
+      const parts = lines.slice(f.line, endLine + 1);
+      parts[parts.length - 1] = parts[parts.length - 1].slice(0, endAt);
+      parts[0] = parts[0].slice(f.at + 2);
+      out.push({ at: absolute ? starts[f.line] + f.at : -1, payload: parts.join('\n') });
+    }
+  };
+  lexText(String(cmd), [], true);
+  for (const doc of heredocBodies(cmd)) {
+    if (!doc.quoted) lexText(joinLineContinuations(doc.body), [{ k: 'hd' }], false);
+  }
+  return out;
+}
+
+// Every live backslash-newline that splits a WORD: the char before the backslash is
+// not a word boundary and the next line starts with a non-blank (`cat .e\<nl>nv`).
+// A continuation between words (` \<nl>  --body x`, the usual multi-line form) is
+// not reported, nor is one inside quotes, a comment or a heredoc body. Returns
+// [{ line, junction }]: `junction` is the glued text around the join (`.env`).
+function inWordContinuations(cmd) {
+  const out = [];
+  const { lines, keep } = scanHeredocs(cmd);
+  const st = {
+    stack: [],
+    onCont: (at, boundary, top) => {
+      const next = lines[st.lineNo + 1];
+      if (boundary || next === undefined || !/^\S/.test(next)) return;
+      if (top && top.k !== 'sub') return; // inside quotes the existing emulation joins it
+      const before = /\S{0,6}$/.exec(lines[st.lineNo].slice(0, at))[0];
+      out.push({ line: st.lineNo, junction: before + /^\S{0,6}/.exec(next)[0] });
+    },
+  };
+  lexKeptLines(lines, keep, st);
+  return out;
+}
+
 // --- statement splitting -------------------------------------------------------
 
 // Cut a command at the separators the lexer reports. Heredoc bodies are skipped
@@ -588,6 +668,8 @@ module.exports = {
   splitStatementsWithSeparators,
   substitutionBodies,
   heredocSubstitutionBodies,
+  functionSubstitutions,
+  inWordContinuations,
   tokenize,
   skipEnvPrefix,
   GREP_VALUE_FLAGS,
