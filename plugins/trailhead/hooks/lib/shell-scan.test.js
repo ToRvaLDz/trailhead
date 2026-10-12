@@ -183,6 +183,17 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     splitStatements(`echo $${BS}\n$'x${BS}' ; echo ran ; echo ''`).length === 3);
   ok('$ then a continued quote opens ANSI-C: one statement',
     splitStatements(`echo $${BS}\n'x${BS}' ; echo ran # '`).length === 1);
+  // A doubled dollar is the PID: the brace or bracket after it is a literal char.
+  ok('$${ is PID + a literal brace: three statements',
+    splitStatements('echo $${ ; echo ran ; echo }').length === 3);
+  ok('$$[ is PID + a literal bracket: three statements',
+    splitStatements('echo $$[ ; echo ran ; echo ]').length === 3);
+  ok('a continued $ then ${ is PID + a literal brace: three statements',
+    splitStatements(`echo $${BS}\n${'${'} ; echo ran ; echo }`).length === 3);
+  ok('$$$( is PID + a real substitution',
+    splitStatements('echo $$$(echo a; echo b)').length === 2);
+  ok('a bare ${x} still forms one frame', splitStatements('echo ${x:-a;b} ; echo ran').length === 2);
+  ok('a bare $[1;2] still forms one frame', splitStatements('echo $[1|2] ; echo ran').length === 2);
 }
 
 // --- nested subshells and substitutions inside quotes / ${..} (#212) ---

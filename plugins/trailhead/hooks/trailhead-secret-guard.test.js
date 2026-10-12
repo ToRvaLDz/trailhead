@@ -761,6 +761,13 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
       blocked(`echo $${BS}\n$'x${BS}' ; ${W} ; echo ''`));
     ok('a continued doubled dollar does not hide a later split-quote write',
       blocked(`echo $${BS}\n$'x${BS}' ; ${Wq} ; echo ''`));
+    // `$${` / `$$[` are the PID plus a literal char, so the write between them runs.
+    ok('a doubled dollar before a brace does not hide a later write',
+      blocked(`echo $${'${'} ; ${W} ; echo }`));
+    ok('a doubled dollar before a bracket does not hide a later write',
+      blocked(`echo $$[ ; ${W} ; echo ]`));
+    ok('a continued dollar before a brace does not hide a later write',
+      blocked(`echo $${BS}\n${'${'} ; ${W} ; echo }`));
     {
       const { words } = require('./lib/body-sources.js');
       const J = JSON.stringify;
