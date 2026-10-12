@@ -88,6 +88,10 @@ ok("isEmptyBody('x') is false", isEmptyBody('x') === false);
 ok("isEmptyBody(' a ') is false", isEmptyBody(' a ') === false);
 
 // --- end-to-end: block ---
+// #219: a quoted command word or subcommand is the same word for bash.
+const bQuoted = runHook('gh "issue" edit 5 --body ""');
+ok('blocks an empty --body behind a quoted subcommand (#219)', bQuoted.code === 2 && /EMPTY_ISSUE_BODY_WRITE/.test(bQuoted.out));
+
 const b1 = runHook('gh issue edit 5 --body ""');
 ok('blocks an empty inline --body (exit 2)', b1.code === 2 && /"decision":"block"/.test(b1.out) && /EMPTY_ISSUE_BODY_WRITE/.test(b1.out));
 

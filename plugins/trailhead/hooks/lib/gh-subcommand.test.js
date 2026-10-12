@@ -96,4 +96,21 @@ ok('gh --foo --bar issue edit 5 resolves issue/edit (two unknown boolean flags)'
 ok('gh repo view owner/repo resolves sub "repo" (not forced into a write keyword)',
   (() => { const r = parseGhSubcommand('gh repo view owner/repo'); return r.sub === 'repo'; })());
 
+// --- #219: a quoted or split word is the same word for bash ---
+ok('"gh" issue comment resolves issue/comment',
+  (() => { const r = parseGhSubcommand('"gh" issue comment 5'); return r && r.sub === 'issue' && r.verb === 'comment'; })());
+ok("gh 'issue' comment resolves issue/comment",
+  (() => { const r = parseGhSubcommand("gh 'issue' comment 5"); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('gh issue com""ment resolves the verb comment',
+  (() => { const r = parseGhSubcommand('gh issue com""ment 5'); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('"/usr/bin/gh" api resolves api',
+  (() => { const r = parseGhSubcommand('"/usr/bin/gh" api x'); return r && r.sub === 'api'; })());
+ok('\\gh and g"h" and $\'gh\' are the gh binary',
+  ['\\gh issue edit 5', 'g"h" issue edit 5', "$'gh' issue edit 5"].every((c) => { const r = parseGhSubcommand(c); return r && r.sub === 'issue' && r.verb === 'edit'; }));
+ok('gh is\\sue comment resolves issue',
+  (() => { const r = parseGhSubcommand('gh is\\sue comment 5'); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('"ghx" issue is not the gh binary', parseGhSubcommand('"ghx" issue comment 5') === null);
+ok("gh 'repo' view still resolves repo",
+  (() => { const r = parseGhSubcommand("gh 'repo' view"); return r.sub === 'repo' && r.verb === 'view'; })());
+
 console.log(`✓ gh-subcommand: ${passed} assertions passed`);

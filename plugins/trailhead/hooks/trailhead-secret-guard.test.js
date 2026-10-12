@@ -780,4 +780,55 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   }
 }
 
+// --- #219: a quoted or split command word or field key is the same word for bash ---
+{
+  const T = 'ghp_' + 'A'.repeat(36);
+  const BS = '\\'; // one backslash
+  const blocked = (cmd) => { const r = runHook(cmd); return r.code === 2 && /GitHub token/.test(r.out); };
+  const allowed = (cmd) => { const r = runHook(cmd); return r.code === 0 && r.out.trim() === ''; };
+  const opaque = (cmd) => { const r = runHook(cmd); return r.code === 2 && /SECRET_GUARD_OPAQUE_WRITE/.test(r.out); };
+  ok('a double-quoted gh command word blocks', blocked(`"gh" issue comment 5 --body ${T}`));
+  ok('a quoted subcommand blocks', blocked(`gh 'issue' comment 5 --body ${T}`));
+  ok('a split verb blocks', blocked(`gh issue com""ment 5 --body ${T}`));
+  ok('a quoted gh api field key blocks', blocked(`gh api repos/o/r/issues/5/comments -f 'body'=${T}`));
+  ok('a double-quoted gh api field key blocks', blocked(`gh api repos/o/r/issues/5/comments -f "body"=${T}`));
+  ok('a split gh api field key blocks', blocked(`gh api repos/o/r/issues/5/comments -f bo""dy=${T}`));
+  ok('a backslash-escaped command word blocks', blocked(`${BS}gh issue comment 5 --body ${T}`));
+  ok('a backslash-escaped subcommand blocks', blocked(`gh is${BS}sue comment 5 --body ${T}`));
+  ok('an ANSI-C quoted command word blocks', blocked(`$'gh' issue comment 5 --body ${T}`));
+  ok('a split command word blocks', blocked(`g"h" issue comment 5 --body ${T}`));
+  ok('a quoted path to gh blocks', blocked(`"/usr/bin/gh" issue comment 5 --body ${T}`));
+  ok('a quoted pr verb blocks', blocked(`gh pr 'edit' 5 --body ${T}`));
+  ok('a quoted gh behind a compound separator blocks', blocked(`cd /tmp && "gh" issue comment 5 --body ${T}`));
+  // A quoted shell runner or wrapper is the same command for bash: opaque like the bare form.
+  ok('the unquoted bash -c form is opaque (control)', opaque('bash -c "gh issue comment 5 --body x"'));
+  ok('a quoted bash runner is opaque', opaque(`'bash' -c "gh issue comment 5 --body x"`));
+  ok('a quoted env wrapper and bash runner are opaque', opaque(`"env" "bash" -c "gh issue comment 5 --body x"`));
+  ok('a quoted env wrapper in front of a quoted gh blocks', blocked(`"env" "gh" issue comment 5 --body ${T}`));
+  // A variable command word we cannot resolve falls back to the write words, quote-removed.
+  ok('an unresolved command word with a quoted subcommand is opaque',
+    opaque("$TRAILHEAD_UNSET_219 'issue' comment 5 --body x"));
+  ok('an unresolved command word with a split verb is opaque',
+    opaque('$TRAILHEAD_UNSET_219 issue com""ment 5 --body x'));
+  // A body file behind a quoted or split body= key is still read.
+  {
+    const dir219 = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-219-'));
+    const F = path.join(dir219, 'body.txt');
+    fs.writeFileSync(F, `${T}\n`);
+    ok("gh api -F 'body'=@file reads the file", blocked(`gh api x -F 'body'=@${F}`));
+    ok('gh api -F "body"=@file reads the file', blocked(`gh api x -F "body"=@${F}`));
+    ok('gh api -F bo""dy=@file reads the file', blocked(`gh api x -F bo""dy=@${F}`));
+    ok('gh api -F body=@file reads the file (control)', blocked(`gh api x -F body=@${F}`));
+    ok("gh api -f 'body'=@file keeps @ literal and passes", allowed(`gh api x -f 'body'=@${F}`));
+    fs.rmSync(dir219, { recursive: true, force: true });
+  }
+  // Negative controls: not a tracker write, or nothing to flag.
+  ok('a quoted read-only subcommand passes', allowed(`gh 'issue' view 5 --json body`));
+  ok('gh issue list passes', allowed('gh issue list'));
+  ok('a quoted gh issue list passes', allowed('"gh" "issue" list'));
+  ok('gh inside an echo string argument passes', allowed('echo "gh issue comment"'));
+  ok('a quoted bash running a non-write passes', allowed("'bash' -c \"echo hi\""));
+  ok('a clean body through a quoted command word passes', allowed('"gh" issue comment 5 --body hello'));
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);
