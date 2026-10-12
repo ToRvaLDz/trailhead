@@ -253,6 +253,16 @@ for (const c of ["bash <<'EOF'\ncat .env\nEOF", 'sh <<EOF\ncat .env\nEOF', 'bash
   'echo hi; bash <<EOF\ncat .env\nEOF']) {
   ok(`Bash \`${c}\` is denied with path .env (#223)`, hit214(c));
 }
+// #223 review: env option values, leading shell keywords, heredoc pairing
+for (const c of ['env -u FOO bash <<EOF\ncat .env\nEOF', 'env -C /tmp bash <<EOF\ncat .env\nEOF',
+  'env --unset FOO sh <<EOF\ncat .env\nEOF', 'env --chdir /tmp bash <<EOF\ncat .env\nEOF',
+  'env -S bash <<EOF\ncat .env\nEOF', 'if true; then bash <<EOF\ncat .env\nEOF', 'time bash <<EOF\ncat .env\nEOF',
+  'while x; do bash <<EOF\ncat .env\nEOF', '! bash <<EOF\ncat .env\nEOF', 'true; then time bash <<EOF\ncat .env\nEOF',
+  'cat <<EOF |& bash\ncat .env\nEOF', 'bash <<EOF &\ncat .env\nEOF', 'cat <<A; bash <<B\necho hi\nA\ncat .env\nB']) {
+  ok(`Bash \`${c}\` is denied with path .env (#223 review)`, hit214(c));
+}
+allowCmd('cat <<A; bash <<B\ncat .env\nA\necho hi\nB');
+
 for (const c of ["cat <<'EOF'\ncat .env\nEOF", 'cat <<EOF\ncat .env\nEOF', "tee f <<'EOF'\ncat .env\nEOF",
   'cat <<EOF; bash x.sh\ncat .env\nEOF', "bash <<'EOF'\necho hi\nEOF", 'cat <<EOF | bash\necho hi\nEOF']) {
   allowCmd(c);
