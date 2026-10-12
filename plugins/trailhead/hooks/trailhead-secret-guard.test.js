@@ -756,6 +756,19 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
       blocked(`echo $$'x${BS}' ; ${Wq} # '`));
     ok('an escaped dollar before a quote does not hide a later write',
       blocked(`echo ${BS}$'x${BS}' ; ${W} # '`));
+    // The bare-dollar state survives a backslash-newline continuation.
+    ok('a continued doubled dollar does not hide a later --body-file write',
+      blocked(`echo $${BS}\n$'x${BS}' ; ${W} ; echo ''`));
+    ok('a continued doubled dollar does not hide a later split-quote write',
+      blocked(`echo $${BS}\n$'x${BS}' ; ${Wq} ; echo ''`));
+    {
+      const { words } = require('./lib/body-sources.js');
+      const J = JSON.stringify;
+      ok('words: a continued doubled dollar leaves the quote plain',
+        J(words(`echo $${BS}\n$'x${BS}' y'`)) === J(['echo', `$$'x${BS}'`, "y'"]));
+      ok('words: a continued dollar then a quote opens ANSI-C',
+        J(words(`echo $${BS}\n'x${BS}' y'`)) === J(['echo', `$'x${BS}' y'`]));
+    }
     fs.rmSync(dir217, { recursive: true, force: true });
   }
 }

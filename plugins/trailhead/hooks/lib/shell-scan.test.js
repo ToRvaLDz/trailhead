@@ -178,6 +178,11 @@ ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatem
     splitStatements(`echo $'x${BS}' ; y' ; echo ran`).length === 2);
   ok('$$$\' opens a span (the third dollar is bare)',
     splitStatements(`echo $$$'x${BS}' ; y' ; echo ran`).length === 2);
+  // A bare `$` ending a line stays bare across the backslash-newline continuation.
+  ok('$ then a continued $\' is PID + plain quote: three statements',
+    splitStatements(`echo $${BS}\n$'x${BS}' ; echo ran ; echo ''`).length === 3);
+  ok('$ then a continued quote opens ANSI-C: one statement',
+    splitStatements(`echo $${BS}\n'x${BS}' ; echo ran # '`).length === 1);
 }
 
 // --- nested subshells and substitutions inside quotes / ${..} (#212) ---
