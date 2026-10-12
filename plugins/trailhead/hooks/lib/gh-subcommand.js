@@ -56,6 +56,14 @@
 // form. This slightly over-detects (a quote inside a single-quoted word is
 // dropped too), which is the safe direction for a guard.
 //
+// Fourth follow-up fix (#225): the verb was read as the token right after the
+// subcommand, so a flag between them (`gh issue -R o/r comment 5`,
+// `gh pr --repo=o/r edit 5`) made the verb the flag itself and hid the write
+// from both guards. Flags after the subcommand are now skipped with the same
+// arity model as the global walk (a glued `--flag=value` or a boolean global
+// flag takes no value, any other flag consumes one following non-flag token)
+// before the verb is read, in the primary walk and in the fail-safe fallback.
+//
 // Self-contained. No requires.
 
 // gh's boolean global flags (take NO value). gh's only value-taking global
@@ -128,6 +136,19 @@ function dequoteSpans(word) {
 
 const dequote = (word) => dequoteSpans(word).text;
 
+// Skip the flags starting at toks[i] and return the index of the first
+// non-flag token. A glued `--flag=value` or a BOOLEAN_GLOBAL_FLAGS member takes
+// no value; any other flag consumes one following non-flag token (#153, #225).
+function skipFlags(toks, i) {
+  while (i < toks.length && toks[i].startsWith('-')) {
+    const flag = toks[i];
+    i++; // the flag token itself
+    if (flag.includes('=') || BOOLEAN_GLOBAL_FLAGS.has(flag)) continue; // no separate value
+    if (i < toks.length && !toks[i].startsWith('-')) i++;               // consume its value
+  }
+  return i;
+}
+
 // Parse a raw shell command string and locate the gh subcommand/verb.
 // Returns { sub, verb } (verb may be undefined) or null when this is not a
 // gh invocation at all.
@@ -141,14 +162,9 @@ function parseGhSubcommand(cmd) {
   // Primary positional walk. -R/--repo (and any non-boolean, non-glued flag)
   // is treated as value-taking: consume one following non-flag token so an
   // unknown two-token global flag's value cannot shift the subcommand (#153).
-  while (i < toks.length && toks[i].startsWith('-')) {
-    const flag = toks[i];
-    i++; // the flag token itself
-    if (flag.includes('=') || BOOLEAN_GLOBAL_FLAGS.has(flag)) continue; // no separate value
-    if (i < toks.length && !toks[i].startsWith('-')) i++;               // consume its value
-  }
+  i = skipFlags(toks, i);
   let sub = toks[i];
-  let verb = toks[i + 1];
+  let verb = toks[skipFlags(toks, i + 1)];
   // Fail-safe fallback: if the walk did NOT land on a recognized write
   // subcommand, an unknown *boolean* flag before the subcommand may have
   // consumed the subcommand itself as if it were the flag's value (the mirror
@@ -159,7 +175,7 @@ function parseGhSubcommand(cmd) {
   // non-write command does not become a spurious write.
   if (!WRITE_SUBCOMMANDS.has(sub)) {
     for (let j = start; j < toks.length; j++) {
-      if (WRITE_SUBCOMMANDS.has(toks[j])) { sub = toks[j]; verb = toks[j + 1]; break; }
+      if (WRITE_SUBCOMMANDS.has(toks[j])) { sub = toks[j]; verb = toks[skipFlags(toks, j + 1)]; break; }
     }
   }
   return { sub, verb };
