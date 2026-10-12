@@ -91,6 +91,7 @@ function scanLine(line, st, seps, subs) {
   const parens = {}; // parenIsArith's per-line match cache
   const cont0 = st.cont; // the previous line ended in a backslash: this one continues it
   let escAt = -2; // index of the last escaped char
+  let bareAt = -2; // index of the last bare `$` (not escaped, not the 2nd of `$$`)
   st.cont = false;
   // Is the char before index i a word boundary? An escaped char (`\ #x`) is not.
   // The `)` that closes an expansion (`$(..)`, `<(..)`, `$((..))`) ends no word
@@ -153,7 +154,12 @@ function scanLine(line, st, seps, subs) {
       if (c === '"') stack.pop();
       continue;
     }
-    if (c === '$' && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
+    if (c === '$') {
+      // Only a bare `$` opens `$'..'`: not an escaped one (skipped above) and not the 2nd of `$$` (the PID).
+      const bare = bareAt !== i - 1;
+      if (bare) bareAt = i;
+      if (bare && line[i + 1] === "'") { stack.push({ k: 'ansi' }); i++; continue; }
+    }
     if (c === "'") { stack.push({ k: 'sq' }); continue; }
     if (c === '"') { stack.push({ k: 'dq' }); continue; }
     if (c === '$' && line[i + 1] === '[') { stack.push({ k: 'ar', mode: 'bracket' }); i++; continue; }
