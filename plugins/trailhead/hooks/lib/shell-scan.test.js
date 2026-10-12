@@ -328,8 +328,8 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('substitutionBodies reports a $(..) inside a bq only as part of the bq body',
     bodies('echo `echo $(cat .env)`') === JSON.stringify(['echo $(cat .env)']));
   ok('substitutionBodies returns the remainder of an unterminated backtick', bodies('echo "`cat .env') === cat);
-  ok('substitutionBodies keeps an escaped backtick inside a bq body',
-    bodies('echo `echo \\`x\\` .env`') === JSON.stringify(['echo \\`x\\` .env']));
+  ok('substitutionBodies unescapes a nested backtick in a bq body',
+    bodies('echo `echo \\`cat .env\\``') === JSON.stringify(['echo `cat .env`']));
   ok('splitStatements ignores a ; inside a backtick span like before',
     JSON.stringify(splitStatements('echo `a; b` ; c')) === JSON.stringify(['echo `a', 'b`', 'c']));
 }

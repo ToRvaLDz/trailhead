@@ -49,8 +49,12 @@
 // `echo "$(true; cat .env)"`): the quoted token hid it, and the splitter cut
 // inside the `$(..)`. Each outermost `$(..)` / `<(..)` / `>(..)` body (from
 // substitutionBodies in lib/shell-scan.js) is now also scanned as a command,
-// off a depth- and size-capped work-list. Backtick substitutions are still not
-// modelled (tracked as a separate bug).
+// off a depth- and size-capped work-list.
+//
+// #216 fix: the same miss for backtick substitutions (`echo "`cat .env`"`,
+// `x="`cat .env`"`, `echo "${x:-`cat .env`}"`). scanLine now tracks a backtick
+// span and substitutionBodies returns its body (unescaped as the shell would
+// run it) alongside the `$(..)` ones, so the work-list scans it too.
 //
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only

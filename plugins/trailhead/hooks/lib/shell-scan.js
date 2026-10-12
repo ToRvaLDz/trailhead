@@ -65,13 +65,21 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // in splittable code (top level or inside `$(..)`, never inside a quote,
 // arithmetic span or comment) are pushed to it as { at, len, op }, so the
 // splitters cut exactly where this lexer says code is. Best-effort: not a full
-// shell parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not
-// modelled, and backtick substitutions are tracked as a separate bug; nor is
-// the body order of a heredoc nested in another heredoc's pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
-// When `subs` is given ({ open(at), close(at) }), it is told where each
-// OUTERMOST `$(..)` / `<(..)` / `>(..)` body starts (the index after the `(`)
-// and where it ends (the index of the closing `)`), so substitutionBodies
-// reads the bodies off this lexer instead of running a second one.
+// shell parser (`$(( (a) ))` nesting tricks and `<<\TAG` are not modelled,
+// nor is a backtick nested inside a backtick span other than as an escaped
+// char; nor is the body order of a heredoc nested in another heredoc's pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
+// When `subs` is given ({ open(at, bq), close(at) }), it is told where each
+// OUTERMOST `$(..)` / `<(..)` / `>(..)` / backtick body starts (the index after
+// the opener; `bq` is true for a backtick) and where it ends (the index of the
+// closing `)` or backtick), so substitutionBodies reads the bodies off this
+// lexer instead of running a second one.
+// A backtick span is NOT a stack frame: it lives in `st.bq` ({ outer } or unset)
+// and is opened by an unescaped backtick in code, `dq`, `br` or `sub` context
+// (never in `sq`, `ansi`, arithmetic or a comment) and closed by the next
+// unescaped one. Keeping it off the stack makes it transparent to splitting and
+// heredoc depth: the span's text is lexed exactly as it was when backticks were
+// invisible, so the splitters' output is unchanged. A span that never closes
+// runs to the end of the input.
 function scanLine(line, st, seps, subs) {
   const found = [];
   const stack = st.stack;
@@ -85,7 +93,7 @@ function scanLine(line, st, seps, subs) {
   let expCloseAt = -2;
   // Push a `$(..)` / `<(..)` frame; the outermost one is reported to `subs`.
   const openSub = (bodyAt) => {
-    const outer = !stack.some((f) => f.k === 'sub');
+    const outer = !st.bq && !stack.some((f) => f.k === 'sub');
     stack.push({ k: 'sub', n: 0, outer });
     if (subs && outer) subs.open(bodyAt);
   };
@@ -118,6 +126,15 @@ function scanLine(line, st, seps, subs) {
       }
       i++;
       escAt = i;
+      continue;
+    }
+    if (c === '`') { // a backtick substitution opens here or closes the open one
+      if (st.bq) { if (subs && st.bq.outer) subs.close(i); st.bq = null; }
+      else {
+        const outer = !stack.some((f) => f.k === 'sub');
+        st.bq = { outer };
+        if (subs && outer) subs.open(i + 1, true);
+      }
       continue;
     }
     if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
@@ -282,10 +299,12 @@ function countHeredocs(stmt) {
 }
 
 // The text of every outermost command substitution in a command: `$(..)`,
-// `<(..)` and `>(..)`, including those inside double quotes (the shell runs
-// them), never one in single quotes, `$'..'`, arithmetic, a comment or a
+// `<(..)`, `>(..)` and backticks, including those inside double quotes (the
+// shell runs them), never one in single quotes, `$'..'`, arithmetic, a comment or a
 // heredoc body. Nested ones are not returned: callers recurse into a body to
-// reach them. A body can span lines (joined with '\n'); one that never closes
+// reach them. A backtick body is returned as the shell would run it: `\``,
+// `\\` and `\$` are unescaped, so a nested `\`..\`` becomes a real backtick
+// span in the body. A body can span lines (joined with '\n'); one that never closes
 // runs to the end of the input (fail toward scanning). Read off scanLine's
 // `sub` frames, so it agrees with the splitters on what is code.
 function substitutionBodies(cmd) {
@@ -297,9 +316,11 @@ function substitutionBodies(cmd) {
   const out = [];
   let cur = null; // text of the open body so far, or null
   let from = 0; // where the open body's text starts on the current line
+  let bq = false; // the open body is a backtick span
+  const unescape = (t) => (bq ? t.replace(/\\([`\\$])/g, '$1') : t);
   const subs = {
-    open: (at) => { cur = ''; from = at; },
-    close: (at) => { out.push(cur + lines[li].slice(from, at)); cur = null; },
+    open: (at, isBq) => { cur = ''; from = at; bq = !!isBq; },
+    close: (at) => { out.push(unescape(cur + lines[li].slice(from, at))); cur = null; },
   };
   let li = 0;
   for (; li < lines.length; li++) {
@@ -308,7 +329,7 @@ function substitutionBodies(cmd) {
     scanLine(lines[li], st, undefined, subs);
     if (cur !== null) cur += lines[li].slice(from) + '\n';
   }
-  if (cur !== null) out.push(cur.slice(0, -1)); // unterminated: the remainder
+  if (cur !== null) out.push(unescape(cur.slice(0, -1))); // unterminated: the remainder
   return out;
 }
 
