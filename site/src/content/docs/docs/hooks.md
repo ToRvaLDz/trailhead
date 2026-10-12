@@ -18,6 +18,8 @@ The commit, secret, install, search, and body guards run in **one process**: a s
 
 `TRAILHEAD_MOD_GUARDS=<name,...>@<epoch-ms>`: when the Claude Code mod has already run some of these five guards it stamps their names, and the merged hook skips exactly those while the stamp is under five seconds old; a missing, malformed, or stale stamp skips none.
 
+The secret, body, and secret-read guards also **fail closed on shell constructs they cannot interpret with certainty** (`eval`, `source` / `.`, a bash 5.3 `${ cmd; }`, `printf -v`, a function definition, an alias, a quoted `gh api` body key, a backslash-newline inside a word): when one can hide or precede a write (or sits next to a secret path), the command is blocked with a "rewrite it in a simple form" message instead of being emulated; the same constructs with no write or secret nearby pass.
+
 All eight are crash-safe (any error → allow) and active whenever the plugin is installed. The commit, secret, install, search, body, and secret-read guards therefore apply in **every** repo, not only trailhead projects: intentional, since conventional commits, no `Co-Authored-By`, no leaked secrets, no unvetted installs, no `cd`-then-relative-read, no clobbered issue bodies, and no readable `.env`/`.secrets` are trailhead's standing rules.
 
 To opt out, disable the plugin's hooks in your Claude Code settings.
