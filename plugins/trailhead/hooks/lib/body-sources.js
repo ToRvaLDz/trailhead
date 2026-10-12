@@ -50,6 +50,37 @@ function expandDollar(text, i, vars, env) {
   return { value: v, next: i + 1 + len };
 }
 
+const ANSI_C_SIMPLE = { n: '\n', t: '\t', r: '\r', a: '\x07', b: '\b', f: '\f', v: '\v', e: '\x1b' };
+
+// Decode the body of an ANSI-C `$'...'` span starting at word[i] (just past the
+// opening quote). Common escapes are decoded (\n \t \\ \' \" \xHH \uHHHH \NNN); any
+// other backslash pair keeps the character after it, so nothing is ever lost.
+// Returns { value, next } or { unresolved }.
+function expandAnsiC(word, i) {
+  let out = '';
+  for (;;) {
+    if (i >= word.length) return { unresolved: 'unterminated quote' };
+    const d = word[i];
+    if (d === "'") return { value: out, next: i + 1 };
+    if (d !== '\\' || i + 1 >= word.length) { out += d; i++; continue; }
+    const rest = word.slice(i + 1);
+    const n = rest[0];
+    let m;
+    if (Object.prototype.hasOwnProperty.call(ANSI_C_SIMPLE, n)) {
+      out += ANSI_C_SIMPLE[n]; i += 2;
+    } else if ((m = /^x([0-9a-fA-F]{1,2})/.exec(rest)) || (m = /^u([0-9a-fA-F]{1,4})/.exec(rest)) || (m = /^U([0-9a-fA-F]{1,8})/.exec(rest))) {
+      const cp = parseInt(m[1], 16);
+      out += cp <= 0x10ffff ? String.fromCodePoint(cp) : m[0];
+      i += 1 + m[0].length;
+    } else if ((m = /^[0-7]{1,3}/.exec(rest))) {
+      out += String.fromCharCode(parseInt(m[0], 8) & 0xff);
+      i += 1 + m[0].length;
+    } else {
+      out += n; i += 2; // \\ \' \" and any other pair: keep the character
+    }
+  }
+}
+
 // Expand one shell word the way bash would for a plain argument: single quotes are
 // literal, double quotes expand $NAME/${NAME} only, a bare word also expands a
 // leading `~`/`~/` to HOME. Returns { value } or { unresolved: reason }.
@@ -94,6 +125,14 @@ function expandWord(word, vars, env) {
     } else if (c === '\\' && i + 1 < word.length) {
       out += word[i + 1];
       i += 2;
+    } else if (c === '$' && word[i + 1] === "'") {
+      // ANSI-C quoting: bash drops the `$` and decodes the span.
+      const r = expandAnsiC(word, i + 2);
+      if (r.unresolved) return r;
+      out += r.value;
+      i = r.next;
+    } else if (c === '$' && word[i + 1] === '"') {
+      i++; // locale quoting: drop the `$`, the double-quoted span follows
     } else if (c === '$') {
       const r = expandDollar(word, i, vars, env);
       if (r.unresolved) return r;
@@ -116,17 +155,20 @@ function words(stmt) {
   const out = [];
   let cur = '';
   let quote = null; // ' or "
+  let ansi = false; // inside a `$'...'` span
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
+      // An ANSI-C `$'...'` span honours backslash escapes (`$'a\'b'`).
+      if (quote === "'" && ansi && c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
       // Inside double quotes bash removes a backslash-newline continuation.
       if (quote === '"' && c === '\\' && s[i + 1] === '\n') { i++; continue; }
       cur += c;
       if (quote === '"' && c === '\\' && i + 1 < s.length) cur += s[++i];
-      else if (c === quote) quote = null;
+      else if (c === quote) { quote = null; ansi = false; }
       continue;
     }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === "'" || c === '"') { ansi = c === "'" && s[i - 1] === '$'; quote = c; cur += c; continue; }
     // A backslash-newline continuation vanishes (`a\<nl>b` is `ab`, `a \<nl>b` is two words).
     if (c === '\\' && s[i + 1] === '\n') { i++; continue; }
     if (c === '\\' && i + 1 < s.length) { cur += c + s[++i]; continue; }
@@ -498,7 +540,7 @@ function joinedText(history) {
 
 // Literal quote removal for a word that cannot be expanded: drop the ' and "
 // characters and keep the rest, so literal halves around an unresolvable piece join.
-const stripQuoteChars = (word) => word.replace(/['"]/g, '');
+const stripQuoteChars = (word) => word.replace(/\$(?=['"])/g, '').replace(/['"]/g, '');
 
 // What bash passes as each word once adjacent quoted parts are concatenated
 // (`"a""b"`, `"a"b`, `a''b`), for the statements of one command. An unresolvable
