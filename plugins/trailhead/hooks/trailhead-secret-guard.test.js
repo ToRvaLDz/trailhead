@@ -953,6 +953,22 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('a brace group in the verb blocks', runHook(`gh issue {comment,comment} 5 --body ${A}${B}`).code === 2);
   ok('a brace group that builds only one write verb blocks', runHook(`gh issue {view,comment} 5 --body ${A}${B}`).code === 2);
   ok('a brace group in a read-only verb passes', allowed('gh issue {view,list} 5'));
+  // Brace groups anywhere in the gh argument list: flag names, field keys, global flags.
+  {
+    const T = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8';
+    const API = 'gh api repos/o/r/issues/5/comments';
+    ok('a brace group in a field key blocks', blocked(`${API} -f b{ody,ody}=${T}`));
+    ok('a brace group in a short flag blocks', blocked(`${API} -{f,f} body=${T}`));
+    ok('a brace group in a long flag blocks', blocked(`${API} --{field,field} body=${T}`));
+    ok('an empty-alternative group after the key blocks', blocked(`${API} -f body{,}=${T}`));
+    ok('a token split by a group in a field key blocks', blocked(`${API} -f b{ody,ody}=${A}{,x}${B}`));
+    ok('a gh global flag before a braced subcommand blocks', runHook(`gh -R o/r {issue,issue} comment 5 --body ${T}`).code === 2);
+    ok('gh --repo before a braced subcommand blocks', runHook(`gh --repo o/r {issue,issue} comment 5 --body ${T}`).code === 2);
+    ok('a read-only braced verb passes', allowed('gh issue {view,list} 5'));
+    ok('a read-only braced subcommand passes', allowed('gh pr {view,diff} 5'));
+    ok('a braced gh command word on a read passes', allowed('{gh,gh} issue view 5'));
+    ok('a braced --label with a clean body passes', allowed(`${G} --label {a,b} --body hello`));
+  }
   {
     const { braceExpand } = require('./lib/body-sources.js');
     const J = JSON.stringify;
@@ -980,6 +996,8 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     ok('braceExpand: deep nesting overflows', braceExpand('{x,'.repeat(5000) + 'y' + '}'.repeat(5000)).overflow === true);
     ok('braceExpand: deep ${ overflows', braceExpand('${a'.repeat(5000)).overflow === true);
     ok('braceExpand: many unmatched braces stay fast', (() => { const t = Date.now(); braceExpand('{'.repeat(100000)); return Date.now() - t < 5000; })());
+    ok('braceExpand: overflow is not a fault', braceExpand('{a,b}'.repeat(9)).fault !== true);
+    ok('braceExpand: deep nesting is a size overflow, not a fault', braceExpand('{x,'.repeat(5000) + 'y' + '}'.repeat(5000)).fault !== true);
     ok('braceExpand: overflow', braceExpand('{a,b}'.repeat(9)).overflow === true);
     ok('braceExpand: a huge sequence overflows', braceExpand('{1..999999999}').overflow === true);
     ok('braceExpand: the limit is a parameter', braceExpand('{a,b,c}', 2).overflow === true);
