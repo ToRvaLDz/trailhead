@@ -9,6 +9,7 @@ import {
   ageLabel,
   axisStart,
   type BurndownSeries,
+  burndownEnd,
   burndownSeries,
   chartKind,
   failureReason,
@@ -421,8 +422,9 @@ export function registerMapPane(on: On) {
           ? `⚠ ${data.error}`
           : `⚠ ${data.error} · list from ${ageLabel(now - data.fetchedAt)}`
 
-    const series = isCurrent && data.history !== null ? burndownSeries(data.history, now, cols) : null
-    const burndown = (s: BurndownSeries, history: BurndownHistory, historyAt: number | null) => (
+    const end = burndownEnd(data, now)
+    const series = isCurrent && data.history !== null ? burndownSeries(data.history, end.at, cols) : null
+    const burndown = (s: BurndownSeries, history: BurndownHistory) => (
       <Box key="burndown-section" flexDirection="column" marginTop={gap}>
         {text('burndown-head', bold, 'Burn-down')}
         {text('burndown-counts', dim, fit(`open ${s.open} · done ${s.done} · removed ${s.removed} · peak ${s.peak}`, cols))}
@@ -432,8 +434,8 @@ export function registerMapPane(on: On) {
           text('burndown-spark', { color: ACCENT }, sparkline(s.values, s.peak))
         )}
         <Box key="burndown-axis" width={cols} justifyContent="space-between">
-          {text('burndown-axis-start', dim, axisStart(s.startedAt, now))}
-          {text('burndown-axis-end', dim, historyAt === data.fetchedAt || historyAt === null ? 'now' : ageLabel(now - historyAt))}
+          {text('burndown-axis-start', dim, axisStart(s.startedAt, end.at))}
+          {text('burndown-axis-end', dim, end.label)}
         </Box>
         {history.isCapped ? text('burndown-capped', dim, `history capped at ${HISTORY_LIMIT}: starts at the oldest ticket read`) : null}
       </Box>
@@ -460,7 +462,7 @@ export function registerMapPane(on: On) {
             <Text {...dim}>{`list capped at ${LIST_LIMIT}`}</Text>
           </Box>
         )}
-        {series === null || data.history === null ? null : burndown(series, data.history, data.historyAt)}
+        {series === null || data.history === null ? null : burndown(series, data.history)}
         <Box key="spacer" flexGrow={1} />
         <Box key="footer" flexDirection="column">
           {text('rule', dim, '─'.repeat(cols))}

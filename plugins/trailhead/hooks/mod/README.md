@@ -85,7 +85,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   tickets). The chart has one sample per pane column. On the terminal surface it is a `Raster` (3 rows
   of eighth blocks, accent colour, key `burndown`); elsewhere a one-row text sparkline (`▁`..`█`).
   The axis line has the start on the left (`Sep 18`, or `today 09:05` under a day, in UTC) and
-  `now` on the right. The section is hidden with no active map, while loading, or when the history
+  `now` on the right, but `now` only while the history is fresh: when the history read failed alone, or
+  the whole refresh failed, the last curve is kept, drawn up to the time it was read, and the right label
+  shows its age (`3m ago`). The section is hidden with no active map, while loading, or when the history
   is empty or has not been read yet.
   - **Data**: no new storage. One more `gh issue list --label trailhead:map-<map> --state all
     --limit 5000 --json number,labels,createdAt,closedAt`, run with the other two reads in the same

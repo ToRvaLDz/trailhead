@@ -247,6 +247,18 @@ export const parseHistory = (stdout: string): BurndownHistory | null => {
   return { issues: raw.filter(isRecord).flatMap(historyIssue), isCapped: raw.length >= HISTORY_LIMIT }
 }
 
+export type BurndownEnd = { at: number; label: string }
+
+// Where the chart ends: now when its history was read by the last good fetch, else the time it was
+// read, labelled with its age (a failed read keeps the last curve, it is not stretched to the present).
+export const burndownEnd = (
+  d: { historyAt: number | null; fetchedAt: number | null; error: string | null },
+  now: number,
+): BurndownEnd =>
+  d.historyAt === null || (d.error === null && d.historyAt === d.fetchedAt)
+    ? { at: now, label: 'now' }
+    : { at: d.historyAt, label: ageLabel(now - d.historyAt) }
+
 export type BurndownSeries = {
   values: readonly number[]
   open: number

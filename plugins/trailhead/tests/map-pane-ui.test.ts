@@ -364,6 +364,8 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'age')).toBe('⚠ offline: cannot reach GitHub · list from 3m ago')
     expect(await textOf(ui, 'burndown-counts')).toBe('open 7 · done 2 · removed 1 · peak 10')
+    // the kept chart is not "now": its axis carries the age, like the footer
+    expect(await textOf(ui, 'burndown-axis-end')).toBe('3m ago')
   })
 
   test(`after a map switch a failed history read draws no chart [${surface}]`, async ($, on) => {

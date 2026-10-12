@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import {
   ageLabel,
   axisStart,
+  burndownEnd,
   burndownSeries,
   chartKind,
   failureReason,
@@ -346,6 +347,15 @@ test('burndownSeries separates done from removed', () => {
     2,
   )
   expect(s).toMatchObject({ open: 1, done: 1, removed: 2, peak: 4 })
+})
+
+test('burndownEnd is now only for a history read by the last good fetch', () => {
+  const fresh = { historyAt: 1000, fetchedAt: 1000, error: null }
+  expect(burndownEnd(fresh, 5000)).toEqual({ at: 5000, label: 'now' })
+  expect(burndownEnd({ ...fresh, historyAt: null }, 5000)).toEqual({ at: 5000, label: 'now' })
+  // a history kept from an earlier fetch, or a whole fetch that failed: aged, sampled up to its own time
+  expect(burndownEnd({ ...fresh, historyAt: 400 }, 400 + 180_000)).toEqual({ at: 400, label: '3m ago' })
+  expect(burndownEnd({ ...fresh, error: 'offline: cannot reach GitHub' }, 1000 + 180_000)).toEqual({ at: 1000, label: '3m ago' })
 })
 
 test('sparkline draws eighth blocks scaled to the peak, a zero as a space', () => {
