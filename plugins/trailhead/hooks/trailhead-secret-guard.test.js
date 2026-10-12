@@ -860,6 +860,15 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     // (the unquoted form already did): a flag arity table without subcommand awareness is unsafe.
     ok('a --body value equal to --body-file=x is read as the flag', runHook(`${G} --body '--body-file=x'`).code === 2);
     ok('a -b value equal to -F is read as the flag', runHook(`${G} -b '-F' x`).code === 2);
+    // A quoted ATTACHED short form (`-Fpath`) is the same flag.
+    ok('attached -F"path" blocks (control)', blocked(`${G} -F"${F}"`));
+    ok('a fully double-quoted attached -Fpath blocks', blocked(`${G} "-F${F}"`));
+    ok('a fully single-quoted attached -Fpath blocks', blocked(`${G} '-F${F}'`));
+    ok('a quoted letter in an attached -Fpath blocks', blocked(`${G} -"F"${F}`));
+    ok('a quoted letter and value in an attached -Fpath blocks', blocked(`${G} -"F${F}"`));
+    ok('a quoted flag glued to its value blocks', blocked(`${G} "-F"${F}`));
+    // A quoted no-whitespace value that starts like the flag is read as the flag, erring toward detection.
+    ok('a title like "-Fixes" is read as an attached -F', runHook(`gh issue create --title "-Fixes" --body hi`).code === 2);
     // -r and -a are boolean in `gh pr review`: the -F after them is still the body file.
     ok('gh pr review -r -F file blocks', blocked(`gh pr review 5 -r -F ${F}`));
     ok('gh pr review -a -F file blocks', blocked(`gh pr review 5 -a -F ${F}`));
