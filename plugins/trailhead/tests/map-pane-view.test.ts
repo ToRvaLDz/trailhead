@@ -340,6 +340,23 @@ test('burndownSeries clamps future dates to now', () => {
   expect(burndownSeries(hist({ openedAt: 500, closedAt: null }), 100, 2)).toMatchObject({ values: [1, 1], startedAt: 100 })
 })
 
+test('burndownSeries agrees with a plain count at every sample on a large history', () => {
+  let seed = 7
+  const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647
+  const issues = Array.from({ length: 400 }, () => {
+    const openedAt = Math.floor(next() * 1000)
+    return { openedAt, closedAt: next() < 0.5 ? null : openedAt + Math.floor(next() * 600) }
+  })
+  const s = burndownSeries(hist(...issues), 900, 37)
+  const clamp = (v: number) => Math.min(v, 900)
+  const startedAt = Math.min(...issues.map(i => clamp(i.openedAt)))
+  const expected = Array.from({ length: 37 }, (_, n) => {
+    const t = n === 36 ? 900 : startedAt + ((900 - startedAt) * n) / 36
+    return issues.filter(i => clamp(i.openedAt) <= t).length - issues.filter(i => i.closedAt !== null && clamp(i.closedAt) <= t).length
+  })
+  expect(s?.values).toEqual(expected)
+})
+
 test('burndownSeries separates done from removed', () => {
   const s = burndownSeries(
     hist(

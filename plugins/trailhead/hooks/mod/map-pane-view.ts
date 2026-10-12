@@ -281,9 +281,16 @@ export const burndownSeries = (history: BurndownHistory, now: number, buckets: n
   }))
   const startedAt = Math.min(...issues.map(i => i.openedAt))
   const timeAt = (n: number) => (n === buckets - 1 ? now : startedAt + ((now - startedAt) * n) / (buckets - 1))
+  // Sort once, then sweep: the samples only move forward, so each time is passed over once.
+  const opened = issues.map(i => i.openedAt).sort((a, b) => a - b)
+  const closedTimes = issues.flatMap(i => (i.closedAt === null ? [] : [i.closedAt])).sort((a, b) => a - b)
+  let opens = 0
+  let closes = 0
   const values = Array.from({ length: buckets }, (_, n) => {
     const t = timeAt(n)
-    return issues.filter(i => i.openedAt <= t).length - issues.filter(i => i.closedAt !== null && i.closedAt <= t).length
+    while (opens < opened.length && (opened[opens] as number) <= t) opens += 1
+    while (closes < closedTimes.length && (closedTimes[closes] as number) <= t) closes += 1
+    return opens - closes
   })
   const closed = issues.filter(i => i.closedAt !== null)
   return {
