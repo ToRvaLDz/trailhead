@@ -113,4 +113,25 @@ ok('"ghx" issue is not the gh binary', parseGhSubcommand('"ghx" issue comment 5'
 ok("gh 'repo' view still resolves repo",
   (() => { const r = parseGhSubcommand("gh 'repo' view"); return r.sub === 'repo' && r.verb === 'view'; })());
 
+// --- #219: dequote decodes ANSI-C spans and drops quotes and escapes ---
+{
+  const { dequote } = require('./gh-subcommand.js');
+  ok('dequote drops quote characters', dequote(`a'b'"c"`) === 'abc');
+  ok('dequote keeps an escaped char', dequote('\\gh') === 'gh');
+  ok('dequote decodes a hex escape', dequote(`$'\\x67h'`) === 'gh');
+  ok('dequote decodes an octal escape', dequote(`$'\\151ssue'`) === 'issue');
+  ok('dequote decodes a unicode escape', dequote(`$'\\u0067h'`) === 'gh');
+  ok('dequote decodes single-letter escapes', dequote(`$'a\\tb\\\\c\\'d'`) === "a\tb\\c'd");
+  ok('dequote drops the $ of a locale-quoted span', dequote('$"gh"') === 'gh');
+  ok('dequote leaves a bare variable alone', dequote('$HOME') === '$HOME');
+  ok('body-sources re-exports the same dequote', require('./body-sources.js').dequote === dequote);
+  const { flagValues } = require('./body-sources.js');
+  const J = JSON.stringify;
+  ok("flagValues sees a quoted long flag", J(flagValues(["'--body-file'", 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a split long flag', J(flagValues(['--body-fi""le', 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a quoted short flag', J(flagValues([`"-F"`, 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a fully quoted --flag=value', J(flagValues(['"--body-file=/p"'], '--body-file', '-F')) === J(['/p']));
+  ok('flagValues keeps a raw value untouched', J(flagValues(['--body', `'a b'`], '--body', '-b')) === J([`'a b'`]));
+}
+
 console.log(`✓ gh-subcommand: ${passed} assertions passed`);

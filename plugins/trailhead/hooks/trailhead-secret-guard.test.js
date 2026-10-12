@@ -829,6 +829,37 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('gh inside an echo string argument passes', allowed('echo "gh issue comment"'));
   ok('a quoted bash running a non-write passes', allowed("'bash' -c \"echo hi\""));
   ok('a clean body through a quoted command word passes', allowed('"gh" issue comment 5 --body hello'));
+  // A quoted flag name is the same flag: --input, wrapper flags, body-file flags.
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-219b-'));
+    const F = path.join(dir, 'body.txt');
+    fs.writeFileSync(F, `${T}\n`);
+    ok('gh api --input file blocks (control)', blocked(`gh api x --input ${F}`));
+    ok("gh api '--input' file blocks", blocked(`gh api x '--input' ${F}`));
+    ok('gh api --inp""ut file blocks', blocked(`gh api x --inp""ut ${F}`));
+    ok('a quoted gh and a quoted --input block', blocked(`"gh" api x "--input" ${F}`));
+    ok('env "-i" in front of gh blocks', blocked(`env "-i" gh issue comment 5 --body ${T}`));
+    ok('sudo "-u" root in front of gh blocks', blocked(`sudo "-u" root gh issue comment 5 --body ${T}`));
+    ok('nice "-n" 5 in front of gh blocks', blocked(`nice "-n" 5 gh issue comment 5 --body ${T}`));
+    ok("env '-u' X in front of gh blocks", blocked(`env '-u' X gh issue comment 5 --body ${T}`));
+    ok('env -u X in front of gh blocks (control)', blocked(`env -u X gh issue comment 5 --body ${T}`));
+    const G = 'gh issue comment 5';
+    ok('--body-file F blocks (control)', blocked(`${G} --body-file ${F}`));
+    ok("'-F' F blocks", blocked(`${G} '-F' ${F}`));
+    ok('"--body-file" F blocks', blocked(`${G} "--body-file" ${F}`));
+    ok('--body-fi""le F blocks', blocked(`${G} --body-fi""le ${F}`));
+    ok('"--body-file=F" blocks', blocked(`${G} "--body-file=${F}"`));
+    ok("'--body' T blocks", blocked(`${G} '--body' ${T}`));
+    ok("gh api '--field' body=@F blocks", blocked(`gh api x '--field' body=@${F}`));
+    ok("gh api '-F' body=@F blocks", blocked(`gh api x '-F' body=@${F}`));
+    ok('a quoted unrelated flag does not read the file', allowed(`${G} '--label' ${F} --body hi`));
+    // ANSI-C escapes in a word are decoded by bash.
+    ok('a hex-escaped command word blocks', blocked(`$'\\x67h' issue comment 5 --body ${T}`));
+    ok('a hex-escaped verb blocks', blocked(`gh issue $'comm\\x65nt' 5 --body ${T}`));
+    ok('an octal-escaped subcommand blocks', blocked(`gh $'\\151ssue' comment 5 --body ${T}`));
+    ok('a unicode-escaped command word blocks', blocked(`$'\\u0067h' issue comment 5 --body ${T}`));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 console.log(`✓ secret-guard: ${passed} assertions passed`);
