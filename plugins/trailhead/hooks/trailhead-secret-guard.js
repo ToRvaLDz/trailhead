@@ -48,6 +48,7 @@ const {
   flagValues,
   resolveWord,
   substitutionSpans,
+  joinedText,
   bodySources,
   readBodyFile,
 } = require('./lib/body-sources.js');
@@ -433,6 +434,12 @@ function secretBlock(kind, hit) {
 // be resolved or read (fail closed).
 function gatherText(cmd, writes, env, cwd) {
   let text = cmd;
+  // The raw command keeps a token broken by a backslash-newline; scan it joined as well.
+  if (cmd.includes('\\\n')) {
+    for (const history of new Set(writes.map((w) => w.history))) {
+      for (const part of joinedText(history)) text += '\n' + part;
+    }
+  }
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {
       if (item.unresolved) {

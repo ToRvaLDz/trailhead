@@ -680,4 +680,29 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   }
 }
 
+// --- #215: a token split by a backslash-newline continuation is joined by bash ---
+{
+  const A = 'ghp_' + 'A1b2C3d4E5f6G7h8';
+  const B = 'I9j0K1l2M3n4O5p6Q7r8';
+  const BS = '\\'; // one backslash
+  const split = A + BS + '\n' + B;
+  const blocked = (cmd) => runHook(cmd).code === 2 && /GitHub token/.test(runHook(cmd).out);
+  const allowed = (cmd) => runHook(cmd).code === 0 && runHook(cmd).out.trim() === '';
+  ok('double-quoted --body split by backslash-newline blocks', blocked(`gh issue comment 5 --body "${split}"`));
+  ok('unquoted --body split by backslash-newline blocks', blocked(`gh issue comment 5 --body ${split}`));
+  ok('single-quoted --body split stays literal and passes', allowed(`gh issue comment 5 --body '${split}'`));
+  ok('--title split by backslash-newline blocks', blocked(`gh issue create --title "${split}" --body hi`));
+  ok('escaped backslash before the newline is not a continuation', allowed(`gh issue comment 5 --body "${A}${BS}${BS}\n${B}"`));
+  const { expandPlain } = require('./lib/body-sources.js');
+  ok('expandPlain drops a backslash-newline pair', expandPlain('a' + BS + '\nb $X', {}, { X: 'v' }).value === 'ab v');
+  ok('expandPlain keeps an escaped backslash before a newline', expandPlain('a' + BS + BS + '\nb', {}, {}).value === 'a' + BS + '\nb');
+  const N = path.join(os.tmpdir(), `sg-215-${process.pid}.md`);
+  ok('unquoted heredoc body file with a split token blocks',
+    blocked(`cat <<EOF > ${N}\n${split}\nEOF\ngh issue comment 5 --body-file ${N}`));
+  ok('unquoted heredoc with $VAR and a split token blocks',
+    blocked(`cat <<EOF > ${N}\n$HOME ${split}\nEOF\ngh issue comment 5 --body-file ${N}`));
+  ok('quoted heredoc body file with a split token passes',
+    allowed(`cat <<'EOF' > ${N}\n${split}\nEOF\ngh issue comment 5 --body-file ${N}`));
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

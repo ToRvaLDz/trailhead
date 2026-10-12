@@ -207,7 +207,9 @@ function expandPlain(text, vars, env) {
   let i = 0;
   while (i < text.length) {
     const c = text[i];
-    if (c === '\\' && i + 1 < text.length) {
+    if (c === '\\' && text[i + 1] === '\n') {
+      i += 2; // a backslash-newline continuation vanishes
+    } else if (c === '\\' && i + 1 < text.length) {
       const n = text[i + 1];
       out += '$`\\'.includes(n) ? n : c + n;
       i += 2;
@@ -479,6 +481,21 @@ function bodySources(w, ctx) {
   return items;
 }
 
+// What bash sees once `\<newline>` continuations are removed, for the statements of
+// one command: each statement's text (already joined outside single quotes, which
+// stay literal) and its unquoted heredoc bodies. The raw command still has a token
+// broken by a continuation, so the caller scans this too (#215).
+function joinedText(history) {
+  const parts = [];
+  for (const rec of history) {
+    parts.push(rec.text);
+    for (const h of rec.heredocs || []) {
+      if (!h.quoted && h.body.includes('\\\n')) parts.push(h.body.split('\\\n').join(''));
+    }
+  }
+  return parts;
+}
+
 // Read a body file (regular files only: a FIFO or device could hang the hook).
 // `optional` tolerates a missing file.
 function readBodyFile(p, optional) {
@@ -503,6 +520,8 @@ module.exports = {
   resolveWord,
   resolveExpanded,
   substitutionSpans,
+  expandPlain,
+  joinedText,
   bodySources,
   readBodyFile,
 };
