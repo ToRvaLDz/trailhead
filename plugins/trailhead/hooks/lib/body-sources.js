@@ -301,9 +301,22 @@ function parseRedirects(toks) {
   return { args, outs, stdin };
 }
 
-function flagMatches(t, long, short) {
-  return t === long || (short && t === short) || t.startsWith(`${long}=`) ||
-    (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2 && !t.startsWith("'") && !t.startsWith('"'));
+// gh flags that take a separate value. A token after one of them is its value, never
+// a flag, even when it looks like one (`--body '--body-file=x'`).
+const VALUE_FLAGS = new Set([
+  '--body', '-b', '--title', '-t', '--body-file', '-F', '--field', '--raw-field', '-f', '--input',
+  '--label', '-l', '--assignee', '-a', '--milestone', '-m', '--project', '-p', '--repo', '-R',
+  '--template', '--reviewer', '-r', '--base', '-B', '--head', '-H', '--method', '-X', '--header',
+  '--hostname', '--jq', '-q',
+]);
+
+// A quoted or split token that is EXACTLY this flag (`'-F'`, `--body-fi""le`,
+// `"--body-file=F"`); never the attached shorthand, so a quoted free-text value that
+// merely starts like a flag is not mistaken for one (#219).
+function dequotedFlag(raw, long, short) {
+  const d = dequote(raw);
+  const hit = d === long || (short && d === short) || d.startsWith(`${long}=`) || (short && d.startsWith(`${short}=`));
+  return hit ? d : null;
 }
 
 // Values of a gh flag (long form, optional short form), in order: `--long v`,
@@ -311,14 +324,17 @@ function flagMatches(t, long, short) {
 function flagValues(args, long, short) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
-    // A quoted or split flag name is the same flag (`'-F'`, `--body-fi""le`); the raw
-    // form is tried first so an unquoted flag keeps its raw value (#219).
-    const t = flagMatches(args[i], long, short) ? args[i] : dequote(args[i]);
+    // A quoted or split flag name is the same flag; the raw form is tried first so an
+    // unquoted flag keeps its raw value (#219).
+    const raw = args[i];
+    const rawHit = raw === long || raw.startsWith(`${long}=`) || (short && raw.startsWith(short) && !raw.startsWith('--'));
+    const t = rawHit ? raw : dequotedFlag(raw, long, short) || raw;
     if (t === long || (short && t === short)) {
       if (args[i + 1] !== undefined) out.push(args[++i]);
     } else if (t.startsWith(`${long}=`)) out.push(t.slice(long.length + 1));
     else if (short && t.startsWith(`${short}=`)) out.push(t.slice(short.length + 1));
     else if (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2) out.push(t.slice(2));
+    else if (VALUE_FLAGS.has(dequote(args[i]))) i++; // another flag's value is not a flag
   }
   return out;
 }
