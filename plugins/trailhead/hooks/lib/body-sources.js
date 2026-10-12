@@ -288,9 +288,26 @@ function braceExpand(word, limit = BRACE_LIMIT) {
   try {
     const out = braceWords(String(word), limit, { steps: 0, depth: 0 });
     return out.length > limit ? { overflow: true } : { words: out };
-  } catch {
-    return { overflow: true };
+  } catch (e) {
+    // A size/depth overflow is expected; anything else is a fault. Both fail closed.
+    return e === BRACE_OVERFLOW ? { overflow: true } : { overflow: true, fault: true };
   }
+}
+
+// What bash passes as argv once each word's brace groups are expanded in place
+// (`-{f,f} body=x` is `-f -f body=x`): { toks, overflow, fault }. A word that cannot
+// be expanded stays as written and sets `overflow` (the caller fails closed).
+function braceFlatten(toks) {
+  let overflow = false;
+  let fault = false;
+  const out = toks.flatMap((t) => {
+    const b = braceExpand(t);
+    if (!b.overflow) return b.words;
+    overflow = true;
+    fault = fault || b.fault === true;
+    return [t];
+  });
+  return { toks: out, overflow, fault };
 }
 
 // Quote-aware word splitter. Like shell-scan's tokenize, but a `$(...)`, `<(...)`,
@@ -626,7 +643,7 @@ function producerItems(rec, ctx) {
 function valueItems(raw, rec, ctx, literalQuotes = false) {
   if (literalQuotes) return valueItemsOf(raw, rec, ctx, true); // heredoc bodies are not brace-expanded
   const b = braceExpand(raw);
-  if (b.overflow) return inlineUnresolved('brace expansion too large');
+  if (b.overflow) return inlineUnresolved(b.fault ? 'brace expansion failed' : 'brace expansion too large');
   return b.words.flatMap((w) => valueItemsOf(w, rec, ctx, false));
 }
 
@@ -731,14 +748,14 @@ function resolvedWords(history) {
   for (const rec of history) {
     for (const raw of words(rec.text)) {
       const b = braceExpand(raw);
-      if (b.overflow) return { words: out, overflow: true };
+      if (b.overflow) return { words: out, overflow: true, fault: b.fault === true };
       for (const word of b.words) {
         const r = expandWord(word, {}, {});
         out.push(r.unresolved ? stripQuoteChars(word) : r.value);
       }
     }
   }
-  return { words: out, overflow: false };
+  return { words: out, overflow: false, fault: false };
 }
 
 // Read a body file (regular files only: a FIFO or device could hang the hook).
@@ -761,6 +778,7 @@ module.exports = {
   words,
   expandWord,
   braceExpand,
+  braceFlatten,
   BRACE_LIMIT,
   parseRedirects,
   flagValues,

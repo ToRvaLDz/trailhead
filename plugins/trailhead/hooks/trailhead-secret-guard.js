@@ -45,6 +45,7 @@ const {
   words,
   expandWord,
   braceExpand,
+  braceFlatten,
   parseRedirects,
   flagValues,
   resolveWord,
@@ -91,21 +92,20 @@ function writeKind(stmt) {
   return null;
 }
 
-// Does a brace group in the command, subcommand or verb word build a gh write
-// (`{gh,gh} issue comment`, `gh issue {comment,edit}`)? Each expansion of those three
-// words is classified; a write found, or a group too large to enumerate on a statement
-// that reads like a write, counts (the caller blocks it as an opaque write).
+// Does a brace group in a statement's words build a gh write? The statement's argv is
+// already brace-expanded in place (see unwrap), which is what bash runs; this also tries
+// each alternative of each group on its own (`gh {issue,issue} comment` runs
+// `gh issue issue comment`, but a one-alternative reading is a write), so a braced
+// command, global flag, subcommand or verb word never hides a write (#220). Fail closed:
+// a statement too large to enumerate that reads like a gh write counts.
 function braceBuiltWrite(text) {
-  const toks = words(text);
-  let k = 0;
-  while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
-  const head = toks.slice(k, k + 3).map((t) => braceExpand(t));
-  if (head.every((h) => !h.overflow && h.words.length === 1)) return false;
-  if (head.some((h) => h.overflow)) return WRITE_WORDS_RE.test(dequote(text));
-  if (head.reduce((n, h) => n * h.words.length, 1) > 4096) return WRITE_WORDS_RE.test(dequote(text));
-  const combos = head.reduce((acc, h) => acc.flatMap((c) => h.words.map((w) => [...c, w])), [[]]);
-  const tail = toks.slice(k + 3);
-  return combos.some((c) => writeKind([...toks.slice(0, k), ...c, ...tail].join(' ')) !== null);
+  if (!/gh/.test(text)) return false;
+  const alts = words(text).map((t) => braceExpand(t));
+  if (alts.every((a) => !a.overflow && a.words.length === 1)) return false;
+  if (alts.some((a) => a.overflow)) return true;
+  if (alts.reduce((n, a) => n * a.words.length, 1) > BRACE_COMBO_LIMIT) return WRITE_WORDS_RE.test(dequote(text));
+  const combos = alts.reduce((acc, a) => acc.flatMap((c) => a.words.map((w) => [...c, w])), [[]]);
+  return combos.some((c) => writeKind(c.join(' ')) !== null);
 }
 
 // --- statement normalisation ---------------------------------------------------
@@ -130,6 +130,7 @@ const WRAPPER_VALUE_FLAGS = {
 const WRAPPERS = new Set(Object.keys(WRAPPER_VALUE_FLAGS));
 const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
 // A gh write's words after a command word we could not resolve (`$CMD issue comment ...`).
+const BRACE_COMBO_LIMIT = 256;
 const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bapi\b[\s\S]*?(?:\bbody=|--input)/;
 
 // Index just past a wrapper command's own flags (and values), starting at the
@@ -216,8 +217,11 @@ function runnerScripts(text, heredocs) {
 //   { text, runner, unresolvedCmd }
 // `runner` is true for bash/sh/zsh/eval/xargs (text we cannot analyse) and
 // `unresolvedCmd` for a command word that is a variable we cannot resolve.
-function unwrap(text, vars = {}, env = {}) {
+function unwrap(text, vars = {}, env = {}, expand = true) {
   let toks = words(text);
+  // bash expands brace groups word by word before running anything (#220).
+  const flat = expand ? braceFlatten(toks) : { toks, overflow: false };
+  toks = flat.toks;
   let opens = 0;
   for (let step = toks.length ? stripLeader(toks) : null; step; step = toks.length ? stripLeader(toks) : null) {
     toks = step.toks;
@@ -237,7 +241,7 @@ function unwrap(text, vars = {}, env = {}) {
     else toks = [...toks.slice(0, k), r.value, ...toks.slice(k + 1)];
   }
   const cmd0 = toks[k] ? dequote(toks[k]).replace(/^.*\//, '') : '';
-  return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0), unresolvedCmd };
+  return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0), unresolvedCmd, braceOverflow: flat.overflow };
 }
 
 // The --body-file path of one gh statement, resolved WITHOUT running anything.
@@ -309,13 +313,14 @@ function collectWrites(cmd, env, start) {
     const { text: raw, sep } = entry;
     const subshell = sep === '|' || sep === '&' || prevSep === '|' || prevSep === '&';
     prevSep = sep;
-    const { text, runner, unresolvedCmd } = unwrap(raw, vars, env);
+    const { text, runner, unresolvedCmd, braceOverflow } = unwrap(raw, vars, env);
     const index = history.length;
     const heredocs = bodies.slice(nextBody, nextBody + countHeredocs(entry));
     nextBody += heredocs.length;
     history.push({ text, sep, vars, cwdKnown, index, heredocs });
     const kind = writeKind(text);
-    if (!kind && braceBuiltWrite(text)) { // `{gh,gh} issue comment`, `gh {issue,issue} comment` (#220)
+    // `{gh,gh} issue comment`, `gh {issue,issue} comment`, an unexpandable brace word (#220)
+    if (!kind && (braceOverflow || braceBuiltWrite(unwrap(raw, vars, env, false).text)) && /gh/.test(raw)) {
       writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
@@ -469,14 +474,16 @@ function gatherText(cmd, writes, env, cwd) {
   // Brace groups are expanded first (#220); a word too large to expand, or a fault, fails closed.
   for (const history of histories) {
     const kind = (writes.find((w) => w.history === history) || writes[0]).kind;
-    const tooLarge = { block: inlineBodyBlock(kind, 'cannot resolve statically (brace expansion too large)') };
+    const stuck = (fault) => ({
+      block: inlineBodyBlock(kind, `cannot resolve statically (brace expansion ${fault ? 'failed' : 'too large'})`),
+    });
     let r;
     try {
       r = resolvedWords(history);
     } catch {
-      return tooLarge; // an unexpected fault must not skip the scan: fail closed
+      return stuck(true); // an unexpected fault must not skip the scan: fail closed
     }
-    if (r.overflow) return tooLarge;
+    if (r.overflow) return stuck(r.fault);
     for (const word of r.words) text += '\n' + word;
   }
   for (const w of writes) {
