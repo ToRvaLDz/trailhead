@@ -34,6 +34,12 @@ ok('splitStatements splits a glued semicolon', JSON.stringify(splitStatements('c
 ok('splitStatements splits a glued &&', JSON.stringify(splitStatements('cat .env&&echo done')) === JSON.stringify(['cat .env', 'echo done']));
 ok('splitStatements keeps a quoted separator intact', JSON.stringify(splitStatements('grep "a;b" f.txt')) === JSON.stringify(['grep "a;b" f.txt']));
 
+// --- splitStatements: a live backslash-newline continuation joins the line (#222) ---
+ok('splitStatements joins a continuation before a word', JSON.stringify(splitStatements('cat \\\n.env')) === JSON.stringify(['cat .env']));
+ok('splitStatements joins a continuation inside a word', JSON.stringify(splitStatements('cat .e\\\nnv')) === JSON.stringify(['cat .env']));
+ok('splitStatements keeps an escaped backslash before a newline as two statements', JSON.stringify(splitStatements('cat .e\\\\\nnv')) === JSON.stringify(['cat .e\\\\', 'nv']));
+ok('splitStatements keeps a single-quoted continuation literal', JSON.stringify(splitStatements("echo 'a\\\nb'")) === JSON.stringify(["echo 'a\\\nb'"]));
+
 // --- splitStatementsWithSeparators: statements plus the operator that ended each ---
 {
   const seps = (c) => JSON.stringify(splitStatementsWithSeparators(c).map((x) => [x.text, x.sep]));

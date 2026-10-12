@@ -34,6 +34,13 @@ ok('Bash grep -n KEY .env.production is denied', !!detectSecretRead('Bash', { co
 ok('Bash cat app/.env.local is denied', !!detectSecretRead('Bash', { command: 'cat app/.env.local' }));
 ok('Bash cat --file=.env is denied', !!detectSecretRead('Bash', { command: 'cat --file=.env' }));
 
+// --- line continuation splits a secret path (#222) ---
+ok('Bash cat \\<nl>.env is denied', !!detectSecretRead('Bash', { command: 'cat \\\n.env' }));
+ok('Bash echo $(cat \\<nl>.env) is denied', !!detectSecretRead('Bash', { command: 'echo $(cat \\\n.env)' }));
+ok('Bash cat .e\\<nl>nv is denied', !!detectSecretRead('Bash', { command: 'cat .e\\\nnv' }));
+ok('Bash cat .e\\\\<nl>nv (escaped backslash) is allowed', !detectSecretRead('Bash', { command: 'cat .e\\\\\nnv' }));
+ok('Bash continuation inside single quotes stays literal', !detectSecretRead('Bash', { command: "echo 'x\\\n.env'" }));
+
 // --- ALLOW cases (no false positives) ---
 ok('Read src/app.ts is allowed', !detectSecretRead('Read', { file_path: 'src/app.ts' }));
 ok('Bash grep -n x pubspec.yaml is allowed', !detectSecretRead('Bash', { command: 'grep -n x pubspec.yaml' }));
