@@ -63,6 +63,13 @@
 // are literal there) and its outermost substitution bodies join the work-list.
 // A quoted delimiter (`<<'EOF'`) and an escaped `\$(..)` stay literal.
 //
+// #223 fix: a heredoc body fed to a shell interpreter on stdin (`bash <<'EOF'`,
+// `sh <<EOF`, `cat <<EOF | bash`) is a script the shell runs, whatever the
+// delimiter quoting, but bodies were only ever data. Each statement is now paired
+// with its own bodies by position (as trailhead-secret-guard.js does); when a
+// statement of its pipeline invokes a shell from a closed set, those bodies join
+// the work-list as commands. No wrappers (sudo, exec, nohup): out of scope.
+//
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only
 // that flag's value is exempted, and only for docker/podman verbs; see
@@ -95,7 +102,9 @@
 const {
   basename,
   stripQuotes,
-  splitStatements,
+  splitStatementsWithSeparators,
+  countHeredocs,
+  skipEnvPrefix,
   substitutionBodies,
   heredocBodies,
   heredocSubstitutionBodies,
@@ -430,6 +439,22 @@ function crudeSecretToken(text) {
   return null;
 }
 
+// #223: shells that read a script from stdin (closed set, no wrappers).
+const STDIN_SCRIPT_INTERPRETERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+
+// True when the statement runs one of those shells: after leading NAME=value
+// assignments, an optional `env` (with its NAME=value and -option words), the
+// command word's basename is in the set. Flags after it do not matter.
+function invokesInterpreter(stmt) {
+  const tokens = tokenize(stmt);
+  let i = skipEnvPrefix(tokens);
+  if (i < tokens.length && basename(stripQuotes(tokens[i])) === 'env') {
+    i++;
+    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i].startsWith('-'))) i++;
+  }
+  return i < tokens.length && STDIN_SCRIPT_INTERPRETERS.has(basename(stripQuotes(tokens[i])));
+}
+
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
 // `||`, and newlines all split, even with no surrounding whitespace, e.g.
 // `cat .env|grep KEY`) looking for a secret path used as a plain positional,
@@ -447,18 +472,37 @@ function scanBashForSecretPath(cmd) {
       if (hit) return hit;
       continue;
     }
-    for (const stmt of splitStatements(text)) {
-      const hit = scanStatementForSecretPath(stmt);
+    const bodies = heredocBodies(text);
+    const entries = splitStatementsWithSeparators(text);
+    let next = 0;
+    let pipe = []; // consecutive statements joined by `|`
+    const flush = () => {
+      if (pipe.some((p) => invokesInterpreter(p.text))) {
+        for (const doc of pipe.flatMap((p) => p.docs)) {
+          work.push({ text: doc.body, depth: depth + 1 });
+          doc.pushed = true;
+        }
+      }
+      pipe = [];
+    };
+    for (const entry of entries) {
+      const hit = scanStatementForSecretPath(entry.text);
       if (hit) return hit;
+      const docs = bodies.slice(next, next + countHeredocs(entry));
+      next += docs.length;
+      pipe.push({ text: entry.text, docs });
+      if (entry.sep !== '|') flush();
     }
+    flush();
     // #214: a statement cut inside `"$(..)"` loses the closing context, and a
     // double-quoted token hides its body from the per-token walk; scan each
     // outermost substitution body as a command of its own (nested ones next).
     for (const body of substitutionBodies(text)) work.push({ text: body, depth: depth + 1 });
     // #218: an unquoted heredoc body is data to the splitter, but the shell runs
     // the substitutions in it; a quoted delimiter makes the body literal.
-    for (const doc of heredocBodies(text)) {
-      if (doc.quoted) continue;
+    // (#223: a body already pushed whole as a command needs no second push.)
+    for (const doc of bodies) {
+      if (doc.quoted || doc.pushed) continue;
       for (const body of heredocSubstitutionBodies(doc.body)) work.push({ text: body, depth: depth + 1 });
     }
   }
