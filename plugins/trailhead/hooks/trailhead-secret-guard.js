@@ -50,6 +50,7 @@ const {
   substitutionSpans,
   joinedText,
   resolvedWords,
+  stripQuoteChars,
   bodySources,
   readBodyFile,
 } = require('./lib/body-sources.js');
@@ -443,8 +444,13 @@ function gatherText(cmd, writes, env, cwd) {
     }
   }
   // Adjacent quoted parts (`"a""b"`) are one word for bash; scan the quote-resolved words (#217).
+  // A throw in the resolution must never skip the scan: fall back to plain quote removal.
   for (const history of histories) {
-    for (const word of resolvedWords(history)) text += '\n' + word;
+    try {
+      for (const word of resolvedWords(history)) text += '\n' + word;
+    } catch {
+      for (const rec of history) text += '\n' + stripQuoteChars(rec.text);
+    }
   }
   for (const w of writes) {
     for (const item of bodySources(w, { env, cwd, history: w.history })) {

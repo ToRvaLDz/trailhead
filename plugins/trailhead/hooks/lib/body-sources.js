@@ -587,6 +587,7 @@ module.exports = {
   expandPlain,
   joinedText,
   resolvedWords,
+  stripQuoteChars,
   bodySources,
   readBodyFile,
 };
