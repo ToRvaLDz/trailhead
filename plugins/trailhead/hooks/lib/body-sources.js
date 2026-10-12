@@ -508,8 +508,9 @@ function bodySources(w, ctx) {
       ...flagValues(args, '--raw-field', '-f').map((raw) => ({ raw, fileOk: false })),
     ];
     for (const { raw, fileOk } of fields) {
-      if (!/^["']?body=/.test(raw)) continue;
-      if (!(fileOk && /^["']?body=@/.test(raw))) { items.push(...valueItems(raw, rec, ctx)); continue; }
+      const key = dequote(raw); // `'body'=x`, `bo""dy=x` name the same field (#219)
+      if (!key.startsWith('body=')) continue;
+      if (!(fileOk && key.startsWith('body=@'))) { items.push(...valueItems(raw, rec, ctx)); continue; }
       const r = expandWord(raw, rec.vars, ctx.env);
       if (r.unresolved) { items.push(...unresolvedItem(r.unresolved)); continue; }
       const file = r.value.slice('body=@'.length);
@@ -545,6 +546,11 @@ function joinedText(history) {
 // Literal quote removal for a word that cannot be expanded: drop the ' and "
 // characters and keep the rest, so literal halves around an unresolvable piece join.
 const stripQuoteChars = (word) => word.replace(/\$(?=['"])/g, '').replace(/['"]/g, '');
+
+// Quote removal for matching a word against a literal (a command word, a field key):
+// also drops backslash escapes, keeping the escaped char (#219). Over-matches rather
+// than under-matches, which is the safe direction for a guard.
+const dequote = (word) => stripQuoteChars(String(word).replace(/\\([\s\S])/g, '$1'));
 
 // What bash passes as each word once adjacent quoted parts are concatenated
 // (`"a""b"`, `"a"b`, `a''b`), for the statements of one command. An unresolvable
@@ -592,6 +598,7 @@ module.exports = {
   joinedText,
   resolvedWords,
   stripQuoteChars,
+  dequote,
   bodySources,
   readBodyFile,
 };

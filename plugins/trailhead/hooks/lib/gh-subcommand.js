@@ -49,6 +49,13 @@
 // stray keyword token in a genuinely non-write command from being
 // misclassified as a write.
 //
+// Third follow-up fix (#219): the walk compared raw, still-quoted tokens, but bash
+// removes quotes before `gh` runs, so `"gh" issue comment`, `gh 'issue' comment`,
+// `gh issue com""ment`, `\gh ...` or `$'gh' ...` hid the write from both guards.
+// Every token is now compared (and `sub`/`verb` returned) in its quote-removed
+// form. This slightly over-detects (a quote inside a single-quoted word is
+// dropped too), which is the safe direction for a guard.
+//
 // Self-contained. No requires.
 
 // gh's boolean global flags (take NO value). gh's only value-taking global
@@ -62,11 +69,15 @@ const BOOLEAN_GLOBAL_FLAGS = new Set(['-h', '--help', '--version']);
 // below to recover from an unknown boolean flag swallowing the subcommand.
 const WRITE_SUBCOMMANDS = new Set(['issue', 'pr', 'api']);
 
+// A word as bash passes it once quoting is removed: `$` before a quote is
+// dropped, a backslash escape keeps the escaped char, `'` and `"` are dropped.
+const dequote = (word) => String(word).replace(/\\([\s\S])/g, '$1').replace(/\$(?=['"])/g, '').replace(/['"]/g, '');
+
 // Parse a raw shell command string and locate the gh subcommand/verb.
 // Returns { sub, verb } (verb may be undefined) or null when this is not a
 // gh invocation at all.
 function parseGhSubcommand(cmd) {
-  const toks = String(cmd).trim().split(/\s+/);
+  const toks = String(cmd).trim().split(/\s+/).map(dequote);
   let i = 0;
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
   if (i >= toks.length || !/(^|\/)gh$/.test(toks[i])) return null;         // the gh binary
@@ -99,4 +110,4 @@ function parseGhSubcommand(cmd) {
   return { sub, verb };
 }
 
-module.exports = { parseGhSubcommand, BOOLEAN_GLOBAL_FLAGS, WRITE_SUBCOMMANDS };
+module.exports = { parseGhSubcommand, dequote, BOOLEAN_GLOBAL_FLAGS, WRITE_SUBCOMMANDS };

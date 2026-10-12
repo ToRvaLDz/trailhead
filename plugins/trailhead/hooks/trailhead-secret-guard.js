@@ -51,6 +51,7 @@ const {
   joinedText,
   resolvedWords,
   stripQuoteChars,
+  dequote,
   bodySources,
   readBodyFile,
 } = require('./lib/body-sources.js');
@@ -85,7 +86,7 @@ function writeKind(stmt) {
   if ((sub === 'issue' || sub === 'pr') && ['create', 'comment', 'edit', 'review'].includes(verb)) {
     return sub;
   }
-  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)(?:\s+|=)?['"]?body=/.test(stmt)) return 'api';
+  if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)(?:\s+|=)?body=/.test(dequote(stmt))) return 'api';
   if (sub === 'api' && /(?:^|\s)--input(?:=|\s|$)/.test(stmt)) return 'api'; // --input sends a request body from a file
   return null;
 }
@@ -117,7 +118,7 @@ const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)
 // Index just past a wrapper command's own flags (and values), starting at the
 // wrapper token toks[k]. `timeout` also takes a DURATION positional.
 function skipWrapperArgs(toks, k) {
-  const w = toks[k];
+  const w = dequote(toks[k]);
   const valueFlags = WRAPPER_VALUE_FLAGS[w];
   let j = k + 1;
   while (j < toks.length) {
@@ -145,7 +146,7 @@ function stripLeader(toks) {
   if (/^[^\s()$"'`]*\)$/.test(t0)) return { toks: toks.slice(1) }; // case arm pattern)
   let k = 0;
   while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
-  if (k < toks.length && WRAPPERS.has(toks[k])) {
+  if (k < toks.length && WRAPPERS.has(dequote(toks[k]))) { // a quoted `"env"` runs the same command (#219)
     return { toks: [...toks.slice(0, k), ...toks.slice(skipWrapperArgs(toks, k))] };
   }
   return null;
@@ -169,7 +170,7 @@ function runnerScripts(text, heredocs) {
   const { args } = parseRedirects(words(text));
   let k = 0;
   while (k < args.length && ASSIGN_TOKEN_RE.test(args[k])) k++;
-  const name = args[k].replace(/^.*\//, '');
+  const name = dequote(args[k]).replace(/^.*\//, '');
   const rest = args.slice(k + 1);
   if (name === 'eval') return [rest.map(stripQuotes).join(' ')];
   if (name === 'xargs') {
@@ -218,7 +219,7 @@ function unwrap(text, vars = {}, env = {}) {
     if (r.unresolved) unresolvedCmd = true;
     else toks = [...toks.slice(0, k), r.value, ...toks.slice(k + 1)];
   }
-  const cmd0 = toks[k] ? toks[k].replace(/^.*\//, '') : '';
+  const cmd0 = toks[k] ? dequote(toks[k]).replace(/^.*\//, '') : '';
   return { text: toks.join(' '), runner: OPAQUE_RUNNERS.has(cmd0), unresolvedCmd };
 }
 
@@ -301,7 +302,7 @@ function collectWrites(cmd, env, start) {
       writes.push({ kind, text, vars, cwdKnown, index, history });
       continue;
     }
-    if (unresolvedCmd && WRITE_WORDS_RE.test(text)) {
+    if (unresolvedCmd && WRITE_WORDS_RE.test(dequote(text))) {
       writes.push({ kind: 'opaque', text, vars, cwdKnown, index, history });
       continue;
     }
