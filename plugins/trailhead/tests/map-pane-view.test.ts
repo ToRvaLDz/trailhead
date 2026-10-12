@@ -2,13 +2,20 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   ageLabel,
+  axisStart,
+  burndownSeries,
+  chartKind,
   failureReason,
   groupTickets,
+  HISTORY_LIMIT,
   parseActiveMap,
+  parseHistory,
   parseMap,
   parseTickets,
+  rasterCells,
   refreshDecision,
   rowLayout,
+  sparkline,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -226,4 +233,176 @@ test('rowLayout: a long title is cut so the row never passes the width', () => {
     expect(used).toBeLessThanOrEqual(columns)
   }
   expect(layout(ticket({ type: null })).type).toBeNull()
+})
+
+// Burn-down history (#228)
+const row = (over: Record<string, unknown> = {}) => ({
+  number: 1,
+  labels: labels('trailhead:build'),
+  createdAt: '2026-10-01T00:00:00Z',
+  closedAt: '0001-01-01T00:00:00Z',
+  ...over,
+})
+const at = (iso: string) => Date.parse(iso)
+const hist = (...issues: { openedAt: number; closedAt: number | null; isRemoved?: boolean }[]) => ({
+  issues: issues.map(i => ({ isRemoved: false, ...i })),
+  isCapped: false,
+})
+
+test('parseHistory keeps opened and closed times and flags removed tickets', () => {
+  const out = parseHistory(
+    list(
+      row({ number: 1, closedAt: '2026-10-03T00:00:00Z' }),
+      row({ number: 2 }),
+      row({ number: 3, labels: labels('trailhead:superseded'), closedAt: '2026-10-04T00:00:00Z' }),
+      row({ number: 4, labels: labels('trailhead:out-of-scope'), closedAt: '2026-10-05T00:00:00Z' }),
+    ),
+  )
+  expect(out?.isCapped).toBe(false)
+  expect(out?.issues).toEqual([
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: at('2026-10-03T00:00:00Z'), isRemoved: false },
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: at('2026-10-04T00:00:00Z'), isRemoved: true },
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: at('2026-10-05T00:00:00Z'), isRemoved: true },
+  ])
+})
+
+test('parseHistory skips unverified and whiteboard rows and unreadable dates', () => {
+  const out = parseHistory(
+    list(
+      row({ number: 1, labels: labels('trailhead:unverified') }),
+      row({ number: 2, labels: labels('trailhead:whiteboard') }),
+      row({ number: 3, createdAt: 'yesterday' }),
+      row({ number: 4, createdAt: 12 }),
+      row({ number: 5, closedAt: '2026-09-30T00:00:00Z' }),
+      row({ number: 6, closedAt: 'soon' }),
+      row({ number: 7, closedAt: undefined }),
+      'junk',
+    ),
+  )
+  expect(out?.issues).toEqual([
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
+  ])
+})
+
+test('parseHistory returns null for output that is not a JSON array', () => {
+  expect(parseHistory('not json')).toBeNull()
+  expect(parseHistory('{"a":1}')).toBeNull()
+  expect(parseHistory('')).toBeNull()
+  expect(parseHistory('[]')).toEqual({ issues: [], isCapped: false })
+})
+
+test('parseHistory reports a capped read by the raw row count', () => {
+  const rows = Array.from({ length: HISTORY_LIMIT }, (_, i) => row({ number: i + 1 }))
+  expect(HISTORY_LIMIT).toBe(5000)
+  expect(parseHistory(JSON.stringify(rows))?.isCapped).toBe(true)
+  expect(parseHistory(JSON.stringify(rows.slice(1)))?.isCapped).toBe(false)
+})
+
+test('burndownSeries counts open tickets at evenly spaced samples ending at now', () => {
+  const s = burndownSeries(hist({ openedAt: 0, closedAt: 50 }, { openedAt: 0, closedAt: null }, { openedAt: 30, closedAt: 80 }), 100, 11)
+  expect(s?.values).toEqual([2, 2, 2, 3, 3, 2, 2, 2, 1, 1, 1])
+  expect(s).toMatchObject({ open: 1, peak: 3, done: 2, removed: 0, startedAt: 0 })
+})
+
+test('burndownSeries counts an event exactly on a sample at that sample', () => {
+  const s = burndownSeries(hist({ openedAt: 0, closedAt: 40 }, { openedAt: 20, closedAt: null }), 100, 6)
+  // samples at 0 20 40 60 80 100
+  expect(s?.values).toEqual([1, 2, 1, 1, 1, 1])
+})
+
+test('burndownSeries: no samples without history or buckets, one sample is now', () => {
+  expect(burndownSeries(hist(), 100, 10)).toBeNull()
+  expect(burndownSeries(hist({ openedAt: 0, closedAt: null }), 100, 0)).toBeNull()
+  expect(burndownSeries(hist({ openedAt: 0, closedAt: null }), 100, -3)).toBeNull()
+  const one = burndownSeries(hist({ openedAt: 0, closedAt: 50 }, { openedAt: 10, closedAt: null }), 100, 1)
+  expect(one?.values).toEqual([1])
+  expect(one?.open).toBe(1)
+})
+
+test('burndownSeries: a start equal to now is a flat series', () => {
+  const s = burndownSeries(hist({ openedAt: 100, closedAt: null }), 100, 4)
+  expect(s?.values).toEqual([1, 1, 1, 1])
+  expect(s?.startedAt).toBe(100)
+})
+
+test('burndownSeries clamps future dates to now', () => {
+  const s = burndownSeries(hist({ openedAt: 0, closedAt: null }, { openedAt: 500, closedAt: 900 }), 100, 3)
+  expect(s?.values).toEqual([1, 1, 1])
+  expect(s).toMatchObject({ open: 1, startedAt: 0 })
+  expect(burndownSeries(hist({ openedAt: 500, closedAt: null }), 100, 2)).toMatchObject({ values: [1, 1], startedAt: 100 })
+})
+
+test('burndownSeries separates done from removed', () => {
+  const s = burndownSeries(
+    hist(
+      { openedAt: 0, closedAt: 10 },
+      { openedAt: 0, closedAt: 20, isRemoved: true },
+      { openedAt: 0, closedAt: 30, isRemoved: true },
+      { openedAt: 0, closedAt: null },
+    ),
+    100,
+    2,
+  )
+  expect(s).toMatchObject({ open: 1, done: 1, removed: 2, peak: 4 })
+})
+
+test('sparkline draws eighth blocks scaled to the peak, a zero as a space', () => {
+  expect(sparkline([0, 1, 2, 4, 8], 8)).toBe(' ▁▂▄█')
+  expect(sparkline([1, 8], 800)).toBe('▁▁')
+  expect(sparkline([0, 0], 0)).toBe('  ')
+  expect(sparkline([], 5)).toBe('')
+  expect(sparkline([3, 3, 3], 3)).toBe('███')
+})
+
+// The Raster `cells` prop back into [codePoint, fg, bg] words
+const decode = (cells: string) => {
+  const bytes = Buffer.from(cells, 'base64')
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  return Array.from({ length: bytes.byteLength / 4 }, (_, i) => view.getUint32(i * 4, true))
+}
+const glyphs = (words: number[]) => Array.from({ length: words.length / 3 }, (_, i) => String.fromCodePoint(words[i * 3] as number))
+
+test('rasterCells packs columns * rows little-endian triplets, top row first', () => {
+  const cells = rasterCells([0, 4, 8], 8, 2, 0x7aa2f7)
+  const words = decode(cells)
+  expect(words).toHaveLength(3 * 2 * 3)
+  // row 0 (top): empty, empty, full; row 1: empty, half, full ... heights over 16 levels: 0, 8, 16
+  expect(glyphs(words)).toEqual([' ', ' ', '█', ' ', '█', '█'])
+  expect(words[2]).toBe(0x01000000)
+  expect(words[5]).toBe(0x01000000)
+  expect(words[8]).toBe(0x7aa2f7)
+  expect(cells).toMatch(/^[A-Za-z0-9+/]+={0,2}$/)
+  expect(cells.length % 4).toBe(0)
+})
+
+test('rasterCells draws a partial top cell with an eighth block and keeps a non-zero value visible', () => {
+  // 2 rows = 16 levels; 12 of 16 -> one full cell and a half block above it
+  expect(glyphs(decode(rasterCells([12], 16, 2, 0xffffff)))).toEqual(['▄', '█'])
+  expect(glyphs(decode(rasterCells([1], 1000, 3, 0xffffff)))).toEqual([' ', ' ', '▁'])
+  expect(glyphs(decode(rasterCells([0, 0], 0, 1, 0xffffff)))).toEqual([' ', ' '])
+  expect(decode(rasterCells([], 3, 3, 0xffffff))).toEqual([])
+})
+
+test('rasterCells encodes padded base64 for every cell count', () => {
+  for (const n of [1, 2, 3, 4, 5]) {
+    const cells = rasterCells(Array.from({ length: n }, () => 1), 1, 1, 0x112233)
+    expect(cells).toBe(Buffer.from(Buffer.from(cells, 'base64')).toString('base64'))
+    expect(decode(cells)).toHaveLength(n * 3)
+  }
+})
+
+test('chartKind picks the raster only where the surface has one', () => {
+  expect(chartKind(true)).toBe('raster')
+  expect(chartKind(false)).toBe('text')
+})
+
+test('axisStart words the left label as a date, or a time when the history is under a day', () => {
+  const now = at('2026-10-12T15:30:00Z')
+  expect(axisStart(at('2026-09-18T08:00:00Z'), now)).toBe('Sep 18')
+  expect(axisStart(at('2026-01-05T00:00:00Z'), now)).toBe('Jan 5')
+  expect(axisStart(at('2026-10-12T09:05:00Z'), now)).toBe('today 09:05')
+  expect(axisStart(now, now)).toBe('today 15:30')
+  expect(axisStart(now - 86_400_000, now)).toBe('Oct 11')
 })
