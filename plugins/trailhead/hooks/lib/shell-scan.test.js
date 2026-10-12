@@ -108,7 +108,7 @@ ok('splitStatements keeps a single-quoted continuation literal', JSON.stringify(
   const cont = 'true <<EOF \\\n; echo REACHED\nbody\nEOF\ncat .env';
   ok('a backslash-newline joins the lines: the continuation stays visible, the body starts after it',
     stripHeredocBodies(cont) === 'true <<EOF \\\n; echo REACHED\ncat .env' && heredocBodies(cont)[0].body === 'body' &&
-    JSON.stringify(splitStatements(cont)) === JSON.stringify(['true <<EOF \\', 'echo REACHED', 'cat .env']));
+    JSON.stringify(splitStatements(cont)) === JSON.stringify(['true <<EOF', 'echo REACHED', 'cat .env']));
   ok('an escaped space is not a word boundary, so \\ #x <<EOF is a real heredoc',
     stripHeredocBodies('echo \\ #x <<EOF\nx\nEOF\ncat .env') === 'echo \\ #x <<EOF\ncat .env' &&
     countHeredocs('echo \\ #x <<EOF') === 1);

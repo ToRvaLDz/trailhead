@@ -250,22 +250,25 @@ const splittable = (stack) => stack.length === 0 || stack[stack.length - 1].k ==
 // (e.g. a script being written to a file), not shell statements run in the
 // current shell. Whenever a line introduces heredocs, every following line up
 // to and including each terminator is body. Returns { lines, keep, docs, seps,
-// nl }: `keep[i]` is false for body and terminator lines; `docs` is
+// nl, cont, hd }: `keep[i]` is false for body and terminator lines; `docs` is
 // [{ quoted, body }] in order of appearance (`hd[i]` holds the introducer positions on line i) (`quoted` is true for a quoted
 // delimiter, whose body is literal text); `seps[i]` are the separators inside
-// line i and `nl[i]` says whether the newline after it separates statements.
+// line i and `nl[i]` says whether the newline after it separates statements;
+// `cont[i]` says whether line i ends in a live backslash-newline continuation.
 function scanHeredocs(cmd, initialStack) {
   const lines = String(cmd).split('\n');
   const keep = new Array(lines.length).fill(true);
   const docs = [];
   const seps = lines.map(() => []);
   const nl = new Array(lines.length).fill(false);
+  const cont = new Array(lines.length).fill(false);
   const hd = lines.map(() => []); // hd[i]: indexes of the heredoc introducers on line i
   const st = { stack: (initialStack || []).map((f) => ({ ...f })) }; // a copy: never shared with the caller
   for (let i = 0; i < lines.length; i++) {
     const found = scanLine(lines[i], st, seps[i]);
     hd[i] = found.map((f) => f.at);
     nl[i] = !st.cont && !st.bq && splittable(st.stack);
+    cont[i] = st.cont;
     // A line ending in a backslash continues on the next: that is ONE logical
     // line, and any heredoc body starts after its last physical line. So does a
     // quote opened after the introducer (`cat <<E 'a<nl>b'`): bash starts the
@@ -279,6 +282,7 @@ function scanHeredocs(cmd, initialStack) {
       hd[i] = more.map((f) => f.at);
       found.push(...more);
       nl[i] = !st.cont && !st.bq && splittable(st.stack);
+      cont[i] = st.cont;
     }
     // A single line can introduce more than one heredoc (`cmd <<A <<B`); the
     // bodies follow in order.
@@ -294,7 +298,7 @@ function scanHeredocs(cmd, initialStack) {
       docs.push({ quoted, body: body.join('\n') });
     }
   }
-  return { lines, keep, docs, seps, nl, hd };
+  return { lines, keep, docs, seps, nl, cont, hd };
 }
 
 // Remove every heredoc body (and terminator line) before the statement splitter
@@ -408,8 +412,10 @@ function collectSubstitutionBodies(lines, keep, st) {
 // (literal data, never statements). Returns [{ text, sep }] with the operator
 // that ENDED each statement (null for the last) and the number of heredoc
 // introducers it holds (counted from the scan positions), untrimmed and unfiltered.
+// A live backslash-newline continuation is removed like bash does (the backslash
+// and the newline both go), so a word split across lines is one word again.
 function cutStatements(cmd, ops) {
-  const { lines, keep, seps, nl, hd } = scanHeredocs(cmd);
+  const { lines, keep, seps, nl, cont, hd } = scanHeredocs(cmd);
   const kept = lines.map((_, i) => i).filter((i) => keep[i]);
   const out = [];
   let cur = '';
@@ -428,6 +434,7 @@ function cutStatements(cmd, ops) {
     heredocs += hd[i].length - h;
     cur += lines[i].slice(from);
     if (k === kept.length - 1) return;
+    if (cont[i] && cur.endsWith('\\')) { cur = cur.slice(0, -1); return; } // joined: no separator, no newline
     if (nl[i]) { out.push({ text: cur, sep: '\n', heredocs }); cur = ''; heredocs = 0; } else cur += '\n';
   });
   out.push({ text: cur, sep: null, heredocs });
