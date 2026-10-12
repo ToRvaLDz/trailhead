@@ -10,7 +10,7 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 
 ### Fixed
 - **Body guard resolves repeated body flags like gh (#213).** `gh issue edit` / `gh pr edit` with a repeated `--body` / `--body-file` (or `-b` / `-F`) was judged on the first occurrence, but gh keeps the last, so `--body "x" --body ""` slipped through while `--body "" --body "x"` was blocked. The guard now takes the last value of each flag, treats an empty `--body-file` as absent, and allows `--body` combined with a non-empty `--body-file` (gh rejects it and writes nothing).
-- **Secret-read guard sees a secret read inside `"$(..)"` (#214).** `echo "$(cat .env)"`, `x="$(cat .env)"` and `echo "$(true; cat .env)"` slipped past because the double-quoted substitution hid the read from the per-token scan. The guard now also scans the body of every outermost `$(..)`, `<(..)` and `>(..)` as a command of its own (nested ones recurse); single-quoted text stays literal.
+- **Secret-read guard sees a secret read inside `"$(..)"` (#214).** `echo "$(cat .env)"`, `x="$(cat .env)"` and `echo "$(true; cat .env)"` slipped past because the double-quoted substitution hid the read from the per-token scan. The guard now also scans the body of every outermost `$(..)`, `<(..)` and `>(..)` as a command of its own (nested ones recurse, within a depth and size cap that blocks on a secret-looking token); that includes a substitution in a heredoc-bearing body or in arithmetic. Single-quoted text stays literal. Backtick substitutions are not covered yet.
 
 ## 0.13.0 (2026-10-09)
 
