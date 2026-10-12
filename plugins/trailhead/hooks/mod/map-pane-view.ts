@@ -220,10 +220,13 @@ const parseTime = (raw: unknown): number | null => {
   return Number.isNaN(ms) ? null : ms
 }
 
-// gh prints an open issue's closedAt as the zero date: anything before the epoch means open.
-const closedTime = (raw: unknown): number | null => {
+// gh prints an open issue's closedAt as the zero date: null, absent or anything at or before the epoch
+// means open. Any other value that does not parse is unreadable (undefined), and the row is skipped.
+const closedTime = (raw: unknown): number | null | undefined => {
+  if (raw === null || raw === undefined) return null
   const ms = parseTime(raw)
-  return ms === null || ms <= 0 ? null : ms
+  if (ms === null) return undefined
+  return ms <= 0 ? null : ms
 }
 
 const historyIssue = (r: Record<string, unknown>): BurndownIssue[] => {
@@ -231,7 +234,7 @@ const historyIssue = (r: Record<string, unknown>): BurndownIssue[] => {
   if (names.includes(`${LABEL_PREFIX}unverified`) || names.includes(`${LABEL_PREFIX}whiteboard`)) return []
   const openedAt = parseTime(r.createdAt)
   const closedAt = closedTime(r.closedAt)
-  if (openedAt === null || (closedAt !== null && closedAt < openedAt)) return []
+  if (openedAt === null || closedAt === undefined || (closedAt !== null && closedAt < openedAt)) return []
   return [{ openedAt, closedAt, isRemoved: REMOVED_LABELS.some(l => names.includes(l)) }]
 }
 

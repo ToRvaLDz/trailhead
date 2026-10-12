@@ -278,10 +278,15 @@ test('parseHistory skips unverified and whiteboard rows and unreadable dates', (
       row({ number: 5, closedAt: '2026-09-30T00:00:00Z' }),
       row({ number: 6, closedAt: 'soon' }),
       row({ number: 7, closedAt: undefined }),
+      row({ number: 8, closedAt: null }),
+      row({ number: 9, closedAt: '1970-01-01T00:00:00Z' }),
+      row({ number: 10, closedAt: 12 }),
       'junk',
     ),
   )
+  // a closedAt that is a string but unreadable skips the row; null, absent and the zero date mean open
   expect(out?.issues).toEqual([
+    { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
     { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
     { openedAt: at('2026-10-01T00:00:00Z'), closedAt: null, isRemoved: false },
   ])
