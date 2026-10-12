@@ -254,14 +254,14 @@ const splittable = (stack) => stack.length === 0 || stack[stack.length - 1].k ==
 // [{ quoted, body }] in order of appearance (`hd[i]` holds the introducer positions on line i) (`quoted` is true for a quoted
 // delimiter, whose body is literal text); `seps[i]` are the separators inside
 // line i and `nl[i]` says whether the newline after it separates statements.
-function scanHeredocs(cmd) {
+function scanHeredocs(cmd, initialStack) {
   const lines = String(cmd).split('\n');
   const keep = new Array(lines.length).fill(true);
   const docs = [];
   const seps = lines.map(() => []);
   const nl = new Array(lines.length).fill(false);
   const hd = lines.map(() => []); // hd[i]: indexes of the heredoc introducers on line i
-  const st = { stack: [] };
+  const st = { stack: (initialStack || []).map((f) => ({ ...f })) }; // a copy: never shared with the caller
   for (let i = 0; i < lines.length; i++) {
     const found = scanLine(lines[i], st, seps[i]);
     hd[i] = found.map((f) => f.at);
@@ -350,8 +350,32 @@ function substitutionBodies(cmd) {
 // backtick unescaping as substitutionBodies. A quoted-delimiter body is literal
 // and must not be passed here.
 function heredocSubstitutionBodies(body) {
-  const lines = String(body).split('\n');
-  return collectSubstitutionBodies(lines, lines.map(() => true), { stack: [{ k: 'hd' }] });
+  const hd = () => [{ k: 'hd' }];
+  // Scan once for the keep marks: a heredoc introduced inside a substitution in
+  // the body owns the lines after it (its body and terminator are data, so a `)`
+  // there does not close the substitution). Then collect from a fresh state.
+  const { lines, keep } = scanHeredocs(joinLineContinuations(body), hd());
+  return collectSubstitutionBodies(lines, keep, { stack: hd() });
+}
+
+// Remove every backslash-newline pair whose backslash is itself unescaped, as
+// the shell does in an unquoted heredoc body before it expands anything. A run
+// of backslashes before the newline pairs up from the left: an odd run leaves
+// one live backslash (joined), an even run is escaped backslashes plus a real
+// newline (kept).
+function joinLineContinuations(text) {
+  const s = String(text);
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\') {
+      if (s[i + 1] === '\n') { i++; continue; } // live backslash-newline: dropped
+      out += s[i] + (s[i + 1] === undefined ? '' : s[i + 1]); // escaped pair: kept whole
+      i++;
+      continue;
+    }
+    out += s[i];
+  }
+  return out;
 }
 
 // The one collector behind substitutionBodies and heredocSubstitutionBodies:
