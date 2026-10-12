@@ -853,6 +853,11 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     ok("gh api '--field' body=@F blocks", blocked(`gh api x '--field' body=@${F}`));
     ok("gh api '-F' body=@F blocks", blocked(`gh api x '-F' body=@${F}`));
     ok('a quoted unrelated flag does not read the file', allowed(`${G} '--label' ${F} --body hi`));
+    // A quoted free-text VALUE that looks like a flag is a value, not a flag.
+    ok('a title that starts with a flag-like word passes', allowed('gh issue create --title "-F handling" --body hi'));
+    ok('a body that starts with a flag-like word passes', allowed('gh issue create --title "Fix thing" --body "-F is a flag"'));
+    ok('a --body value that looks like --body-file=x passes', allowed(`${G} --body '--body-file=x'`));
+    ok('a -b value that looks like -F passes', allowed(`${G} -b '-F'`));
     // ANSI-C escapes in a word are decoded by bash.
     ok('a hex-escaped command word blocks', blocked(`$'\\x67h' issue comment 5 --body ${T}`));
     ok('a hex-escaped verb blocks', blocked(`gh issue $'comm\\x65nt' 5 --body ${T}`));
