@@ -725,6 +725,16 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('an unresolvable piece next to split literals is not allowed',
     runHook(`${G} --body "$TRAILHEAD_UNSET_217"${A}''${B}`).code === 2);
   ok('two separate quoted words do not join', allowed(`${G} --body "${A}" "${B}"`));
+  ok('-b with a double-quoted and a single-quoted part blocks', blocked(`${G} -b "${A}"'${B}'`));
+  ok('--body= with a double-quoted and a single-quoted part blocks', blocked(`${G} --body="${A}"'${B}'`));
+  ok('--title with adjacent double-quoted parts blocks', blocked(`gh issue create --title "${A}""${B}" --body hi`));
+  ok('a here-string with adjacent quoted parts blocks', blocked(`${G} --body-file - <<<"${A}"'${B}'`));
+  ok('a write nested in $(...) with adjacent quoted parts blocks', blocked(`echo $(${G} --body "${A}""${B}")`));
+  ok('adjacent ANSI-C quoted parts block', blocked(`${G} --body $'${A}'$'${B}'`));
+  ok('adjacent locale-quoted parts block', blocked(`${G} --body $"${A}"$"${B}"`));
+  ok('a single-quoted part glued to an ANSI-C part blocks', blocked(`${G} --body '${A}'$'${B}'`));
+  ok('an unquoted heredoc keeps quotes literal and passes',
+    allowed(`${G} --body-file - <<EOF\n${A}''${B}\nEOF`));
 }
 
 console.log(`✓ secret-guard: ${passed} assertions passed`);
