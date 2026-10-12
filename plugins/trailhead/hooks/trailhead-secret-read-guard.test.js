@@ -207,6 +207,10 @@ for (const c of ['echo "`cat .env`"', 'x="`cat .env`"', 'echo "${x:-`cat .env`}"
   'echo "$(echo `cat .env`)"', 'echo `echo $(cat .env)`', 'echo `echo \\`cat .env\\``']) {
   ok(`Bash \`${c}\` is denied with path .env (#216)`, hit214(c));
 }
+for (const c of ['echo "`echo \'"\'`"; cat .env', 'echo "`cat \\".env\\"`"', 'echo `true\ncat .env\n`',
+  'echo `echo \\`echo \\\\\\`cat .env\\\\\\`\\``']) {
+  ok(`Bash \`${c}\` is denied with path .env (#216 review)`, hit214(c));
+}
 allowCmd('echo "run `ls` then `pwd`"');
 allowCmd("echo '`cat .env`'");
 allowCmd('echo "\\`cat .env\\`"');

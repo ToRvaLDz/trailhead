@@ -330,8 +330,26 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('substitutionBodies returns the remainder of an unterminated backtick', bodies('echo "`cat .env') === cat);
   ok('substitutionBodies unescapes a nested backtick in a bq body',
     bodies('echo `echo \\`cat .env\\``') === JSON.stringify(['echo `cat .env`']));
-  ok('splitStatements ignores a ; inside a backtick span like before',
-    JSON.stringify(splitStatements('echo `a; b` ; c')) === JSON.stringify(['echo `a', 'b`', 'c']));
+  // review: the span is opaque (a quote inside it does not desync the lexer)
+  ok('substitutionBodies: a quote inside a bq body does not hide its close',
+    bodies('echo "`echo \'"\'`"; cat .env') === JSON.stringify(["echo '\"'"]));
+  ok('substitutionBodies: a $(..) after a quote-bearing bq is still found',
+    bodies('echo "`echo \'x`"; echo "$(cat .env)"') === JSON.stringify(["echo 'x", 'cat .env']));
+  ok('splitStatements does not cut at a ; inside a backtick span',
+    JSON.stringify(splitStatements('echo `a; b` ; c')) === JSON.stringify(['echo `a; b`', 'c']));
+  ok('splitStatements does not cut at a newline inside a backtick span',
+    JSON.stringify(splitStatements('echo `a\nb` ; c')) === JSON.stringify(['echo `a\nb`', 'c']));
+  // review: \" is unescaped in a bq body only inside double quotes
+  ok('substitutionBodies unescapes \\" in a bq body inside double quotes',
+    bodies('echo "`cat \\".env\\"`"') === JSON.stringify(['cat ".env"']));
+  ok('substitutionBodies keeps \\" in an unquoted bq body',
+    bodies('echo `cat \\".env\\"`') === JSON.stringify(['cat \\".env\\"']));
+  ok('substitutionBodies: a dq below a $(..) does not count as double-quoted',
+    bodies('echo "$(echo `cat \\".env\\"`)"') === JSON.stringify(['echo `cat \\".env\\"`']));
+  // review: multi-line span and double-nested escaped backtick
+  ok('substitutionBodies finds a backtick span across lines', bodies('echo `true\ncat .env\n`') === JSON.stringify(['true\ncat .env\n']));
+  ok('substitutionBodies keeps a double-nested escaped backtick for the recursion',
+    bodies('echo `echo \\`echo \\\\\\`cat .env\\\\\\`\\``') === JSON.stringify(['echo `echo \\`cat .env\\``']));
 }
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);
