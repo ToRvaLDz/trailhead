@@ -182,6 +182,17 @@ denyCmd('cp .env.example .env -f');
 denyCmd('cp .env.example .env && cat .env');
 denyCmd('git check-ignore .env; cat .env');
 
+// #214: a secret read inside a command substitution, even double-quoted
+const hit214 = (c) => { const r = detectSecretRead('Bash', { command: c }); return !!r && r.path === '.env'; };
+for (const c of ['echo "$(true; cat .env)"', 'echo "$(cat .env)"', 'x="$(cat .env)"', 'diff <(cat .env) x',
+  'echo "$(echo "$(cat .env)")"', 'echo "$(\ncat .env\n)"']) {
+  ok(`Bash \`${c}\` is denied with path .env (#214)`, hit214(c));
+}
+allowCmd("echo '$(cat .env)'");
+allowCmd('echo "$(echo hi)"');
+allowCmd('echo "$((1+2))"');
+allowCmd('git commit -m "document .env usage"');
+
 const a6 = runHook('Bash', { command: 'git check-ignore -v .env' });
 ok('hook allows Bash(git check-ignore -v .env) end-to-end (exit 0, no output)', a6.code === 0 && a6.out.trim() === '');
 const a7 = runHook('Bash', { command: 'cp .env.example .env' });

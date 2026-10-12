@@ -10,6 +10,7 @@ const {
   splitStatements,
   splitStatementsWithSeparators,
   tokenize,
+  substitutionBodies,
   scanArgsSkippingPattern,
   SEARCH_VERB_CONFIG,
 } = require('./shell-scan.js');
@@ -281,5 +282,26 @@ ok('scanArgsSkippingPattern skips the pattern positional (grep ".env" config.txt
   scanArgsSkippingPattern(['".env"', 'config.txt'], SEARCH_VERB_CONFIG.grep, isDotEnv) === null);
 ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern',
   scanArgsSkippingPattern(['-n', 'KEY', '.env'], SEARCH_VERB_CONFIG.grep, isDotEnv) === '.env');
+
+// --- substitutionBodies: outermost command-substitution bodies (#214) ---
+{
+  const bodies = (c) => JSON.stringify(substitutionBodies(c));
+  ok('substitutionBodies finds an unquoted $(..)', bodies('echo $(cat .env)') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies finds a double-quoted $(..)', bodies('echo "$(cat .env)"') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies keeps a ; inside the body', bodies('echo "$(true; cat .env)"') === JSON.stringify(['true; cat .env']));
+  ok('substitutionBodies skips a single-quoted $(..)', bodies("echo '$(cat .env)'") === '[]');
+  ok('substitutionBodies skips $((..)) arithmetic', bodies('echo "$((1+2))"') === '[]');
+  ok('substitutionBodies finds a $(..) inside ${..} (it runs)', bodies('echo ${x:-$(cat .env)}') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies skips a literal ${..} with no substitution', bodies('echo ${x:-$HOME}') === '[]');
+  ok('substitutionBodies skips a comment', bodies('echo hi # $(cat .env)') === '[]');
+  ok('substitutionBodies returns only the outermost of a nest',
+    bodies('echo "$(echo "$(cat .env)")"') === JSON.stringify(['echo "$(cat .env)"']));
+  ok('substitutionBodies finds <(..) and >(..)', bodies('diff <(cat a) >(tee b)') === JSON.stringify(['cat a', 'tee b']));
+  ok('substitutionBodies finds several siblings', bodies('echo $(a) "$(b)"') === JSON.stringify(['a', 'b']));
+  ok('substitutionBodies joins a multi-line body with a newline', bodies('echo "$(\ncat .env\n)"') === JSON.stringify(['\ncat .env\n']));
+  ok('substitutionBodies skips heredoc bodies', bodies('cat <<E\n$(cat .env)\nE') === '[]');
+  ok('substitutionBodies returns the remainder of an unterminated body', bodies('echo "$(cat .env') === JSON.stringify(['cat .env']));
+  ok('substitutionBodies is empty for plain text', bodies('echo hi') === '[]');
+}
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);

@@ -44,6 +44,12 @@
 // are shared with trailhead-search-guard.js via lib/shell-scan.js, so the two
 // guards can never drift into two divergent tokenizers again.
 //
+// #214 fix: a secret read inside a command substitution was missed when the
+// substitution sat in double quotes (`echo "$(cat .env)"`, `x="$(cat .env)"`,
+// `echo "$(true; cat .env)"`): the quoted token hid it, and the splitter cut
+// inside the `$(..)`. Each outermost `$(..)` / `<(..)` / `>(..)` body (from
+// substitutionBodies in lib/shell-scan.js) is now also scanned as a command.
+//
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only
 // that flag's value is exempted, and only for docker/podman verbs; see
@@ -77,6 +83,7 @@ const {
   basename,
   stripQuotes,
   splitStatements,
+  substitutionBodies,
   tokenize,
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
@@ -401,6 +408,13 @@ function scanBashForSecretPath(cmd) {
   const statements = splitStatements(cmd);
   for (const stmt of statements) {
     const hit = scanStatementForSecretPath(stmt);
+    if (hit) return hit;
+  }
+  // #214: a statement cut inside `"$(..)"` loses the closing context, and a
+  // double-quoted token hides its body from the per-token walk; scan each
+  // outermost substitution body as a command of its own (nested ones recurse).
+  for (const body of substitutionBodies(cmd)) {
+    const hit = scanBashForSecretPath(body);
     if (hit) return hit;
   }
   return null;

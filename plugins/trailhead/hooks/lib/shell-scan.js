@@ -68,7 +68,11 @@ const WORD_START_PREV_RE = /[\s;&|()]/;
 // shell parser (backticks, `$(( (a) ))` nesting tricks and `<<\TAG` are not
 // modelled; nor is the body order of a heredoc nested in another heredoc's
 // pending `"$(..)"`, e.g. `cat <<E "$(cat <<A ..)"`).
-function scanLine(line, st, seps) {
+// When `subs` is given ({ open(at), close(at) }), it is told where each
+// OUTERMOST `$(..)` / `<(..)` / `>(..)` body starts (the index after the `(`)
+// and where it ends (the index of the closing `)`), so substitutionBodies
+// reads the bodies off this lexer instead of running a second one.
+function scanLine(line, st, seps, subs) {
   const found = [];
   const stack = st.stack;
   const parens = {}; // parenIsArith's per-line match cache
@@ -79,6 +83,12 @@ function scanLine(line, st, seps) {
   // The `)` that closes an expansion (`$(..)`, `<(..)`, `$((..))`) ends no word
   // either: `$(x)# y` is not a comment, `(x)# y` is.
   let expCloseAt = -2;
+  // Push a `$(..)` / `<(..)` frame; the outermost one is reported to `subs`.
+  const openSub = (bodyAt) => {
+    const outer = !stack.some((f) => f.k === 'sub');
+    stack.push({ k: 'sub', n: 0, outer });
+    if (subs && outer) subs.open(bodyAt);
+  };
   const isBoundary = (i) => WORD_START_PREV_RE.test(line[i - 1]) && escAt !== i - 1 && expCloseAt !== i - 1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
@@ -108,7 +118,7 @@ function scanLine(line, st, seps) {
       continue;
     }
     if (c === '$' && line[i + 1] === '(' && line[i + 2] === '(' && parenIsArith(line, i + 3, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2, exp: true }); i += 2; continue; }
-    if (c === '$' && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
+    if (c === '$' && line[i + 1] === '(') { openSub(i + 2); i++; continue; }
     if (c === '$' && line[i + 1] === '{') { stack.push({ k: 'br' }); i++; continue; }
     if (top && top.k === 'dq') {
       if (c === '"') stack.pop();
@@ -124,10 +134,10 @@ function scanLine(line, st, seps) {
     if (c === '(' && line[i + 1] === '(' && wordStart && parenIsArith(line, i + 2, parens)) { stack.push({ k: 'ar', mode: 'paren', depth: 2 }); i++; continue; }
     if (top && top.k === 'sub') {
       if (c === '(') { top.n++; continue; }
-      if (c === ')') { if (top.n === 0) { stack.pop(); expCloseAt = i; } else top.n--; continue; }
+      if (c === ')') { if (top.n === 0) { stack.pop(); expCloseAt = i; if (subs && top.outer) subs.close(i); } else top.n--; continue; }
     }
     // A process substitution `<(..)` / `>(..)` is code, like `$(..)`.
-    if ((c === '<' || c === '>') && line[i + 1] === '(') { stack.push({ k: 'sub', n: 0 }); i++; continue; }
+    if ((c === '<' || c === '>') && line[i + 1] === '(') { openSub(i + 2); i++; continue; }
     if (seps && splittable(stack)) {
       const two = c + line[i + 1];
       if (two === '&&' || two === '||') { seps.push({ at: i, len: 2, op: two }); i++; continue; }
@@ -266,6 +276,33 @@ function lexCount(text) {
 function countHeredocs(stmt) {
   if (stmt && typeof stmt === 'object' && typeof stmt.heredocs === 'number') return stmt.heredocs;
   return lexCount(stmt && typeof stmt === 'object' ? stmt.text : stmt);
+}
+
+// The text of every outermost command substitution in a command: `$(..)`,
+// `<(..)` and `>(..)`, including those inside double quotes (the shell runs
+// them), never one in single quotes, `$'..'`, arithmetic, a comment or a
+// heredoc body. Nested ones are not returned: callers recurse into a body to
+// reach them. A body can span lines (joined with '\n'); one that never closes
+// runs to the end of the input (fail toward scanning). Read off scanLine's
+// `sub` frames, so it agrees with the splitters on what is code.
+function substitutionBodies(cmd) {
+  const lines = stripHeredocBodies(cmd).split('\n');
+  const st = { stack: [] };
+  const out = [];
+  let cur = null; // text of the open body so far, or null
+  let from = 0; // where the open body's text starts on the current line
+  const subs = {
+    open: (at) => { cur = ''; from = at; },
+    close: (at) => { out.push(cur + lines[li].slice(from, at)); cur = null; },
+  };
+  let li = 0;
+  for (; li < lines.length; li++) {
+    from = 0;
+    scanLine(lines[li], st, undefined, subs);
+    if (cur !== null) cur += lines[li].slice(from) + '\n';
+  }
+  if (cur !== null) out.push(cur.slice(0, -1)); // unterminated: the remainder
+  return out;
 }
 
 // --- statement splitting -------------------------------------------------------
@@ -445,6 +482,7 @@ module.exports = {
   countHeredocs,
   splitStatements,
   splitStatementsWithSeparators,
+  substitutionBodies,
   tokenize,
   skipEnvPrefix,
   GREP_VALUE_FLAGS,
