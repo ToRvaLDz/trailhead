@@ -124,6 +124,9 @@ ok("gh 'repo' view still resolves repo",
   ok('dequote decodes single-letter escapes', dequote(`$'a\\tb\\\\c\\'d'`) === "a\tb\\c'd");
   ok('dequote drops the $ of a locale-quoted span', dequote('$"gh"') === 'gh');
   ok('dequote leaves a bare variable alone', dequote('$HOME') === '$HOME');
+  const { dequoteSpans } = require('./gh-subcommand.js');
+  ok('dequoteSpans tags each char with its quoted span', JSON.stringify(dequoteSpans(`-"F"/"p a"`)) === JSON.stringify({ text: '-F/p a', spans: [-1, 1, -1, 2, 2, 2] }));
+  ok('dequoteSpans keeps one span for "-F handling"', dequoteSpans('"-F x"').spans.every((x) => x === 1));
   ok('body-sources re-exports the same dequote', require('./body-sources.js').dequote === dequote);
   const { flagValues } = require('./body-sources.js');
   const J = JSON.stringify;

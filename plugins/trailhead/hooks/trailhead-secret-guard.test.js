@@ -869,6 +869,18 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
     ok('a quoted flag glued to its value blocks', blocked(`${G} "-F"${F}`));
     // A quoted no-whitespace value that starts like the flag is read as the flag, erring toward detection.
     ok('a title like "-Fixes" is read as an attached -F', runHook(`gh issue create --title "-Fixes" --body hi`).code === 2);
+    // A quoted attached value with whitespace in a span of its own is still the flag's value.
+    {
+      const dirSp = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-219 sp-'));
+      const FS = path.join(dirSp, 'my body.txt');
+      fs.writeFileSync(FS, `${T}\n`);
+      ok('-"F"/"p a" blocks', blocked(`${G} -"F"${'"'}${FS}${'"'}`));
+      ok('"-F"/"p a" blocks', blocked(`${G} "-F""${FS}"`));
+      ok("-'F'\"/p a\" blocks", blocked(`${G} -'F'"${FS}"`));
+      ok('-F"/p a" blocks (control)', blocked(`${G} -F"${FS}"`));
+      ok('"-F handling" with a space in the flag span still passes', allowed(`${G} --title "-F ${FS}" --body hi`));
+      fs.rmSync(dirSp, { recursive: true, force: true });
+    }
     // -r and -a are boolean in `gh pr review`: the -F after them is still the body file.
     ok('gh pr review -r -F file blocks', blocked(`gh pr review 5 -r -F ${F}`));
     ok('gh pr review -a -F file blocks', blocked(`gh pr review 5 -a -F ${F}`));
