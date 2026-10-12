@@ -478,8 +478,8 @@ function inWordContinuations(cmd) {
       const next = lines[st.lineNo + 1];
       if (boundary || next === undefined || !/^\S/.test(next)) return;
       if (top && top.k !== 'sub') return; // inside quotes the existing emulation joins it
-      const before = /\S{0,6}$/.exec(lines[st.lineNo].slice(0, at))[0];
-      out.push({ line: st.lineNo, junction: before + /^\S{0,6}/.exec(next)[0] });
+      const before = /[^\s;&|()<>]{0,6}$/.exec(lines[st.lineNo].slice(0, at))[0];
+      out.push({ line: st.lineNo, junction: before + /^[^\s;&|()<>]{0,6}/.exec(next)[0] });
     },
   };
   lexKeptLines(lines, keep, st);
