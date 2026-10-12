@@ -313,6 +313,25 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('substitutionBodies keeps arithmetic parens balanced around a sub',
     bodies('echo "$(( ($(a)) + 1 ))" "$(b)"') === JSON.stringify(['a', 'b']));
   ok('substitutionBodies still skips plain nested arithmetic', bodies('echo $((a+(b)))') === '[]');
+  // #216: backtick substitutions
+  const cat = JSON.stringify(['cat .env']);
+  ok('substitutionBodies finds an unquoted backtick body', bodies('echo `cat .env`') === cat);
+  ok('substitutionBodies finds a double-quoted backtick body', bodies('echo "`cat .env`"') === cat);
+  ok('substitutionBodies finds a backtick body in an assignment', bodies('x="`cat .env`"') === cat);
+  ok('substitutionBodies finds a backtick body inside ${..}', bodies('echo "${x:-`cat .env`}"') === cat);
+  ok('substitutionBodies skips a single-quoted backtick', bodies("echo '`cat .env`'") === '[]');
+  ok('substitutionBodies skips a backtick inside $\'..\'', bodies("echo $'`cat .env`'") === '[]');
+  ok('substitutionBodies skips a backtick in a comment', bodies('echo hi # `cat .env`') === '[]');
+  ok('substitutionBodies skips an escaped backtick', bodies('echo "\\`cat .env\\`"') === '[]');
+  ok('substitutionBodies reports a bq inside $(..) only as part of the outer body',
+    bodies('echo "$(echo `cat .env`)"') === JSON.stringify(['echo `cat .env`']));
+  ok('substitutionBodies reports a $(..) inside a bq only as part of the bq body',
+    bodies('echo `echo $(cat .env)`') === JSON.stringify(['echo $(cat .env)']));
+  ok('substitutionBodies returns the remainder of an unterminated backtick', bodies('echo "`cat .env') === cat);
+  ok('substitutionBodies keeps an escaped backtick inside a bq body',
+    bodies('echo `echo \\`x\\` .env`') === JSON.stringify(['echo \\`x\\` .env']));
+  ok('splitStatements ignores a ; inside a backtick span like before',
+    JSON.stringify(splitStatements('echo `a; b` ; c')) === JSON.stringify(['echo `a', 'b`', 'c']));
 }
 
 console.log(`✓ shell-scan: ${passed} assertions passed`);

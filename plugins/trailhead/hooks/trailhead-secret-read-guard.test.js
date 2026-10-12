@@ -202,6 +202,15 @@ allowCmd('echo "$((1+2))"');
 allowCmd('echo $((a+(b)))');
 allowCmd('echo "$(( $(echo 1) + 1 ))"');
 
+// #216: a secret read inside a backtick substitution, even double-quoted
+for (const c of ['echo "`cat .env`"', 'x="`cat .env`"', 'echo "${x:-`cat .env`}"', 'echo `cat .env`',
+  'echo "$(echo `cat .env`)"', 'echo `echo $(cat .env)`']) {
+  ok(`Bash \`${c}\` is denied with path .env (#216)`, hit214(c));
+}
+allowCmd('echo "run `ls` then `pwd`"');
+allowCmd("echo '`cat .env`'");
+allowCmd('echo "\\`cat .env\\`"');
+
 // #214: deep nesting is bounded (explicit work-list, capped), never a stack overflow
 {
   const nest = (n, inner) => 'echo ' + '"$('.repeat(n) + inner + ')"'.repeat(n);
