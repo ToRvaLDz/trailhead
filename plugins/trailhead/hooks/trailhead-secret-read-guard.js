@@ -441,16 +441,24 @@ function crudeSecretToken(text) {
 
 // #223: shells that read a script from stdin (closed set, no wrappers).
 const STDIN_SCRIPT_INTERPRETERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+// Reserved words that may precede the command word (no grouping, no wrappers).
+const LEADING_KEYWORDS = new Set(['then', 'do', 'else', 'time', '!']);
+// `env` options whose value is the next token (separate form, no `=`).
+const ENV_VALUE_OPTIONS = new Set(['-u', '-C', '--unset', '--chdir']);
 
 // True when the statement runs one of those shells: after leading NAME=value
 // assignments, an optional `env` (with its NAME=value and -option words), the
 // command word's basename is in the set. Flags after it do not matter.
 function invokesInterpreter(stmt) {
   const tokens = tokenize(stmt);
-  let i = skipEnvPrefix(tokens);
+  let i = 0;
+  while (i < tokens.length && LEADING_KEYWORDS.has(tokens[i])) i++;
+  i += skipEnvPrefix(tokens.slice(i));
   if (i < tokens.length && basename(stripQuotes(tokens[i])) === 'env') {
     i++;
-    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i].startsWith('-'))) i++;
+    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i].startsWith('-'))) {
+      i += ENV_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    }
   }
   return i < tokens.length && STDIN_SCRIPT_INTERPRETERS.has(basename(stripQuotes(tokens[i])));
 }
@@ -475,12 +483,13 @@ function scanBashForSecretPath(cmd) {
     const bodies = heredocBodies(text);
     const entries = splitStatementsWithSeparators(text);
     let next = 0;
+    const pushed = new Set(); // bodies already scanned whole as commands
     let pipe = []; // consecutive statements joined by `|`
     const flush = () => {
       if (pipe.some((p) => invokesInterpreter(p.text))) {
         for (const doc of pipe.flatMap((p) => p.docs)) {
           work.push({ text: doc.body, depth: depth + 1 });
-          doc.pushed = true;
+          pushed.add(doc);
         }
       }
       pipe = [];
@@ -502,7 +511,7 @@ function scanBashForSecretPath(cmd) {
     // the substitutions in it; a quoted delimiter makes the body literal.
     // (#223: a body already pushed whole as a command needs no second push.)
     for (const doc of bodies) {
-      if (doc.quoted || doc.pushed) continue;
+      if (doc.quoted || pushed.has(doc)) continue;
       for (const body of heredocSubstitutionBodies(doc.body)) work.push({ text: body, depth: depth + 1 });
     }
   }
