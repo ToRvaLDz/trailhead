@@ -69,9 +69,42 @@ const BOOLEAN_GLOBAL_FLAGS = new Set(['-h', '--help', '--version']);
 // below to recover from an unknown boolean flag swallowing the subcommand.
 const WRITE_SUBCOMMANDS = new Set(['issue', 'pr', 'api']);
 
-// A word as bash passes it once quoting is removed: `$` before a quote is
-// dropped, a backslash escape keeps the escaped char, `'` and `"` are dropped.
-const dequote = (word) => String(word).replace(/\\([\s\S])/g, '$1').replace(/\$(?=['"])/g, '').replace(/['"]/g, '');
+// Single-letter ANSI-C escapes (`$'\n'`).
+const ANSI_C_SIMPLE = { n: '\n', t: '\t', r: '\r', a: '\x07', b: '\b', f: '\f', v: '\v', e: '\x1b' };
+
+// Decode the escape at word[i] (the char after a backslash) inside a `$'...'` span:
+// { out, next }. Unknown pairs keep the escaped char, so nothing is lost.
+function ansiEscape(word, i) {
+  const n = word[i];
+  if (Object.prototype.hasOwnProperty.call(ANSI_C_SIMPLE, n)) return { out: ANSI_C_SIMPLE[n], next: i + 1 };
+  const rest = word.slice(i);
+  let m;
+  if ((m = /^x([0-9a-fA-F]{1,2})/.exec(rest)) || (m = /^u([0-9a-fA-F]{1,4})/.exec(rest)) || (m = /^U([0-9a-fA-F]{1,8})/.exec(rest))) {
+    const cp = parseInt(m[1], 16);
+    return { out: cp <= 0x10ffff ? String.fromCodePoint(cp) : m[0], next: i + m[0].length };
+  }
+  if ((m = /^[0-7]{1,3}/.exec(rest))) return { out: String.fromCharCode(parseInt(m[0], 8) & 0xff), next: i + m[0].length };
+  return { out: n, next: i + 1 };
+}
+
+// A word as bash passes it once quoting is removed: a `$'...'` span is decoded
+// (\xHH, \NNN, \uHHHH, \n ...), `$` before a `"` is dropped, a backslash escape keeps
+// the escaped char, `'` and `"` are dropped (#219).
+function dequote(word) {
+  const w = String(word);
+  let out = '';
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i];
+    if (c === '$' && w[i + 1] === "'") {
+      i += 2;
+      while (i < w.length && w[i] !== "'") {
+        if (w[i] === '\\' && i + 1 < w.length) { const e = ansiEscape(w, i + 1); out += e.out; i = e.next; } else out += w[i++];
+      }
+    } else if (c === '\\' && i + 1 < w.length) out += w[++i];
+    else if (c !== "'" && c !== '"' && !(c === '$' && w[i + 1] === '"')) out += c;
+  }
+  return out;
+}
 
 // Parse a raw shell command string and locate the gh subcommand/verb.
 // Returns { sub, verb } (verb may be undefined) or null when this is not a

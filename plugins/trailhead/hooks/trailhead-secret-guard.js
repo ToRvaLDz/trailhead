@@ -87,7 +87,7 @@ function writeKind(stmt) {
     return sub;
   }
   if (sub === 'api' && /(?:^|\s)(?:-f|-F|--field|--raw-field)(?:\s+|=)?body=/.test(dequote(stmt))) return 'api';
-  if (sub === 'api' && /(?:^|\s)--input(?:=|\s|$)/.test(stmt)) return 'api'; // --input sends a request body from a file
+  if (sub === 'api' && /(?:^|\s)--input(?:=|\s|$)/.test(dequote(stmt))) return 'api'; // --input sends a request body from a file
   return null;
 }
 
@@ -122,7 +122,7 @@ function skipWrapperArgs(toks, k) {
   const valueFlags = WRAPPER_VALUE_FLAGS[w];
   let j = k + 1;
   while (j < toks.length) {
-    const t = toks[j];
+    const t = dequote(toks[j]); // a quoted flag is the same flag (#219)
     if (valueFlags.includes(t)) j += 2;
     else if (t.startsWith('-')) j++;
     else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;

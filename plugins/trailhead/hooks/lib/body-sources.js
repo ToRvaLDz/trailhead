@@ -5,10 +5,11 @@
 // leading ~, variables set earlier in the command), redirects and flags are parsed,
 // and a write's body is traced to files to read, text to scan, or a reason it cannot
 // be known (the caller then fails closed). Best-effort, not a full shell parser.
-// Self-contained: requires only node built-ins.
+// Self-contained: requires only node built-ins and the sibling gh-subcommand.js (dequote).
 
 const fs = require('fs');
 const path = require('path');
+const { dequote } = require('./gh-subcommand.js');
 
 const ASSIGN_TOKEN_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
 
@@ -300,12 +301,19 @@ function parseRedirects(toks) {
   return { args, outs, stdin };
 }
 
+function flagMatches(t, long, short) {
+  return t === long || (short && t === short) || t.startsWith(`${long}=`) ||
+    (short && t.startsWith(short) && !t.startsWith('--') && t.length > 2 && !t.startsWith("'") && !t.startsWith('"'));
+}
+
 // Values of a gh flag (long form, optional short form), in order: `--long v`,
 // `--long=v`, `-s v`, `-s=v` and the attached pflag shorthand `-sv`.
 function flagValues(args, long, short) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
-    const t = args[i];
+    // A quoted or split flag name is the same flag (`'-F'`, `--body-fi""le`); the raw
+    // form is tried first so an unquoted flag keeps its raw value (#219).
+    const t = flagMatches(args[i], long, short) ? args[i] : dequote(args[i]);
     if (t === long || (short && t === short)) {
       if (args[i + 1] !== undefined) out.push(args[++i]);
     } else if (t.startsWith(`${long}=`)) out.push(t.slice(long.length + 1));
@@ -547,10 +555,6 @@ function joinedText(history) {
 // characters and keep the rest, so literal halves around an unresolvable piece join.
 const stripQuoteChars = (word) => word.replace(/\$(?=['"])/g, '').replace(/['"]/g, '');
 
-// Quote removal for matching a word against a literal (a command word, a field key):
-// also drops backslash escapes, keeping the escaped char (#219). Over-matches rather
-// than under-matches, which is the safe direction for a guard.
-const dequote = (word) => stripQuoteChars(String(word).replace(/\\([\s\S])/g, '$1'));
 
 // What bash passes as each word once adjacent quoted parts are concatenated
 // (`"a""b"`, `"a"b`, `a''b`), for the statements of one command. An unresolvable
