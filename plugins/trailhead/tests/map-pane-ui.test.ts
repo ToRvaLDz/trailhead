@@ -125,6 +125,10 @@ const rig = (on: On, engine?: any) => {
     // The built-in `clear`: `clearGate` holds it, `refuseClear` rejects it.
     clearGate: null as Promise<void> | null,
     refuseClear: null as string | null,
+    // The clear answered by a `{ deny }` hook: it resolves the call and the session stays.
+    denyClear: false,
+    // Runs between the old session ending and the new one starting.
+    duringClear: null as (() => void) | null,
     session: SESSION,
     clock: mock.clock(on, { now: T0 }),
     // The person opening the pane: the engine's own record, the plugin is not told.
@@ -164,6 +168,7 @@ const rig = (on: On, engine?: any) => {
   })
   const emulateClear = async () => {
     await engine.session.end({ reason: 'clear', sessionId: r.session, resume: {} })
+    r.duringClear?.()
     ATOM_KEYS.forEach(key => emptied.add(key))
     r.session = NEXT_SESSION
     await engine.classic.SessionStart({ source: 'clear' })
@@ -173,6 +178,7 @@ const rig = (on: On, engine?: any) => {
     if (e.command === 'clear') {
       await r.clearGate
       if (r.refuseClear !== null) throw new Error(r.refuseClear)
+      if (r.denyClear) return { deny: 'clear refused' }
       await emulateClear()
       return { text: '' }
     }
@@ -828,6 +834,35 @@ for (const surface of SURFACES) {
     expect(r.session).toBe(SESSION)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a clear that resolves without switching the session runs no work command [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.denyClear = true
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(r.session).toBe(SESSION)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`an active map that moved during /clear drops the carried view [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+
+    r.duringClear = () => (r.active = '14\n')
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await ui.redraw()
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
   })
 
   test(`a manual /clear keeps the pane filled, with no turn and inside the floor [${surface}]`, async ($, on) => {
