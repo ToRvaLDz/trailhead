@@ -2,6 +2,11 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+- **Dashboard view in the map panel.** A `dashboard` button in the panel header shows the repo index in place of a map: a link to the pinned `trailhead:dashboard` issue, every open map (a click opens it) and the whiteboard's open tickets as Frontier / In progress / Blocked with a `work` button per frontier ticket; `map` goes back. The mode survives `/clear`.
+
 ## 0.14.0 (2026-10-13)
 
 ### Why

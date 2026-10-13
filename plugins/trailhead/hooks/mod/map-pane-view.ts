@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, DashboardRef, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -60,8 +60,9 @@ const stateOf = (names: readonly string[], assignees: readonly string[]): Ticket
 const safeUrl = (raw: unknown): string => (typeof raw === 'string' && /^https:\/\//.test(raw) ? raw : '')
 
 // `gh issue list --json number,title,labels,assignees,url`. Unverified rows are
-// quarantined (counted, never listed); whiteboard rows do not belong to a map.
-export const parseTickets = (stdout: string): ParsedTickets | null => {
+// quarantined (counted, never listed); whiteboard rows do not belong to a map, and on the
+// whiteboard (`isWhiteboard`) only they are kept.
+export const parseTickets = (stdout: string, opts: { isWhiteboard?: boolean } = {}): ParsedTickets | null => {
   let raw: unknown
   try {
     raw = JSON.parse(stdout)
@@ -73,7 +74,8 @@ export const parseTickets = (stdout: string): ParsedTickets | null => {
   const named = rows.map(r => ({ r, names: labelNames(r.labels) }))
   const unverifiedCount = named.filter(({ names }) => names.includes(`${LABEL_PREFIX}unverified`)).length
   const tickets = named
-    .filter(({ names }) => !names.includes(`${LABEL_PREFIX}unverified`) && !names.includes(`${LABEL_PREFIX}whiteboard`))
+    .filter(({ names }) => !names.includes(`${LABEL_PREFIX}unverified`))
+    .filter(({ names }) => names.includes(`${LABEL_PREFIX}whiteboard`) === (opts.isWhiteboard === true))
     .map(({ r, names }): PaneTicket => {
       const assignees = logins(r.assignees)
       return {
@@ -140,6 +142,21 @@ export const parseMaps = (stdout: string): readonly MapSummary[] | null => {
     .sort((a, b) => a.number - b.number)
 }
 
+// `gh issue list --label trailhead:dashboard --json number,url`: the pinned index, the lowest number
+// when there are several. `null` when unreadable; `{ ref: null }` when the repo has none yet.
+export const parseDashboard = (stdout: string): { ref: DashboardRef | null } | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  const rows = raw.filter(isRecord).filter(r => isPosInt(r.number))
+  const first = rows.sort((a, b) => (a.number as number) - (b.number as number))[0]
+  return { ref: first === undefined ? null : { number: first.number as number, url: safeUrl(first.url) } }
+}
+
 // The map the pane draws: the one the person is viewing, else the active one.
 export const viewTarget = (active: number | null, viewed: number | null): number | null => viewed ?? active
 
@@ -161,7 +178,8 @@ export type MapRowLayout = {
   // Every map but the viewed one: a press shows it (the active one: back to active).
   isPressable: boolean
 }
-export type MapRowContext = { active: number | null; viewed: number | null; columns: number }
+// `isDashboard`: the dashboard is shown, so no map is viewed and every row is pressable.
+export type MapRowContext = { active: number | null; viewed: number | null; columns: number; isDashboard?: boolean }
 
 const ACTIVE_MARK = '● '
 const ACTIVE_ASIDE = ' active'
@@ -169,7 +187,7 @@ const ACTIVE_ASIDE = ' active'
 // What one row of the maps list draws, cut to the pane width (a pressable row is a Button).
 export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout => {
   const isActive = m.number === ctx.active
-  const isViewed = m.number === viewTarget(ctx.active, ctx.viewed)
+  const isViewed = ctx.isDashboard !== true && m.number === viewTarget(ctx.active, ctx.viewed)
   const mark = isActive ? ACTIVE_MARK : '  '
   const aside = isActive ? ACTIVE_ASIDE : null
   const prefix = `#${m.number}`
@@ -241,6 +259,11 @@ const MARK = '▸ '
 const MARK_PAD = '  '
 // A terminal Button draws `[ label ]`.
 const BUTTON_CHROME = 4
+
+// The header's switch between the map and the dashboard; the title before it gets the rest of the row.
+export const DASHBOARD_LABEL = 'dashboard'
+export const MAP_LABEL = 'map'
+export const headingRoom = (columns: number, label: string): number => Math.max(0, columns - label.length - BUTTON_CHROME - 1)
 
 const REFRESH_LABEL = 'refresh'
 const CLOSE_LABEL = 'close'

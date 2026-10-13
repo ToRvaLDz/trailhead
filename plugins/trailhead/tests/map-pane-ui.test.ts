@@ -64,6 +64,16 @@ const MAPS = [
 const OTHER_TICKETS = [issue(140, 'Old frontier ticket', ['trailhead:build']), issue(141, 'Old held ticket', ['trailhead:task'], ['carol'])]
 const OTHER_HISTORY = OTHER_TICKETS.map(t => hrow(t.number, t.labels.map(l => l.name), null))
 
+// The whiteboard (map-less tickets) and the pinned dashboard issue, as the dashboard view reads them.
+const WB = ['trailhead:ticket', 'trailhead:whiteboard']
+const WHITEBOARD = [
+  issue(301, 'Fix the README badge', [...WB, 'trailhead:bug']),
+  issue(302, 'Bump the CI node', [...WB, 'trailhead:task'], ['alice']),
+  issue(303, 'Waits on upstream', [...WB, 'trailhead:task', 'trailhead:blocked']),
+  issue(304, 'Quarantined loose one', [...WB, 'trailhead:task', 'trailhead:unverified']),
+]
+const DASHBOARD = [{ number: 5, url: `${URL}/5` }]
+
 const stateText = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({
     map: 198,
@@ -78,7 +88,7 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'pendingWork', 'paneAutoOpened']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened']
 
 const PANE_PROPS = {
   title: 'Map',
@@ -107,6 +117,8 @@ const rig = (on: On, engine?: any) => {
     otherMap: OTHER_MAP as unknown,
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
+    whiteboard: WHITEBOARD as unknown[],
+    dashboard: DASHBOARD as unknown[],
     gh: null as Gh | null,
     // What `gh` answers when no test replaced it; a test can wrap it.
     defaultGh: null as unknown as Gh,
@@ -137,6 +149,8 @@ const rig = (on: On, engine?: any) => {
     },
   }
   const defaultGh: Gh = argv => {
+    if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
+    if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
     if (argv[2] === 'list' && argv.includes('trailhead:map')) return ok(JSON.stringify(r.maps))
     const isOther = argv.includes('14') || argv.includes('trailhead:map-14')
     if (argv[2] === 'view') return ok(JSON.stringify(isOther ? r.otherMap : r.map))
@@ -754,7 +768,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
-    expect(buttons).toEqual(['map-14', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
+    expect(buttons).toEqual(['dashboard', 'map-14', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
     expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
 
@@ -1162,7 +1176,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     expect(await hasKey(ui, 'head-maps')).toBe(false)
     expect(await hasKey(ui, 'group-maps')).toBe(false)
-    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['work-209', 'work-210', 'work-214', 'refresh', 'close'])
+    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['dashboard', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
   })
 
   test(`a press on another map shows its tickets, the active-map marker is never written [${surface}]`, async ($, on) => {
@@ -1370,5 +1384,140 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
     expect(r.writes).toEqual([])
+  })
+
+  const pressDashboard = async (ui: any, r: Rig) => {
+    await ui.press({ key: 'dashboard' })
+    await settle(r)
+  }
+
+  test(`the dashboard button shows the maps index and the whiteboard tickets [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect((await ui.find({ key: 'dashboard' }))?.props).toMatchObject({ label: 'dashboard' })
+    const before = r.calls.length
+    await pressDashboard(ui, r)
+
+    expect(r.calls.slice(before)).toEqual([
+      ['gh', 'issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
+      ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
+      ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url'],
+    ])
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+    expect((await ui.find({ key: 'dashboard-title' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
+    expect((await ui.findAll({ type: 'Link' })).map((l: any) => l.props.href)).toContain(`${URL}/5`)
+    expect((await ui.find({ key: 'to-map' }))?.props).toMatchObject({ label: 'map' })
+    expect(await hasKey(ui, 'dashboard')).toBe(false)
+
+    // every open map is a button, the active one marked
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect((await ui.find({ key: 'map-198' }))?.props).toMatchObject({ label: '#198 trailhead mod' })
+    expect(await hasKey(ui, 'map-14')).toBe(true)
+    expect(await textOf(ui, 'map-aside-198')).toBe(' active')
+
+    // the whiteboard by state, the quarantined one only counted, no map tickets
+    expect(await hasKey(ui, 'whiteboard')).toBe(true)
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 1')
+    expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 1')
+    expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 1')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    expect(await textOf(ui, 'holder-302')).toBe('@alice')
+    expect(await hasKey(ui, 'work-301')).toBe(true)
+    expect(await textOf(ui, 'unverified')).toBe('1 unverified ticket hidden (quarantined)')
+    expect(await hasKey(ui, 'burndown-section')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+    expect(r.writes).toEqual([])
+  })
+
+  test(`the map button goes back to the map shown before [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+
+    await ui.press({ key: 'to-map' })
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+    expect(await hasKey(ui, 'dashboard-title')).toBe(false)
+  })
+
+  test(`a map pressed on the dashboard shows that map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+
+    await pressDashboard(ui, r)
+    await pressMap(ui, r, 198)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+  })
+
+  test(`a work press on a whiteboard ticket clears and runs the work verb [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    await ui.press({ key: 'work-301' })
+    await settle(r)
+    expect(r.runs).toEqual([
+      { command: 'clear', args: '' },
+      { command: 'trailhead:work', args: '301' },
+    ])
+    // the dashboard stays shown across the reset
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+    expect(await keysOf(ui, 'row-')).toContain('row-301')
+  })
+
+  test(`an empty whiteboard says so, a failed read shows the reason [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = []
+    r.dashboard = []
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'no-tickets')).toBe('No open whiteboard tickets.')
+    // no pinned index yet: the title is plain text
+    expect((await ui.findAll({ type: 'Link' })).map((l: any) => l.props.href)).not.toContain(`${URL}/5`)
+
+    r.whiteboard = WHITEBOARD
+    r.gh = argv => (argv.includes('trailhead:whiteboard') ? { exitCode: 1, stdout: '', stderr: 'boom' } : r.defaultGh(argv))
+    await r.clock.advance(FLOOR)
+    await ui.press({ key: 'refresh' })
+    await settle(r)
+    expect(await textOf(ui, 'age')).toBe('⚠ gh failed (exit 1) · list from 15s ago')
+    // a list that may be stale says nothing about being empty
+    expect(await hasKey(ui, 'no-tickets')).toBe(false)
+  })
+
+  test(`with no active map the dashboard is one press away [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.active = null
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
+    await pressDashboard(ui, r)
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    await ui.press({ key: 'to-map' })
+    await settle(r)
+    expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
+  })
+
+  test(`the dashboard stays shown through /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await settle(r)
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
   })
 }

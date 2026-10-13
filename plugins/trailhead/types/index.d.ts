@@ -52,6 +52,21 @@ export type MapPaneData = {
   isLoading: boolean
 }
 
+// The pinned per-repo index issue (`trailhead:dashboard`), as the pane links it.
+export type DashboardRef = { number: number; url: string }
+
+// The pane's dashboard view: the whiteboard tickets (map-less) and the pinned index; the open maps
+// stay in `MapPaneData.maps`. Same failure rule: the last good read is kept, `error` says why.
+export type DashboardPaneData = {
+  dashboard: DashboardRef | null
+  tickets: readonly PaneTicket[]
+  unverifiedCount: number
+  isCapped: boolean
+  fetchedAt: number | null
+  error: string | null
+  isLoading: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
     trailhead: {
@@ -62,6 +77,9 @@ declare module 'claude-code' {
       activeMap: number | null
       // The map the pane shows when it is not the active one; null follows the active map.
       viewedMap: number | null
+      // The pane shows the dashboard (maps index + whiteboard) instead of a map.
+      isDashboard: boolean
+      dashboardPane: DashboardPaneData
       pendingWork: number | null
       paneAutoOpened: boolean
     }

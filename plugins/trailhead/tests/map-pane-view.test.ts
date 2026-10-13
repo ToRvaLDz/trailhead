@@ -8,10 +8,12 @@ import {
   failureReason,
   footerStatus,
   groupTickets,
+  headingRoom,
   HISTORY_LIMIT,
   mapRowLayout,
   nextViewed,
   parseActiveMap,
+  parseDashboard,
   parseHistory,
   parseMap,
   parseMaps,
@@ -562,4 +564,43 @@ test('footerStatus moves a long status to a row of its own, whole when the pane 
 test('footerStatus on a pane too narrow for the buttons never throws', () => {
   expect(footerStatus('updated just now', 10)).toEqual({ text: 'updated j…', isInline: false })
   expect(footerStatus('updated just now', 0)).toEqual({ text: '…', isInline: false })
+})
+
+test('parseTickets on the whiteboard keeps only the whiteboard rows, unverified ones still counted', () => {
+  const rows = [
+    { number: 1, title: 'map one', labels: [{ name: 'trailhead:build' }], assignees: [], url: '' },
+    { number: 2, title: 'loose', labels: [{ name: 'trailhead:whiteboard' }, { name: 'trailhead:bug' }], assignees: [], url: '' },
+    { number: 3, title: 'held', labels: [{ name: 'trailhead:whiteboard' }], assignees: [{ login: 'al' }], url: '' },
+    { number: 4, title: 'q', labels: [{ name: 'trailhead:whiteboard' }, { name: 'trailhead:unverified' }], assignees: [], url: '' },
+  ]
+  const parsed = parseTickets(JSON.stringify(rows), { isWhiteboard: true })
+  expect(parsed?.tickets.map(t => [t.number, t.type, t.state])).toEqual([
+    [2, 'bug', 'frontier'],
+    [3, null, 'in-progress'],
+  ])
+  expect(parsed?.unverifiedCount).toBe(1)
+  expect(parseTickets(JSON.stringify(rows))?.tickets.map(t => t.number)).toEqual([1])
+})
+
+test('parseDashboard takes the lowest numbered index, none when the repo has none, null when unreadable', () => {
+  expect(parseDashboard(JSON.stringify([{ number: 9, url: 'https://x/9' }, { number: 5, url: 'https://x/5' }]))).toEqual({
+    ref: { number: 5, url: 'https://x/5' },
+  })
+  expect(parseDashboard(JSON.stringify([{ number: 5, url: 'javascript:alert(1)' }]))).toEqual({ ref: { number: 5, url: '' } })
+  expect(parseDashboard('[]')).toEqual({ ref: null })
+  expect(parseDashboard('nope')).toBeNull()
+  expect(parseDashboard('{}')).toBeNull()
+})
+
+test('mapRowLayout on the dashboard makes every map pressable, the active one still marked', () => {
+  const r = mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60, isDashboard: true })
+  expect(r).toMatchObject({ isActive: true, isViewed: false, isPressable: true, mark: '● ', aside: ' active' })
+  expect(mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60 }).isPressable).toBe(false)
+})
+
+test('headingRoom leaves the switch button its cells, never below zero', () => {
+  // `[ dashboard ]` is 13 cells, plus one gap
+  expect(headingRoom(60, 'dashboard')).toBe(46)
+  expect(headingRoom(60, 'map')).toBe(52)
+  expect(headingRoom(5, 'dashboard')).toBe(0)
 })

@@ -98,6 +98,16 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `back` button). The maps read is the 4th of a refresh; a failure of it alone keeps the last list and sets no
   footer error. Each refresh captures its target (viewed, else active) once and rechecks it before every state
   write, so a refresh in flight when the view changes never commits the old map's tickets.
+- **Dashboard view**: a `dashboard` button at the right of the header row (and beside the no-active-map
+  message) switches the pane to the repo index, the `isDashboard` atom. It draws a `Dashboard` title (a link
+  to the pinned `trailhead:dashboard` issue when there is one) with a `map` button that goes back to the map
+  shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
+  dashboard and views that map, the active one marked `●`), and a `Whiteboard` section: the open
+  `trailhead:ticket` + `trailhead:whiteboard` tickets as Frontier / In progress / Blocked, with the same rows,
+  holders and `work` buttons (the work verb takes a whiteboard ticket as is). Unverified ones are counted only.
+  Its reads replace the map's in a refresh: the whiteboard list, `gh issue list --label trailhead:dashboard
+  --json number,url` and the maps list; a failed list keeps the last one with the footer reason, a failed index
+  read alone keeps the last link. Data in the `dashboardPane` atom; the mode survives `/clear` like the view.
 - **Burn-down**: below the groups, a `Burn-down` section shows the shown map's open-ticket count
   over time, from its first ticket to now. A dim line gives `open <o> · done <d> · removed <r> · peak <p>`
   (`removed` = closed with `trailhead:superseded` or `trailhead:out-of-scope`; `done` = other closed
@@ -141,7 +151,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
-- **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
+- **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
   because `/clear` empties the atoms while they are needed.
 - **Validator note**: `claude plugin validate` follows `$` only inside one file and refuses two

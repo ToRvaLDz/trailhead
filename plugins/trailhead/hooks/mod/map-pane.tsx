@@ -4,21 +4,25 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
   type BurndownSeries,
   burndownEnd,
   burndownSeries,
+  DASHBOARD_LABEL,
   failureReason,
   footerStatus,
   groupTickets,
+  headingRoom,
   HISTORY_LIMIT,
   LIST_LIMIT,
+  MAP_LABEL,
   mapRowLayout,
   nextViewed,
   parseActiveMap,
+  parseDashboard,
   parseHistory,
   parseMap,
   parseMaps,
@@ -45,6 +49,7 @@ const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
 const MAPS_LIMIT = 100
+const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
 // The accent as a Raster colour (0x00RRGGBB), and the chart height in terminal rows.
@@ -67,11 +72,24 @@ const EMPTY: MapPaneData = {
   isLoading: false,
 }
 
+const EMPTY_DASHBOARD: DashboardPaneData = {
+  dashboard: null,
+  tickets: [],
+  unverifiedCount: 0,
+  isCapped: false,
+  fetchedAt: null,
+  error: null,
+  isLoading: false,
+}
+
 export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EMPTY)
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)
 // The map shown when it is not the active one (a click on the maps list); null follows the active map.
 // The pane only reads `.trailhead/active-map`; the work verb is what changes it.
 export const viewedMap = atom({ plugin: 'trailhead', key: 'viewedMap' } as const, null as number | null)
+// The dashboard view (maps index + whiteboard tickets) in place of a map; a map press leaves it.
+export const isDashboard = atom({ plugin: 'trailhead', key: 'isDashboard' } as const, false)
+export const dashboardPane = atom({ plugin: 'trailhead', key: 'dashboardPane' } as const, EMPTY_DASHBOARD)
 // The ticket whose `work` press is queued; one at a time.
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
@@ -103,7 +121,7 @@ let lastStartedAt: number | null = null
 let trailing: Timer | null = null
 let ticker: Timer | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
-type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null }
+type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
 let carried: Carried | null = null
 // The ticket whose `work` press is running: /clear empties the pendingWork atom meanwhile.
 let workInFlight: number | null = null
@@ -176,7 +194,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
   if (token !== generation) return
   const isStale = async () => {
     if (token !== generation) return true
-    if ((await readTarget($)) === target) return false
+    if (!(await read($, isDashboard)) && (await readTarget($)) === target) return false
     wantsAnother()
     return true
   }
@@ -216,6 +234,40 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
   await setPane($, next)
 }
 
+// The whiteboard's open tickets (map-less) and the pinned index, plus the open maps. Same drop rule
+// as a map read: a result is not committed once the pane closed or the dashboard was left.
+async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void) {
+  const isStale = async () => {
+    if (token !== generation) return true
+    if (await read($, isDashboard)) return false
+    wantsAnother()
+    return true
+  }
+  const before = await read($, dashboardPane)
+  if (before.fetchedAt === null && !before.isLoading && before.error === null) {
+    await update($, dashboardPane, () => ({ ...before, isLoading: true }))
+  }
+  const [list, index, mapsRead] = await Promise.all([
+    gh($, ['issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    gh($, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
+    readMaps($),
+  ])
+  const now = await $.clock.now()
+  if (await isStale()) return
+  if (mapsRead !== null) await setPane($, { ...(await read($, mapPane)), maps: mapsRead })
+  await dropClosedView($, mapsRead)
+
+  const kept = await read($, dashboardPane)
+  const tickets = list.ok ? parseTickets(list.stdout, { isWhiteboard: true }) : null
+  const error = !list.ok ? list.reason : tickets === null ? 'gh returned unreadable output' : null
+  if (tickets === null) return update($, dashboardPane, () => ({ ...kept, error, isLoading: false }))
+  // A failed index read alone keeps the last link: the list is what the view is about.
+  const parsed = index.ok ? parseDashboard(index.stdout) : null
+  const dashboard = parsed === null ? kept.dashboard : parsed.ref
+  const next: DashboardPaneData = { dashboard, ...tickets, fetchedAt: now, error: null, isLoading: false }
+  if (!sameValue(kept, next)) await update($, dashboardPane, () => next)
+}
+
 async function isPaneUp($: Dollar): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced)
 }
@@ -252,7 +304,9 @@ async function decide($: Dollar, request: Request) {
   lastStartedAt = now
   trailing?.cancel()
   trailing = null
-  await fetchMap($, generation, () => void requestRefresh($, { bypassFloor: true }))
+  const again = () => void requestRefresh($, { bypassFloor: true })
+  if (await read($, isDashboard)) await fetchDashboard($, generation, again)
+  else await fetchMap($, generation, again)
 }
 
 // Does nothing while the pane is closed: the data exists only for the pane.
@@ -270,6 +324,7 @@ async function carryOverClear($: Dollar) {
     isAutoOpened: await read($, paneAutoOpened),
     viewed: await read($, viewedMap),
     active: await read($, activeMap),
+    isDashboard: await read($, isDashboard),
   }
 }
 
@@ -281,6 +336,7 @@ async function restoreAfterClear($: Dollar) {
   carried = null
   try {
     if (kept?.isAutoOpened === true) await update($, paneAutoOpened, () => true)
+    if (kept?.isDashboard === true) await update($, isDashboard, () => true)
     const active = await readActiveMap($)
     const viewed = kept?.viewed ?? null
     if (viewed !== null && viewed !== active && active === kept?.active) await update($, viewedMap, () => viewed)
@@ -323,6 +379,7 @@ async function startWork($: Dollar, number: number) {
 // A view change is not a repeat read, so the floor does not apply.
 async function viewMap($: Dollar, number: number | null) {
   const active = await read($, activeMap)
+  await update($, isDashboard, () => false)
   await update($, viewedMap, () => (number === active ? null : number))
   void requestRefresh($, { bypassFloor: true })
 }
@@ -330,6 +387,16 @@ async function viewMap($: Dollar, number: number | null) {
 // The press handler of a map click or the back button: a failed view change is logged, never thrown.
 const pressView = ($: Dollar, number: number | null): void => {
   void viewMap($, number).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))
+}
+
+// The header switch: the dashboard, or back to the map shown before it (the view is kept).
+async function setDashboard($: Dollar, isOn: boolean) {
+  await update($, isDashboard, () => isOn)
+  void requestRefresh($, { bypassFloor: true })
+}
+
+const pressDashboard = ($: Dollar, isOn: boolean): void => {
+  void setDashboard($, isOn).catch(err => debug($, `trailhead mod: dashboard switch failed: ${String(err)}`))
 }
 
 // Opening always refreshes. A render cannot write state, not even from work it left running,
@@ -447,6 +514,8 @@ export function registerMapPane(on: On) {
     const active = await read($, activeMap)
     const viewed = await read($, viewedMap)
     const target = viewTarget(active, viewed)
+    const isBoard = await read($, isDashboard)
+    const board = await read($, dashboardPane)
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
     const pending = await read($, pendingWork)
@@ -463,8 +532,9 @@ export function registerMapPane(on: On) {
     const link = (url: string, label: string) => (url === '' ? label : <Link href={url} label={label} />)
 
     // The open maps, one row each; shown with several maps open (or with no active map, to pick one).
+    // On the dashboard every map is listed and each row opens it.
     const mapRow = (m: MapSummary) => {
-      const r = mapRowLayout(m, { active, viewed, columns: cols })
+      const r = mapRowLayout(m, { active, viewed, columns: cols, isDashboard: isBoard })
       return (
         <Box key={`map-row-${m.number}`}>
           {text(`map-mark-${m.number}`, r.isActive ? accent : {}, r.mark)}
@@ -481,13 +551,13 @@ export function registerMapPane(on: On) {
         </Box>
       )
     }
-    const mapsGroup =
-      data.maps.length > 1 || (active === null && data.maps.length > 0) ? (
-        <Box key="group-maps" flexDirection="column" marginTop={gap}>
-          {text('head-maps', bold, `Maps · ${data.maps.length}`)}
-          {data.maps.map(mapRow)}
-        </Box>
-      ) : null
+    const isMapsShown = isBoard ? data.maps.length > 0 : data.maps.length > 1 || (active === null && data.maps.length > 0)
+    const mapsGroup = isMapsShown ? (
+      <Box key="group-maps" flexDirection="column" marginTop={gap}>
+        {text('head-maps', bold, `Maps · ${data.maps.length}`)}
+        {data.maps.map(mapRow)}
+      </Box>
+    ) : null
     // Viewing a map other than the active one: say so, with the way back.
     const viewing =
       viewed === null || viewed === active ? null : (
@@ -500,53 +570,22 @@ export function registerMapPane(on: On) {
           />
         </Box>
       )
-
-    if (target === null) {
-      return (
-        <Box flexDirection="column" width={cols}>
-          {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
-          {mapsGroup}
-        </Box>
-      )
-    }
-    const isCurrent = data.map?.number === target
-    const isLoading = !isCurrent && (data.isLoading || data.error === null)
-    // A pane the person opened (or that waited undrawn) has no data yet: fill it, once. Like the
-    // auto-open it leaves the render through a zero-delay timer; inside the floor it waits for
-    // the trailing refresh rather than the slow timer.
-    if (!isCurrent && !data.isLoading && data.error === null && !isFilling) {
-      isFilling = true
-      $.clock.after(0, () => {
-        isFilling = false
-        void requestRefresh($)
-      })
-    }
-
-    const map = isCurrent ? data.map : null
-    const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, cols)
-    const header = (
-      <Box key="header" flexDirection="column">
-        <Box key="map">
-          <Text {...accent}>{map === null ? heading : link(map.url, heading)}</Text>
-        </Box>
-        {map?.destination == null ? null : text('destination', dim, fit(map.destination, cols))}
+    // The header switch: `dashboard` from a map, `map` back from the dashboard.
+    const switchButton = (isOn: boolean) => (
+      <Button
+        key={isOn ? 'dashboard' : 'to-map'}
+        label={isOn ? DASHBOARD_LABEL : MAP_LABEL}
+        onPress={() => pressDashboard($, isOn)}
+      />
+    )
+    const headerRow = (title: ReturnType<typeof text>, isOn: boolean) => (
+      <Box key="header-row" width={cols} justifyContent="space-between">
+        {title}
+        {switchButton(isOn)}
       </Box>
     )
-    if (isLoading) {
-      return (
-        <Box flexDirection="column">
-          {header}
-          {viewing}
-          {text('loading', dim, 'Loading tickets…')}
-          {mapsGroup}
-        </Box>
-      )
-    }
 
-    const tickets = isCurrent ? data.tickets : []
-    const groups = groupTickets(tickets)
     const isInPlay = (t: PaneTicket) => play !== null && !orphaned && play.ticket === t.number
-
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
       const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
@@ -573,7 +612,6 @@ export function registerMapPane(on: On) {
         </Box>
       )
     }
-
     const group = (key: string, name: string, rows: readonly PaneTicket[]) => {
       if (rows.length === 0) return null
       const hasMarkColumn = rows.some(isInPlay)
@@ -589,15 +627,132 @@ export function registerMapPane(on: On) {
         </Box>
       )
     }
+    const ticketGroups = (tickets: readonly PaneTicket[]) => {
+      const groups = groupTickets(tickets)
+      return [
+        group('frontier', 'Frontier', groups.frontier),
+        group('in-progress', 'In progress', groups.inProgress),
+        group('blocked', 'Blocked', groups.blocked),
+      ]
+    }
+    const notes = (d: { unverifiedCount: number; isCapped: boolean }) => [
+      d.unverifiedCount === 0 ? null : (
+        <Box key="unverified" marginTop={gap}>
+          <Text {...dim}>{unverifiedLine(d.unverifiedCount)}</Text>
+        </Box>
+      ),
+      !d.isCapped ? null : (
+        <Box key="capped" marginTop={gap}>
+          <Text {...dim}>{`list capped at ${LIST_LIMIT}`}</Text>
+        </Box>
+      ),
+    ]
+    const footerOf = (d: { fetchedAt: number | null; error: string | null }) => {
+      const status =
+        d.error === null
+          ? `updated ${ageLabel(now - (d.fetchedAt ?? now))}`
+          : d.fetchedAt === null
+            ? `⚠ ${d.error}`
+            : `⚠ ${d.error} · list from ${ageLabel(now - d.fetchedAt)}`
+      const footer = footerStatus(status, cols)
+      return (
+        <Box key="footer" flexDirection="column">
+          {text('rule', dim, '─'.repeat(cols))}
+          <Box key="footer-row" width={cols} justifyContent="space-between">
+            <Box gap={1}>
+              <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
+              {footer.isInline ? text('age', dim, footer.text) : null}
+            </Box>
+            <Button
+              key="close"
+              label="close"
+              onPress={() => void closePane($).catch(err => debug($, `trailhead mod: close press failed: ${String(err)}`))}
+            />
+          </Box>
+          {footer.isInline ? null : <Box key="age-row">{text('age', dim, footer.text)}</Box>}
+        </Box>
+      )
+    }
+    // An empty view (a pane the person opened, or one that waited undrawn) asks for its first read,
+    // once. Like the auto-open it leaves the render through a zero-delay timer; inside the floor it
+    // waits for the trailing refresh rather than the slow timer.
+    const askFill = () => {
+      if (isFilling) return
+      isFilling = true
+      $.clock.after(0, () => {
+        isFilling = false
+        void requestRefresh($)
+      })
+    }
 
-    const status =
-      data.error === null
-        ? `updated ${ageLabel(now - (data.fetchedAt ?? now))}`
-        : data.fetchedAt === null
-          ? `⚠ ${data.error}`
-          : `⚠ ${data.error} · list from ${ageLabel(now - data.fetchedAt)}`
-    const footer = footerStatus(status, cols)
+    if (isBoard) {
+      const isLoaded = board.fetchedAt !== null
+      if (!isLoaded && !board.isLoading && board.error === null) askFill()
+      const heading = fit('Dashboard', headingRoom(cols, MAP_LABEL))
+      const title = (
+        <Box key="dashboard-title">
+          <Text {...accent}>{board.dashboard === null ? heading : link(board.dashboard.url, heading)}</Text>
+        </Box>
+      )
+      const isEmpty = isLoaded && board.error === null && board.tickets.length === 0
+      return (
+        <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
+          {headerRow(title, false)}
+          {mapsGroup}
+          <Box key="whiteboard" marginTop={gap}>
+            <Text {...bold}>Whiteboard</Text>
+          </Box>
+          {!isLoaded && board.error === null ? text('loading', dim, 'Loading dashboard…') : null}
+          {ticketGroups(board.tickets)}
+          {isEmpty ? text('no-tickets', dim, 'No open whiteboard tickets.') : null}
+          {notes(board)}
+          <Box key="spacer" flexGrow={1} />
+          {footerOf(board)}
+        </Box>
+      )
+    }
 
+    if (target === null) {
+      return (
+        <Box flexDirection="column" width={cols}>
+          <Box key="empty-row" width={cols} justifyContent="space-between">
+            {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
+            {switchButton(true)}
+          </Box>
+          {mapsGroup}
+        </Box>
+      )
+    }
+    const isCurrent = data.map?.number === target
+    const isLoading = !isCurrent && (data.isLoading || data.error === null)
+    if (!isCurrent && !data.isLoading && data.error === null) askFill()
+
+    const map = isCurrent ? data.map : null
+    const room = headingRoom(cols, DASHBOARD_LABEL)
+    const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, room)
+    const header = (
+      <Box key="header" flexDirection="column">
+        {headerRow(
+          <Box key="map">
+            <Text {...accent}>{map === null ? heading : link(map.url, heading)}</Text>
+          </Box>,
+          true,
+        )}
+        {map?.destination == null ? null : text('destination', dim, fit(map.destination, cols))}
+      </Box>
+    )
+    if (isLoading) {
+      return (
+        <Box flexDirection="column">
+          {header}
+          {viewing}
+          {text('loading', dim, 'Loading tickets…')}
+          {mapsGroup}
+        </Box>
+      )
+    }
+
+    const tickets = isCurrent ? data.tickets : []
     const end = burndownEnd(data, now)
     const series = isCurrent && data.history !== null ? burndownSeries(data.history, end.at, cols) : null
     const burndown = (s: BurndownSeries, history: BurndownHistory) => (
@@ -622,41 +777,16 @@ export function registerMapPane(on: On) {
         {header}
         {viewing}
         {mapsGroup}
-        {group('frontier', 'Frontier', groups.frontier)}
-        {group('in-progress', 'In progress', groups.inProgress)}
-        {group('blocked', 'Blocked', groups.blocked)}
+        {ticketGroups(tickets)}
         {isCurrent && data.error === null && tickets.length === 0 ? (
           <Box key="no-tickets" marginTop={gap}>
             <Text {...dim}>No open tickets. Fog may remain: /trailhead:map</Text>
           </Box>
         ) : null}
-        {!isCurrent || data.unverifiedCount === 0 ? null : (
-          <Box key="unverified" marginTop={gap}>
-            <Text {...dim}>{unverifiedLine(data.unverifiedCount)}</Text>
-          </Box>
-        )}
-        {!isCurrent || !data.isCapped ? null : (
-          <Box key="capped" marginTop={gap}>
-            <Text {...dim}>{`list capped at ${LIST_LIMIT}`}</Text>
-          </Box>
-        )}
+        {isCurrent ? notes(data) : null}
         {series === null || data.history === null ? null : burndown(series, data.history)}
         <Box key="spacer" flexGrow={1} />
-        <Box key="footer" flexDirection="column">
-          {text('rule', dim, '─'.repeat(cols))}
-          <Box key="footer-row" width={cols} justifyContent="space-between">
-            <Box gap={1}>
-              <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
-              {footer.isInline ? text('age', dim, footer.text) : null}
-            </Box>
-            <Button
-              key="close"
-              label="close"
-              onPress={() => void closePane($).catch(err => debug($, `trailhead mod: close press failed: ${String(err)}`))}
-            />
-          </Box>
-          {footer.isInline ? null : <Box key="age-row">{text('age', dim, footer.text)}</Box>}
-        </Box>
+        {footerOf(data)}
       </Box>
     )
   })

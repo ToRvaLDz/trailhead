@@ -197,7 +197,7 @@ Il pannello della mappa elenca le mappe aperte da consultare, la frontier con un
 
 ![Il pannello che mostra un'altra mappa, con l'intestazione viewing e active e il pulsante back to active](assets/screenshots/map-panel-viewing.png)
 
-Un click mostra soltanto una mappa, e `back to active` torna a quella attiva. La mappa attiva cambia quando lavori uno dei suoi ticket.
+Un click mostra soltanto una mappa, e `back to active` torna a quella attiva. La mappa attiva cambia quando lavori uno dei suoi ticket. Il pulsante `dashboard` nell'intestazione mostra invece l'indice del repo: tutte le mappe aperte (un click ne apre una) e i ticket sciolti del whiteboard per stato, ognuno della frontier con il suo pulsante `work`; `map` torna indietro.
 
 ![La sezione Burn-down del pannello: riga dei conteggi e grafico dei ticket aperti nel tempo](assets/screenshots/burndown.png)
 
