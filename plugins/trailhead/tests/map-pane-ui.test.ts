@@ -1092,6 +1092,12 @@ for (const surface of SURFACES) {
 
   test(`a refresh in flight when the view changes never commits the old map's tickets [${surface}]`, async ($, on) => {
     const r = rig(on)
+    // every value the pane stores, to look at what the old answer wrote
+    const paneWrites: unknown[] = []
+    on('state.set', { plugin: 'trailhead', key: 'mapPane' }, ($$, e, next) => {
+      paneWrites.push(e.value)
+      return next(e)
+    })
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
@@ -1113,6 +1119,7 @@ for (const surface of SURFACES) {
 
     await ui.press({ key: 'map-14' })
     await settle(r)
+    const before = paneWrites.length
     release()
     await refreshing
     await settle(r)
@@ -1120,6 +1127,9 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('map #14')
     expect(await textOf(ui, 'loading')).toBe('Loading tickets…')
     expect(await hasKey(ui, 'ticket-300')).toBe(false)
+    // and the store itself: the stale answer was dropped, not committed behind the render's check
+    const landed = paneWrites.slice(before).map(v => JSON.stringify(v))
+    expect(landed.some(v => v.includes('fresh of 198'))).toBe(false)
     releaseOther()
     await settle(r)
     expect(await hasKey(ui, 'ticket-300')).toBe(false)
