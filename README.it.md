@@ -187,6 +187,26 @@ Ogni verbo è anche un comando con namespace (`/trailhead:new`, `/trailhead:work
 | `/trailhead:dashboard` | mostra la dashboard del repo: l'indice pinnato di ogni mappa aperta, la whiteboard, e i conteggi live |
 | `/trailhead:panel` | apre o chiude il pannello live della mappa: i ticket aperti della mappa attiva per stato, con un pulsante `work` per ogni ticket della frontier (**solo Claude Code**: richiede la mod di trailhead, 2.1.287+) |
 
+### 🖥️ A schermo in Claude Code
+
+La mod di trailhead (Claude Code 2.1.287+) è inclusa nel plugin e disegna il lavoro accanto alla conversazione. Codex mantiene gli hook dei comandi e non ha un pannello.
+
+![Il pannello della mappa affiancato al transcript: mappe aperte, frontier con un pulsante work per ticket, in corso, bloccati e un footer con refresh e close](assets/screenshots/map-panel.png)
+
+Il pannello della mappa elenca le mappe aperte tra cui passare, la frontier con un pulsante `work` per ogni ticket che pulisce il contesto e avvia il ticket, chi tiene cosa e cosa è bloccato. Il footer ha `refresh` e `close`. `/trailhead:panel` lo apre e lo chiude, e si apre da solo una volta in fullscreen.
+
+![Il pannello che mostra un'altra mappa, con l'intestazione viewing e active e il pulsante back to active](assets/screenshots/map-panel-viewing.png)
+
+Un click mostra soltanto una mappa, e `back to active` torna a quella attiva. La mappa attiva cambia quando lavori uno dei suoi ticket.
+
+![La sezione Burn-down del pannello: riga dei conteggi e grafico dei ticket aperti nel tempo](assets/screenshots/burndown.png)
+
+Il burn-down mostra i ticket aperti nel tempo, dal primo ticket della mappa a oggi, con chiusi e rimossi contati a parte.
+
+![La pipeline band sopra il prompt e la voce di stato trailhead sotto](assets/screenshots/work-state-band.png)
+
+La pipeline band e la voce di stato mostrano il ticket in gioco e il suo step, sopra il prompt.
+
 ### Capture: zero attrito, una riga di conferma, non risolve nulla
 
 | Command | Atterra come | Significato |

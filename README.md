@@ -187,6 +187,26 @@ Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/
 | `/trailhead:dashboard` | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
 | `/trailhead:panel` | open or close the live map panel: the active map's open tickets by state, with a `work` button per frontier ticket (**Claude Code only**: needs the trailhead mod, 2.1.287+) |
 
+### 🖥️ On screen in Claude Code
+
+The trailhead mod (Claude Code 2.1.287+) ships inside the plugin and draws the work beside the conversation. Codex keeps the command hooks and has no panel.
+
+![The map panel docked beside the transcript: open maps, frontier with a work button per ticket, in progress, blocked, and a footer with refresh and close](assets/screenshots/map-panel.png)
+
+The map panel lists the open maps to switch between, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
+
+![The panel viewing another map, with a viewing and active header and a back to active button](assets/screenshots/map-panel-viewing.png)
+
+A click only views a map, and `back to active` returns to the active one. The active map changes when you work one of its tickets.
+
+![The Burn-down section of the panel: counts line and a chart of open tickets over time](assets/screenshots/burndown.png)
+
+The burn-down shows the open tickets over time, from the map's first ticket to now, with done and removed counted apart.
+
+![The pipeline band above the prompt and the trailhead status entry under it](assets/screenshots/work-state-band.png)
+
+The pipeline band and the status entry show the ticket in play and its step, above the prompt.
+
 ### Capture: zero friction, one confirmation line, resolves nothing
 
 | Command | Lands as | Meaning |
