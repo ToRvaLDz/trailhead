@@ -234,6 +234,8 @@ const BAND_PROPS = {
 } as const
 const FULLSCREEN = { columns: 200, rows: 50, isFullscreen: true } as const
 
+// Wide enough for the longest footer reason beside the two buttons.
+const WIDE = { bodyColumns: 90 } as const
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 let turns = 0
 const completeTurn = ($: any) =>
@@ -436,7 +438,7 @@ for (const surface of SURFACES) {
   test(`a failed list read keeps the whole last data, the chart too [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r)
+    const ui = await openAndMount($, r, WIDE)
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
     await r.clock.advance(TIMER)
     await settle(r)
@@ -569,7 +571,7 @@ for (const surface of SURFACES) {
   test(`a gh failure keeps the last list and shows one dim reason [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r)
+    const ui = await openAndMount($, r, WIDE)
     expect(await textOf(ui, 'age')).toBe('updated just now')
 
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
@@ -590,7 +592,7 @@ for (const surface of SURFACES) {
   test(`each failure has its own short reason [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r)
+    const ui = await openAndMount($, r, WIDE)
     const reasonFor = async (setup: () => void) => {
       setup()
       await r.clock.advance(FLOOR)

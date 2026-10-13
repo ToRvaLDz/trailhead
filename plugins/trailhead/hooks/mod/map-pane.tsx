@@ -12,6 +12,7 @@ import {
   burndownEnd,
   burndownSeries,
   failureReason,
+  footerStatus,
   groupTickets,
   HISTORY_LIMIT,
   LIST_LIMIT,
@@ -368,6 +369,13 @@ async function togglePanel($: Dollar): Promise<string> {
   return opened.isPlaced ? 'Map panel opened.' : `Map panel not shown: ${opened.reason}`
 }
 
+// The close button: the pane goes (its `ui.close` hook stops the timers). The press counts as the
+// person closing it, so the auto-open never fires again this session.
+async function closePane($: Dollar) {
+  await $.ui.close({ id: PANE_ID })
+  await update($, paneAutoOpened, () => true)
+}
+
 const dim = { dimColor: true } as const
 const bold = { bold: true } as const
 const accent = { bold: true, color: ACCENT } as const
@@ -635,9 +643,16 @@ export function registerMapPane(on: On) {
         <Box key="spacer" flexGrow={1} />
         <Box key="footer" flexDirection="column">
           {text('rule', dim, '─'.repeat(cols))}
-          <Box gap={1}>
-            <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
-            {text('age', dim, status)}
+          <Box key="footer-row" width={cols} justifyContent="space-between">
+            <Box gap={1}>
+              <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
+              {text('age', dim, footerStatus(status, cols))}
+            </Box>
+            <Button
+              key="close"
+              label="close"
+              onPress={() => void closePane($).catch(err => debug($, `trailhead mod: close press failed: ${String(err)}`))}
+            />
           </Box>
         </Box>
       </Box>
