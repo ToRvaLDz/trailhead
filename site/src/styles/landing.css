@@ -195,6 +195,16 @@ section.band { padding: 58px 0; border-top: 1px solid var(--border-soft); }
 .view p { margin: 0; font-size: 13.5px; color: var(--fg-muted); line-height: 1.5; }
 .view p b { color: var(--fg); font-weight: 650; }
 
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 38px; align-items: start; }
+.shot { margin: 0; background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.shot.wide { grid-column: 1 / -1; }
+.shot img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); }
+.shot figcaption { padding: 0 6px 4px; font-size: 13.5px; color: var(--fg-muted); line-height: 1.5; }
+.shot figcaption b { color: var(--fg); font-weight: 650; }
+.shot figcaption .vcmd { font-family: var(--mono); font-size: 13px; color: var(--accent-2); margin-right: 8px; }
+.shot figcaption .vcmd .s { color: var(--fg-dim); }
+.shots-note { margin-top: 18px; font-family: var(--mono); font-size: 12.5px; color: var(--fg-dim); }
+
 /* ---- duo (maps / anywhere) ---- */
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 38px; }
 .feat { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
@@ -262,6 +272,7 @@ footer { border-top: 1px solid var(--border-soft); padding: 40px 0; margin-top: 
   .hero-grid { grid-template-columns: 1fr; gap: 40px; }
   .props, .installs, .techs, .duo { grid-template-columns: 1fr; }
   .subtechs, .captures, .views { grid-template-columns: 1fr 1fr; }
+  .shots { grid-template-columns: 1fr; }
   .callout { grid-template-columns: 1fr; gap: 12px; }
   .cycle { flex-direction: column; }
   .step + .step { margin-left: 0; margin-top: 12px; }
