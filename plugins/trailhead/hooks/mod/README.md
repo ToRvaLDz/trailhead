@@ -80,7 +80,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
   button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
   reasons: `gh not installed`, `gh not authenticated (run gh auth login)`,
-  `offline: cannot reach GitHub`, `gh failed (exit <n>)`). Titles come from GitHub and are untrusted:
+  `offline: cannot reach GitHub`, `gh failed (exit <n>)`), cut to the room the buttons leave, and a `close`
+  button at the right edge that closes the panel. Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
   on the first fetch, `No active map. Run /trailhead:map to pick one.`, `No open tickets. Fog may remain: /trailhead:map`.
 - **Maps list and viewing**: with more than one open map (`gh issue list --label trailhead:map --state open`),
@@ -136,7 +137,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   a request inside the floor keeps one trailing refresh for the rest of it.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed
-  by the person. The open runs from a zero-delay timer because a render may not write state.
+  by the person (a press on the `close` button counts as closing it). The open runs from a zero-delay timer because a render may not write state.
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
