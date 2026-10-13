@@ -751,7 +751,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
-    expect(buttons).toEqual(['map-14', 'work-209', 'work-210', 'work-214', 'refresh'])
+    expect(buttons).toEqual(['map-14', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
     expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
 
@@ -976,6 +976,37 @@ for (const surface of SURFACES) {
     expect(r.runs).toEqual([{ command: 'trailhead:work', args: '5' }])
   })
 
+  test(`the footer row spreads refresh to the left and close to the right [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect((await ui.find({ key: 'footer-row' }))?.props).toMatchObject({ width: 60, justifyContent: 'space-between' })
+    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key).slice(-2)).toEqual(['refresh', 'close'])
+    expect((await ui.find({ key: 'close' }))?.props).toMatchObject({ label: 'close' })
+  })
+
+  test(`a press on close removes the pane for good [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(fetches(r)).toBe(1)
+    const opened = r.opens.length
+
+    await ui.press({ key: 'close' })
+    await settle(r)
+    expect(r.panes).toEqual([])
+    await r.clock.advance(TIMER * 2)
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    // the press counts as the person closing it: fullscreen never opens it again
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(opened)
+    expect(r.logs).toEqual([])
+  })
+
   test(`/trailhead:panel says why a pane cannot be placed [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.isPlaced = false
@@ -1128,7 +1159,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     expect(await hasKey(ui, 'head-maps')).toBe(false)
     expect(await hasKey(ui, 'group-maps')).toBe(false)
-    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['work-209', 'work-210', 'work-214', 'refresh'])
+    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['work-209', 'work-210', 'work-214', 'refresh', 'close'])
   })
 
   test(`a press on another map shows its tickets, the active-map marker is never written [${surface}]`, async ($, on) => {
