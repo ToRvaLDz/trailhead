@@ -193,7 +193,7 @@ The trailhead mod (Claude Code 2.1.287+) ships inside the plugin and draws the w
 
 ![The map panel docked beside the transcript: open maps, frontier with a work button per ticket, in progress, blocked, and a footer with refresh and close](assets/screenshots/map-panel.png)
 
-The map panel lists the open maps to switch between, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
+The map panel lists the open maps to view, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
 
 ![The panel viewing another map, with a viewing and active header and a back to active button](assets/screenshots/map-panel-viewing.png)
 
@@ -205,7 +205,7 @@ The burn-down shows the open tickets over time, from the map's first ticket to n
 
 ![The pipeline band above the prompt and the trailhead status entry under it](assets/screenshots/work-state-band.png)
 
-The pipeline band and the status entry show the ticket in play and its step, above the prompt.
+The pipeline band above the prompt and the status entry under it show the ticket in play and its step.
 
 ### Capture: zero friction, one confirmation line, resolves nothing
 

@@ -193,7 +193,7 @@ La mod di trailhead (Claude Code 2.1.287+) è inclusa nel plugin e disegna il la
 
 ![Il pannello della mappa affiancato al transcript: mappe aperte, frontier con un pulsante work per ticket, in corso, bloccati e un footer con refresh e close](assets/screenshots/map-panel.png)
 
-Il pannello della mappa elenca le mappe aperte tra cui passare, la frontier con un pulsante `work` per ogni ticket che pulisce il contesto e avvia il ticket, chi tiene cosa e cosa è bloccato. Il footer ha `refresh` e `close`. `/trailhead:panel` lo apre e lo chiude, e si apre da solo una volta in fullscreen.
+Il pannello della mappa elenca le mappe aperte da consultare, la frontier con un pulsante `work` per ogni ticket che pulisce il contesto e avvia il ticket, chi tiene cosa e cosa è bloccato. Il footer ha `refresh` e `close`. `/trailhead:panel` lo apre e lo chiude, e si apre da solo una volta in fullscreen.
 
 ![Il pannello che mostra un'altra mappa, con l'intestazione viewing e active e il pulsante back to active](assets/screenshots/map-panel-viewing.png)
 
@@ -205,7 +205,7 @@ Il burn-down mostra i ticket aperti nel tempo, dal primo ticket della mappa a og
 
 ![La pipeline band sopra il prompt e la voce di stato trailhead sotto](assets/screenshots/work-state-band.png)
 
-La pipeline band e la voce di stato mostrano il ticket in gioco e il suo step, sopra il prompt.
+La pipeline band sopra il prompt e la voce di stato sotto mostrano il ticket in gioco e il suo step.
 
 ### Capture: zero attrito, una riga di conferma, non risolve nulla
 
