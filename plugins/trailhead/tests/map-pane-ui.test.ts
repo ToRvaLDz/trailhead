@@ -319,6 +319,15 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'age')).toBe('updated just now')
   })
 
+  test(`ticket rows are spaced apart on the desktop only [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const groupProps = (await ui.find({ key: 'group-frontier' }))?.props
+    if (surface === 'desktop') expect(groupProps).toMatchObject({ rowGap: 0.5 })
+    else expect(groupProps).not.toHaveProperty('rowGap')
+  })
+
   test(`the burn-down section shows the counts, the chart and the axis [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)

@@ -49,6 +49,8 @@ const ACCENT = '#7aa2f7'
 // The accent as a Raster colour (0x00RRGGBB), and the chart height in terminal rows.
 const ACCENT_RGB = 0x7aa2f7
 const CHART_ROWS = 3
+// Space between ticket rows on the desktop, whose native buttons would touch; the terminal stays compact.
+const DESKTOP_ROW_GAP = 0.5
 const AMBER = '#e0af68'
 
 const EMPTY: MapPaneData = {
@@ -568,7 +570,12 @@ export function registerMapPane(on: On) {
       if (rows.length === 0) return null
       const hasMarkColumn = rows.some(isInPlay)
       return (
-        <Box key={`group-${key}`} flexDirection="column" marginTop={gap}>
+        <Box
+          key={`group-${key}`}
+          flexDirection="column"
+          marginTop={gap}
+          {...(e.surface === 'desktop' ? { rowGap: DESKTOP_ROW_GAP } : {})}
+        >
           {text(`head-${key}`, bold, `${name} · ${rows.length}`)}
           {rows.map(t => row(t, hasMarkColumn))}
         </Box>
