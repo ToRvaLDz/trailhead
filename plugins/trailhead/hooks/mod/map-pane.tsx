@@ -301,7 +301,10 @@ async function startWork($: Dollar, number: number) {
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
   workInFlight = number
   try {
+    const before = await $.session.id()
     await $.command.run({ command: CLEAR_COMMAND, args: '' })
+    // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
+    if ((await $.session.id()) === before) return debug($, `trailhead mod: work ${number} skipped, the conversation was not cleared`)
     // The clear emptied the atom: the row is still queued in the new session.
     await update($, pendingWork, () => number)
     await $.command.run({ command: WORK_COMMAND, args: String(number) })

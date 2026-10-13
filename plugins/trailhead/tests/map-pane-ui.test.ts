@@ -767,6 +767,7 @@ for (const surface of SURFACES) {
 
     // free again: the next press goes through
     await ui.press({ key: 'work-210' })
+    await settle(r)
     expect(r.runs).toEqual([
       { command: 'clear', args: '' },
       { command: 'trailhead:work', args: '209' },
