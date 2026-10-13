@@ -217,6 +217,16 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The engine reset the atoms for the new session: read the file again, so the ticket shows as
+  // orphaned at once (the file names the old session). The matcher keeps the validator happy
+  // next to the pane's hook on the same event.
+  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
+    const result = await next(e)
+    await safeRefresh($)
+    await setSnapshot($, null).catch(err => debug($, `trailhead mod: snapshot reset after clear failed: ${String(err)}`))
+    return result
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const state = await read($, workState)
     const orphaned = await read($, isOrphaned)
