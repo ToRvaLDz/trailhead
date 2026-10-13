@@ -97,6 +97,9 @@ let generation = 0
 let lastStartedAt: number | null = null
 let trailing: Timer | null = null
 let ticker: Timer | null = null
+// What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
+type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null }
+let carried: Carried | null = null
 
 async function readActiveMap($: Dollar): Promise<number | null> {
   let next: number | null
@@ -255,6 +258,31 @@ export function requestRefresh($: Dollar, request: Request = {}): Promise<void> 
 const safeReadActiveMap = ($: Dollar) =>
   readActiveMap($).catch(err => debug($, `trailhead mod: active map read failed: ${String(err)}`))
 
+async function carryOverClear($: Dollar) {
+  carried = {
+    isAutoOpened: await read($, paneAutoOpened),
+    viewed: await read($, viewedMap),
+    active: await read($, activeMap),
+  }
+}
+
+// The atoms are empty again: put back what the person had set, then fill the pane without waiting
+// for a turn. The active map is read first (its change from null would reset the view), and a view
+// comes back only when the active map is the one it was set against.
+async function restoreAfterClear($: Dollar) {
+  const kept = carried
+  carried = null
+  try {
+    if (kept?.isAutoOpened === true) await update($, paneAutoOpened, () => true)
+    const active = await readActiveMap($)
+    const viewed = kept?.viewed ?? null
+    if (viewed !== null && viewed !== active && active === kept?.active) await update($, viewedMap, () => viewed)
+  } catch (err) {
+    debug($, `trailhead mod: map pane restore after clear failed: ${String(err)}`)
+  }
+  void requestRefresh($, { bypassFloor: true })
+}
+
 // Edits of the tracker through the gh CLI: the narrow set worth a refresh right away.
 const GH_ISSUE_WRITE = /\bgh\b[^\n;&|]*\bissue\s+(edit|close|create|comment|reopen)\b/
 
@@ -344,6 +372,18 @@ export function registerMapPane(on: On) {
     const result = await next(e)
     await safeReadActiveMap($)
     void requestRefresh($)
+    return result
+  })
+
+  // A /clear empties the atoms: note what the pane must get back, then restore it in the new session.
+  on('session.end', { reason: 'clear' }, async ($, e, next) => {
+    await carryOverClear($).catch(err => debug($, `trailhead mod: map pane carry-over failed: ${String(err)}`))
+    return next(e)
+  })
+
+  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
+    const result = await next(e)
+    await restoreAfterClear($)
     return result
   })
 
