@@ -520,6 +520,12 @@ const workSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-wo
 ok('source: trailhead-work SKILL.md out-of-scope close drops the native sub-issue edge',
   /out of scope\*\* \(label, then \*\*drop its native sub-issue edge\*\*/.test(workSkillSource));
 
+const namedTicketMapSentence = /a named ticket that carries a `trailhead:map-<n>` label makes that map the active map \(write `\.trailhead\/active-map`\); a whiteboard ticket leaves the active map alone/i;
+ok('source: trailhead-work SKILL.md work step 1 makes a named ticket\'s map the active map',
+  namedTicketMapSentence.test(workSkillSource.slice(workSkillSource.indexOf('Load the **map**'), workSkillSource.indexOf('Load the **map**') + 1500)));
+ok('source: trailhead-work SKILL.md quick isolation bullet makes a named ticket\'s map the active map',
+  namedTicketMapSentence.test(workSkillSource.slice(workSkillSource.indexOf('**Same isolation setup as `work`.**'), workSkillSource.indexOf('**Same isolation setup as `work`.**') + 800)));
+
 const inboxSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'inbox.md'), 'utf8');
 ok('source: inbox.md out-of-scope close drops the native sub-issue edge',
   /`trailhead:out-of-scope`, \*\*drop its native sub-issue edge\*\*/.test(inboxSource));
