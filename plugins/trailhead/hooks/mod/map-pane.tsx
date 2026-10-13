@@ -281,6 +281,11 @@ async function viewMap($: Dollar, number: number | null) {
   void requestRefresh($, { bypassFloor: true })
 }
 
+// The press handler of a map click or the back button: a failed view change is logged, never thrown.
+const pressView = ($: Dollar, number: number | null): void => {
+  void viewMap($, number).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))
+}
+
 // Opening always refreshes. A render cannot write state, not even from work it left running,
 // so the auto-open runs from a zero-delay timer, a dispatch of its own; `isOpening` keeps two
 // renders from opening twice before the flag is written.
@@ -402,7 +407,7 @@ export function registerMapPane(on: On) {
             <Button
               key={`map-${m.number}`}
               label={r.label}
-              onPress={() => void viewMap($, m.number).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))}
+              onPress={() => pressView($, m.number)}
             />
           ) : (
             text(`map-label-${m.number}`, bold, r.label)
@@ -426,7 +431,7 @@ export function registerMapPane(on: On) {
           <Button
             key="back"
             label={active === null ? 'back' : 'back to active'}
-            onPress={() => void viewMap($, null).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))}
+            onPress={() => pressView($, null)}
           />
         </Box>
       )
