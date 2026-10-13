@@ -521,10 +521,22 @@ ok('source: trailhead-work SKILL.md out-of-scope close drops the native sub-issu
   /out of scope\*\* \(label, then \*\*drop its native sub-issue edge\*\*/.test(workSkillSource));
 
 const namedTicketMapSentence = /a named ticket that carries a `trailhead:map-<n>` label makes that map the active map \(write `\.trailhead\/active-map`\); a whiteboard ticket leaves the active map alone/i;
+// The text of a structural unit of a source, from its anchor: a missing anchor fails loudly.
+const unitFrom = (source, anchor, endPattern) => {
+  const start = source.indexOf(anchor);
+  if (start === -1) throw new Error(`anchor not found in source: ${anchor}`);
+  const rest = source.slice(start);
+  const end = rest.slice(anchor.length).search(endPattern);
+  return end === -1 ? rest : rest.slice(0, anchor.length + end);
+};
+// work step 1: its paragraph, up to the next numbered step or blank line.
+const workStep1 = unitFrom(workSkillSource, '1. Load the **map**', /\n(?:\d+\. |\s*\n)/);
+// quick's isolation bullet: up to the end of its line.
+const quickIsolationBullet = unitFrom(workSkillSource, '- **Same isolation setup as `work`.**', /\n/);
 ok('source: trailhead-work SKILL.md work step 1 makes a named ticket\'s map the active map',
-  namedTicketMapSentence.test(workSkillSource.slice(workSkillSource.indexOf('Load the **map**'), workSkillSource.indexOf('Load the **map**') + 1500)));
+  namedTicketMapSentence.test(workStep1));
 ok('source: trailhead-work SKILL.md quick isolation bullet makes a named ticket\'s map the active map',
-  namedTicketMapSentence.test(workSkillSource.slice(workSkillSource.indexOf('**Same isolation setup as `work`.**'), workSkillSource.indexOf('**Same isolation setup as `work`.**') + 800)));
+  namedTicketMapSentence.test(quickIsolationBullet));
 
 const inboxSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'inbox.md'), 'utf8');
 ok('source: inbox.md out-of-scope close drops the native sub-issue edge',
