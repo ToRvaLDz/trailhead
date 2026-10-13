@@ -536,17 +536,25 @@ test('mapRowLayout cuts the title to the room left by the mark and the aside', (
   expect(mapRowLayout({ number: 14, title: '' }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
 })
 
-test('footerStatus keeps a short status whole', () => {
-  expect(footerStatus('updated just now', 60)).toBe('updated just now')
-})
-
-test('footerStatus cuts a long status to the room the two buttons leave', () => {
+test('footerStatus keeps a status that fits beside the two buttons on their row', () => {
+  expect(footerStatus('updated just now', 60)).toEqual({ text: 'updated just now', isInline: true })
   // 60 columns minus `[ refresh ]`, `[ close ]` and the two gaps leaves 38 cells
-  expect(footerStatus('⚠ gh failed (exit 1) · list from 12m ago', 60)).toBe('⚠ gh failed (exit 1) · list from 12m …')
-  expect(footerStatus('⚠ gh failed (exit 1) · list from 12m ago', 40)).toBe('⚠ gh failed (exit…')
+  expect(footerStatus('⚠ gh failed (exit 1) · list from 3m ago', 60)).toEqual({
+    text: '⚠ gh failed (exit 1) · list from 3m ago',
+    isInline: false,
+  })
+  expect(footerStatus('⚠ gh failed (exit 1) · list from 3m', 60)).toEqual({ text: '⚠ gh failed (exit 1) · list from 3m', isInline: true })
 })
 
-test('footerStatus on a pane too narrow for the buttons is an ellipsis, never a throw', () => {
-  expect(footerStatus('updated just now', 10)).toBe('…')
-  expect(footerStatus('updated just now', 0)).toBe('…')
+test('footerStatus moves a long status to a row of its own, whole when the pane is wide enough', () => {
+  expect(footerStatus('⚠ gh not authenticated (run gh auth login) · list from 12m ago', 60)).toEqual({
+    text: '⚠ gh not authenticated (run gh auth login) · list from 12m ago',
+    isInline: false,
+  })
+  expect(footerStatus('⚠ gh not authenticated (run gh auth login)', 30)).toEqual({ text: '⚠ gh not authenticated (run g…', isInline: false })
+})
+
+test('footerStatus on a pane too narrow for the buttons never throws', () => {
+  expect(footerStatus('updated just now', 10)).toEqual({ text: 'updated j…', isInline: false })
+  expect(footerStatus('updated just now', 0)).toEqual({ text: '…', isInline: false })
 })

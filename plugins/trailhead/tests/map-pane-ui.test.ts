@@ -234,8 +234,6 @@ const BAND_PROPS = {
 } as const
 const FULLSCREEN = { columns: 200, rows: 50, isFullscreen: true } as const
 
-// Wide enough for the longest footer reason beside the two buttons.
-const WIDE = { bodyColumns: 90 } as const
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 let turns = 0
 const completeTurn = ($: any) =>
@@ -438,7 +436,7 @@ for (const surface of SURFACES) {
   test(`a failed list read keeps the whole last data, the chart too [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r, WIDE)
+    const ui = await openAndMount($, r)
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
     await r.clock.advance(TIMER)
     await settle(r)
@@ -571,13 +569,16 @@ for (const surface of SURFACES) {
   test(`a gh failure keeps the last list and shows one dim reason [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r, WIDE)
+    const ui = await openAndMount($, r)
     expect(await textOf(ui, 'age')).toBe('updated just now')
+    expect(await ui.find({ key: 'age-row' })).toBeUndefined()
 
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
     await r.clock.advance(TIMER)
     await settle(r)
+    // too long beside the buttons: whole, on a row of its own under them
     expect(await textOf(ui, 'age')).toBe('⚠ offline: cannot reach GitHub · list from 3m ago')
+    expect(await ui.find({ key: 'age-row' })).toBeDefined()
     expect((await ui.find({ key: 'age' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
@@ -592,7 +593,7 @@ for (const surface of SURFACES) {
   test(`each failure has its own short reason [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
-    const ui = await openAndMount($, r, WIDE)
+    const ui = await openAndMount($, r)
     const reasonFor = async (setup: () => void) => {
       setup()
       await r.clock.advance(FLOOR)
