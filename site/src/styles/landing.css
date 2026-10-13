@@ -278,3 +278,7 @@ footer { border-top: 1px solid var(--border-soft); padding: 40px 0; margin-top: 
   .step + .step { margin-left: 0; margin-top: 12px; }
   .nav-links a.hide-sm { display: none; }
 }
+
+@media (max-width: 520px) {
+  .captures, .views { grid-template-columns: 1fr; }
+}
