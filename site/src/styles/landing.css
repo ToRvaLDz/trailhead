@@ -282,3 +282,14 @@ footer { border-top: 1px solid var(--border-soft); padding: 40px 0; margin-top: 
 @media (max-width: 520px) {
   .captures, .views { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 400px) {
+  .wrap { padding: 0 16px; }
+  .hero-grid { grid-template-columns: minmax(0, 1fr); }
+  .install-inline { gap: 8px; font-size: 11.5px; padding: 11px 10px; max-width: 100%; white-space: nowrap; }
+  .install-inline .copy { margin-left: 0; }
+  .mapcard { padding: 16px; }
+  .mapcard-title, .mapcard-count { white-space: nowrap; }
+  .row { gap: 8px; padding: 11px 12px; flex-wrap: wrap; }
+  .row .title { min-width: 0; }
+}
