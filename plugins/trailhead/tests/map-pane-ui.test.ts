@@ -172,12 +172,14 @@ const rig = (on: On, engine?: any) => {
     r.runs.push({ command: e.command, args: e.args })
     if (e.command === 'clear') {
       await r.clearGate
-      if (r.refuseClear !== null) return { deny: r.refuseClear }
+      if (r.refuseClear !== null) throw new Error(r.refuseClear)
       await emulateClear()
       return { text: '' }
     }
     await r.gate
-    return r.refuse === null ? { text: '' } : { deny: r.refuse }
+    // A hook that throws is skipped, so the caller's `$.command.run` rejects (a `{ deny }` would resolve).
+    if (r.refuse !== null) throw new Error(r.refuse)
+    return { text: '' }
   })
   on('session.id', () => ({ value: r.session }))
   on('ui.log', (_$, e) => {
