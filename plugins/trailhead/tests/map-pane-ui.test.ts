@@ -158,6 +158,7 @@ const rig = (on: On, engine?: any) => {
   // changes, the new session starts. The reset is the atoms reading as never written until the
   // plugin writes them again (a test cannot write the plugin's state).
   const emptied = new Set<string>()
+  let clears = 0
   on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
     const read = await next(e)
     return emptied.has(e.key) ? { value: { value: undefined, version: read.value?.version ?? 0 } } : read
@@ -170,7 +171,7 @@ const rig = (on: On, engine?: any) => {
     await engine.session.end({ reason: 'clear', sessionId: r.session, resume: {} })
     r.duringClear?.()
     ATOM_KEYS.forEach(key => emptied.add(key))
-    r.session = NEXT_SESSION
+    r.session = `${NEXT_SESSION}-${(clears += 1)}`
     await engine.classic.SessionStart({ source: 'clear' })
   }
   on('command.run', async (_$, e) => {
@@ -810,7 +811,7 @@ for (const surface of SURFACES) {
     // the clear resets the atoms: the work verb still follows, in the new session, with the row queued
     releaseClear()
     await settle(r)
-    expect(r.session).toBe(NEXT_SESSION)
+    expect(r.session).toBe(`${NEXT_SESSION}-1`)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
     await ui.redraw()
     expect(await textOf(ui, 'queued-209')).toBe('queued')
@@ -876,7 +877,7 @@ for (const surface of SURFACES) {
     await $.command.run({ command: 'clear', args: '' } as never)
     await ui.redraw()
     await settle(r)
-    expect(r.session).toBe(NEXT_SESSION)
+    expect(r.session).toBe(`${NEXT_SESSION}-1`)
     expect(fetches(r)).toBe(2)
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
