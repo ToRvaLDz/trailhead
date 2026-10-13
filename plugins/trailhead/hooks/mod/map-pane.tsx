@@ -75,6 +75,8 @@ export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as c
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
 const WORK_COMMAND = 'trailhead:work'
+// The built-in that empties the conversation; the work verb starts in a clean one.
+const CLEAR_COMMAND = 'clear'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
 const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
@@ -100,6 +102,8 @@ let ticker: Timer | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null }
 let carried: Carried | null = null
+// The ticket whose `work` press is running: /clear empties the pendingWork atom meanwhile.
+let workInFlight: number | null = null
 
 async function readActiveMap($: Dollar): Promise<number | null> {
   let next: number | null
@@ -286,17 +290,25 @@ async function restoreAfterClear($: Dollar) {
 // Edits of the tracker through the gh CLI: the narrow set worth a refresh right away.
 const GH_ISSUE_WRITE = /\bgh\b[^\n;&|]*\bissue\s+(edit|close|create|comment|reopen)\b/
 
-// Runs `/trailhead:work <n>`; the host queues it behind a running turn. The claim is taken
-// with the version it read, so two presses never both pass. Cleared once the call settles.
+// Clears the conversation, then runs `/trailhead:work <n>` in the new one; the host queues both
+// behind a running turn. The claim is taken with the version it read, so two presses never both
+// pass, and `workInFlight` holds the next ones off while the clear has emptied the atom.
+// Cleared once the calls settle.
 async function startWork($: Dollar, number: number) {
+  if (workInFlight !== null) return
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
+  workInFlight = number
   try {
+    await $.command.run({ command: CLEAR_COMMAND, args: '' })
+    // The clear emptied the atom: the row is still queued in the new session.
+    await update($, pendingWork, () => number)
     await $.command.run({ command: WORK_COMMAND, args: String(number) })
   } catch (err) {
     debug($, `trailhead mod: work ${number} did not start: ${String(err)}`)
   } finally {
+    workInFlight = null
     await update($, pendingWork, () => null)
   }
 }
