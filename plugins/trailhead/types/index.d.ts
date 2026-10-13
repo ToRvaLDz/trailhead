@@ -43,6 +43,8 @@ export type MapPaneData = {
   tickets: readonly PaneTicket[]
   unverifiedCount: number
   isCapped: boolean
+  // The repo's open maps (empty until a first good read, then the last good one).
+  maps: readonly MapSummary[]
   history: BurndownHistory | null
   historyAt: number | null
   fetchedAt: number | null
@@ -58,6 +60,8 @@ declare module 'claude-code' {
       promptSnapshot: PromptSnapshot | null
       mapPane: MapPaneData
       activeMap: number | null
+      // The map the pane shows when it is not the active one; null follows the active map.
+      viewedMap: number | null
       pendingWork: number | null
       paneAutoOpened: boolean
     }

@@ -530,6 +530,7 @@ test('mapRowLayout cuts the title to the room left by the mark and the aside', (
   expect(act.label.endsWith('…')).toBe(true)
   expect(act.mark.length + act.label.length + (act.aside?.length ?? 0)).toBeLessThanOrEqual(30)
   const other = mapRowLayout({ number: 14, title: 'x'.repeat(200) }, { active: 198, viewed: null, columns: 30 })
-  expect(other.mark.length + other.label.length).toBeLessThanOrEqual(30)
+  // a Button draws `[ label ]`: four cells of chrome
+  expect(other.mark.length + other.label.length + 4).toBeLessThanOrEqual(30)
   expect(mapRowLayout({ number: 14, title: '' }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
 })

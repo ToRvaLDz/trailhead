@@ -166,15 +166,17 @@ export type MapRowContext = { active: number | null; viewed: number | null; colu
 const ACTIVE_MARK = '● '
 const ACTIVE_ASIDE = ' active'
 
-// What one row of the maps list draws, cut to the pane width.
+// What one row of the maps list draws, cut to the pane width (a pressable row is a Button).
 export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout => {
   const isActive = m.number === ctx.active
   const isViewed = m.number === viewTarget(ctx.active, ctx.viewed)
   const mark = isActive ? ACTIVE_MARK : '  '
   const aside = isActive ? ACTIVE_ASIDE : null
   const prefix = `#${m.number}`
-  const title = fit(m.title, ctx.columns - mark.length - (aside?.length ?? 0) - prefix.length - 1)
-  return { mark, label: title === '' ? prefix : `${prefix} ${title}`, aside, isActive, isViewed, isPressable: !isViewed }
+  const isPressable = !isViewed
+  const room = ctx.columns - mark.length - (aside?.length ?? 0) - (isPressable ? BUTTON_CHROME : 0) - prefix.length - 1
+  const title = fit(m.title, room)
+  return { mark, label: title === '' ? prefix : `${prefix} ${title}`, aside, isActive, isViewed, isPressable }
 }
 
 const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number

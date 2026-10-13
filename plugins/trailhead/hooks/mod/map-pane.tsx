@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, MapPaneData, PaneTicket, WorkState } from '../../types'
+import type { BurndownHistory, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
@@ -15,14 +15,18 @@ import {
   groupTickets,
   HISTORY_LIMIT,
   LIST_LIMIT,
+  mapRowLayout,
+  nextViewed,
   parseActiveMap,
   parseHistory,
   parseMap,
+  parseMaps,
   parseTickets,
   rasterCells,
   refreshDecision,
   rowLayout,
   sparkline,
+  viewTarget,
 } from './map-pane-view'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -38,6 +42,8 @@ const ACTIVE_MAP_PATH = '.trailhead/active-map'
 const TICKET_FIELDS = 'number,title,labels,assignees,url'
 const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
+const MAPS_FIELDS = 'number,title,url'
+const MAPS_LIMIT = 100
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
 // The accent as a Raster colour (0x00RRGGBB), and the chart height in terminal rows.
@@ -48,6 +54,7 @@ const AMBER = '#e0af68'
 const EMPTY: MapPaneData = {
   map: null,
   tickets: [],
+  maps: [],
   unverifiedCount: 0,
   isCapped: false,
   history: null,
@@ -59,6 +66,9 @@ const EMPTY: MapPaneData = {
 
 export const mapPane = atom({ plugin: 'trailhead', key: 'mapPane' } as const, EMPTY)
 export const activeMap = atom({ plugin: 'trailhead', key: 'activeMap' } as const, null as number | null)
+// The map shown when it is not the active one (a click on the maps list); null follows the active map.
+// The pane only reads `.trailhead/active-map`; the work verb is what changes it.
+export const viewedMap = atom({ plugin: 'trailhead', key: 'viewedMap' } as const, null as number | null)
 // The ticket whose `work` press is queued; one at a time.
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
@@ -97,7 +107,11 @@ async function readActiveMap($: Dollar): Promise<number | null> {
     if (!isMissing(err)) return read($, activeMap)
     next = null
   }
-  if ((await read($, activeMap)) !== next) await update($, activeMap, () => next)
+  if ((await read($, activeMap)) !== next) {
+    await update($, activeMap, () => next)
+    // The active map moved on (the work verb switched it): the view follows it again.
+    await update($, viewedMap, () => null)
+  }
   return next
 }
 
@@ -121,37 +135,72 @@ const readList = ($: Dollar, target: number) =>
     gh($, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
     gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
     gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
+    readMaps($),
   ])
+
+// The open maps of the repo. A failed or unreadable read is null: the caller keeps the last good list.
+const readMaps = async ($: Dollar): Promise<readonly MapSummary[] | null> => {
+  const out = await gh($, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
+  return out.ok ? parseMaps(out.stdout) : null
+}
 
 // What the pane compares to skip a write: times aside, but whether the history is as fresh as the list.
 const shape = (d: MapPaneData) => ({ ...d, fetchedAt: 0, historyAt: d.historyAt === d.fetchedAt })
 
-// One read of the active map. The result is dropped when the pane closed meanwhile
-// (generation) or the active map moved on; a moved map is read again.
-async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
-  const target = await readActiveMap($)
-  if (token !== generation) return
-  if (target === null) return setPane($, EMPTY)
-  const before = await read($, mapPane)
-  const isSameMap = before.map?.number === target
-  if (!isSameMap) await setPane($, { ...EMPTY, isLoading: true })
+// The map a fetch reads: the viewed one, else the active one.
+const readTarget = async ($: Dollar): Promise<number | null> => {
+  const active = await readActiveMap($)
+  return viewTarget(active, await read($, viewedMap))
+}
 
-  const [view, list, historyRead] = await readList($, target)
+// A viewed map that left the freshly read open list (it closed meanwhile) is no longer viewed.
+async function dropClosedView($: Dollar, maps: readonly MapSummary[] | null) {
+  const viewed = await read($, viewedMap)
+  if (nextViewed(viewed, { activeChanged: false, maps }) !== viewed) await update($, viewedMap, () => null)
+}
+
+// One read of the viewed (else active) map. The result is dropped when the pane closed meanwhile
+// (generation) or the target moved on, checked before every write; a moved target is read again.
+async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
+  const target = await readTarget($)
   if (token !== generation) return
-  if ((await readActiveMap($)) !== target) return wantsAnother()
+  const isStale = async () => {
+    if (token !== generation) return true
+    if ((await readTarget($)) === target) return false
+    wantsAnother()
+    return true
+  }
+  const before = await read($, mapPane)
+
+  if (target === null) {
+    // No map to show: the open maps alone, so one can be picked.
+    const maps = (await readMaps($)) ?? before.maps
+    if (await isStale()) return
+    return setPane($, { ...EMPTY, maps })
+  }
+  const isSameMap = before.map?.number === target
+  if (!isSameMap) {
+    if (await isStale()) return
+    await setPane($, { ...EMPTY, maps: before.maps, isLoading: true })
+  }
+
+  const [view, list, historyRead, mapsRead] = await readList($, target)
+  const maps = mapsRead ?? before.maps
+  await dropClosedView($, mapsRead)
+  const now = await $.clock.now()
+  if (await isStale()) return
 
   const kept = isSameMap ? before : EMPTY
   const failure = !view.ok ? view.reason : !list.ok ? list.reason : null
-  if (failure !== null) return setPane($, { ...kept, error: failure, isLoading: false })
+  if (failure !== null) return setPane($, { ...kept, maps, error: failure, isLoading: false })
   const map = view.ok ? parseMap(view.stdout, target) : null
   const tickets = list.ok ? parseTickets(list.stdout) : null
-  if (map === null || tickets === null) return setPane($, { ...kept, error: 'gh returned unreadable output', isLoading: false })
+  if (map === null || tickets === null) return setPane($, { ...kept, maps, error: 'gh returned unreadable output', isLoading: false })
 
-  const now = await $.clock.now()
   // A history that failed alone keeps the last good one of this map (with its own time), never another map's.
   const history = historyRead.ok ? parseHistory(historyRead.stdout) : null
   const historyPart = history !== null ? { history, historyAt: now } : { history: kept.history, historyAt: kept.historyAt }
-  const next: MapPaneData = { map, ...tickets, ...historyPart, fetchedAt: now, error: null, isLoading: false }
+  const next: MapPaneData = { map, ...tickets, maps, ...historyPart, fetchedAt: now, error: null, isLoading: false }
   const isFresh = before.fetchedAt !== null && now - before.fetchedAt < AGE_REFRESH_MS
   if (isFresh && isSameMap && sameValue(shape(before), shape(next))) return
   await setPane($, next)
@@ -222,6 +271,14 @@ async function startWork($: Dollar, number: number) {
   } finally {
     await update($, pendingWork, () => null)
   }
+}
+
+// A click on a map of the list: show it, or (the active map, or null) go back to following the active one.
+// A view change is not a repeat read, so the floor does not apply.
+async function viewMap($: Dollar, number: number | null) {
+  const active = await read($, activeMap)
+  await update($, viewedMap, () => (number === active ? null : number))
+  void requestRefresh($, { bypassFloor: true })
 }
 
 // Opening always refreshes. A render cannot write state, not even from work it left running,
@@ -318,6 +375,8 @@ export function registerMapPane(on: On) {
     const Raster = e.surface === 'terminal' && 'Raster' in ui ? ui.Raster : undefined
     const data = await read($, mapPane)
     const active = await read($, activeMap)
+    const viewed = await read($, viewedMap)
+    const target = viewTarget(active, viewed)
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
     const pending = await read($, pendingWork)
@@ -326,14 +385,61 @@ export function registerMapPane(on: On) {
     const isDock = e.props.placement === 'dock'
     const gap = isDock ? 1 : 0
 
-    if (active === null) {
+    const text = (key: string, props: object, children: string) => (
+      <Box key={key}>
+        <Text {...props}>{children}</Text>
+      </Box>
+    )
+    const link = (url: string, label: string) => (url === '' ? label : <Link href={url} label={label} />)
+
+    // The open maps, one row each; shown with several maps open (or with no active map, to pick one).
+    const mapRow = (m: MapSummary) => {
+      const r = mapRowLayout(m, { active, viewed, columns: cols })
       return (
-        <Box key="empty">
-          <Text {...dim}>No active map. Run /trailhead:map to pick one.</Text>
+        <Box key={`map-row-${m.number}`}>
+          {text(`map-mark-${m.number}`, r.isActive ? accent : {}, r.mark)}
+          {r.isPressable ? (
+            <Button
+              key={`map-${m.number}`}
+              label={r.label}
+              onPress={() => void viewMap($, m.number).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))}
+            />
+          ) : (
+            text(`map-label-${m.number}`, bold, r.label)
+          )}
+          {r.aside === null ? null : text(`map-aside-${m.number}`, dim, r.aside)}
         </Box>
       )
     }
-    const isCurrent = data.map?.number === active
+    const mapsGroup =
+      data.maps.length > 1 || (active === null && data.maps.length > 0) ? (
+        <Box key="group-maps" flexDirection="column" marginTop={gap}>
+          {text('head-maps', bold, `Maps · ${data.maps.length}`)}
+          {data.maps.map(mapRow)}
+        </Box>
+      ) : null
+    // Viewing a map other than the active one: say so, with the way back.
+    const viewing =
+      viewed === null || viewed === active ? null : (
+        <Box key="viewing" gap={1}>
+          {text('viewing-text', dim, active === null ? `viewing #${viewed}` : `viewing #${viewed} · active #${active}`)}
+          <Button
+            key="back"
+            label={active === null ? 'back' : 'back to active'}
+            onPress={() => void viewMap($, null).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))}
+          />
+        </Box>
+      )
+
+    if (target === null) {
+      return (
+        <Box flexDirection="column" width={cols}>
+          {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
+          {mapsGroup}
+        </Box>
+      )
+    }
+    const isCurrent = data.map?.number === target
     const isLoading = !isCurrent && (data.isLoading || data.error === null)
     // A pane the person opened (or that waited undrawn) has no data yet: fill it, once. Like the
     // auto-open it leaves the render through a zero-delay timer; inside the floor it waits for
@@ -346,15 +452,8 @@ export function registerMapPane(on: On) {
       })
     }
 
-    const text = (key: string, props: object, children: string) => (
-      <Box key={key}>
-        <Text {...props}>{children}</Text>
-      </Box>
-    )
-    const link = (url: string, label: string) => (url === '' ? label : <Link href={url} label={label} />)
-
     const map = isCurrent ? data.map : null
-    const heading = map === null ? `map #${active}` : fit(`#${map.number} ${map.title}`, cols)
+    const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, cols)
     const header = (
       <Box key="header" flexDirection="column">
         <Box key="map">
@@ -367,7 +466,9 @@ export function registerMapPane(on: On) {
       return (
         <Box flexDirection="column">
           {header}
+          {viewing}
           {text('loading', dim, 'Loading tickets…')}
+          {mapsGroup}
         </Box>
       )
     }
@@ -443,6 +544,8 @@ export function registerMapPane(on: On) {
     return (
       <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
         {header}
+        {viewing}
+        {mapsGroup}
         {group('frontier', 'Frontier', groups.frontier)}
         {group('in-progress', 'In progress', groups.inProgress)}
         {group('blocked', 'Blocked', groups.blocked)}

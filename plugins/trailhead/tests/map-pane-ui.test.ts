@@ -54,6 +54,15 @@ const HISTORY = [
 // 60 columns over 60..1000 s: the three closings land on samples 4, 8 and 12 (peak 10)
 const SPARK = '█'.repeat(4) + '▇'.repeat(4) + '▆'.repeat(52)
 
+// The repo's open maps as `gh issue list --label trailhead:map` prints them, and the tickets of the second.
+const OTHER_MAP = { title: 'older map', body: '## Destination\n\nAn older destination.\n', url: `${URL}/14` }
+const MAPS = [
+  { number: 198, title: 'trailhead mod', url: `${URL}/198` },
+  { number: 14, title: 'older map', url: `${URL}/14` },
+]
+const OTHER_TICKETS = [issue(140, 'Old frontier ticket', ['trailhead:build']), issue(141, 'Old held ticket', ['trailhead:task'], ['carol'])]
+const OTHER_HISTORY = OTHER_TICKETS.map(t => hrow(t.number, t.labels.map(l => l.name), null))
+
 const stateText = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({
     map: 198,
@@ -89,6 +98,11 @@ const rig = (on: On) => {
     tickets: TICKETS as unknown[],
     history: HISTORY as unknown[],
     map: MAP as unknown,
+    // The open maps list, and the second map's own answers (view, open list, history).
+    maps: MAPS as unknown[],
+    otherMap: OTHER_MAP as unknown,
+    otherTickets: OTHER_TICKETS as unknown[],
+    otherHistory: OTHER_HISTORY as unknown[],
     gh: null as Gh | null,
     deny: null as string | null,
     calls: [] as (readonly string[])[],
@@ -106,10 +120,12 @@ const rig = (on: On) => {
       r.panes = [{ id: PANE, title: 'Map', isShown: true, isFocused: false, isPlaced: r.isPlaced }]
     },
   }
-  const defaultGh: Gh = argv =>
-    argv[2] === 'view'
-      ? ok(JSON.stringify(r.map))
-      : ok(JSON.stringify(argv.includes('all') ? r.history : r.tickets))
+  const defaultGh: Gh = argv => {
+    if (argv[2] === 'list' && argv.includes('trailhead:map')) return ok(JSON.stringify(r.maps))
+    const isOther = argv.includes('14') || argv.includes('trailhead:map-14')
+    if (argv[2] === 'view') return ok(JSON.stringify(isOther ? r.otherMap : r.map))
+    return ok(JSON.stringify(argv.includes('all') ? (isOther ? r.otherHistory : r.history) : isOther ? r.otherTickets : r.tickets))
+  }
   on('fs.read', (_$, e) => {
     const file = e.path.endsWith('/.trailhead/active-map') ? r.active : e.path.endsWith('/.trailhead/work-state.json') ? r.work : undefined
     if (file === undefined) return { deny: `unexpected read of ${e.path}` }
@@ -176,10 +192,11 @@ const settle = async (r: Rig) => {
   for (let i = 0; i < 10; i += 1) await r.clock.settle()
 }
 // The open-list reads; the history read rides along with each and is not counted.
-const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('open')).length
+const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('open') && !argv.includes('trailhead:map')).length
 // A gh that answers as the default does, except for the history read.
 const withHistory = (r: Rig, answer: GhOut): Gh => argv => {
   if (argv.includes('all')) return answer
+  if (argv.includes('trailhead:map')) return ok(JSON.stringify(r.maps))
   return argv[2] === 'view' ? ok(JSON.stringify(r.map)) : ok(JSON.stringify(r.tickets))
 }
 const hasKey = async (ui: any, key: string): Promise<boolean> => (await ui.find({ key })) !== undefined
@@ -207,6 +224,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'view', '198', '--json', 'title,body,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
+      ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url'],
     ])
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect((await ui.find({ type: 'Link' }))?.props).toMatchObject({ href: `${URL}/198` })
@@ -434,7 +452,7 @@ for (const surface of SURFACES) {
     expect(label.length + ' build'.length + 8 + 1).toBeLessThanOrEqual(40)
   })
 
-  test(`no active map: the message, and no gh call [${surface}]`, async ($, on) => {
+  test(`no active map: the message and the open maps, no map read [${surface}]`, async ($, on) => {
     const r = rig(on)
     r.active = null
     await $.session.start(START)
@@ -443,7 +461,8 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'map' })).toBeUndefined()
     await completeTurn($)
     await settle(r)
-    expect(r.calls).toEqual([])
+    // the open maps are still read, so one can be picked; no map is
+    expect(r.calls).toEqual([['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']])
   })
 
   test(`first fetch in flight: the map number and Loading tickets [${surface}]`, async ($, on) => {
@@ -672,7 +691,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
-    expect(buttons).toEqual(['work-209', 'work-210', 'work-214', 'refresh'])
+    expect(buttons).toEqual(['map-14', 'work-209', 'work-210', 'work-214', 'refresh'])
     expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
 
