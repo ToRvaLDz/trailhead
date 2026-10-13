@@ -80,8 +80,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
   button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
   reasons: `gh not installed`, `gh not authenticated (run gh auth login)`,
-  `offline: cannot reach GitHub`, `gh failed (exit <n>)`), cut to the room the buttons leave, and a `close`
-  button at the right edge that closes the panel. Titles come from GitHub and are untrusted:
+  `offline: cannot reach GitHub`, `gh failed (exit <n>)`), and a `close` button at the right edge that
+  closes the panel. A status too long for the room beside the buttons moves to a row of its own under them. Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
   on the first fetch, `No active map. Run /trailhead:map to pick one.`, `No open tickets. Fog may remain: /trailhead:map`.
 - **Maps list and viewing**: with more than one open map (`gh issue list --label trailhead:map --state open`),
