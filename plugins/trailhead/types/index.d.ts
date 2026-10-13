@@ -26,6 +26,9 @@ export type PaneTicket = {
   url: string
 }
 
+// One open map of the repo, as the maps list shows it.
+export type MapSummary = { number: number; title: string }
+
 export type MapInfo = { number: number; title: string; destination: string | null; url: string }
 
 // One ticket of the map's history, in epoch ms; `closedAt` null while open.

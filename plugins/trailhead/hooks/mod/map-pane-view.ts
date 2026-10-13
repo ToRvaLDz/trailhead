@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, MapInfo, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -121,6 +121,60 @@ export const parseMap = (stdout: string, number: number): MapInfo | null => {
     destination: typeof raw.body === 'string' ? destinationOf(raw.body) : null,
     url: safeUrl(raw.url),
   }
+}
+
+// `gh issue list --label trailhead:map --state open --json number,title,url`: the open maps by number.
+// A row with no usable number is skipped; anything that is not a list is unreadable.
+export const parseMaps = (stdout: string): readonly MapSummary[] | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  return raw
+    .filter(isRecord)
+    .filter(r => isPosInt(r.number))
+    .map((r): MapSummary => ({ number: r.number as number, title: typeof r.title === 'string' ? flatten(r.title) : '' }))
+    .sort((a, b) => a.number - b.number)
+}
+
+// The map the pane draws: the one the person is viewing, else the active one.
+export const viewTarget = (active: number | null, viewed: number | null): number | null => viewed ?? active
+
+export type ViewChange = { activeChanged: boolean; maps: readonly MapSummary[] | null }
+
+// The view goes back to following the active map when that map changed, or when the viewed
+// map is gone from a freshly read open list (a missing list judges nothing).
+export const nextViewed = (viewed: number | null, change: ViewChange): number | null => {
+  if (viewed === null || change.activeChanged) return null
+  return change.maps !== null && !change.maps.some(m => m.number === viewed) ? null : viewed
+}
+
+export type MapRowLayout = {
+  mark: string
+  label: string
+  aside: string | null
+  isActive: boolean
+  isViewed: boolean
+  // Every map but the viewed one: a press shows it (the active one: back to active).
+  isPressable: boolean
+}
+export type MapRowContext = { active: number | null; viewed: number | null; columns: number }
+
+const ACTIVE_MARK = '● '
+const ACTIVE_ASIDE = ' active'
+
+// What one row of the maps list draws, cut to the pane width.
+export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout => {
+  const isActive = m.number === ctx.active
+  const isViewed = m.number === viewTarget(ctx.active, ctx.viewed)
+  const mark = isActive ? ACTIVE_MARK : '  '
+  const aside = isActive ? ACTIVE_ASIDE : null
+  const prefix = `#${m.number}`
+  const title = fit(m.title, ctx.columns - mark.length - (aside?.length ?? 0) - prefix.length - 1)
+  return { mark, label: title === '' ? prefix : `${prefix} ${title}`, aside, isActive, isViewed, isPressable: !isViewed }
 }
 
 const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number

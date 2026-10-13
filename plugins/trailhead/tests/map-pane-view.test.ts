@@ -8,14 +8,18 @@ import {
   failureReason,
   groupTickets,
   HISTORY_LIMIT,
+  mapRowLayout,
+  nextViewed,
   parseActiveMap,
   parseHistory,
   parseMap,
+  parseMaps,
   parseTickets,
   rasterCells,
   refreshDecision,
   rowLayout,
   sparkline,
+  viewTarget,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -454,4 +458,78 @@ test('axisStart words the left label as a date, or a time when the history is un
   expect(axisStart(at('2026-10-12T09:05:00Z'), now)).toBe('today 09:05')
   expect(axisStart(now, now)).toBe('today 15:30')
   expect(axisStart(now - 86_400_000, now)).toBe('Oct 11')
+})
+
+test('parseMaps keeps the open maps sorted by number, titles flattened', () => {
+  const out = parseMaps(
+    JSON.stringify([
+      { number: 198, title: 'trailhead\u202e mod\n', url: 'https://github.com/o/r/issues/198' },
+      { number: 14, title: 'older map' },
+      { number: 0, title: 'bad number' },
+      { number: 'x', title: 'worse number' },
+      { number: 20 },
+      'junk',
+    ]),
+  )
+  expect(out).toEqual([
+    { number: 14, title: 'older map' },
+    { number: 20, title: '' },
+    { number: 198, title: 'trailhead mod' },
+  ])
+  expect(parseMaps('[]')).toEqual([])
+})
+
+test('parseMaps rejects what is not a list', () => {
+  expect(parseMaps('not json')).toBeNull()
+  expect(parseMaps('{"number":1}')).toBeNull()
+  expect(parseMaps('null')).toBeNull()
+})
+
+test('viewTarget is the viewed map, else the active one', () => {
+  expect(viewTarget(198, null)).toBe(198)
+  expect(viewTarget(198, 14)).toBe(14)
+  expect(viewTarget(null, null)).toBeNull()
+  expect(viewTarget(null, 14)).toBe(14)
+})
+
+test('nextViewed resets when the active map changed or the viewed map left the open list', () => {
+  const maps = [{ number: 14, title: 'a' }, { number: 198, title: 'b' }]
+  expect(nextViewed(14, { activeChanged: false, maps })).toBe(14)
+  expect(nextViewed(14, { activeChanged: true, maps })).toBeNull()
+  expect(nextViewed(14, { activeChanged: false, maps: [{ number: 198, title: 'b' }] })).toBeNull()
+  expect(nextViewed(14, { activeChanged: false, maps: [] })).toBeNull()
+  // no list read yet (or a failed read): nothing to judge by
+  expect(nextViewed(14, { activeChanged: false, maps: null })).toBe(14)
+  expect(nextViewed(null, { activeChanged: false, maps })).toBeNull()
+})
+
+test('mapRowLayout marks the active map, bolds the viewed one and presses the others', () => {
+  const m = { number: 14, title: 'older map' }
+  expect(mapRowLayout(m, { active: 198, viewed: null, columns: 60 })).toEqual({
+    mark: '  ',
+    label: '#14 older map',
+    aside: null,
+    isActive: false,
+    isViewed: false,
+    isPressable: true,
+  })
+  const act = mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60 })
+  expect(act).toMatchObject({ mark: '● ', aside: ' active', isActive: true, isViewed: true, isPressable: false })
+  // viewing another map: the active one becomes pressable (back to active), the viewed one is not
+  expect(mapRowLayout({ number: 198, title: 't' }, { active: 198, viewed: 14, columns: 60 })).toMatchObject({
+    isActive: true,
+    isViewed: false,
+    isPressable: true,
+  })
+  expect(mapRowLayout(m, { active: 198, viewed: 14, columns: 60 })).toMatchObject({ isActive: false, isViewed: true, isPressable: false })
+})
+
+test('mapRowLayout cuts the title to the room left by the mark and the aside', () => {
+  const long = { number: 198, title: 'x'.repeat(200) }
+  const act = mapRowLayout(long, { active: 198, viewed: null, columns: 30 })
+  expect(act.label.endsWith('…')).toBe(true)
+  expect(act.mark.length + act.label.length + (act.aside?.length ?? 0)).toBeLessThanOrEqual(30)
+  const other = mapRowLayout({ number: 14, title: 'x'.repeat(200) }, { active: 198, viewed: null, columns: 30 })
+  expect(other.mark.length + other.label.length).toBeLessThanOrEqual(30)
+  expect(mapRowLayout({ number: 14, title: '' }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
 })
