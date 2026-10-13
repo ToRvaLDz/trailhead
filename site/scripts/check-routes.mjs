@@ -19,11 +19,11 @@ const siteRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const dist = path.join(siteRoot, 'dist');
 
 // #196: the verb guides, one page per engine cluster, each verb a section
-// with a stable explicit anchor. The union is the 23 verbs of the index.
+// with a stable explicit anchor. The union is the 24 verbs of the index.
 const commandClusters = {
   chart: ['new', 'adopt', 'ticket', 'inbox', 'grill'],
   work: ['work', 'quick', 'pause', 'resume', 'split', 'auto'],
-  view: ['map', 'dashboard', 'whiteboard'],
+  view: ['map', 'dashboard', 'whiteboard', 'panel'],
   capture: ['todo', 'seed', 'idea', 'note', 'bug'],
   manage: ['config', 'update', 'prune', 'audit'],
 };

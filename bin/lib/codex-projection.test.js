@@ -15,6 +15,7 @@ const {
   codexVerbSkillContent,
   codexVerbSkillAgentsYaml,
   codexVerbSkillPlan,
+  CODEX_MOD_ONLY_VERBS,
   codexHookEntries,
   enableCodexHooksFeature,
   enableCodexMultiAgentV2Feature,
@@ -160,19 +161,22 @@ ok('codexVerbSkillPlan: accepts a bare-string verb and skips empty/invalid', (()
 })());
 ok('codexVerbSkillPlan: null verbs yields nothing', codexVerbSkillPlan('/c', null).dirs.length === 0 && codexVerbSkillPlan('/c').dirs.length === 0);
 
+// #208: a verb only the Claude Code mod answers (the map panel) has no Codex projection.
+ok('CODEX_MOD_ONLY_VERBS names exactly the panel verb', Array.isArray(CODEX_MOD_ONLY_VERBS) && CODEX_MOD_ONLY_VERBS.length === 1 && CODEX_MOD_ONLY_VERBS[0] === 'panel');
+ok('codexVerbSkillPlan: never projects a mod-only verb, object or bare string', (() => {
+  const plan = codexVerbSkillPlan('/c', [{ verb: 'panel', description: 'x' }, 'panel', { verb: 'map' }]);
+  return plan.dirs.length === 1 && plan.dirs[0] === '/c/skills/trailhead-map' && !plan.writes.some((w) => /panel/.test(w.path));
+})());
+
 // --- codexHookEntries ---
 const entries = codexHookEntries('/h');
-ok('codexHookEntries returns 8 entries', Array.isArray(entries) && entries.length === 8);
-ok('codexHookEntries: commit-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-commit-guard.js') && e.command.includes('/h')));
-ok('codexHookEntries: secret-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-secret-guard.js')));
-ok('codexHookEntries: install-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-install-guard.js')));
-ok('codexHookEntries: search-guard is absent (Claude-Code-only, not projected to Codex)',
-  entries.every((e) => !e.command.includes('trailhead-search-guard.js')));
-ok('codexHookEntries: body-guard is PreToolUse/Bash', entries.some((e) =>
-  e.event === 'PreToolUse' && e.matcher === 'Bash' && e.command.includes('trailhead-body-guard.js')));
+ok('codexHookEntries returns 5 entries', Array.isArray(entries) && entries.length === 5);
+const bashEntries = entries.filter((e) => e.event === 'PreToolUse' && e.matcher === 'Bash');
+ok('codexHookEntries: exactly one PreToolUse/Bash registration', bashEntries.length === 1);
+ok('codexHookEntries: the Bash entry is the merged hook with exactly --guards=commit,secret,install,body',
+  bashEntries[0].command === 'node "/h/trailhead-bash-guards.js" --guards=commit,secret,install,body');
+ok('codexHookEntries: no per-guard script is registered on its own', entries.every((e) =>
+  !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(e.command)));
 ok('codexHookEntries: secret-read-guard is PreToolUse/Read|Bash', entries.some((e) =>
   e.event === 'PreToolUse' && e.matcher === 'Read|Bash' && e.command.includes('trailhead-secret-read-guard.js')));
 ok('codexHookEntries: injection-scanner is PostToolUse/Bash', entries.some((e) =>
@@ -401,5 +405,29 @@ ok('convertToCodex projects the anchor positives to Codex forms', (() => {
   return out.includes('$trailhead work') && out.includes('/new') &&
     !out.includes('/trailhead:work') && !out.includes('/clear');
 })());
+
+// #205: the work state helper and its session env var survive the projection;
+// the projected work skill and handoff carry the set/clear calls.
+ok('convertToCodex keeps the trailhead-work-state.js filename',
+  convertToCodex('node <templates>/trailhead-work-state.js set').includes('<templates>/trailhead-work-state.js set'));
+ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
+  convertToCodex('session from CLAUDE_CODE_SESSION_ID when set').includes('CLAUDE_CODE_SESSION_ID'));
+{
+  const skillsDir = path.join(__dirname, '../../plugins/trailhead/skills');
+  const workSkill = convertToCodex(fs.readFileSync(path.join(skillsDir, 'trailhead-work', 'SKILL.md'), 'utf8'));
+  ok('projected work skill carries the work-start set call',
+    workSkill.includes('trailhead-work-state.js set --repo <working-root> --map <n> --ticket <n> --title "<title>" --step discuss'));
+  const handoff = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'session-handoff.md'), 'utf8'));
+  ok('projected session handoff carries the work state clear call',
+    handoff.includes('trailhead-work-state.js clear --repo <working-root>'));
+  const teamwork = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'teamwork.md'), 'utf8'));
+  ok('projected teamwork carries the step change call',
+    teamwork.includes('trailhead-work-state.js set --repo <working-root> --step <step>'));
+  ok('projected teamwork carries the autoDone counter flag',
+    teamwork.includes('--auto true --auto-done <n>'));
+  const autoRef = convertToCodex(fs.readFileSync(path.join(skillsDir, 'trailhead-work', 'references', 'auto.md'), 'utf8'));
+  ok('projected auto reference carries the autoDone counter flag',
+    autoRef.includes('--auto true --auto-done <n>'));
+}
 
 console.log(`✓ codex-projection: ${passed} assertions passed`);

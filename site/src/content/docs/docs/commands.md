@@ -7,11 +7,11 @@ description: The full verb list, grouped by cluster, with a guide page per clust
 
 Every verb is also a namespaced command (`/trailhead:new`, `/trailhead:work`, `/trailhead:bug`, …) so typing `/trailhead` lists them all in the command picker. `/trailhead <verb>` and `/trailhead:<verb>` are equivalent.
 
-There are 23 verbs in five clusters. Each row below links to that verb's guide, which gives its syntax, arguments, what it does step by step, what it writes, and an example:
+There are 24 verbs in five clusters. Each row below links to that verb's guide, which gives its syntax, arguments, what it does step by step, what it writes, and an example:
 
 - [Chart](/docs/commands/chart): start a map or bring outside work into it.
 - [Work](/docs/commands/work): resolve tickets and manage their lifecycle.
-- [View](/docs/commands/view): read-only renders of the map, dashboard and whiteboard.
+- [View](/docs/commands/view): read-only renders of the map, dashboard and whiteboard, and the live map panel.
 - [Capture](/docs/commands/capture): zero-friction capture of tickets, fog and notes.
 - [Manage](/docs/commands/manage): config, update, prune, and audit.
 
@@ -55,6 +55,7 @@ Read-only renders of where the work stands. [Full guide](/docs/commands/view).
 | [`/trailhead:map`](/docs/commands/view#map) | show the low-res map (destination, decisions, frontier, fog) |
 | [`/trailhead:dashboard`](/docs/commands/view#dashboard) | show the repo dashboard: the pinned index of every open map, the whiteboard, and live counts |
 | [`/trailhead:whiteboard`](/docs/commands/view#whiteboard) | show the whiteboard: the loose (map-less) tickets and their frontier |
+| [`/trailhead:panel`](/docs/commands/view#panel) | open or close the live map panel: the active map's open tickets by state, with a `work` button per frontier ticket (Claude Code with the trailhead mod only) |
 
 ## Capture: zero friction, one confirmation line, resolves nothing
 

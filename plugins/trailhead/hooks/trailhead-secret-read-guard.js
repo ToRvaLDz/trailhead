@@ -44,6 +44,32 @@
 // are shared with trailhead-search-guard.js via lib/shell-scan.js, so the two
 // guards can never drift into two divergent tokenizers again.
 //
+// #214 fix: a secret read inside a command substitution was missed when the
+// substitution sat in double quotes (`echo "$(cat .env)"`, `x="$(cat .env)"`,
+// `echo "$(true; cat .env)"`): the quoted token hid it, and the splitter cut
+// inside the `$(..)`. Each outermost `$(..)` / `<(..)` / `>(..)` body (from
+// substitutionBodies in lib/shell-scan.js) is now also scanned as a command,
+// off a depth- and size-capped work-list.
+//
+// #216 fix: the same miss for backtick substitutions (`echo "`cat .env`"`,
+// `x="`cat .env`"`, `echo "${x:-`cat .env`}"`). scanLine now tracks a backtick
+// span and substitutionBodies returns its body (unescaped as the shell would
+// run it) alongside the `$(..)` ones, so the work-list scans it too.
+//
+// #218 fix: the same miss for a substitution in the body of an UNQUOTED heredoc
+// (`cat <<EOF` with `$(cat .env)` or a backtick inside): the shell runs it, but
+// heredoc bodies are data to the splitter and were never lexed. Each unquoted
+// body is now lexed as the shell reads one (heredocSubstitutionBodies: quotes
+// are literal there) and its outermost substitution bodies join the work-list.
+// A quoted delimiter (`<<'EOF'`) and an escaped `\$(..)` stay literal.
+//
+// #223 fix: a heredoc body fed to a shell interpreter on stdin (`bash <<'EOF'`,
+// `sh <<EOF`, `cat <<EOF | bash`) is a script the shell runs, whatever the
+// delimiter quoting, but bodies were only ever data. Each statement is now paired
+// with its own bodies by position (as trailhead-secret-guard.js does); when a
+// statement of its pipeline invokes a shell from a closed set, those bodies join
+// the work-list as commands. No wrappers (sudo, exec, nohup): out of scope.
+//
 // #180 fix: `docker`/`podman` `--env-file .env` (or `--env-file=.env`) was a
 // false positive: the container RUNTIME reads that file, not the agent. Only
 // that flag's value is exempted, and only for docker/podman verbs; see
@@ -59,6 +85,14 @@
 // Known gap (write class, not read): the cp/mv destination exemption can move
 // a link prepared under a non-secret name onto `.env`
 // (`ln -s .env.example l && mv l .env`).
+//
+// #227: a construct the guard cannot interpret with certainty (eval, source / `.`, a
+// bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted gh api body
+// key, a backslash-newline inside a word) is not emulated. As a FINAL gate, after the
+// precise scan, one that sits next to a secret-looking piece (`.env`, `.e""nv`, ...)
+// denies with SECRET_READ_UNMODELLED_CONSTRUCT and asks for the simple form; with no
+// such piece (`. venv/bin/activate && make`) it passes. The closed list is
+// lib/unmodelled.js.
 //
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
@@ -76,7 +110,12 @@
 const {
   basename,
   stripQuotes,
-  splitStatements,
+  splitStatementsWithSeparators,
+  countHeredocs,
+  skipEnvPrefix,
+  substitutionBodies,
+  heredocBodies,
+  heredocSubstitutionBodies,
   tokenize,
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
@@ -391,6 +430,47 @@ function scanStatementForSecretPath(stmt) {
   return scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
 }
 
+// #214: substitution bodies are scanned off an explicit work-list (no
+// recursion, so no stack overflow) under a cap on nesting depth and on the
+// total bytes of bodies scanned. Past the cap the remaining text is checked
+// crudely instead (see crudeSecretToken): the guard fails toward blocking.
+const MAX_SUB_DEPTH = 32;
+const MAX_SUB_BYTES = 64 * 1024;
+const CRUDE_SPLIT_RE = /[\s"'`()$;|&<>{}=]+/;
+
+// Fallback when the cap is hit: split the unscanned text on whitespace, quotes,
+// parens and operators, and return the first piece that is a secret path.
+function crudeSecretToken(text) {
+  for (const piece of text.split(CRUDE_SPLIT_RE)) {
+    if (piece && isSecretPathArg(piece)) return piece;
+  }
+  return null;
+}
+
+// #223: shells that read a script from stdin (closed set, no wrappers).
+const STDIN_SCRIPT_INTERPRETERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+// Reserved words that may precede the command word (no grouping, no wrappers).
+const LEADING_KEYWORDS = new Set(['then', 'do', 'else', 'time', '!']);
+// `env` options whose value is the next token (separate form, no `=`).
+const ENV_VALUE_OPTIONS = new Set(['-u', '-C', '--unset', '--chdir']);
+
+// True when the statement runs one of those shells: after leading NAME=value
+// assignments, an optional `env` (with its NAME=value and -option words), the
+// command word's basename is in the set. Flags after it do not matter.
+function invokesInterpreter(stmt) {
+  const tokens = tokenize(stmt);
+  let i = 0;
+  while (i < tokens.length && LEADING_KEYWORDS.has(tokens[i])) i++;
+  i += skipEnvPrefix(tokens.slice(i));
+  if (i < tokens.length && basename(stripQuotes(tokens[i])) === 'env') {
+    i++;
+    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i].startsWith('-'))) {
+      i += ENV_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    }
+  }
+  return i < tokens.length && STDIN_SCRIPT_INTERPRETERS.has(basename(stripQuotes(tokens[i])));
+}
+
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
 // `||`, and newlines all split, even with no surrounding whitespace, e.g.
 // `cat .env|grep KEY`) looking for a secret path used as a plain positional,
@@ -398,10 +478,80 @@ function scanStatementForSecretPath(stmt) {
 // (quotes/punctuation not necessarily stripped) or null. Best-effort: not a
 // full shell parser.
 function scanBashForSecretPath(cmd) {
-  const statements = splitStatements(cmd);
-  for (const stmt of statements) {
-    const hit = scanStatementForSecretPath(stmt);
-    if (hit) return hit;
+  const work = [{ text: String(cmd), depth: 0 }];
+  let bytes = 0;
+  for (let w = 0; w < work.length; w++) {
+    const { text, depth } = work[w];
+    if (depth > 0) bytes += text.length;
+    if (depth > MAX_SUB_DEPTH || bytes > MAX_SUB_BYTES) {
+      const hit = crudeSecretToken(text);
+      if (hit) return hit;
+      continue;
+    }
+    const bodies = heredocBodies(text);
+    const entries = splitStatementsWithSeparators(text);
+    let next = 0;
+    const pushed = new Set(); // bodies already scanned whole as commands
+    let pipe = []; // consecutive statements joined by `|`
+    const flush = () => {
+      if (pipe.some((p) => invokesInterpreter(p.text))) {
+        for (const doc of pipe.flatMap((p) => p.docs)) {
+          work.push({ text: doc.body, depth: depth + 1 });
+          pushed.add(doc);
+        }
+      }
+      pipe = [];
+    };
+    for (const entry of entries) {
+      const hit = scanStatementForSecretPath(entry.text);
+      if (hit) return hit;
+      const docs = bodies.slice(next, next + countHeredocs(entry));
+      next += docs.length;
+      pipe.push({ text: entry.text, docs });
+      if (entry.sep !== '|') flush();
+    }
+    flush();
+    // #214: a statement cut inside `"$(..)"` loses the closing context, and a
+    // double-quoted token hides its body from the per-token walk; scan each
+    // outermost substitution body as a command of its own (nested ones next).
+    for (const body of substitutionBodies(text)) work.push({ text: body, depth: depth + 1 });
+    // #218: an unquoted heredoc body is data to the splitter, but the shell runs
+    // the substitutions in it; a quoted delimiter makes the body literal.
+    // (#223: a body already pushed whole as a command needs no second push.)
+    for (const doc of bodies) {
+      if (doc.quoted || pushed.has(doc)) continue;
+      for (const body of heredocSubstitutionBodies(doc.body)) work.push({ text: body, depth: depth + 1 });
+    }
+  }
+  return null;
+}
+
+// --- unmodelled constructs (#227) ----------------------------------------------
+
+// Does a text hold a secret-looking piece once live backslash-newlines are joined and
+// quote characters dropped (`.e""nv` is `.env` to the shell)? Crude by design: the
+// precise scan above is exact and runs first, this only has to catch what it cannot see.
+function crudeSecretPiece(text) {
+  return crudeSecretToken(String(text).replace(/\\\n/g, '').replace(/["'`]/g, ''));
+}
+
+// A construct the guard cannot interpret (eval, source / `.`, a bash 5.3 `${ cmd; }`,
+// printf -v, a function definition, an alias, a quoted gh api body key, a backslash-newline
+// inside a word) next to a secret-looking piece: { hit, piece } or null. The piece only has
+// to sit in the construct's own statement or in the code it hides, which is not proof of a
+// read (`printf -v x %s .env` blocks too): the uncertain shape is blocked and the simple
+// form asked for, not emulated.
+function unmodelledSecretPiece(cmd) {
+  let lib; // loaded lazily: a missing or broken lib only switches this gate off
+  try {
+    lib = require('./lib/unmodelled.js');
+  } catch {
+    return null;
+  }
+  for (const hit of lib.findUnmodelled(cmd)) {
+    if (hit.id === 'api-field') continue; // a body-write concern (body-guard), not a read
+    const piece = crudeSecretPiece(hit.stmt) || crudeSecretPiece(hit.payload);
+    if (piece) return { hit, piece };
   }
   return null;
 }
@@ -420,12 +570,27 @@ function detectSecretRead(toolName, toolInput) {
   if (toolName === 'Bash') {
     const cmd = input.command || '';
     const hit = scanBashForSecretPath(cmd);
-    return hit ? { path: hit } : null;
+    if (hit) return { path: hit };
+    const um = unmodelledSecretPiece(cmd); // a final gate: the precise scan keeps priority
+    return um ? { path: um.piece, unmodelled: um.hit } : null;
   }
   return null;
 }
 
+function blockUnmodelled(hit) {
+  let redact; // the secret-guard's redactor; without it the message omits the sample
+  try {
+    ({ redact } = require('./trailhead-secret-guard.js'));
+  } catch {
+    redact = undefined;
+  }
+  const reason = require('./lib/unmodelled.js').unmodelledReason('secret-read guard', 'that it does not read a secret file (.env / .env.* / .secrets)', hit.unmodelled, redact);
+  process.stdout.write(JSON.stringify({ decision: 'block', code: 'SECRET_READ_UNMODELLED_CONSTRUCT', reason }));
+  process.exit(2);
+}
+
 function block(hit) {
+  if (hit.unmodelled) blockUnmodelled(hit);
   const reason =
     `trailhead secret-read guard: blocked a read of secret file \`${hit.path}\` ` +
     '(.env / .env.* / .secrets). This replaces the Read() deny permission rules ' +

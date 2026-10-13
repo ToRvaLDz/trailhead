@@ -96,4 +96,59 @@ ok('gh --foo --bar issue edit 5 resolves issue/edit (two unknown boolean flags)'
 ok('gh repo view owner/repo resolves sub "repo" (not forced into a write keyword)',
   (() => { const r = parseGhSubcommand('gh repo view owner/repo'); return r.sub === 'repo'; })());
 
+// --- #219: a quoted or split word is the same word for bash ---
+ok('"gh" issue comment resolves issue/comment',
+  (() => { const r = parseGhSubcommand('"gh" issue comment 5'); return r && r.sub === 'issue' && r.verb === 'comment'; })());
+ok("gh 'issue' comment resolves issue/comment",
+  (() => { const r = parseGhSubcommand("gh 'issue' comment 5"); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('gh issue com""ment resolves the verb comment',
+  (() => { const r = parseGhSubcommand('gh issue com""ment 5'); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('"/usr/bin/gh" api resolves api',
+  (() => { const r = parseGhSubcommand('"/usr/bin/gh" api x'); return r && r.sub === 'api'; })());
+ok('\\gh and g"h" and $\'gh\' are the gh binary',
+  ['\\gh issue edit 5', 'g"h" issue edit 5', "$'gh' issue edit 5"].every((c) => { const r = parseGhSubcommand(c); return r && r.sub === 'issue' && r.verb === 'edit'; }));
+ok('gh is\\sue comment resolves issue',
+  (() => { const r = parseGhSubcommand('gh is\\sue comment 5'); return r.sub === 'issue' && r.verb === 'comment'; })());
+ok('"ghx" issue is not the gh binary', parseGhSubcommand('"ghx" issue comment 5') === null);
+ok("gh 'repo' view still resolves repo",
+  (() => { const r = parseGhSubcommand("gh 'repo' view"); return r.sub === 'repo' && r.verb === 'view'; })());
+
+// --- #219: dequote decodes ANSI-C spans and drops quotes and escapes ---
+{
+  const { dequote } = require('./gh-subcommand.js');
+  ok('dequote drops quote characters', dequote(`a'b'"c"`) === 'abc');
+  ok('dequote keeps an escaped char', dequote('\\gh') === 'gh');
+  ok('dequote decodes a hex escape', dequote(`$'\\x67h'`) === 'gh');
+  ok('dequote decodes an octal escape', dequote(`$'\\151ssue'`) === 'issue');
+  ok('dequote decodes a unicode escape', dequote(`$'\\u0067h'`) === 'gh');
+  ok('dequote decodes single-letter escapes', dequote(`$'a\\tb\\\\c\\'d'`) === "a\tb\\c'd");
+  ok('dequote keeps a backslash that bash keeps inside double quotes', dequote('"\\nn"') === '\\nn');
+  ok('dequote drops the backslash of \\$ inside double quotes', dequote('"\\$x"') === '$x');
+  ok('dequote drops a backslash-newline inside double quotes', dequote('"a\\\nb"') === 'ab');
+  ok('dequote keeps a backslash literal inside single quotes', dequote("'a\\b'") === 'a\\b');
+  ok('dequote drops the $ of a locale-quoted span', dequote('$"gh"') === 'gh');
+  ok('dequote leaves a bare variable alone', dequote('$HOME') === '$HOME');
+  const { dequoteSpans } = require('./gh-subcommand.js');
+  ok('dequoteSpans tags each char with its quoted span', JSON.stringify(dequoteSpans(`-"F"/"p a"`)) === JSON.stringify({ text: '-F/p a', spans: [-1, 1, -1, 2, 2, 2] }));
+  ok('dequoteSpans keeps one span for "-F handling"', dequoteSpans('"-F x"').spans.every((x) => x === 1));
+  ok('body-sources re-exports the same dequote', require('./body-sources.js').dequote === dequote);
+  const { flagValues } = require('./body-sources.js');
+  const J = JSON.stringify;
+  ok("flagValues sees a quoted long flag", J(flagValues(["'--body-file'", 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a split long flag', J(flagValues(['--body-fi""le', 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a quoted short flag', J(flagValues([`"-F"`, 'f'], '--body-file', '-F')) === J(['f']));
+  ok('flagValues sees a fully quoted --flag=value', J(flagValues(['"--body-file=/p"'], '--body-file', '-F')) === J(['/p']));
+  ok('flagValues keeps a raw value untouched', J(flagValues(['--body', `'a b'`], '--body', '-b')) === J([`'a b'`]));
+}
+
+// --- #225: a flag between the subcommand and the verb is skipped ---
+{
+  const r = (c) => { const x = parseGhSubcommand(c); return x.sub + '/' + x.verb; };
+  ok('gh issue -R o/r comment 5 resolves issue/comment', r('gh issue -R o/r comment 5') === 'issue/comment');
+  ok('gh pr --repo o/r edit 5 resolves pr/edit', r('gh pr --repo o/r edit 5') === 'pr/edit');
+  ok('gh issue --repo=o/r comment 5 resolves issue/comment', r('gh issue --repo=o/r comment 5') === 'issue/comment');
+  ok('gh -R a/b issue -R o/r edit 5 resolves issue/edit', r('gh -R a/b issue -R o/r edit 5') === 'issue/edit');
+  ok('gh issue --help comment: boolean flag takes no value', r('gh issue --help comment') === 'issue/comment');
+}
+
 console.log(`✓ gh-subcommand: ${passed} assertions passed`);

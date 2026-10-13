@@ -5,15 +5,17 @@
 //   2. Conventional Commits subject: <type>(<scope>)?: <subject>, <=72 chars.
 // Blocks with exit 2 + {"decision":"block","reason":...}; allows everything else.
 // Crash-safe: any error → exit 0 (never wedge the user's workflow).
-// Self-contained, no dependencies.
+// Self-contained, no dependencies. Exports a pure evaluate(cmd) so the merged
+// trailhead-bash-guards.js can run it in-process; run directly it is unchanged.
 
 const { checkCommitMessage } = require('./lib/commit-message-check.js');
 
 const CO_AUTHORED = /co-authored-by\s*:/i;
 
-function block(code, reason) {
-  process.stdout.write(JSON.stringify({ decision: 'block', code, reason }));
-  process.exit(2);
+const ALLOW = { kind: 'allow' };
+
+function blockVerdict(code, reason) {
+  return { kind: 'block', payload: { decision: 'block', code, reason } };
 }
 
 // Token-walk: is this shell string a `git commit …`? Handles env-var prefixes
@@ -50,18 +52,15 @@ function extractMessage(cmd) {
   return null;
 }
 
-let data = '';
-const timer = setTimeout(() => process.exit(0), 5000);
-process.stdin.on('data', (c) => (data += c));
-process.stdin.on('end', () => {
-  clearTimeout(timer);
+// Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
+// exits or writes; any internal error falls through to allow (crash-safe).
+function evaluate(cmd) {
   try {
-    const cmd = (JSON.parse(data).tool_input || {}).command || '';
-    if (!isGitCommit(cmd)) process.exit(0);
+    if (!isGitCommit(cmd)) return ALLOW;
 
     // Co-Authored-By anywhere in the command (covers -m, -F, heredocs).
     if (CO_AUTHORED.test(cmd)) {
-      block('CO_AUTHORED_BY_FORBIDDEN',
+      return blockVerdict('CO_AUTHORED_BY_FORBIDDEN',
         'trailhead: do not add a Co-Authored-By trailer to commits. Remove it and commit again.');
     }
 
@@ -71,10 +70,38 @@ process.stdin.on('end', () => {
       // `#` lines as message text (cleanup=whitespace), so a `#…` first line is
       // a real subject to validate, not a comment to skip.
       const verdict = checkCommitMessage(msg, { stripComments: false });
-      if (!verdict.ok) block(verdict.code, verdict.reason);
+      if (!verdict.ok) return blockVerdict(verdict.code, verdict.reason);
     }
   } catch {
     // fall through to allow
   }
+  return ALLOW;
+}
+
+// Standalone CLI: write the payload and exit exactly as the guard always did.
+function run(data) {
+  let cmd = '';
+  try {
+    cmd = (JSON.parse(data).tool_input || {}).command || '';
+  } catch {
+    process.exit(0);
+  }
+  const v = evaluate(cmd);
+  if (v.kind === 'block') {
+    process.stdout.write(JSON.stringify(v.payload));
+    process.exit(2);
+  }
   process.exit(0);
-});
+}
+
+if (require.main === module) {
+  let data = '';
+  const timer = setTimeout(() => process.exit(0), 5000);
+  process.stdin.on('data', (c) => (data += c));
+  process.stdin.on('end', () => {
+    clearTimeout(timer);
+    run(data);
+  });
+}
+
+module.exports = { evaluate };

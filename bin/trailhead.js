@@ -243,18 +243,27 @@ function claudePaths(configDir) {
     settings: path.join(configDir, 'settings.json'),
   };
 }
-const HOOK_FILES = ['trailhead-commit-guard.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-secret-read-guard.js', 'trailhead-body-guard.js', 'trailhead-mockup-link-guard.js', 'trailhead-mockup-link-stop.js', 'trailhead-check-update.js'];
+// The five Bash guard modules. They are shipped, but only require()d by the
+// merged trailhead-bash-guards.js (one process per Bash call), never registered
+// on their own. Legacy installs registered each one; the installers strip those.
+const BASH_GUARD_MODULES = ['trailhead-commit-guard.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-body-guard.js'];
+// Every hook script copied into the hooks dir (shipped runtime files).
+const HOOK_FILES = [...BASH_GUARD_MODULES, 'trailhead-bash-guards.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-read-guard.js', 'trailhead-mockup-link-guard.js', 'trailhead-mockup-link-stop.js', 'trailhead-check-update.js'];
+// The registered entrypoints: the shipped files that must appear in
+// settings.json / hooks.json (everything but the require()d guard modules).
+const ENTRYPOINT_FILES = HOOK_FILES.filter((f) => !BASH_GUARD_MODULES.includes(f));
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
 // require('./lib/commit-message-check.js'); trailhead-search-guard.js and
 // trailhead-secret-read-guard.js both do require('./lib/shell-scan.js'), #135
 // follow-up; trailhead-body-guard.js and trailhead-secret-guard.js both do
-// require('./lib/gh-subcommand.js'), #153 follow-up; trailhead-check-update.js
+// require('./lib/gh-subcommand.js'), #153 follow-up; trailhead-secret-guard.js
+// also does require('./lib/body-sources.js'), #210; trailhead-check-update.js
 // does require('./lib/model-defaults-review.js'), which in turn reads the
 // sibling model-defaults.json, #186; both mockup-link hooks do
 // require('./lib/mockup-link.js')). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must
 // not clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'model-defaults-review.js', 'model-defaults.json', 'mockup-link.js'];
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'body-sources.js', 'unmodelled.js', 'model-defaults-review.js', 'model-defaults.json', 'mockup-link.js'];
 // search-guard is Claude-Code-specific (#169), and so is mockup-link-guard
 // (it gates the AskUserQuestion tool, which Codex lacks): excluded from both
 // the Codex hook copy and the Codex verify spec's expected hookFiles, so a
@@ -264,6 +273,10 @@ const CODEX_HOOK_EXCLUDE = ['trailhead-search-guard.js', 'trailhead-mockup-link-
 // Claude Code gates the AskUserQuestion call instead, so it is neither copied
 // nor expected on a Claude install.
 const CLAUDE_HOOK_EXCLUDE = ['trailhead-mockup-link-stop.js'];
+const claudeShippedHooks = () => HOOK_FILES.filter((f) => !CLAUDE_HOOK_EXCLUDE.includes(f));
+const claudeEntrypoints = () => ENTRYPOINT_FILES.filter((f) => !CLAUDE_HOOK_EXCLUDE.includes(f));
+const codexShippedHooks = () => HOOK_FILES.filter((f) => !CODEX_HOOK_EXCLUDE.includes(f));
+const codexEntrypoints = () => ENTRYPOINT_FILES.filter((f) => !CODEX_HOOK_EXCLUDE.includes(f));
 
 // Copy the hook scripts and their runtime libs into a destination hooks dir
 // (Claude's ~/.claude/hooks or Codex's skills/trailhead/hooks). Shared by both
@@ -357,6 +370,12 @@ function stripHook(s, event, substr) {
   s.hooks[event] = s.hooks[event].filter((g) => (g.hooks || []).length);
 }
 
+// Drop the per-guard PreToolUse registrations an earlier install made (and the
+// pre-#169 Codex search-guard one): the merged entrypoint replaces all of them.
+function stripLegacyBashGuards(s) {
+  for (const f of BASH_GUARD_MODULES) stripHook(s, 'PreToolUse', f);
+}
+
 function uninstallClaude(configDir) {
   const P = claudePaths(configDir);
   // Sweep every trailhead-owned skill dir (current set + any stale dir a prior
@@ -371,12 +390,9 @@ function uninstallClaude(configDir) {
   // with other plugins, so never rmrf the whole dir.
   HOOK_LIB_FILES.forEach((f) => rmrf(path.join(P.hooksDir, 'lib', f)));
   const s = readJSON(P.settings);
-  stripHook(s, 'PreToolUse', 'trailhead-commit-guard.js');
-  stripHook(s, 'PreToolUse', 'trailhead-secret-guard.js');
-  stripHook(s, 'PreToolUse', 'trailhead-install-guard.js');
-  stripHook(s, 'PreToolUse', 'trailhead-search-guard.js');
+  stripLegacyBashGuards(s);
+  stripHook(s, 'PreToolUse', 'trailhead-bash-guards.js');
   stripHook(s, 'PreToolUse', 'trailhead-secret-read-guard.js');
-  stripHook(s, 'PreToolUse', 'trailhead-body-guard.js');
   stripHook(s, 'PreToolUse', 'trailhead-mockup-link-guard.js');
   stripHook(s, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
   stripHook(s, 'SessionStart', 'trailhead-check-update.js');
@@ -419,12 +435,11 @@ function installClaude(configDir, { useSymlink }) {
   }
 
   const s = readJSON(P.settings);
+  // Migration: an earlier install registered each Bash guard on its own; the
+  // merged entrypoint below replaces all five.
+  stripLegacyBashGuards(s);
   const added = [
-    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-commit-guard.js')),
-    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-secret-guard.js')),
-    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-install-guard.js')),
-    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-search-guard.js')),
-    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-body-guard.js')),
+    addHook(s, 'PreToolUse', 'Bash', hookCmd('trailhead-bash-guards.js')),
     addHook(s, 'PreToolUse', 'Read|Bash', hookCmd('trailhead-secret-read-guard.js')),
     addHook(s, 'PreToolUse', 'AskUserQuestion', hookCmd('trailhead-mockup-link-guard.js')),
     addHook(s, 'PostToolUse', 'Bash', hookCmd('trailhead-issue-injection-scanner.js')),
@@ -438,7 +453,8 @@ function installClaude(configDir, { useSymlink }) {
   const spec = claudeVerifySpec(configDir, {
     skillDirs: shippedSkillDirs(),
     sharedFiles: readSharedCoreFiles(),
-    hookFiles: HOOK_FILES.filter((f) => !CLAUDE_HOOK_EXCLUDE.includes(f)),
+    hookFiles: claudeShippedHooks(),
+    entrypointFiles: claudeEntrypoints(),
     hookLibFiles: HOOK_LIB_FILES,
     env: process.env,
     home: os.homedir(),
@@ -653,7 +669,7 @@ function installCodex(configDir, { useSymlink }) {
   // Migration: strip a pre-#169 search-guard registration. Its target is
   // always gone now (search-guard is never copied to Codex), so a prior
   // install's stale entry would otherwise fail the post-install check below.
-  stripHook(h, 'PreToolUse', 'trailhead-search-guard.js');
+  stripLegacyBashGuards(h);
   for (const e of codexHookEntries(L.hooksScriptsDir)) addHook(h, e.event, e.matcher, e.command);
   writeJSON(L.hooksJson, h);
 
@@ -709,7 +725,8 @@ function installCodex(configDir, { useSymlink }) {
   const spec = codexVerifySpec(configDir, {
     skillDirs: shippedSkillDirs(),
     sharedFiles: readSharedCoreFiles(),
-    hookFiles: HOOK_FILES.filter((f) => !CODEX_HOOK_EXCLUDE.includes(f)),
+    hookFiles: codexShippedHooks(),
+    entrypointFiles: codexEntrypoints(),
     hookLibFiles: HOOK_LIB_FILES,
     env: process.env,
     home: os.homedir(),
@@ -772,16 +789,11 @@ function uninstallCodex(configDir) {
   // settings.json flags alone.
   if (fs.existsSync(L.hooksJson)) {
     const h = readJSON(L.hooksJson);
-    stripHook(h, 'PreToolUse', 'trailhead-commit-guard.js');
-    stripHook(h, 'PreToolUse', 'trailhead-secret-guard.js');
-    stripHook(h, 'PreToolUse', 'trailhead-install-guard.js');
-    // search-guard is no longer projected to Codex (#169: it is
-    // Claude-Code-specific), so it is never registered by a current install;
-    // this strip is retained only to clean up a stale entry left by a
-    // pre-#169 install that did register it.
-    stripHook(h, 'PreToolUse', 'trailhead-search-guard.js');
+    // The merged Bash guard entry, plus every legacy per-guard registration
+    // (commit, secret, install, body, and the pre-#169 search-guard one).
+    stripHook(h, 'PreToolUse', 'trailhead-bash-guards.js');
+    stripLegacyBashGuards(h);
     stripHook(h, 'PreToolUse', 'trailhead-secret-read-guard.js');
-    stripHook(h, 'PreToolUse', 'trailhead-body-guard.js');
     stripHook(h, 'PostToolUse', 'trailhead-issue-injection-scanner.js');
     stripHook(h, 'Stop', 'trailhead-mockup-link-stop.js');
     stripHook(h, 'SessionStart', 'trailhead-check-update.js');

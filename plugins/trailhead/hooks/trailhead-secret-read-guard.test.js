@@ -34,6 +34,18 @@ ok('Bash grep -n KEY .env.production is denied', !!detectSecretRead('Bash', { co
 ok('Bash cat app/.env.local is denied', !!detectSecretRead('Bash', { command: 'cat app/.env.local' }));
 ok('Bash cat --file=.env is denied', !!detectSecretRead('Bash', { command: 'cat --file=.env' }));
 
+// --- line continuation splits a secret path (#222) ---
+ok('Bash cat \\<nl>.env is denied', !!detectSecretRead('Bash', { command: 'cat \\\n.env' }));
+ok('Bash echo $(cat \\<nl>.env) is denied', !!detectSecretRead('Bash', { command: 'echo $(cat \\\n.env)' }));
+ok('Bash cat .e\\<nl>nv is denied', !!detectSecretRead('Bash', { command: 'cat .e\\\nnv' }));
+ok('Bash cat .e\\\\<nl>nv (escaped backslash) is allowed', !detectSecretRead('Bash', { command: 'cat .e\\\\\nnv' }));
+ok('Bash continuation inside single quotes stays literal', !detectSecretRead('Bash', { command: "echo 'x\\\n.env'" }));
+ok('Bash consecutive continuations cat \\<nl>\\<nl>.env are denied', !!detectSecretRead('Bash', { command: 'cat \\\n\\\n.env' }));
+ok('Bash separator on the continuation line is denied', !!detectSecretRead('Bash', { command: 'echo a \\\n; cat .env' }));
+ok('Bash continuation inside a backtick span is denied', !!detectSecretRead('Bash', { command: 'echo `cat \\\n.env`' }));
+ok('Bash continuation inside "$(..)" is denied', !!detectSecretRead('Bash', { command: 'echo "$(cat .e\\\nnv)"' }));
+ok('Bash trailing backslash on the last line is allowed', !detectSecretRead('Bash', { command: 'echo done \\' }));
+
 // --- ALLOW cases (no false positives) ---
 ok('Read src/app.ts is allowed', !detectSecretRead('Read', { file_path: 'src/app.ts' }));
 ok('Bash grep -n x pubspec.yaml is allowed', !detectSecretRead('Bash', { command: 'grep -n x pubspec.yaml' }));
@@ -46,6 +58,8 @@ ok('Read .environment (near-miss) is allowed', !detectSecretRead('Read', { file_
 // --- #135 follow-up: Finding 1 - glued shell metacharacters must not bypass detection ---
 ok('Bash cat .env|grep KEY is denied (glued pipe)', !!detectSecretRead('Bash', { command: 'cat .env|grep KEY' }));
 ok('Bash cat .env;echo done is denied (glued semicolon)', !!detectSecretRead('Bash', { command: 'cat .env;echo done' }));
+ok('Bash cat .env after an arithmetic << on the previous line is denied (#212)',
+  !!detectSecretRead('Bash', { command: 'echo $((1<<3))\ncat .env' }));
 ok('Bash cat .env&&echo done is denied (glued &&)', !!detectSecretRead('Bash', { command: 'cat .env&&echo done' }));
 ok('Bash bash -c "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'bash -c "cat .env"' }));
 ok('Bash eval "cat .env" is denied (quoted sub-command)', !!detectSecretRead('Bash', { command: 'eval "cat .env"' }));
@@ -180,13 +194,169 @@ denyCmd('cp .env.example .env -f');
 denyCmd('cp .env.example .env && cat .env');
 denyCmd('git check-ignore .env; cat .env');
 
+// #214: a secret read inside a command substitution, even double-quoted
+const hit214 = (c) => { const r = detectSecretRead('Bash', { command: c }); return !!r && r.path === '.env'; };
+for (const c of ['echo "$(true; cat .env)"', 'echo "$(cat .env)"', 'x="$(cat .env)"', 'diff <(cat .env) x',
+  'echo "$(echo "$(cat .env)")"', 'echo "$(\ncat .env\n)"']) {
+  ok(`Bash \`${c}\` is denied with path .env (#214)`, hit214(c));
+}
+allowCmd("echo '$(cat .env)'");
+allowCmd('echo "$(echo hi)"');
+allowCmd('echo "$((1+2))"');
+allowCmd('git commit -m "document .env usage"');
+
+// #214 review: heredoc inside a substitution, substitution inside arithmetic
+for (const c of ['echo "$(cat <<E\nfoo\nE\n; cat .env)"', 'echo $(cat <<E\nfoo\nE\n; cat .env)',
+  'echo "$(( $(cat .env) ))"', 'echo $(( $(cat .env) ))', 'echo "$[ $(cat .env) ]"']) {
+  ok(`Bash \`${c}\` is denied with path .env (#214 review)`, hit214(c));
+}
+allowCmd('echo "$((1+2))"');
+allowCmd('echo $((a+(b)))');
+allowCmd('echo "$(( $(echo 1) + 1 ))"');
+
+// #216: a secret read inside a backtick substitution, even double-quoted
+for (const c of ['echo "`cat .env`"', 'x="`cat .env`"', 'echo "${x:-`cat .env`}"', 'echo `cat .env`',
+  'echo "$(echo `cat .env`)"', 'echo `echo $(cat .env)`', 'echo `echo \\`cat .env\\``']) {
+  ok(`Bash \`${c}\` is denied with path .env (#216)`, hit214(c));
+}
+for (const c of ['echo "`echo \'"\'`"; cat .env', 'echo `true\ncat .env\n`',
+  'echo `echo \\`echo \\\\\\`cat .env\\\\\\`\\``']) {
+  ok(`Bash \`${c}\` is denied with path .env (#216 review)`, hit214(c));
+}
+{ // \" inside a double-quoted backtick body: bash reads the quoted .env (the path keeps its quotes)
+  const r = detectSecretRead('Bash', { command: 'echo "`cat \\".env\\"`"' });
+  ok('Bash `echo "`cat \\".env\\"`"` is denied (#216 review)', !!r && /\.env/.test(r.path));
+}
+allowCmd('echo "run `ls` then `pwd`"');
+allowCmd("echo '`cat .env`'");
+allowCmd('echo "\\`cat .env\\`"');
+
+// #218: a secret read inside the body of an UNQUOTED heredoc (the shell runs $(..) and backticks there)
+for (const c of ['cat <<EOF\n$(cat .env)\nEOF', 'cat <<EOF\n`cat .env`\nEOF', 'cat <<-EOF\n\t$(cat .env)\n\tEOF',
+  "cat <<EOF\nit's $(cat .env)\nEOF", 'cat <<EOF\nsay "hi $(cat .env)\nEOF', 'cat <<EOF\n${x:-$(cat .env)}\nEOF',
+  'cat <<EOF\nfirst line\nthen text $(cat .env) more\nEOF', 'x=$(cat <<EOF\n$(cat .env)\nEOF\n)',
+  'cat <<A\n$(cat <<B\n)\nB\ncat .env)\nA', 'cat <<EOF\n$\\\n(cat .env)\nEOF', 'cat <<EOF\n$(cat .e\\\nnv)\nEOF',
+  'cat <<EOF\n$(cat \\\n.env)\nEOF', "cat <<A <<'B'\n$(cat .env)\nA\nx\nB"]) {
+  ok(`Bash \`${c}\` is denied with path .env (#218)`, hit214(c));
+}
+for (const c of ["cat <<'EOF'\n$(cat .env)\nEOF", 'cat <<"EOF"\n$(cat .env)\nEOF', "cat <<'EOF'\n`cat .env`\nEOF",
+  'cat <<EOF\n$$(cat .env)\nEOF', "cat <<A <<'B'\nx\nA\n$(cat .env)\nB",
+  'cat <<EOF\n\\$(cat .env)\nEOF', 'cat <<EOF\n\\`cat .env\\`\nEOF', 'cat <<EOF\ncat .env\nEOF']) {
+  allowCmd(c);
+}
+
+// #223: a heredoc body fed to a shell interpreter on stdin is a script, whatever the delimiter quoting
+for (const c of ["bash <<'EOF'\ncat .env\nEOF", 'sh <<EOF\ncat .env\nEOF', 'bash <<EOF\ncat .env\nEOF',
+  'cat <<EOF | bash\ncat .env\nEOF', 'zsh -s <<EOF\ncat .env\nEOF', 'VAR=1 bash <<EOF\ncat .env\nEOF',
+  'env FOO=1 bash <<EOF\ncat .env\nEOF', '/bin/bash <<EOF\ncat .env\nEOF', 'dash <<EOF\ncat .env\nEOF',
+  'env -i FOO=1 ksh <<EOF\ncat .env\nEOF', "cat <<'EOF' | sh\ncat .env\nEOF", 'bash -x <<EOF\necho $(cat .env)\nEOF',
+  'echo hi; bash <<EOF\ncat .env\nEOF']) {
+  ok(`Bash \`${c}\` is denied with path .env (#223)`, hit214(c));
+}
+// #223 review: env option values, leading shell keywords, heredoc pairing
+for (const c of ['env -u FOO bash <<EOF\ncat .env\nEOF', 'env -C /tmp bash <<EOF\ncat .env\nEOF',
+  'env --unset FOO sh <<EOF\ncat .env\nEOF', 'env --chdir /tmp bash <<EOF\ncat .env\nEOF',
+  'env -S bash <<EOF\ncat .env\nEOF', 'if true; then bash <<EOF\ncat .env\nEOF', 'time bash <<EOF\ncat .env\nEOF',
+  'while x; do bash <<EOF\ncat .env\nEOF', '! bash <<EOF\ncat .env\nEOF', 'true; then time bash <<EOF\ncat .env\nEOF',
+  'cat <<EOF |& bash\ncat .env\nEOF', 'bash <<EOF &\ncat .env\nEOF', 'cat <<A; bash <<B\necho hi\nA\ncat .env\nB']) {
+  ok(`Bash \`${c}\` is denied with path .env (#223 review)`, hit214(c));
+}
+allowCmd('cat <<A; bash <<B\ncat .env\nA\necho hi\nB');
+
+for (const c of ["cat <<'EOF'\ncat .env\nEOF", 'cat <<EOF\ncat .env\nEOF', "tee f <<'EOF'\ncat .env\nEOF",
+  'cat <<EOF; bash x.sh\ncat .env\nEOF', "bash <<'EOF'\necho hi\nEOF", 'cat <<EOF | bash\necho hi\nEOF']) {
+  allowCmd(c);
+}
+
+// #214: deep nesting is bounded (explicit work-list, capped), never a stack overflow
+{
+  const nest = (n, inner) => 'echo ' + '"$('.repeat(n) + inner + ')"'.repeat(n);
+  for (const n of [40, 2000, 6000]) {
+    const t0 = Date.now();
+    const r = detectSecretRead('Bash', { command: nest(n, 'cat .env') });
+    const ms = Date.now() - t0;
+    ok(`nesting n=${n} with a secret is denied with path .env`, !!r && r.path === '.env');
+    ok(`nesting n=${n} with a secret completes under 1s (${ms}ms)`, ms < 1000);
+  }
+  const t1 = Date.now();
+  const clean = detectSecretRead('Bash', { command: nest(6000, 'cat README.md') });
+  const ms1 = Date.now() - t1;
+  ok('deep nesting with no secret is allowed', clean === null);
+  ok(`deep nesting with no secret completes under 1s (${ms1}ms)`, ms1 < 1000);
+}
+
 const a6 = runHook('Bash', { command: 'git check-ignore -v .env' });
 ok('hook allows Bash(git check-ignore -v .env) end-to-end (exit 0, no output)', a6.code === 0 && a6.out.trim() === '');
 const a7 = runHook('Bash', { command: 'cp .env.example .env' });
 ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.code === 0 && a7.out.trim() === '');
 
+// --- #227: constructs the guard cannot interpret, near a secret-looking piece ---
+{
+  const CODE = 'SECRET_READ_UNMODELLED_CONSTRUCT';
+  const code = (command) => { const r = runHook('Bash', { command }); return r.code === 2 ? JSON.parse(r.out).code : null; };
+  for (const c of [
+    'eval cat .e""nv',
+    'eval "cat .e\'\'nv"',
+    'echo ${ cat .e""nv; }',
+    'echo ${| cat .e""nv; }',
+    'source .e""nv',
+    '. .e""nv && make',
+    'printf -v x %s .e""nv',
+    "alias c='cat .e\"\"nv'",
+    "alias c='cat .env'; c",
+    'f() { cat .e""nv; }; f',
+    'echo "${ cat .e""nv; }"',
+    'x=$(source .e""nv)',
+  ]) {
+    const hit = detectSecretRead('Bash', { command: c });
+    ok(`denies an unmodelled construct near a secret piece: ${c}`, !!hit && !!hit.unmodelled);
+    ok(`... with the unmodelled code (exit 2): ${c}`, code(c) === CODE);
+  }
+  ok('a quoted api body key mentioning .env in prose is not a read', detectSecretRead('Bash', { command: "gh api -X PATCH repos/a/b/issues/1 -f 'body'='document the .env file'" }) === null);
+  ok('... and the hook allows it', runHook('Bash', { command: "gh api -X PATCH repos/a/b/issues/1 -f 'body'='document the .env file'" }).code === 0);
+  // The precise scan keeps priority and its code.
+  ok('a precise read keeps SECRET_READ_BLOCKED', code('eval cat .env') === 'SECRET_READ_BLOCKED');
+  ok('a precise read inside a function body keeps SECRET_READ_BLOCKED', code('f() { cat .env; }; f') === 'SECRET_READ_BLOCKED');
+  ok('detectSecretRead keeps { path } for a precise read', (() => { const h = detectSecretRead('Bash', { command: 'cat .env' }); return h && h.path === '.env' && !h.unmodelled; })());
+  // Plain controls pass: the construct has no secret-looking piece near it.
+  for (const c of [
+    '. venv/bin/activate && make',
+    'source ~/.venv/bin/activate && pytest',
+    "alias ll='ls -l'",
+    'alias g=gh; g issue list',
+    'eval "$(ssh-agent)"',
+    'printf -v x %s y; echo $x',
+    'f() { ls; }; f',
+    'echo ${ date; }',
+    'echo "alias .environment"',
+    'cat .e\\\n  nv.md',
+  ]) ok(`allows a construct with no secret piece: ${c}`, detectSecretRead('Bash', { command: c }) === null && runHook('Bash', { command: c }).code === 0);
+  const r = runHook('Bash', { command: 'echo ${ cat .e""nv; }' });
+  const reason = JSON.parse(r.out).reason;
+  ok('the message names the guard and asks for the simple form', /^trailhead secret-read guard: /.test(reason) && /Rewrite it in a simple form/.test(reason));
+  const T = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'.slice(0, 36);
+  const leak = JSON.parse(runHook('Bash', { command: `echo \${ cat .e""nv; echo ${T}; }` }).out).reason;
+  ok('the message never echoes a token', !leak.includes(T) && !leak.includes('ghp_'));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
+
+// --- #227: a missing unmodelled lib degrades to the previous behaviour ---
+{
+  const fs = require('fs');
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srg-nolib-'));
+  fs.mkdirSync(path.join(dir, 'lib'));
+  for (const f of fs.readdirSync(path.join(__dirname, 'lib'))) {
+    if (/\.(js|json)$/.test(f) && !f.endsWith('.test.js') && f !== 'unmodelled.js') fs.copyFileSync(path.join(__dirname, 'lib', f), path.join(dir, 'lib', f));
+  }
+  fs.copyFileSync(path.join(__dirname, 'trailhead-secret-read-guard.js'), path.join(dir, 'trailhead-secret-read-guard.js'));
+  const bare = require(path.join(dir, 'trailhead-secret-read-guard.js'));
+  ok('without the unmodelled lib the guard still loads and denies a precise read', !!bare.detectSecretRead('Bash', { command: 'cat .env' }));
+  ok('without the unmodelled lib the unmodelled gate is off', bare.detectSecretRead('Bash', { command: 'source .e""nv' }) === null);
+  fs.rmSync(dir, { recursive: true });
+}
 
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);

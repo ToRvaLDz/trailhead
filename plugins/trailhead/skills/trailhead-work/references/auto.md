@@ -53,4 +53,6 @@ Whatever ends the run (frontier drained or human interrupt), auto emits **one ru
 - **what resolved** (the tickets auto closed this run);
 - **what remains**: the **set-aside** tickets (fog, `decision` convergences, out-of-scope rulings, HITL `task` checklists, human-only UAT steps, and rail actions including any **ready-to-integrate branch / PR** under `git: pr`) and **why each needs the human**, the **paused / stuck** tickets from the failure budget, and any **blocked dependents** still waiting.
 
+Before handing back, if a work state file remains (an interrupted or paused ticket), run `node <templates>/trailhead-work-state.js set --repo <working-root> --auto false`. During the run every work-state `set` adds `--auto true --auto-done <n>`, `n` being the tickets resolved so far in this run (`autoDone` in the file).
+
 Then hand back to the human with the normal session handoff framing (`../../_shared/session-handoff.md`): the human decides what to take next (dissolve fog, make a held decision, authorise a rail action, then re-invoke `/trailhead:auto` to drain more).

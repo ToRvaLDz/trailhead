@@ -123,6 +123,12 @@ const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates
 ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
 ok('codex: commit-msg-sync script is byte-identical to source',
   fs.readFileSync(codexCommitMsgSync, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js'), 'utf8'));
+// #205: the work state helper rides in templates/ on Codex too, executable.
+const codexWorkState = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-work-state.js');
+ok('codex: work-state helper projected', fs.existsSync(codexWorkState));
+ok('codex: work-state helper is byte-identical to source',
+  fs.readFileSync(codexWorkState, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-work-state.js'), 'utf8'));
+ok('codex: work-state helper keeps its executable bit', (fs.statSync(codexWorkState).mode & 0o111) !== 0);
 // Il sync del label guard (migrazione all'if a livello di job) viaggia con templates/.
 const codexLabelGuardSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
 ok('codex: label-guard-sync script is byte-identical to source', fs.existsSync(codexLabelGuardSync) &&
@@ -143,6 +149,8 @@ ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.
 // dir, so its discoverability is the cluster itself; use a non-colliding verb.
 ok('codex: per-verb skills/trailhead-bug/SKILL.md exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md')));
 ok('codex: trailhead-bug SKILL.md frontmatter is at byte 0', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').startsWith('---\nname: trailhead-bug\n'));
+// #208: /trailhead:panel is answered by the Claude Code mod only: no Codex skill for it.
+ok('codex: no per-verb skill for the mod-only panel verb', !fs.existsSync(path.join(codexDir, 'skills', 'trailhead-panel')));
 ok('codex: trailhead-bug skill delegates to $trailhead bug', fs.readFileSync(path.join(codexDir, 'skills', 'trailhead-bug', 'SKILL.md'), 'utf8').includes('$trailhead bug'));
 // #190: audit verb projected per-verb on Codex, description from commands/audit.md.
 const auditCmdSrc190 = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'audit.md'), 'utf8');
@@ -695,17 +703,36 @@ const codexHooksJsonPath = path.join(codexDir, 'hooks.json');
 ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
 const codexHooksJson = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
 const codexHooksJsonStr = JSON.stringify(codexHooksJson);
-ok('codex: hooks.json registers commit-guard under PreToolUse', codexHooksJsonStr.includes('trailhead-commit-guard.js') &&
-  (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-commit-guard.js'))));
-ok('codex: hooks.json registers secret-guard under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-secret-guard.js'))));
+ok('codex: hooks.json registers the merged Bash guards under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => g.matcher === 'Bash' &&
+  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body'))));
+ok('codex: hooks.json registers none of the per-guard scripts on their own', !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(codexHooksJsonStr));
+ok('codex: the five guard modules the merged hook requires are still shipped (no search)',
+  ['commit', 'secret', 'install', 'body'].every((n) => fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', `trailhead-${n}-guard.js`))) &&
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-bash-guards.js')));
 ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
+
+// #202: the mod (hooks/mod/register.tsx + the "modules" key) is Claude Code only;
+// the Codex projection must carry neither.
+function listFilesRecursive(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    return e.isDirectory() ? listFilesRecursive(full) : [full];
+  });
+}
+ok('codex: hooks.json has no "modules" key (mod is Claude-only, #202)', !('modules' in codexHooksJson));
+ok('codex: no register.tsx under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => path.basename(f) === 'register.tsx'));
+ok('codex: no .ts or .tsx file anywhere under the install dir (#202)', !listFilesRecursive(codexDir).some((f) => f.endsWith('.ts') || f.endsWith('.tsx')));
 
 ok('codex: skills/trailhead/hooks/trailhead-secret-guard.js exists', fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-secret-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'commit-message-check.js')));
 ok('codex: skills/trailhead/hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-subcommand.js')));
+ok('codex: skills/trailhead/hooks/lib/body-sources.js exists (secret-guard require target, #210)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'body-sources.js')));
+ok('codex: skills/trailhead/hooks/lib/unmodelled.js exists (guards require target, #227)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'unmodelled.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-defaults-review.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults.json exists (#186)',
@@ -834,7 +861,7 @@ ok('codex uninstall: cluster trailhead-view gone', !fs.existsSync(path.join(code
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);
-  return !str.includes('trailhead-commit-guard.js') && !str.includes('trailhead-secret-guard.js') &&
+  return !str.includes('trailhead-bash-guards.js') && !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(str) &&
     !str.includes('trailhead-issue-injection-scanner.js') && !str.includes('trailhead-check-update.js');
 })());
 
@@ -863,16 +890,24 @@ ok('claude: trailhead-work/../_shared/ticket-language.md resolves', fs.existsSyn
 
 ok('claude: commands/trailhead/work.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'work.md')));
 ok('claude: commands/trailhead/audit.md projected', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'audit.md')));
+ok('claude: commands/trailhead/panel.md projected (the mod answers it)', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'panel.md')));
 ok('claude: commands/trailhead/auto.md exists', fs.existsSync(path.join(claudeDir, 'commands', 'trailhead', 'auto.md')));
 ok('claude: hooks/trailhead-commit-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-commit-guard.js')));
 ok('claude: hooks/lib/commit-message-check.js exists (commit-guard require target)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'commit-message-check.js')));
 ok('claude: hooks/lib/gh-subcommand.js exists (body-guard/secret-guard require target, #153)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-subcommand.js')));
+ok('claude: hooks/lib/body-sources.js exists (secret-guard require target, #210)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'body-sources.js')));
+ok('claude: hooks/lib/unmodelled.js exists (guards require target, #227)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'unmodelled.js')));
 ok('claude: hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults-review.js')));
 ok('claude: hooks/lib/model-defaults.json exists (#186)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults.json')));
+
+// #202: the mod is not delivered by the npm installer yet.
+ok('claude: no hooks/mod/ dir in the npm install (#202)', !fs.existsSync(path.join(claudeDir, 'hooks', 'mod')));
 
 // #185: the commit-msg hook sync script ships wholesale with templates/ too.
 const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
@@ -1023,7 +1058,15 @@ for (const nm of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
 const settingsPath = path.join(claudeDir, 'settings.json');
 ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
-ok('claude: settings.json references commit-guard', settingsContent.includes('trailhead-commit-guard.js'));
+ok('claude: settings.json registers the merged Bash guards', settingsContent.includes('trailhead-bash-guards.js'));
+ok('claude: settings.json registers none of the per-guard scripts on their own',
+  !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(settingsContent));
+ok('claude: exactly one PreToolUse/Bash trailhead-bash-guards registration', (() => {
+  const s = JSON.parse(settingsContent);
+  return (s.hooks.PreToolUse || []).flatMap((g) => g.hooks || []).filter((h) => h.command.includes('trailhead-bash-guards.js')).length === 1;
+})());
+ok('claude: hooks/trailhead-bash-guards.js and its five modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard']
+  .every((n) => fs.existsSync(path.join(claudeDir, 'hooks', `trailhead-${n}.js`))));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
 ok('claude: hooks/trailhead-mockup-link-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-guard.js')));
@@ -1347,6 +1390,78 @@ const missingBodyGuardPkg = brokenPkg((p) => fs.rmSync(path.join(p, 'plugins', '
   ok('(h) pre-#169 search-guard migration: the stale entry is gone', !afterHooksJson.includes('trailhead-search-guard.js'));
 }
 
+// (#207) Migration to the merged Bash guard hook. An install that registered
+// each guard on its own ends with only the merged entry; install and uninstall
+// are idempotent; uninstall removes the merged entry and every legacy one.
+const LEGACY_GUARD_RE = /trailhead-(commit|secret|install|search|body)-guard\.js/;
+const bashGuardCommands = (registry) => (registry.hooks.PreToolUse || [])
+  .flatMap((g) => (g.matcher === 'Bash' ? g.hooks || [] : []))
+  .map((h) => h.command)
+  .filter((c) => c.includes('trailhead-bash-guards.js') || LEGACY_GUARD_RE.test(c));
+{
+  const mDir = mktmp();
+  runInstaller([`--claude`, `--dir=${mDir}`]);
+  const settingsFile = path.join(mDir, 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  const hooksDirM = path.join(mDir, 'hooks');
+  settings.hooks.PreToolUse = settings.hooks.PreToolUse.map((g) => ({
+    ...g,
+    hooks: g.hooks.filter((h) => !h.command.includes('trailhead-bash-guards.js')),
+  })).filter((g) => g.hooks.length);
+  const legacyGroup = { matcher: 'Bash', hooks: ['commit', 'secret', 'install', 'search', 'body']
+    .map((n) => ({ type: 'command', command: `node "${path.join(hooksDirM, `trailhead-${n}-guard.js`)}"` })) };
+  settings.hooks.PreToolUse.push(legacyGroup);
+  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  const out = runPkg(repoRoot, [`--claude`, `--dir=${mDir}`]);
+  ok('(#207) claude migration: exit 0', out.status === 0);
+  const after = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  const cmds = bashGuardCommands(after);
+  ok('(#207) claude migration: only the merged entry remains', cmds.length === 1 && cmds[0].includes('trailhead-bash-guards.js'));
+  const once = fs.readFileSync(settingsFile, 'utf8');
+  runInstaller([`--claude`, `--dir=${mDir}`]);
+  ok('(#207) claude install twice leaves the same settings.json', fs.readFileSync(settingsFile, 'utf8') === once);
+  runInstaller([`--claude`, `--dir=${mDir}`, '--uninstall']);
+  const gone = fs.readFileSync(settingsFile, 'utf8');
+  ok('(#207) claude uninstall strips the merged entry', !gone.includes('trailhead-bash-guards.js'));
+  runInstaller([`--claude`, `--dir=${mDir}`, '--uninstall']);
+  ok('(#207) claude uninstall twice leaves the same settings.json', fs.readFileSync(settingsFile, 'utf8') === gone);
+}
+{
+  const mDir = mktmp();
+  const hooksJsonFile = path.join(mDir, 'hooks.json');
+  const scriptsDir = path.join(mDir, 'skills', 'trailhead', 'hooks');
+  runInstaller([`--codex`, `--dir=${mDir}`]);
+  const reg = JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8'));
+  reg.hooks.PreToolUse = reg.hooks.PreToolUse.map((g) => ({
+    ...g,
+    hooks: g.hooks.filter((h) => !h.command.includes('trailhead-bash-guards.js')),
+  })).filter((g) => g.hooks.length);
+  reg.hooks.PreToolUse.push({ matcher: 'Bash', hooks: ['commit', 'secret', 'install', 'search', 'body']
+    .map((n) => ({ type: 'command', command: `node "${path.join(scriptsDir, `trailhead-${n}-guard.js`)}"` })) });
+  fs.writeFileSync(hooksJsonFile, JSON.stringify(reg, null, 2));
+  const out = runPkg(repoRoot, [`--codex`, `--dir=${mDir}`]);
+  ok('(#207) codex migration: exit 0', out.status === 0);
+  const cmds = bashGuardCommands(JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8')));
+  ok('(#207) codex migration: only the merged entry remains', cmds.length === 1 &&
+    cmds[0].endsWith(' --guards=commit,secret,install,body'));
+  const once = fs.readFileSync(hooksJsonFile, 'utf8');
+  runInstaller([`--codex`, `--dir=${mDir}`]);
+  ok('(#207) codex install twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === once);
+  // A legacy registration reappearing next to the merged one is removed on uninstall too.
+  const withLegacy = JSON.parse(once);
+  withLegacy.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [
+    { type: 'command', command: `node "${path.join(scriptsDir, 'trailhead-search-guard.js')}"` },
+    { type: 'command', command: `node "${path.join(scriptsDir, 'trailhead-commit-guard.js')}"` },
+  ] });
+  fs.writeFileSync(hooksJsonFile, JSON.stringify(withLegacy, null, 2));
+  runInstaller([`--codex`, `--dir=${mDir}`, '--uninstall']);
+  const gone = fs.readFileSync(hooksJsonFile, 'utf8');
+  ok('(#207) codex uninstall strips the merged entry and every legacy one',
+    !gone.includes('trailhead-bash-guards.js') && !LEGACY_GUARD_RE.test(gone));
+  runInstaller([`--codex`, `--dir=${mDir}`, '--uninstall']);
+  ok('(#207) codex uninstall twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === gone);
+}
+
 // (i) an unresolved env var on a registered target warns instead of failing.
 {
   const vDir = mktmp();
@@ -1486,6 +1601,12 @@ ok('source: manage SKILL.md routes audit to references/auditing.md', /\*\*`audit
 const dispatcherSrc190 = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead', 'SKILL.md'), 'utf8');
 ok('source: dispatcher argument-hint lists audit', /argument-hint: "[^"]*\|audit\|[^"]*"/.test(dispatcherSrc190));
 ok('source: dispatcher manage-cluster routing list includes audit', /manage cluster is built[^\n]*`prune`, and `audit`/.test(dispatcherSrc190));
+// #208: panel is a verb the Claude Code mod answers; the dispatcher lists it but routes it to no skill.
+ok('source: dispatcher argument-hint lists panel', /argument-hint: "[^"]*\|panel\|[^"]*"/.test(dispatcherSrc190));
+ok('source: dispatcher says panel is mod-only and routes it to no skill', /`panel`\*\* verb routes to no skill[^\n]*Claude Code[^\n]*mod/.test(dispatcherSrc190));
+const panelCmdSrc208 = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'commands', 'panel.md'), 'utf8');
+ok('source: commands/panel.md invokes no skill', !/Skill tool|skill name|\$trailhead|trailhead-(view|work|chart|capture|manage)/.test(panelCmdSrc208));
+ok('source: commands/panel.md tells the model the panel is unavailable in one line', /2\.1\.287\+[^\n]*not available/.test(panelCmdSrc208));
 
 const auditingPath190 = path.join(sourceSkillsDir, 'trailhead-manage', 'references', 'auditing.md');
 const auditingSrc = fs.existsSync(auditingPath190) ? fs.readFileSync(auditingPath190, 'utf8') : '';
@@ -1688,6 +1809,14 @@ for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
     }
   }
 }
+
+// #202: the plugin's own hooks.json declares exactly one mod module, and it exists.
+const pluginHooksJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'hooks', 'hooks.json'), 'utf8'));
+ok('source: hooks.json declares exactly one module (#202)', Array.isArray(pluginHooksJson.modules) && pluginHooksJson.modules.length === 1);
+ok('source: the declared module file exists, relative to hooks.json (#202)',
+  fs.existsSync(path.resolve(repoRoot, 'plugins', 'trailhead', 'hooks', pluginHooksJson.modules[0])));
+ok('source: hooks.json keeps its command hooks next to the module (#202)',
+  ['PreToolUse', 'PostToolUse', 'SessionStart'].every((ev) => (pluginHooksJson.hooks?.[ev] || []).length > 0));
 
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });

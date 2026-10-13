@@ -8,6 +8,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "test": "node scripts/test.js"
+  },
   "files": [
     "bin/",
     "plugins/",

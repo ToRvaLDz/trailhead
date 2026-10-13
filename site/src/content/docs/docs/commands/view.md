@@ -1,6 +1,6 @@
 ---
 title: "View commands"
-description: "map, dashboard, and whiteboard: the renders that show where the work stands."
+description: "map, dashboard, whiteboard, and panel: the renders that show where the work stands."
 ---
 
 The view verbs present state. They change nothing on the tracker, with a few exceptions noted per verb: the dashboard's create-and-pin self-heal, and a map close that only happens on your explicit yes. No isolation workspace is set up for them. Back to the [command index](/docs/commands).
@@ -104,5 +104,39 @@ Nothing. It is a read-only render; the dashboard is touched only if it was missi
 ```
 
 trailhead lists, for example, a `todo` and a `bug` on the frontier, one ticket in progress under a teammate, and one blocked ticket with its blocker.
+
+### /trailhead:panel
+
+Open or close the live map panel: the active map's open tickets by state, refreshed as the work moves. Claude Code only: the panel is drawn by the trailhead mod (Claude Code 2.1.287+ with the trailhead plugin), so on Codex and in a session without the mod the command answers that the panel is not available.
+
+**Syntax**
+
+```
+/trailhead:panel
+```
+
+**Arguments**
+
+None.
+
+**What it does**
+
+1. Toggles the panel: it opens when closed (`Map panel opened.`) and closes when open (`Map panel closed.`). If the terminal is too narrow to place it, the answer says why.
+2. Shows the active map (`.trailhead/active-map`) as a link with its destination, then its open tickets grouped as Frontier, In progress and Blocked, each with its count. A row is `#n title` (a link to the issue) and its type; every assigned row shows its holder as `@login`, and the ticket in play in this session is marked `▸`. A tracker ticket marked unverified is never listed, only counted in one dim line.
+3. Each Frontier row has a `work` button that runs `/trailhead:work <n>`; while a turn is running it is queued behind it and the row shows `queued`.
+4. Refreshes from the tracker on session start, turn end, a Bash `gh issue` write, the `refresh` button and a slow timer, never more than once every 15 seconds and never while the panel is closed. If `gh` fails it keeps the last list and shows one dim reason with the age of that list.
+5. In fullscreen, opens by itself once when a map is active; it never opens by itself on the main screen, and never again after you close it.
+
+**What it writes**
+
+Nothing. It only reads the tracker through `gh`; the only thing it runs is `/trailhead:work <n>` when you press `work`.
+
+**Example**
+
+```
+/trailhead:panel
+```
+
+trailhead answers `Map panel opened.` and docks the panel beside the transcript, with the frontier tickets of the active map, who holds each in progress, and the blocked ones.
 
 Next: [capture commands](/docs/commands/capture) for adding to the map or the whiteboard in one line. See also [Captures & the whiteboard](/docs/captures).
