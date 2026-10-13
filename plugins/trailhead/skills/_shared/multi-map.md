@@ -13,7 +13,7 @@ gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state ope
   --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
 ```
 
-**Active map.** Which map a session works is the **active map**: a `.trailhead/active-map` marker at the working root (one line `#<n>`, **gitignored**, per-session local state like `session-ticket`, never committed). `/trailhead:work` and `/trailhead:map` default to it; naming a map/ticket explicitly always overrides. Each checkout/clone (so each teammate) has its own.
+**Active map.** Which map a session works is the **active map**: a `.trailhead/active-map` marker at the working root (one line `#<n>`, **gitignored**, per-session local state like `session-ticket`, never committed). `/trailhead:work` and `/trailhead:map` default to it; naming a map/ticket explicitly always overrides. A named ticket that carries a `trailhead:map-<n>` label makes that map the active map (write `.trailhead/active-map`); a whiteboard ticket leaves the active map alone. Each checkout/clone (so each teammate) has its own.
 
 **Park & switch** = **pause** the in-flight ticket (`/trailhead:pause`, a `PAUSED` checkpoint), then point the active map at the other's number. Nothing else to save: every map lives on the Issues, durable. Resume later with `/trailhead:resume`, or just `/trailhead:work` once that map is active again.
 

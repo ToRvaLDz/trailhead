@@ -520,7 +520,6 @@ const workSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-wo
 ok('source: trailhead-work SKILL.md out-of-scope close drops the native sub-issue edge',
   /out of scope\*\* \(label, then \*\*drop its native sub-issue edge\*\*/.test(workSkillSource));
 
-const namedTicketMapSentence = /a named ticket that carries a `trailhead:map-<n>` label makes that map the active map \(write `\.trailhead\/active-map`\); a whiteboard ticket leaves the active map alone/i;
 // The text of a structural unit of a source, from its anchor: a missing anchor fails loudly.
 const unitFrom = (source, anchor, endPattern) => {
   const start = source.indexOf(anchor);
@@ -533,10 +532,16 @@ const unitFrom = (source, anchor, endPattern) => {
 const workStep1 = unitFrom(workSkillSource, '1. Load the **map**', /\n(?:\d+\. |\s*\n)/);
 // quick's isolation bullet: up to the end of its line.
 const quickIsolationBullet = unitFrom(workSkillSource, '- **Same isolation setup as `work`.**', /\n/);
-ok('source: trailhead-work SKILL.md work step 1 makes a named ticket\'s map the active map',
-  namedTicketMapSentence.test(workStep1));
-ok('source: trailhead-work SKILL.md quick isolation bullet makes a named ticket\'s map the active map',
-  namedTicketMapSentence.test(quickIsolationBullet));
+// The rule is stated once, in multi-map.md; the work places point to it.
+const multiMapSource = fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'multi-map.md'), 'utf8');
+const namedTicketMapSentence = /a named ticket that carries a `trailhead:map-<n>` label makes that map the active map \(write `\.trailhead\/active-map`\); a whiteboard ticket leaves the active map alone/i;
+const namedTicketMapPointer = /named ticket's map becomes the active map[\s\S]*whiteboard ticket leaves it alone[\s\S]*multi-map\.md/i;
+ok('source: multi-map.md Active map paragraph states the named-ticket rule',
+  namedTicketMapSentence.test(unitFrom(multiMapSource, '**Active map.**', /\n/)));
+ok('source: trailhead-work SKILL.md work step 1 points to the named-ticket active-map rule',
+  /its map becomes the active map, a whiteboard ticket leaves it alone[\s\S]*multi-map\.md/i.test(workStep1));
+ok('source: trailhead-work SKILL.md quick isolation bullet points to the named-ticket active-map rule',
+  namedTicketMapPointer.test(quickIsolationBullet));
 
 const inboxSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'inbox.md'), 'utf8');
 ok('source: inbox.md out-of-scope close drops the native sub-issue edge',
