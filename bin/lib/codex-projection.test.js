@@ -417,6 +417,12 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   const workSkill = convertToCodex(fs.readFileSync(path.join(skillsDir, 'trailhead-work', 'SKILL.md'), 'utf8'));
   ok('projected work skill carries the work-start set call',
     workSkill.includes('trailhead-work-state.js set --repo <working-root> --map <n> --ticket <n> --title "<title>" --step discuss'));
+  // #234: the scope confirm menu call-site and the adapter's numbered-list rule both reach Codex.
+  const workInjected = injectCodexAdapterHeader(workSkill);
+  ok('projected work skill carries the step 3 scope-confirm menu call-site',
+    /AskUserQuestion[\s\S]{0,300}\*\*Proceed\*\*/.test(workInjected));
+  ok('projected work skill carries the adapter AskUserQuestion -> numbered list rule',
+    workInjected.includes('## C. AskUserQuestion -> plain-text numbered list'));
   const handoff = convertToCodex(fs.readFileSync(path.join(skillsDir, '_shared', 'session-handoff.md'), 'utf8'));
   ok('projected session handoff carries the work state clear call',
     handoff.includes('trailhead-work-state.js clear --repo <working-root>'));

@@ -543,6 +543,30 @@ ok('source: trailhead-work SKILL.md work step 1 points to the named-ticket activ
 ok('source: trailhead-work SKILL.md quick isolation bullet points to the named-ticket active-map rule',
   namedTicketMapPointer.test(quickIsolationBullet));
 
+// --- #234: the ticket-start scope confirm is a host menu, not free text ------
+const workStep3 = unitFrom(workSkillSource, '3. **Brief the ticket and confirm scope', /\n(?:\d+\. |\s*\n)/);
+const quickBriefBullet = unitFrom(workSkillSource, '- **Briefs and confirms scope first', /\n/);
+const choicesScopeSource = fs.readFileSync(path.join(sourceSkillsDir, "_shared", "choices.md"), "utf8");
+ok('source: work step 3 poses the scope confirm as an AskUserQuestion menu, Proceed (Recommended) first, Change something second',
+  /`AskUserQuestion`[\s\S]{0,300}\*\*Proceed\*\* \(Recommended\)[\s\S]{0,200}\*\*Change something\*\*/.test(workStep3));
+ok('source: work step 3 offers the delegate option on the scope confirm',
+  /\*\*delegate\*\*[\s\S]{0,200}choices\.md/i.test(workStep3));
+ok('source: work step 3 divergent change is a menu (as-is vs separate ticket) without delegate',
+  /diverges[\s\S]{0,500}`AskUserQuestion`[\s\S]{0,300}without the delegate option/.test(workStep3));
+ok('source: work step 3 has a plain-text numbered list fallback for hosts without a question tool (Codex)',
+  /no structured question tool[\s\S]{0,120}plain-text numbered list/.test(workStep3));
+ok('source: work step 3 keeps the auto sentence (proceeds without stopping to brief)',
+  /`auto` proceeds \(takes the delegate option\) without stopping to brief/.test(workStep3));
+ok('source: work step 3 no longer asks the change question as free text',
+  !/ask whether they want to change anything/.test(workStep3));
+ok('source: quick brief bullet poses the same menu and keeps a one-line brief for quick "<text>"',
+  /`AskUserQuestion`/.test(quickBriefBullet) && /\*\*Proceed\*\* \(Recommended\)/.test(quickBriefBullet) &&
+  /one-line brief/.test(quickBriefBullet) && !/one-line confirmation/.test(quickBriefBullet));
+ok('source: choices.md call-site table has the ticket-start scope confirm row (delegate yes, defer no)',
+  /\| Ticket-start scope confirm \(`work`\/`quick` brief\) \| Yes[^|]*\| No[^|]*\|/.test(choicesScopeSource));
+ok('source: choices.md call-site table has the divergent-change row (delegate no, defer no)',
+  /\| Divergent change at the brief \(as-is vs separate ticket\) \| No[^|]*\| No[^|]*\|/.test(choicesScopeSource));
+
 const inboxSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-chart', 'references', 'inbox.md'), 'utf8');
 ok('source: inbox.md out-of-scope close drops the native sub-issue edge',
   /`trailhead:out-of-scope`, \*\*drop its native sub-issue edge\*\*/.test(inboxSource));
