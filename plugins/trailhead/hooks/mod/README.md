@@ -22,7 +22,9 @@ the status text, the pipeline stages) are in `work-state-view.ts`. The map pane 
 - **Orphaned**: when the file names another session than the current one (a `/clear`, a
   resume, a new window), the entry gets ` · orphaned, resume?` and the band is drawn dim with
   `orphaned, resume?` after the stages. A `/clear` marks the state on screen as orphaned at
-  once, without waiting for a turn. A file with no session is never orphaned.
+  once, without waiting for a turn: the engine empties the mod's atoms on `/clear`, so the file is
+  read again when the new session starts (`classic.SessionStart`, source `clear`). A file with no
+  session is never orphaned.
 - **Quiet**: with no file, or a file that cannot be parsed (no valid ticket and step), the
   band draws nothing and the status entry is cleared. A survey holding the band makes the
   band yield, and the status entry stays. A read error other than "missing file" keeps what
@@ -70,10 +72,11 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `In progress · n` and `Blocked · n` (an empty group is left out). A row is `#n title` (a link to
   the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket in play
   in this session (work state, not orphaned) is marked `▸` in the accent; blocked rows are dim. A
-  frontier row has a `work` button that runs `/trailhead:work <n>` through `$.command.run`, which
-  the host queues behind a running turn; the row shows `queued` until the call settles, and a
-  second press meanwhile is ignored. `trailhead:unverified` tickets are never listed, only counted
-  in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh` button and
+  frontier row has a `work` button that clears the conversation (`/clear`) and then runs
+  `/trailhead:work <n>` in the new one, both through `$.command.run`, which the host queues behind a
+  running turn; the row shows `queued` until the calls settle (across the reset too), and a
+  second press meanwhile is ignored. A refused `/clear` runs no work command.
+  `trailhead:unverified` tickets are never listed, only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh` button and
   `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
   reasons: `gh not installed`, `gh not authenticated (run gh auth login)`,
   `offline: cannot reach GitHub`, `gh failed (exit <n>)`). Titles come from GitHub and are untrusted:
@@ -113,6 +116,11 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
     axis end as `<age> ago` instead of `now`. The footer stays about the list.
   - **Cap**: `gh` returns the newest tickets first, so a history that reaches `HISTORY_LIMIT`
     misses the oldest; the section then adds `history capped at 5000: starts at the oldest ticket read`.
+- **Through `/clear`**: the engine empties the mod's atoms. At `session.end` with reason `clear` the pane
+  notes the auto-open flag, the viewed map and the active map; at `classic.SessionStart` (source `clear`)
+  it puts the flag back (a pane the person closed is not opened again), reads the active map, puts the
+  view back only when the active map is still the one it was set against, and refreshes at once, past
+  the floor. The pane is filled again with no turn.
 - **Links**: the map and the rows are `Link`s, clickable where the terminal takes OSC 8 links. A
   terminal Claude Code cannot identify (for example `TERM=xterm-256color` with no `TERM_PROGRAM`)
   gets the engine's fallback instead: the text, then the URL in dim on the next line, nothing to
@@ -131,8 +139,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
-- **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `pendingWork`, `paneAutoOpened`. Module variables hold only
-  the queue and the timers.
+- **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
+  the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
+  because `/clear` empties the atoms while they are needed.
 - **Validator note**: `claude plugin validate` follows `$` only inside one file and refuses two
   hooks on one event with no matcher. So `map-pane.tsx` registers `session.start`, `turn.complete`
   and `tool.call` with matchers that always hold (or narrow: the `gh issue` write), next to the
@@ -165,7 +174,7 @@ Run from the repo root.
 - Everything at once: `npm test`. It runs the `*.test.js` suites, then validate and test.
   Without `claude` on PATH it fails; set `TRAILHEAD_SKIP_MOD_CHECKS=1` to skip the mod checks.
 - Debugging: `claude --debug`, or `claude -p --plugin-dir plugins/trailhead --debug-file <file> "say ok"`.
-  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start,turn.complete,tool.call,command.run,ui.render,ui.close,prompt.compose,session.compact,turn.start,session.end`.
+  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start,classic.SessionStart,turn.complete,tool.call,command.run,ui.render,ui.close,prompt.compose,session.compact,turn.start,session.end`.
   A module that fails to parse shows `hooks module did not load`.
 
 ## Optional type check
