@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const SESSION = 'sess-A'
+const NEXT_SESSION = 'sess-B'
 const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
@@ -36,7 +37,7 @@ const BAND_PROPS = {
 // record of every status line and every write to the plugin's atoms. The bottom
 // of ui.render draws a marked Box, so a test can tell the engine's own drawing
 // (the plugin yielded) from the band.
-const rig = (on: On) => {
+const rig = (on: On, engine: any) => {
   const r = {
     file: null as string | Error | null,
     session: SESSION,
@@ -56,11 +57,29 @@ const rig = (on: On) => {
     r.statuses.push(e.text)
     return { value: undefined }
   })
+  // The engine's /clear, in the order seen live: the old session ends, the atoms reset and the id
+  // changes, the new session starts. The reset is the atoms reading as never written until the
+  // plugin writes them again.
+  const emptied = new Set<string>()
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
     r.writes += 1
+    emptied.delete(e.key)
     return next(e)
   })
+  on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
+    const read = await next(e)
+    return emptied.has(e.key) ? { value: { ...read.value, value: undefined } } : read
+  })
+  on('command.run', async (_$, e) => {
+    if (e.command !== 'clear') return { text: '' }
+    await engine.session.end({ reason: 'clear', sessionId: r.session, resume: {} })
+    ;['workState', 'isOrphaned', 'promptSnapshot'].forEach(key => emptied.add(key))
+    r.session = NEXT_SESSION
+    await engine.classic.SessionStart({ source: 'clear' })
+    return { text: '' }
+  })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('classic.SessionStart', () => ({}))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
@@ -86,7 +105,7 @@ for (const surface of SURFACES) {
     $.ui.mount({ plugin: 'trailhead', surface, component: 'AbovePrompt', props: { ...BAND_PROPS, ...props } })
 
   test(`no state file: the band yields and the status stays clear [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     expect(lastStatus(r)).toBeUndefined()
     const ui = await mountBand($)
@@ -96,7 +115,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a state file shows entry and band; removing it clears both [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     await $.session.start(START)
     expect(lastStatus(r)).toBe(STATUS_PLAN)
@@ -123,7 +142,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a read error other than ENOENT keeps the last state [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     await $.session.start(START)
     const ui = await mountBand($)
@@ -134,7 +153,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the status names the map, or the whiteboard when there is none [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ map: null })
     await $.session.start(START)
     expect(lastStatus(r)).toBe(`whiteboard · #203 ${TITLE} · plan`)
@@ -144,7 +163,7 @@ for (const surface of SURFACES) {
   })
 
   test(`each step highlights its stage [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ step: 'discuss' })
     await $.session.start(START)
     const ui = await mountBand($)
@@ -188,7 +207,7 @@ for (const surface of SURFACES) {
   })
 
   test(`row one: bold accent ticket, title truncated with an ellipsis [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ title: 'x'.repeat(200) })
     await $.session.start(START)
     const ui = await mountBand($, { bodyColumns: 40 })
@@ -211,7 +230,7 @@ for (const surface of SURFACES) {
   })
 
   test(`an autonomous run shows its counter, right aligned on row two [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ auto: true, autoDone: 3 })
     await $.session.start(START)
     expect(lastStatus(r)).toBe(`${STATUS_PLAN} · auto 3 done`)
@@ -226,7 +245,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a state from another session is orphaned: dim band, tag, status [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ session: 'sess-OLD' })
     await $.session.start(START)
     expect(lastStatus(r)).toBe(`${STATUS_PLAN} · orphaned, resume?`)
@@ -255,7 +274,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the band yields while a survey holds it [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     await $.session.start(START)
     const ui = await mountBand($, { hasSurvey: true })
@@ -264,7 +283,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a Bash call naming the helper re-reads after it ran and redraws [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     on('tool.call', { tool: 'Bash' }, () => {
       // The helper "runs" here: the file changes before the tool answers.
@@ -286,7 +305,7 @@ for (const surface of SURFACES) {
   })
 
   test(`an unchanged file causes no status call and no atom write [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     await $.session.start(START)
     await mountBand($)
@@ -307,7 +326,7 @@ for (const surface of SURFACES) {
   })
 
   test(`/clear marks a shown state orphaned at once [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText()
     await $.session.start(START)
     const ui = await mountBand($)
@@ -323,8 +342,19 @@ for (const surface of SURFACES) {
     expect(lastStatus(r)).toBe(STATUS_PLAN)
   })
 
+  test(`after /clear the engine resets the atoms and the band shows the ticket orphaned without a turn [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.file = stateText()
+    await $.session.start(START)
+    const ui = await mountBand($)
+    await $.command.run({ command: 'clear', args: '' } as never)
+    expect(lastStatus(r)).toBe(`${STATUS_PLAN} · orphaned, resume?`)
+    expect((await leaf(ui, 'ticket'))?.text).toBe('#203')
+    expect((await leaf(ui, 'tag'))?.text).toBe('  orphaned, resume?')
+  })
+
   test(`/clear leaves a state with no session un-orphaned [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.file = stateText({ session: null })
     await $.session.start(START)
     const ui = await mountBand($)

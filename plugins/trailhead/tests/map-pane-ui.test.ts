@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const SESSION = 'sess-A'
+const NEXT_SESSION = 'sess-B'
 const PANE = 'trailhead-map'
 const ACCENT = '#7aa2f7'
 const T0 = 1_000_000
@@ -76,6 +77,9 @@ const stateText = (over: Record<string, unknown> = {}): string =>
     ...over,
   })
 
+// The plugin's atoms, which the engine resets on /clear.
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'pendingWork', 'paneAutoOpened']
+
 const PANE_PROPS = {
   title: 'Map',
   isFocused: false,
@@ -91,7 +95,7 @@ const ok = (stdout: string): GhOut => ({ exitCode: 0, stdout, stderr: '' })
 
 // What the engine would answer beneath the plugin: the marker files, `gh`, the pane
 // bookkeeping, a mocked clock. `calls` records every `gh` run.
-const rig = (on: On) => {
+const rig = (on: On, engine?: any) => {
   const r = {
     active: '198\n' as string | Error | null,
     work: null as string | null,
@@ -112,12 +116,16 @@ const rig = (on: On) => {
     isPlaced: true,
     logs: [] as string[],
     opens: [] as { id: string; title?: string }[],
-    // `command.run` beneath the plugin: every run is recorded; `gate` holds it, `refuse` rejects it.
+    // `command.run` beneath the plugin: every run is recorded; `gate` holds a work run, `refuse` rejects it.
     // Every file write beneath the plugin: the pane must never write the active-map marker.
     writes: [] as string[],
     runs: [] as { command: string; args: string }[],
     gate: null as Promise<void> | null,
     refuse: null as string | null,
+    // The built-in `clear`: `clearGate` holds it, `refuseClear` rejects it.
+    clearGate: null as Promise<void> | null,
+    refuseClear: null as string | null,
+    session: SESSION,
     clock: mock.clock(on, { now: T0 }),
     // The person opening the pane: the engine's own record, the plugin is not told.
     open: () => {
@@ -142,12 +150,36 @@ const rig = (on: On) => {
     r.writes.push(e.path)
     return { value: undefined }
   })
+  // The engine's /clear, in the order seen live: the old session ends, the atoms reset and the id
+  // changes, the new session starts. The reset is the atoms reading as never written until the
+  // plugin writes them again (a test cannot write the plugin's state).
+  const emptied = new Set<string>()
+  on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
+    const read = await next(e)
+    return emptied.has(e.key) ? { value: { ...read.value, value: undefined } } : read
+  })
+  on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
+    emptied.delete(e.key)
+    return next(e)
+  })
+  const emulateClear = async () => {
+    await engine.session.end({ reason: 'clear', sessionId: r.session, resume: {} })
+    ATOM_KEYS.forEach(key => emptied.add(key))
+    r.session = NEXT_SESSION
+    await engine.classic.SessionStart({ source: 'clear' })
+  }
   on('command.run', async (_$, e) => {
     r.runs.push({ command: e.command, args: e.args })
+    if (e.command === 'clear') {
+      await r.clearGate
+      if (r.refuseClear !== null) return { deny: r.refuseClear }
+      await emulateClear()
+      return { text: '' }
+    }
     await r.gate
     return r.refuse === null ? { text: '' } : { deny: r.refuse }
   })
-  on('session.id', () => ({ value: SESSION }))
+  on('session.id', () => ({ value: r.session }))
   on('ui.log', (_$, e) => {
     r.logs.push(e.text)
     return { value: undefined }
@@ -174,6 +206,7 @@ const rig = (on: On) => {
   on('ui.panes', () => ({ value: r.panes }))
   on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok' }) as never)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('classic.SessionStart', () => ({}))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
@@ -224,7 +257,7 @@ for (const surface of SURFACES) {
   }
 
   test(`the pane lists the tickets by state with holders and the unverified count [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.work = stateText()
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -278,7 +311,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the burn-down section shows the counts, the chart and the axis [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'burndown-head')).toBe('Burn-down')
@@ -297,7 +330,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the open count at now is the open list when the fixture is consistent [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const listed = (await keysOf(ui, 'row-')).length
@@ -306,7 +339,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the chart is a Raster where the surface has one, a text sparkline elsewhere [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     if (surface === 'terminal') {
@@ -323,7 +356,7 @@ for (const surface of SURFACES) {
   })
 
   test(`the burn-down follows the pane width [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r, { bodyColumns: 30 })
     if (surface === 'terminal') expect((await ui.find({ key: 'burndown' }))?.props).toMatchObject({ columns: 30 })
@@ -331,7 +364,7 @@ for (const surface of SURFACES) {
   })
 
   test(`no burn-down and no gh call without an active map [${surface}]`, async ($, on) => {
-    const none = rig(on)
+    const none = rig(on, $)
     none.active = null
     await $.session.start(START)
     const idle = await openAndMount($, none)
@@ -340,7 +373,7 @@ for (const surface of SURFACES) {
   })
 
   test(`an empty or unreadable history draws no section but the list is shown [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.history = []
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -358,7 +391,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a history-only failure keeps the last chart, takes the fresh list and ages the axis [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'burndown-axis-end')).toBe('now')
@@ -383,7 +416,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a failed list read keeps the whole last data, the chart too [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
@@ -396,7 +429,7 @@ for (const surface of SURFACES) {
   })
 
   test(`after a map switch a failed history read draws no chart [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await hasKey(ui, 'burndown-head')).toBe(true)
@@ -415,7 +448,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a history that reached the gh limit says it starts at the oldest ticket read [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.history = Array.from({ length: 5000 }, (_, i) => hrow(i + 1, ['trailhead:build'], i % 2 === 0 ? 120 : null))
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -429,7 +462,7 @@ for (const surface of SURFACES) {
   })
 
   test(`an orphaned work state marks nothing in play [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.work = stateText({ session: 'sess-OLD' })
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -439,7 +472,7 @@ for (const surface of SURFACES) {
   })
 
   test(`unverified tickets are counted in the plural [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.tickets = [issue(1, 'a', ['trailhead:unverified']), issue(2, 'b', ['trailhead:unverified']), issue(3, 'c', ['trailhead:build'])]
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -452,7 +485,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a title is cut with an ellipsis to the pane width [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.tickets = [issue(7, 'x'.repeat(200), ['trailhead:build'])]
     await $.session.start(START)
     const ui = await openAndMount($, r, { bodyColumns: 40 })
@@ -462,7 +495,7 @@ for (const surface of SURFACES) {
   })
 
   test(`no active map: the message and the open maps, no map read [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.active = null
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -475,7 +508,7 @@ for (const surface of SURFACES) {
   })
 
   test(`first fetch in flight: the map number and Loading tickets [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     let release: () => void = () => undefined
     const held = new Promise<void>(resolve => (release = resolve))
     r.gh = async argv => {
@@ -497,7 +530,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a map with no open tickets says so [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.tickets = []
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -507,7 +540,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a closed pane costs no gh call [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await completeTurn($)
     await $.tool.call({ tool: 'Bash', command: 'gh issue close 5' } as never)
@@ -516,7 +549,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a gh failure keeps the last list and shows one dim reason [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'age')).toBe('updated just now')
@@ -537,7 +570,7 @@ for (const surface of SURFACES) {
   })
 
   test(`each failure has its own short reason [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const reasonFor = async (setup: () => void) => {
@@ -556,7 +589,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a first fetch that fails shows the reason without a list [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'boom' })
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -569,7 +602,7 @@ for (const surface of SURFACES) {
   })
 
   test(`two triggers inside the floor make one fetch and one trailing [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await openAndMount($, r)
     expect(fetches(r)).toBe(1)
@@ -594,7 +627,7 @@ for (const surface of SURFACES) {
   })
 
   test(`session start, turn complete and the slow timer refresh an open pane [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await openAndMount($, r)
     expect(fetches(r)).toBe(1)
@@ -615,7 +648,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a Bash gh issue write refreshes, gh issue list does not [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await openAndMount($, r)
     const base = fetches(r)
@@ -636,7 +669,7 @@ for (const surface of SURFACES) {
   })
 
   test(`closing the pane stops refreshing [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await openAndMount($, r)
     r.panes = []
@@ -648,7 +681,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a fetch overtaken by a map change is dropped and the new map is read [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     let release: () => void = () => undefined
     const held = new Promise<void>(resolve => (release = resolve))
     const out = (n: number, argv: readonly string[]) =>
@@ -679,7 +712,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a map switched between turns clears the old list at once [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
@@ -694,7 +727,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a work button on each frontier row runs /trailhead:work and shows queued [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     let release: () => void = () => undefined
     r.gate = new Promise<void>(resolve => (release = resolve))
     await $.session.start(START)
@@ -706,7 +739,7 @@ for (const surface of SURFACES) {
 
     const first = ui.press({ key: 'work-209' })
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'trailhead:work', args: '209' }])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
     expect(await textOf(ui, 'queued-209')).toBe('queued')
     expect((await ui.find({ key: 'queued-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
     expect(await ui.find({ key: 'work-209' })).toBeUndefined()
@@ -715,7 +748,7 @@ for (const surface of SURFACES) {
     // another press while one is pending is ignored
     await ui.press({ key: 'work-210' })
     await settle(r)
-    expect(r.runs).toHaveLength(1)
+    expect(r.runs).toHaveLength(2)
     expect(await ui.find({ key: 'queued-210' })).toBeUndefined()
 
     release()
@@ -727,25 +760,123 @@ for (const surface of SURFACES) {
     // free again: the next press goes through
     await ui.press({ key: 'work-210' })
     expect(r.runs).toEqual([
+      { command: 'clear', args: '' },
       { command: 'trailhead:work', args: '209' },
+      { command: 'clear', args: '' },
       { command: 'trailhead:work', args: '210' },
     ])
   })
 
   test(`a work command that is refused clears the queued mark [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.refuse = 'cannot run now'
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await ui.press({ key: 'work-209' })
     await settle(r)
-    expect(r.runs).toHaveLength(1)
+    expect(r.runs).toHaveLength(2)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
+  test(`a work press clears the conversation first, the row staying queued across the reset [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    let releaseWork: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    r.gate = new Promise<void>(resolve => (releaseWork = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+
+    // a second press while the clear is pending is ignored
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toHaveLength(1)
+
+    // the clear resets the atoms: the work verb still follows, in the new session, with the row queued
+    releaseClear()
+    await settle(r)
+    expect(r.session).toBe(NEXT_SESSION)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+    await ui.redraw()
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    await ui.press({ key: 'work-210' })
+    expect(r.runs).toHaveLength(2)
+
+    releaseWork()
+    await first
+    await settle(r)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a clear that is refused runs no work command and clears the queued mark [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.refuseClear = 'cannot clear now'
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(r.session).toBe(SESSION)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a manual /clear keeps the pane filled, with no turn and inside the floor [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(fetches(r)).toBe(1)
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
+
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await ui.redraw()
+    await settle(r)
+    expect(r.session).toBe(NEXT_SESSION)
+    expect(fetches(r)).toBe(2)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
+  })
+
+  test(`a pane the person closed is not opened again by itself after /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // closed by the person, then cleared
+    r.panes = []
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await completeTurn($)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+  })
+
+  test(`a viewed map stays viewed through /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await ui.redraw()
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
   test(`the refresh button obeys the same floor [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect((await ui.find({ key: 'refresh' }))?.props).toMatchObject({ label: 'refresh' })
@@ -774,7 +905,7 @@ for (const surface of SURFACES) {
     $.ui.mount({ plugin: 'trailhead', surface, component: 'AbovePrompt', props: BAND_PROPS, viewport })
 
   test(`/trailhead:panel opens and closes the pane, answering without running a command [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const opened = await panel($)
     expect(opened.text).toBe('Map panel opened.')
@@ -798,7 +929,7 @@ for (const surface of SURFACES) {
   })
 
   test(`/trailhead:panel says why a pane cannot be placed [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.isPlaced = false
     await $.session.start(START)
     expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
@@ -810,7 +941,7 @@ for (const surface of SURFACES) {
 
   for (const withBand of [false, true]) {
     test(`the pane opens by itself once in fullscreen, the band ${withBand ? 'drawing' : 'yielding'} [${surface}]`, async ($, on) => {
-      const r = rig(on)
+      const r = rig(on, $)
       r.work = withBand ? stateText() : null
       await $.session.start(START)
       expect(r.opens).toEqual([])
@@ -831,7 +962,7 @@ for (const surface of SURFACES) {
   }
 
   test(`the pane never opens by itself on the main screen, unknown layout or without a map [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await mountBand($, { columns: 200, rows: 50, isFullscreen: false })
     await mountBand($, { columns: 200, rows: 50 })
@@ -848,7 +979,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a pane the person closed with the command is not opened again by itself [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     await panel($)
     await panel($)
@@ -859,7 +990,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a list that reached the gh limit says so [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.tickets = Array.from({ length: 200 }, (_, i) => issue(i + 1, `t${i + 1}`, ['trailhead:build']))
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -873,7 +1004,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a pane found already up at auto-open ends the auto-open for good [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     r.open()
     const ui = await mountBand($, FULLSCREEN)
@@ -887,7 +1018,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a pane opened by hand after a map switch fills within the floor, not at the slow timer [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     r.open()
     const first = await mountPane($)
@@ -922,7 +1053,7 @@ for (const surface of SURFACES) {
   }
 
   test(`two open maps are listed, the active one marked [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
@@ -943,7 +1074,7 @@ for (const surface of SURFACES) {
   })
 
   test(`one open map draws no maps group [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.maps = [MAPS[0]]
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -953,7 +1084,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a press on another map shows its tickets, the active-map marker is never written [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.work = stateText()
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -987,7 +1118,7 @@ for (const surface of SURFACES) {
   })
 
   test(`back to active and a press on the active map return to it [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressMap(ui, r, 14)
@@ -1009,7 +1140,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a change of the active map resets the view [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressMap(ui, r, 14)
@@ -1028,13 +1159,13 @@ for (const surface of SURFACES) {
   })
 
   test(`a work press on a viewed map runs the work verb, then the view follows the new active map [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressMap(ui, r, 14)
     await ui.press({ key: 'work-140' })
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'trailhead:work', args: '140' }])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '140' }])
     expect(r.writes).toEqual([])
     // still viewing until the verb has changed the marker
     expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
@@ -1050,7 +1181,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a failed maps read keeps the last list and sets no footer error [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
@@ -1075,7 +1206,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a viewed map that closed falls back to the active map [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressMap(ui, r, 14)
@@ -1091,7 +1222,7 @@ for (const surface of SURFACES) {
   })
 
   test(`a refresh in flight when the view changes never commits the old map's tickets [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     // every value the pane stores, to look at what the old answer wrote
     const paneWrites: unknown[] = []
     on('state.set', { plugin: 'trailhead', key: 'mapPane' }, ($$, e, next) => {
@@ -1138,7 +1269,7 @@ for (const surface of SURFACES) {
   })
 
   test(`with no active map the open maps are listed and one can be viewed [${surface}]`, async ($, on) => {
-    const r = rig(on)
+    const r = rig(on, $)
     r.active = null
     await $.session.start(START)
     const ui = await openAndMount($, r)
