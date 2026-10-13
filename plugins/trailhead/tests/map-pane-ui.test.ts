@@ -156,7 +156,7 @@ const rig = (on: On, engine?: any) => {
   const emptied = new Set<string>()
   on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
     const read = await next(e)
-    return emptied.has(e.key) ? { value: { ...read.value, value: undefined } } : read
+    return emptied.has(e.key) ? { value: { value: undefined, version: read.value?.version ?? 0 } } : read
   })
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
     emptied.delete(e.key)

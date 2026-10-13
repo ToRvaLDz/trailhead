@@ -68,7 +68,7 @@ const rig = (on: On, engine: any) => {
   })
   on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
     const read = await next(e)
-    return emptied.has(e.key) ? { value: { ...read.value, value: undefined } } : read
+    return emptied.has(e.key) ? { value: { value: undefined, version: read.value?.version ?? 0 } } : read
   })
   on('command.run', async (_$, e) => {
     if (e.command !== 'clear') return { text: '' }
