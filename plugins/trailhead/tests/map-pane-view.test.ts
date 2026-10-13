@@ -6,6 +6,7 @@ import {
   burndownEnd,
   burndownSeries,
   failureReason,
+  footerStatus,
   groupTickets,
   HISTORY_LIMIT,
   mapRowLayout,
@@ -533,4 +534,19 @@ test('mapRowLayout cuts the title to the room left by the mark and the aside', (
   // a Button draws `[ label ]`: four cells of chrome
   expect(other.mark.length + other.label.length + 4).toBeLessThanOrEqual(30)
   expect(mapRowLayout({ number: 14, title: '' }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
+})
+
+test('footerStatus keeps a short status whole', () => {
+  expect(footerStatus('updated just now', 60)).toBe('updated just now')
+})
+
+test('footerStatus cuts a long status to the room the two buttons leave', () => {
+  // 60 columns minus `[ refresh ]`, `[ close ]` and the two gaps leaves 38 cells
+  expect(footerStatus('⚠ gh failed (exit 1) · list from 12m ago', 60)).toBe('⚠ gh failed (exit 1) · list from 12m …')
+  expect(footerStatus('⚠ gh failed (exit 1) · list from 12m ago', 40)).toBe('⚠ gh failed (exit…')
+})
+
+test('footerStatus on a pane too narrow for the buttons is an ellipsis, never a throw', () => {
+  expect(footerStatus('updated just now', 10)).toBe('…')
+  expect(footerStatus('updated just now', 0)).toBe('…')
 })
