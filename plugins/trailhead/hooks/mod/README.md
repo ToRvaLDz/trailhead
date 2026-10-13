@@ -75,9 +75,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
   `/trailhead:work <n>` in the new one, both through `$.command.run`, which the host queues behind a
   running turn; the row shows `queued` until the calls settle (across the reset too), and a
-  second press meanwhile is ignored. A refused `/clear` runs no work command.
-  `trailhead:unverified` tickets are never listed, only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh` button and
-  `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
+  second press meanwhile is ignored. A refused `/clear`, or one that
+  did not change the session, runs no work command. `trailhead:unverified` tickets are never listed,
+  only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
+  button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
   reasons: `gh not installed`, `gh not authenticated (run gh auth login)`,
   `offline: cannot reach GitHub`, `gh failed (exit <n>)`). Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
