@@ -60,7 +60,7 @@ the atom.
 
 ## Map panel
 
-`/trailhead:panel` opens or closes a pane listing the active map's open tickets. It is a plugin
+`/trailhead:panel` opens or closes a pane listing a map's open tickets (the active map's, or the one clicked in the maps list). It is a plugin
 command file (`commands/panel.md`), because a command registered by a mod cannot carry the
 `trailhead:` namespace; the mod answers it before it reaches the model, so the file's body runs
 only where no mod does (it says the panel is not available). Claude Code only: the Codex
@@ -79,7 +79,21 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `offline: cannot reach GitHub`, `gh failed (exit <n>)`). Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
   on the first fetch, `No active map. Run /trailhead:map to pick one.`, `No open tickets. Fog may remain: /trailhead:map`.
-- **Burn-down**: below the groups, a `Burn-down` section shows the active map's open-ticket count
+- **Maps list and viewing**: with more than one open map (`gh issue list --label trailhead:map --state open`),
+  a `Maps · n` group sits under the header: one row per map, sorted by number, `#n title` cut to the width.
+  The active map has `●` in the accent and an `active` aside; the viewed map is bold; every other row is a
+  `Button`. A press shows that map's tickets, burn-down and `work` buttons (browse); it never writes
+  `.trailhead/active-map`. Pressing the active map's row, or `back to active` (in the dim line
+  `viewing #n · active #m` shown while another map is viewed), goes back. A `work` press on a viewed
+  map's ticket runs `/trailhead:work <n>` as always: the work verb makes the ticket's map the active one
+  (its `trailhead:map-<n>` label), and at the next `turn.complete` the pane sees the active map change
+  and follows (the view resets to the active map). The view also resets when the viewed map leaves a
+  freshly read open list (it closed). A single open map shows no group, as before. With no active
+  map the message stays and the open maps are listed under it, so one can be viewed (`viewing #n` then has a
+  `back` button). The maps read is the 4th of a refresh; a failure of it alone keeps the last list and sets no
+  footer error. Each refresh captures its target (viewed, else active) once and rechecks it before every state
+  write, so a refresh in flight when the view changes never commits the old map's tickets.
+- **Burn-down**: below the groups, a `Burn-down` section shows the shown map's open-ticket count
   over time, from its first ticket to now. A dim line gives `open <o> · done <d> · removed <r> · peak <p>`
   (`removed` = closed with `trailhead:superseded` or `trailhead:out-of-scope`; `done` = other closed
   tickets). The chart has one sample per pane column. On the terminal surface it is a `Raster` (3 rows
@@ -105,8 +119,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   click. Start Claude Code with `FORCE_HYPERLINK=1` there to get real links.
 - **Where the data comes from**: `.trailhead/active-map` (read locally on `session.start` and
   `turn.complete`, whether or not the pane is open), then `gh issue view <map>` and
-  `gh issue list --label trailhead:map-<map> --state open` (plus the history read under "Burn-down") through `$.process.run`. A result is
-  dropped if the pane closed or the active map changed while `gh` ran.
+  `gh issue list --label trailhead:map-<map> --state open` (plus the history read under "Burn-down" and the maps list read) through `$.process.run`,
+  where `<map>` is the viewed map, else the active one. A result is dropped if the pane closed or the shown map changed while `gh` ran.
 - **When it refreshes**: only while the pane is open (a closed pane costs no `gh` call). Opening it,
   `session.start`, `turn.complete`, a Bash call that runs `gh issue edit|close|create|comment|reopen`,
   the `refresh` button, and a slow timer started on open. Never two fetches inside `MIN_REFRESH_MS`:
@@ -116,8 +130,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   by the person. The open runs from a zero-delay timer because a render may not write state.
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
-  `PANEL_COMMAND = 'trailhead:panel'`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
-- **Atoms**: `mapPane`, `activeMap`, `pendingWork`, `paneAutoOpened`. Module variables hold only
+  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
+- **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `pendingWork`, `paneAutoOpened`. Module variables hold only
   the queue and the timers.
 - **Validator note**: `claude plugin validate` follows `$` only inside one file and refuses two
   hooks on one event with no matcher. So `map-pane.tsx` registers `session.start`, `turn.complete`
