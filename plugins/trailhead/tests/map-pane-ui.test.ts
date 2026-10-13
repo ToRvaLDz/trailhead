@@ -104,6 +104,8 @@ const rig = (on: On) => {
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
     gh: null as Gh | null,
+    // What `gh` answers when no test replaced it; a test can wrap it.
+    defaultGh: null as unknown as Gh,
     deny: null as string | null,
     calls: [] as (readonly string[])[],
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
@@ -111,6 +113,8 @@ const rig = (on: On) => {
     logs: [] as string[],
     opens: [] as { id: string; title?: string }[],
     // `command.run` beneath the plugin: every run is recorded; `gate` holds it, `refuse` rejects it.
+    // Every file write beneath the plugin: the pane must never write the active-map marker.
+    writes: [] as string[],
     runs: [] as { command: string; args: string }[],
     gate: null as Promise<void> | null,
     refuse: null as string | null,
@@ -132,6 +136,11 @@ const rig = (on: On) => {
     if (file === null) return { deny: `ENOENT: no such file or directory, open '${e.path}'` }
     if (file instanceof Error) return { deny: file.message }
     return { value: file }
+  })
+  r.defaultGh = defaultGh
+  on('fs.write', (_$, e) => {
+    r.writes.push(e.path)
+    return { value: undefined }
   })
   on('command.run', async (_$, e) => {
     r.runs.push({ command: e.command, args: e.args })
@@ -904,5 +913,239 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#199 second map')
     expect(fetches(r)).toBe(2)
+  })
+
+  // ---- viewing another open map (#229) ----
+  const pressMap = async (ui: any, r: Rig, n: number) => {
+    await ui.press({ key: `map-${n}` })
+    await settle(r)
+  }
+
+  test(`two open maps are listed, the active one marked [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await keysOf(ui, 'map-row-')).toEqual(['map-row-14', 'map-row-198'])
+    expect(await textOf(ui, 'map-mark-198')).toBe('● ')
+    expect((await ui.find({ key: 'map-mark-198' }))?.children[0]).toMatchObject({ props: { color: ACCENT } })
+    expect(await textOf(ui, 'map-aside-198')).toBe(' active')
+    expect(await textOf(ui, 'map-label-198')).toBe('#198 trailhead mod')
+    expect((await ui.find({ key: 'map-label-198' }))?.children[0]).toMatchObject({ props: { bold: true } })
+    expect(await textOf(ui, 'map-mark-14')).toBe('  ')
+    expect((await ui.find({ key: 'map-14' }))?.props).toMatchObject({ label: '#14 older map' })
+    expect(await ui.find({ key: 'map-198' })).toBeUndefined()
+    expect(await ui.find({ key: 'viewing' })).toBeUndefined()
+    // under the header, before the tickets
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('group-maps')).toBeGreaterThan(keys.indexOf('header'))
+    expect(keys.indexOf('group-maps')).toBeLessThan(keys.indexOf('group-frontier'))
+  })
+
+  test(`one open map draws no maps group [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.maps = [MAPS[0]]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, 'head-maps')).toBe(false)
+    expect(await hasKey(ui, 'group-maps')).toBe(false)
+    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['work-209', 'work-210', 'work-214', 'refresh'])
+  })
+
+  test(`a press on another map shows its tickets, the active-map marker is never written [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await textOf(ui, 'destination')).toBe('An older destination.')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await textOf(ui, 'holder-141')).toBe('@carol')
+    expect(await textOf(ui, 'burndown-counts')).toBe('open 2 · done 0 · removed 0 · peak 2')
+    // the ticket in play belongs to the other map: nothing here is marked
+    expect(await hasKey(ui, 'mark-208')).toBe(false)
+    expect(r.calls.slice(-4).map(argv => argv.slice(0, 4))).toEqual([
+      ['gh', 'issue', 'view', '14'],
+      ['gh', 'issue', 'list', '--label'],
+      ['gh', 'issue', 'list', '--label'],
+      ['gh', 'issue', 'list', '--label'],
+    ])
+    expect(r.calls.some(argv => argv.includes('trailhead:map-14'))).toBe(true)
+
+    // the viewed map is bold, the active one a button; one line says where we are
+    expect(await textOf(ui, 'map-label-14')).toBe('#14 older map')
+    expect((await ui.find({ key: 'map-198' }))?.props).toMatchObject({ label: '#198 trailhead mod' })
+    expect(await hasKey(ui, 'map-14')).toBe(false)
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+    expect((await ui.find({ key: 'viewing-text' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    expect((await ui.find({ key: 'back' }))?.props).toMatchObject({ label: 'back to active' })
+    // the work verb owns the marker: the pane never wrote it
+    expect(r.writes).toEqual([])
+    expect(r.active).toBe('198\n')
+  })
+
+  test(`back to active and a press on the active map return to it [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+
+    await ui.press({ key: 'back' })
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await keysOf(ui, 'row-')).toContain('row-208')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(await textOf(ui, 'map-label-198')).toBe('#198 trailhead mod')
+
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    await pressMap(ui, r, 198)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(r.writes).toEqual([])
+  })
+
+  test(`a change of the active map resets the view [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+
+    // the work verb switched the active map to the viewed one at the end of a turn
+    r.active = '14\n'
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(await textOf(ui, 'map-label-14')).toBe('#14 older map')
+    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
+    expect((await ui.find({ key: 'map-198' }))?.props).toMatchObject({ label: '#198 trailhead mod' })
+  })
+
+  test(`a work press on a viewed map runs the work verb, then the view follows the new active map [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    await ui.press({ key: 'work-140' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'trailhead:work', args: '140' }])
+    expect(r.writes).toEqual([])
+    // still viewing until the verb has changed the marker
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
+
+    r.active = '14\n'
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
+    expect(await hasKey(ui, 'map-aside-198')).toBe(false)
+  })
+
+  test(`a failed maps read keeps the last list and sets no footer error [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+
+    const base: Gh = argv => withHistory(r, ok(JSON.stringify(r.history)))(argv)
+    r.gh = argv => (argv.includes('trailhead:map') ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    r.tickets = [issue(300, 'fresh one', ['trailhead:build'])]
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'ticket-300')).toBe('#300 fresh one')
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+
+    // unreadable output is the same
+    r.gh = argv => (argv.includes('trailhead:map') ? ok('not json') : base(argv))
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`a viewed map that closed falls back to the active map [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+
+    r.maps = [MAPS[0]]
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await hasKey(ui, 'viewing')).toBe(false)
+    expect(await hasKey(ui, 'head-maps')).toBe(false)
+  })
+
+  test(`a refresh in flight when the view changes never commits the old map's tickets [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+
+    let release: () => void = () => undefined
+    let releaseOther: () => void = () => undefined
+    const held = new Promise<void>(resolve => (release = resolve))
+    const heldOther = new Promise<void>(resolve => (releaseOther = resolve))
+    r.gh = async argv => {
+      // the active map's open-list read is held, and the viewed map's reads too (to look at the screen between)
+      if (argv.includes('trailhead:map-198') && argv.includes('open')) await held
+      if (argv.includes('trailhead:map-14') || argv.includes('14')) await heldOther
+      return r.defaultGh(argv)
+    }
+    r.tickets = [issue(300, 'fresh of 198', ['trailhead:build'])]
+    await r.clock.advance(FLOOR)
+    const refreshing = completeTurn($)
+    await settle(r)
+
+    await ui.press({ key: 'map-14' })
+    await settle(r)
+    release()
+    await refreshing
+    await settle(r)
+    // the old answer is in, the new one is not: nothing of 198 is on screen, only the wait
+    expect(await textOf(ui, 'map')).toBe('map #14')
+    expect(await textOf(ui, 'loading')).toBe('Loading tickets…')
+    expect(await hasKey(ui, 'ticket-300')).toBe(false)
+    releaseOther()
+    await settle(r)
+    expect(await hasKey(ui, 'ticket-300')).toBe(false)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
+  test(`with no active map the open maps are listed and one can be viewed [${surface}]`, async ($, on) => {
+    const r = rig(on)
+    r.active = null
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await hasKey(ui, 'map-198')).toBe(true)
+    expect(await hasKey(ui, 'map-14')).toBe(true)
+
+    await pressMap(ui, r, 14)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await textOf(ui, 'viewing-text')).toBe('viewing #14')
+    expect((await ui.find({ key: 'back' }))?.props).toMatchObject({ label: 'back' })
+    await ui.press({ key: 'back' })
+    await settle(r)
+    expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
+    expect(r.writes).toEqual([])
   })
 }
