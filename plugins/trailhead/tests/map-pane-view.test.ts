@@ -547,8 +547,13 @@ test('footerStatus keeps a status that fits beside the two buttons on their row'
 })
 
 test('footerStatus moves a long status to a row of its own, whole when the pane is wide enough', () => {
-  expect(footerStatus('⚠ gh not authenticated (run gh auth login) · list from 12m ago', 60)).toEqual({
+  expect(footerStatus('⚠ gh not authenticated (run gh auth login) · list from 12m ago', 70)).toEqual({
     text: '⚠ gh not authenticated (run gh auth login) · list from 12m ago',
+    isInline: false,
+  })
+  // at the default 60 columns the hint survives, only the tail of the age goes
+  expect(footerStatus('⚠ gh not authenticated (run gh auth login) · list from 12m ago', 60)).toEqual({
+    text: '⚠ gh not authenticated (run gh auth login) · list from 12m …',
     isInline: false,
   })
   expect(footerStatus('⚠ gh not authenticated (run gh auth login)', 30)).toEqual({ text: '⚠ gh not authenticated (run g…', isInline: false })

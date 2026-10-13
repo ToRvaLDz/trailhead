@@ -596,6 +596,7 @@ export function registerMapPane(on: On) {
         : data.fetchedAt === null
           ? `⚠ ${data.error}`
           : `⚠ ${data.error} · list from ${ageLabel(now - data.fetchedAt)}`
+    const footer = footerStatus(status, cols)
 
     const end = burndownEnd(data, now)
     const series = isCurrent && data.history !== null ? burndownSeries(data.history, end.at, cols) : null
@@ -646,7 +647,7 @@ export function registerMapPane(on: On) {
           <Box key="footer-row" width={cols} justifyContent="space-between">
             <Box gap={1}>
               <Button key="refresh" label="refresh" onPress={() => void requestRefresh($)} />
-              {text('age', dim, footerStatus(status, cols))}
+              {footer.isInline ? text('age', dim, footer.text) : null}
             </Box>
             <Button
               key="close"
@@ -654,6 +655,7 @@ export function registerMapPane(on: On) {
               onPress={() => void closePane($).catch(err => debug($, `trailhead mod: close press failed: ${String(err)}`))}
             />
           </Box>
+          {footer.isInline ? null : <Box key="age-row">{text('age', dim, footer.text)}</Box>}
         </Box>
       </Box>
     )

@@ -247,10 +247,14 @@ const CLOSE_LABEL = 'close'
 // The gap between the refresh button and the status, and the one kept before the close button.
 const FOOTER_GAPS = 2
 
-// The footer status cut to the room the `refresh` and `close` buttons leave on the row (never negative).
-export const footerStatus = (status: string, columns: number): string => {
+export type FooterStatus = { text: string; isInline: boolean }
+
+// The footer status beside the `refresh` and `close` buttons when it fits the room they leave;
+// otherwise on a row of its own under them, cut only to the pane width (a reason keeps its hint).
+export const footerStatus = (status: string, columns: number): FooterStatus => {
   const buttons = REFRESH_LABEL.length + CLOSE_LABEL.length + 2 * BUTTON_CHROME
-  return fit(status, Math.max(0, columns - buttons - FOOTER_GAPS))
+  const room = columns - buttons - FOOTER_GAPS
+  return Array.from(status).length <= room ? { text: status, isInline: true } : { text: fit(status, columns), isInline: false }
 }
 
 const asideOf = (t: PaneTicket, pendingWork: number | null): RowAside | null => {
