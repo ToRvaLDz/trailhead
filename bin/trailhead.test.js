@@ -333,6 +333,23 @@ ok('source: capture.md offers /trailhead:quick as the lighter alternative, after
 ok('source: capture.md says quick is offered alongside work, never in its place', captureSource.includes('never in its place'));
 ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard capture', /whiteboard[\s\S]{0,200}the anchor stays `\/trailhead:work <n>`/.test(captureSource));
 
+// --- #246: `bug --of <ticket>` inherits the origin's destination ------------
+// Source-level invariant: capture.md's `bug` bullet makes `--of` inherit the origin
+// ticket's map (open) or the whiteboard without the which-map ask, checks the origin
+// map's state before inheriting, falls back to the Map or whiteboard rule on a closed
+// map / absent or contradictory labels, and names the inherited destination and the
+// origin (each by name and number) in the confirmation line. The Map or whiteboard
+// paragraph cross-references the exception (single source stays in the `bug` bullet).
+const captureBugBullet = (captureSource.match(/^- \*\*`bug`\*\*.*$/m) || [''])[0];
+const captureMapParagraph = (captureSource.match(/^\*\*Map or whiteboard:\*\*.*$/m) || [''])[0];
+ok('source: capture.md `bug --of` inherits the origin map or whiteboard without asking', /--of[\s\S]{0,1500}inherit[\s\S]{0,300}no ask/.test(captureBugBullet));
+ok('source: capture.md `bug --of` checks the origin map state (--json state) before inheriting', /gh issue view <n> --json state/.test(captureBugBullet));
+ok('source: capture.md `bug --of` falls back to the Map or whiteboard rule on closed map, absent or contradictory labels',
+  /[Ff]all back to the existing Map or whiteboard rule[\s\S]{0,600}closed[\s\S]{0,300}neither label[\s\S]{0,300}contradictory/.test(captureBugBullet));
+ok('source: capture.md `bug --of` confirmation names the inherited destination and the origin, each by name and number',
+  /[Cc]onfirmation line[\s\S]{0,300}inherited[\s\S]{0,200}by name and number[\s\S]{0,200}origin[\s\S]{0,100}by name and number/.test(captureBugBullet));
+ok('source: capture.md Map or whiteboard paragraph cross-references the `bug --of` ask exception', /`bug --of`[\s\S]{0,200}skip/.test(captureMapParagraph));
+
 // --- #179: `quick <n>` on a map ticket is never "off the map" ----------------
 // Source-level invariant: `quick <n>` on an EXISTING ticket does not leave the
 // map (it keeps its trailhead:map-<n> label and sub-issue edge, and dependent-
