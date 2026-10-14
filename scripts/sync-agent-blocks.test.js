@@ -196,7 +196,10 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
   }
   // The executor posts nothing: the Execute step hands the tracker writes to the orchestrator (#248).
   const engines = fs.readFileSync(path.join(root, 'plugins', 'trailhead', 'skills', 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
-  const execute = (engines.split('\n').find((l) => l.startsWith('3. **Execute**')) || '');
+  const engineLines = engines.split('\n');
+  const execStart = engineLines.findIndex((l) => l.startsWith('3. **Execute**'));
+  const execEnd = engineLines.findIndex((l, i) => i > execStart && l.startsWith('4. **Verify**'));
+  const execute = execStart === -1 ? '' : engineLines.slice(execStart, execEnd === -1 ? undefined : execEnd).join('\n');
   ok('Execute step: the executor returns the fidelity list, the orchestrator posts it',
     execute.includes('returns the enumerated fidelity list in its report') && execute.includes('the orchestrator posts it as a ticket comment'));
   ok('Execute step: under `git: pr` the orchestrator creates the branch and opens the PR',
