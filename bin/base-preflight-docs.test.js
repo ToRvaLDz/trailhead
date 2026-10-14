@@ -16,12 +16,13 @@ const HELPER = 'trailhead-base-preflight.js';
 // file -> strings it must carry
 const EXPECT = {
   '_shared/teamwork.md': [
-    '**Stale-base preflight.**', HELPER, '--config-root', 'preflight -> sync -> tests -> checks -> UAT or integration',
+    '**Stale-base preflight.**', HELPER, '--config-root', 'preflight -> sync -> tests -> Code review -> goal check -> UAT', 'preflight -> sync -> tests -> checks -> integration', 'start of Verify',
+    '`git: pr` without isolation', 'immediately before the push and PR',
     '`current`', '`synced`', '`conflict`', '`dirty`', '`unverified`', '`trunk-diverged`', '`sync-failed`', 'Fail closed',
     'right before the trunk push', 'integration target', 'non-fast-forward', 'testsRequired', 'preflight.checks',
   ],
   '_shared/configuration-reference.md': ['`preflight.checks`', '**Preflight checks.**', 'migration', 'uniq -d'],
-  '_shared/techniques/acceptance-testing.md': ['Stale-base preflight comes first', HELPER],
+  '_shared/techniques/acceptance-testing.md': ['Stale-base preflight comes first', HELPER, 'already ran at the start of Verify'],
   'trailhead-work/references/auto.md': ['stale-base preflight never auto-resolves', '`conflict`'],
 };
 for (const [rel, needles] of Object.entries(EXPECT)) {
@@ -41,8 +42,16 @@ for (const [name, idx] of [['build Verify', buildVerify], ['build Resolve', buil
   ok(`${name} step found`, idx >= 0);
   ok(`${name} names the stale-base preflight`, lines[idx].includes('Stale-base preflight'));
 }
-ok('build/bug Verify run it before Acceptance testing',
-  [buildVerify, bugVerify].every((i) => lines[i].indexOf('Stale-base preflight') < lines[i].indexOf('**Acceptance testing**')));
+ok('build/bug Verify start with the preflight, before the tests and Code review',
+  [buildVerify, bugVerify].every((i) => {
+    const l = lines[i];
+    const p = l.indexOf('Stale-base preflight');
+    return p >= 0 && p < l.indexOf('**Code review**') && p < l.indexOf('**Goal-backward verification**') && p < l.indexOf('**Acceptance testing**');
+  }));
+ok('Verify runs the tests after the sync, before the Code review',
+  [buildVerify, bugVerify].every((i) => lines[i].indexOf('then re-run the tests') > 0 && lines[i].indexOf('then re-run the tests') < lines[i].indexOf('**Code review**')));
+ok('Resolve names git: pr without isolation',
+  [buildResolve, bugResolve].every((i) => lines[i].includes('`git: pr` without isolation: on the ticket branch, immediately before the push and PR')));
 ok('Resolve runs it before the Pending-UAT guard',
   [buildResolve, bugResolve].every((i) => lines[i].indexOf('Stale-base preflight') < lines[i].indexOf('Pending-UAT guard')));
 ok('Pending-UAT option (a) runs the preflight first',
