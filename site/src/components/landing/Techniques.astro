@@ -1,5 +1,5 @@
 ---
-// "Built in, not bolted on" band: the three techniques cards, the sub-techniques
+// "Built in, not bolted on" band: the four techniques cards, the sub-techniques
 // grid, and the self-contained note.
 ---
 
@@ -7,7 +7,7 @@
   <div class="wrap">
     <span class="eyebrow">Built in, not bolted on</span>
     <h2 class="h2">The techniques come with it</h2>
-    <p class="sub">Grilling, quick off-map capture, design mockups: no extra plugins to wire up. trailhead ships its own agents and needs only an authenticated <code>gh</code>.</p>
+    <p class="sub">Grilling, quick off-map capture, design mockups, acceptance testing: no extra plugins to wire up. trailhead ships its own agents and needs only an authenticated <code>gh</code>.</p>
     <div class="techs">
       <div class="tech grill">
         <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0-6 6c0 2 1 3 1 5h10c0-2 1-3 1-5a6 6 0 0 0-6-6z"/><path d="M9 21h6M8.5 18h7"/></svg></div>
@@ -24,8 +24,14 @@
       <div class="tech proto">
         <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
         <h3>Design prototypes</h3>
-        <p>For UI work, mock up the screen on a <b>Claude Artifacts</b> canvas or <b>Google Stitch</b> before any code, react to it, then reproduce it faithfully. This very page started as one of those mockups.</p>
-        <div class="foot-tags"><span class="mini">Artifacts</span><span class="mini">Stitch</span></div>
+        <p>For UI work, mock up the screen on a <b>Claude Artifacts</b> canvas, with your design system on it, or on <b>Google Stitch</b> before any code. Pick between variants, edit them live, approve, then the build reproduces them faithfully. This very page started as one of those mockups.</p>
+        <div class="foot-tags"><span class="mini">Artifacts</span><span class="mini">Stitch</span><a class="mini" href="/docs/design">how it works &rarr;</a></div>
+      </div>
+      <div class="tech uat">
+        <div class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18"/><path d="M8.5 13l2 2 4-4"/></svg></div>
+        <h3>Acceptance testing</h3>
+        <p>Green tests don't close a user-facing ticket. trailhead asks who drives the UAT, then <b>drives the app itself</b> (browser, phone, TV: whatever the session can reach) with screenshots as evidence, checks the build against the approved mockup, and walks you through what only you can do, <b>one step at a time</b>.</p>
+        <div class="foot-tags"><span class="mini">browser &amp; devices</span><span class="mini">mockup fidelity</span><a class="mini" href="/docs/acceptance-testing">how it works &rarr;</a></div>
       </div>
     </div>
     <div class="subtech-head">

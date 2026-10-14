@@ -151,17 +151,20 @@ section.band { padding: 58px 0; border-top: 1px solid var(--border-soft); }
 .callout b { color: var(--fg); font-weight: 650; }
 
 /* ---- techniques ---- */
-.techs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 38px; }
+.techs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 38px; }
 .tech { background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 22px; display: flex; flex-direction: column; }
 .tech .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 15px; }
 .tech.grill .ic { background: rgba(232,97,60,0.15); color: var(--accent-2); }
 .tech.wb .ic { background: rgba(124,92,255,0.15); color: #b3a1ff; }
 .tech.proto .ic { background: rgba(59,110,245,0.15); color: #7fa2ff; }
+.tech.uat .ic { background: rgba(46,180,120,0.15); color: #6fd6a3; }
 .tech h3 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
 .tech p { margin: 0; color: var(--fg-muted); font-size: 14.5px; }
 .tech p b { color: var(--fg); font-weight: 650; }
 .tech .foot-tags { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
 .mini { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); border: 1px solid var(--border-soft); border-radius: 6px; padding: 3px 8px; }
+a.mini { text-decoration: none; margin-left: auto; }
+a.mini:hover { color: var(--fg); border-color: var(--border); }
 .more-tech { margin-top: 24px; font-size: 14.5px; color: var(--fg-muted); }
 .more-tech b { color: var(--fg); font-weight: 650; }
 .subtech-head { margin-top: 30px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }

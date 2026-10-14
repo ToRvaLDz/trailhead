@@ -11,6 +11,24 @@ For any ticket that changes user-facing UI (a new screen, a redesign, a changed 
 | `artifacts` | a **Design canvas Artifact** on claude.ai, editable, commentable and exportable | Claude Code signed in with a claude.ai account |
 | `stitch` | a **Google Stitch** project (or Stitch design system) | Claude Code and Codex |
 
+A UI question that's still open gets **3 structurally different variants** (different layouts, not colours or copy) to pick from, not one take.
+
+## What it looks like
+
+```text
+you       › /trailhead:work                       # ⑤ build: "login screen"
+trailhead › This ticket changes UI. Mock it up first?            → yes
+trailhead › No canvas for this map yet: pick one, paste a URL, or create one?
+you       › create one, "Acme app"
+trailhead › Installed your design system "Acme DS" on the canvas.
+            Canvas: https://claude.ai/artifact/…  ·  page "#42 Login"
+            Artboards: Login-A (split hero) · Login-B (centered card) · Login-C (stepper)
+            Which direction?
+you       › B, but with the social buttons above the form   # or edit it on the canvas yourself
+trailhead › Updated Login-B. Approve?                         → approve
+trailhead › Re-read the approved artboard (your live edits included) → planning the build
+```
+
 ## Mockups on Claude Artifacts
 
 `design: artifacts` uses Claude Code's built-in `Artifact` tool: there is no MCP server to install and no extra login.
@@ -20,7 +38,7 @@ For any ticket that changes user-facing UI (a new screen, a redesign, a changed 
 3. **One artboard per screen.** Every screen, and every structurally different variant, is its own artboard, grouped in a canvas **page named after the ticket**, so each ticket's mockups are easy to find. App screens get a fixed frame (for example a 390×844 phone), web pages and dashboards a fluid one. A single artboard is at most 8000px tall, so a very long page is split into consecutive artboards.
 4. **Approve with the link in front of you.** The approval message always carries the canvas URL and the name of each artboard it asks about (artboards have no URL of their own), right before the question; the [mockup-link guard](/docs/hooks) blocks an approval ask that has no link.
 5. **Edit freely, then approve.** You can change the mockup directly on the canvas or leave comments there. Once you approve (`design.approval: explicit`, the default) or right before the build consumes it (`auto`), trailhead **re-reads** the approved artboards and builds from that version, not from what it last published.
-6. **Faithful build.** The approved artboards are the spec: layout, spacing, colour, type, copy and every state they show. Acceptance testing checks the built screen against them element by element.
+6. **Faithful build.** The approved artboards are the spec: layout, spacing, colour, type, copy and every state they show. [Acceptance testing](/docs/acceptance-testing) checks the built screen against them element by element and state by state.
 
 Artifacts are private: share the canvas from its Share menu before sending the link to someone else.
 
@@ -55,4 +73,4 @@ The migration of your existing material is manual, and worth doing before the si
 3. **Chats and comments** are not carried over: save what you need before the closing date.
 4. **Team and Enterprise owners**: Artifacts, design systems and Design/Slides templates must be enabled in *Organization settings › Artifacts*; organizations with zero data retention can't use Artifacts and should download their projects.
 
-Next: [Hooks](/docs/hooks) for the guardrails, including the mockup-link guard; the `design` keys are in [Configuration](/docs/configuration#design-mockups).
+Next: [Acceptance testing](/docs/acceptance-testing) for how the built screen is checked against the approved mockup; [Hooks](/docs/hooks) for the guardrails, including the mockup-link guard; the `design` keys are in [Configuration](/docs/configuration#design-mockups).

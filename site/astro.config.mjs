@@ -155,6 +155,7 @@ export default defineConfig({
             { label: 'Working as a team', link: '/docs/teamwork' },
             { label: 'Configuration', link: '/docs/configuration' },
             { label: 'Design mockups', link: '/docs/design' },
+            { label: 'Acceptance testing', link: '/docs/acceptance-testing' },
             { label: 'Hooks', link: '/docs/hooks' },
           ],
         },
