@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Repo test command: `npm test`. Runs every *.test.js under bin/ and
+// Repo test command: `npm test`. Runs every *.test.js under bin/, scripts/ and
 // plugins/trailhead/hooks/ as `node <file>`, then the mod checks
 // (`claude plugin validate` and `claude plugin test`).
 // Set TRAILHEAD_SKIP_MOD_CHECKS=1 to skip the mod checks when `claude` is absent.
@@ -35,7 +35,7 @@ const run = (label, cmd, args) => {
   results.push({ label, status: r.status === 0 ? 'pass' : 'FAIL' });
 };
 
-const TEST_ROOTS = [path.join(root, 'bin'), path.join(pluginDir, 'hooks')];
+const TEST_ROOTS = [path.join(root, 'bin'), path.join(root, 'scripts'), path.join(pluginDir, 'hooks')];
 const perRoot = TEST_ROOTS.map(findTests);
 // A root with no suites means it moved or was renamed: fail rather than pass on nothing.
 const emptyRoot = TEST_ROOTS.find((_, i) => perRoot[i].length === 0);
