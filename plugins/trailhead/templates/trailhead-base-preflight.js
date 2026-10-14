@@ -146,9 +146,11 @@ function pickBase(G, trunk, head, hasLocal, hasRemote) {
   const remote = `origin/${trunk}`;
   if (!hasRemote) return { base: trunk, diverged: false };
   if (!hasLocal || head === trunk) return { base: remote, diverged: false };
+  const what = `cannot compare ${trunk} with ${remote}`;
   const localBehind = count(G, `${trunk}..${remote}`);
+  if (localBehind === null) return { error: gitFailure(G, what) };
   const localAhead = count(G, `${remote}..${trunk}`);
-  if (localBehind === null || localAhead === null) return { error: gitFailure(G, `cannot compare ${trunk} with ${remote}`) };
+  if (localAhead === null) return { error: gitFailure(G, what) };
   if (localBehind > 0 && localAhead > 0) return { base: remote, diverged: true };
   return { base: localAhead > 0 ? trunk : remote, diverged: false };
 }
@@ -251,8 +253,10 @@ function preflight(parsed, cwd, env, fs_) {
     const s = sync(G, { trunk, head, base: picked.base, ahead: result.ahead, behind: result.behind, warnings });
     Object.assign(result, s);
     if (s.status === 'synced') {
-      result.behind = count(G, `HEAD..${picked.base}`) ?? 0;
-      result.ahead = count(G, `${picked.base}..HEAD`) ?? 0;
+      // The sync succeeded; a failed recount is reported, never turned into a 0.
+      result.behind = count(G, `HEAD..${picked.base}`);
+      result.ahead = count(G, `${picked.base}..HEAD`);
+      if (result.behind === null || result.ahead === null) warnings.push(gitFailure(G, `cannot recount HEAD against ${picked.base} after the sync`));
     }
   }
 
