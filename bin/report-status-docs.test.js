@@ -119,6 +119,8 @@ ok('acceptance-testing.md: the orchestrator posts once the round\'s checks, incl
 ok('acceptance-testing.md: no longer records "in the VERIFY comment as it goes"', !acceptance.includes('in the `VERIFY` comment as it goes'));
 ok('acceptance-testing.md: the screenshot and the pending checklist go to part 3, not straight into a comment',
   !acceptance.includes('screenshot into the `VERIFY` comment') && !acceptance.includes('checklist in the `VERIFY` comment'));
+ok('acceptance-testing.md: the two start paths outside a Verify round post their own VERIFY comment',
+  acceptance.includes("the Pending-UAT guard's option (a) and a UAT follow-up, there is no round: the orchestrator posts the results as a `VERIFY` comment of their own"));
 ok('acceptance-testing.md: no em-dash', !acceptance.includes('\u2014'));
 
 for (const [label, src] of [['techniques.md', techniques], ['verify.md', verify], ['code-review.md', codeReview], ['ticket-engines.md', engines]]) {
