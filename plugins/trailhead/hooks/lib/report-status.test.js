@@ -193,12 +193,23 @@ const oneLine = (out) => { const lines = out.split('\n').filter(Boolean); return
   const j = oneLine(r.out);
   ok('cli stdin: empty input is a missing reask, exit 0', r.code === 0 && j.action === 'reask' && j.problem === 'missing');
 }
+{
+  // A report over the 64 KB pipe buffer must come back whole through a pipe.
+  const big = 'status: met\n' + 'x'.repeat(300000) + '\n';
+  const r = cli(['--technique', 'verify'], big);
+  const j = oneLine(r.out);
+  ok('cli: a report over 64 KB arrives whole through a pipe', r.code === 0 && !!j && j.action === 'accept' && j.report === big);
+  const f = cli(['--technique', 'verify', '--file', file('big.md', big)]);
+  const jf = oneLine(f.out);
+  ok('cli --file: a report over 64 KB arrives whole through a pipe', f.code === 0 && !!jf && jf.report === big);
+}
 const usageErrors = [
   ['no technique', ['--file', file('d.md', 'status: met')]],
   ['unknown technique', ['--technique', 'plan', '--file', file('e.md', 'status: met')]],
   ['technique without a value', ['--technique']],
   ['unknown flag', ['--technique', 'verify', '--bogus', 'x', '--file', file('f.md', 'status: met')]],
   ['--file without a value', ['--technique', 'verify', '--file']],
+  ['empty --file value', ['--technique', 'verify', '--file', '']],
   ['unreadable file', ['--technique', 'verify', '--file', path.join(tmp, 'nope.md')]],
 ];
 for (const [name, args] of usageErrors) {
