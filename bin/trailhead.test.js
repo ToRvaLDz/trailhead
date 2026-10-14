@@ -140,6 +140,18 @@ ok('codex: audit-walk script is byte-identical to source',
   fs.readFileSync(codexAuditWalk, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-audit-walk.js'), 'utf8'));
 ok('codex: audit-walk script keeps its executable bit', (fs.statSync(codexAuditWalk).mode & 0o111) !== 0);
 
+// #253: the Resolve bookkeeping helpers ride in templates/ on Codex too, executable,
+// and find the secret-guard module from their installed location.
+for (const helper of ['trailhead-issue-body.js', 'trailhead-dashboard.js']) {
+  const projected = path.join(codexDir, 'skills', 'trailhead', 'templates', helper);
+  ok(`codex: ${helper} projected`, fs.existsSync(projected));
+  ok(`codex: ${helper} is byte-identical to source`,
+    fs.readFileSync(projected, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', helper), 'utf8'));
+  ok(`codex: ${helper} keeps its executable bit`, (fs.statSync(projected).mode & 0o111) !== 0);
+}
+ok('codex: the installed issue-body helper finds the secret guard',
+  require(path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-issue-body.js')).loadGuard() !== null);
+
 ok('codex: no commands dir', !fs.existsSync(path.join(codexDir, 'commands')));
 ok('codex: no settings.json file', !fs.existsSync(path.join(codexDir, 'settings.json')));
 // #46: per-verb discoverability now projects one Codex SKILL per verb
@@ -1009,6 +1021,17 @@ const claudeAuditWalk = path.join(claudeDir, 'trailhead', 'templates', 'trailhea
 ok('claude: audit-walk script projected', fs.existsSync(claudeAuditWalk));
 ok('claude: audit-walk script is byte-identical to source',
   fs.readFileSync(claudeAuditWalk, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-audit-walk.js'), 'utf8'));
+// #253: the Resolve bookkeeping helpers are installed, and (npm layout: templates at
+// <config>/trailhead/templates, hooks at <config>/hooks) find the secret guard.
+for (const helper of ['trailhead-issue-body.js', 'trailhead-dashboard.js']) {
+  const installed = path.join(claudeDir, 'trailhead', 'templates', helper);
+  ok(`claude: ${helper} installed`, fs.existsSync(installed));
+  ok(`claude: ${helper} is byte-identical to source`,
+    fs.readFileSync(installed, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', helper), 'utf8'));
+  ok(`claude: ${helper} keeps its executable bit`, (fs.statSync(installed).mode & 0o111) !== 0);
+}
+ok('claude: the installed issue-body helper finds the secret guard',
+  require(path.join(claudeDir, 'trailhead', 'templates', 'trailhead-issue-body.js')).loadGuard() !== null);
 // Regression: the commit-guard does require('./lib/commit-message-check.js'), so
 // it only loads if the lib was copied alongside it. Run it with a benign Bash
 // payload and assert it does not crash with a missing-module error.

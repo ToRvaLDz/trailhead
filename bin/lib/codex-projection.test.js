@@ -410,6 +410,11 @@ ok('convertToCodex projects the anchor positives to Codex forms', (() => {
 // the projected work skill and handoff carry the set/clear calls.
 ok('convertToCodex keeps the trailhead-work-state.js filename',
   convertToCodex('node <templates>/trailhead-work-state.js set').includes('<templates>/trailhead-work-state.js set'));
+// #253: the Resolve bookkeeping helper filenames survive the projection.
+ok('convertToCodex keeps the trailhead-issue-body.js filename',
+  convertToCodex('node <templates>/trailhead-issue-body.js append --issue 1').includes('<templates>/trailhead-issue-body.js append'));
+ok('convertToCodex keeps the trailhead-dashboard.js filename',
+  convertToCodex('node <templates>/trailhead-dashboard.js --dry-run').includes('<templates>/trailhead-dashboard.js --dry-run'));
 ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   convertToCodex('session from CLAUDE_CODE_SESSION_ID when set').includes('CLAUDE_CODE_SESSION_ID'));
 {
