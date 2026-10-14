@@ -421,6 +421,78 @@ ok('parseArgs: value needed', parseArgs(['--repo']).error !== undefined);
   eq('checks: run after the sync', [r.out.status, r.out.checks[0].ok, r.out.checksOk], ['synced', true, true]);
 }
 
+// --- git failures are errors, never a silent 0 ----------------------------------
+{
+  // unborn HEAD with an origin/main that has commits
+  const w = mkWorld();
+  const unborn = mktmp();
+  git(unborn, 'init', '-q', '-b', 'main');
+  git(unborn, 'remote', 'add', 'origin', w.origin);
+  git(unborn, 'fetch', '-q', 'origin');
+  const r = pre(unborn);
+  eq('unborn HEAD: exit 0', r.code, 0);
+  eq('unborn HEAD: error, never current', r.out.status, 'error');
+  ok('unborn HEAD: git message reported', typeof r.out.message === 'string' && r.out.message.length > 0);
+  eq('unborn HEAD: testsRequired false', r.out.testsRequired, false);
+  eq('unborn HEAD: checksOk false', r.out.checksOk, false);
+}
+{
+  // a remote-tracking ref whose history is broken (a parent object is missing)
+  const w = mkWorld();
+  git(w.work, 'checkout', '-q', '-b', 'trailhead/t8');
+  const tree = git(w.work, 'rev-parse', 'HEAD^{tree}');
+  const broken = execFileSync('git', ['-C', w.work, 'hash-object', '-w', '-t', 'commit', '--stdin'], {
+    input: `tree ${tree}\nparent deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\nauthor a <a@b> 1 +0000\ncommitter a <a@b> 1 +0000\n\nbroken\n`,
+  }).toString().trim();
+  git(w.work, 'update-ref', 'refs/remotes/origin/main', broken);
+  const r = pre(w.work, ['--no-fetch']);
+  eq('bad ref: error, never current', r.out.status, 'error');
+  ok('bad ref: git message reported', typeof r.out.message === 'string' && r.out.message.length > 0);
+  eq('bad ref: nothing synced', pre(w.work, ['--no-fetch', '--sync']).out.status, 'error');
+}
+
+// --- rebase keeps merge commits ---------------------------------------------------
+{
+  const w = mkWorld();
+  git(w.work, 'checkout', '-q', '-b', 'trailhead/t10');
+  git(w.work, 'checkout', '-q', '-b', 'side');
+  commitFile(w.work, 'side.txt', 's\n', 'side work');
+  git(w.work, 'checkout', '-q', 'trailhead/t10');
+  commitFile(w.work, 'ticket.txt', 't\n', 'ticket work');
+  git(w.work, 'merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  advanceOrigin(w, 2);
+  const s = pre(w.work, ['--sync']);
+  eq('rebase-merges: branch rebased', [s.out.status, s.out.method], ['synced', 'rebase']);
+  eq('rebase-merges: the --no-ff merge commit survives', git(w.work, 'rev-list', '--merges', '--count', 'origin/main..HEAD'), '1');
+}
+{
+  const w = mkWorld();
+  git(w.work, 'checkout', '-q', '-b', 'side');
+  commitFile(w.work, 'side.txt', 's\n', 'side work');
+  git(w.work, 'checkout', '-q', 'main');
+  commitFile(w.work, 'local.txt', 'l\n', 'local unpushed');
+  git(w.work, 'merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  advanceOrigin(w, 1);
+  const s = pre(w.work, ['--sync']);
+  eq('rebase-merges: trunk rebased', [s.out.status, s.out.method], ['synced', 'rebase']);
+  eq('rebase-merges: trunk keeps its merge commit', git(w.work, 'rev-list', '--merges', '--count', 'origin/main..HEAD'), '1');
+}
+
+// --- remotes without an origin ----------------------------------------------------
+{
+  const w = mkWorld();
+  git(w.work, 'remote', 'rename', 'origin', 'upstream');
+  const r = pre(w.work);
+  eq('no origin: status unchanged', r.out.status, 'current');
+  eq('no origin: measured on the local trunk', r.out.base, 'main');
+  ok('no origin: a warning names the remotes', r.out.warnings.some((x) => /no remote named origin/.test(x) && x.includes('upstream')));
+  const solo = mktmp();
+  git(solo, 'init', '-q', '-b', 'main');
+  identify(solo);
+  commitFile(solo, 'a.txt', 'a\n', 'init');
+  eq('no remotes at all: no warning', pre(solo).out.warnings, []);
+}
+
 // --- end to end -----------------------------------------------------------------
 {
   const w = mkWorld();

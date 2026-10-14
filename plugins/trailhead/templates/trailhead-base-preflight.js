@@ -19,7 +19,7 @@
 // origin/<trunk>; HEAD on a ticket branch -> origin/<trunk> unless the local trunk is
 // strictly ahead (then the local trunk); both moved -> status trunk-diverged.
 // Sync (--sync, only when behind): refuses a dirty tracked tree (dirty); on the trunk
-// ff-only (rebase when it has diverged); on a ticket branch rebase when unpublished,
+// ff-only (rebase --rebase-merges when it has diverged, merge commits are kept); on a ticket branch rebase when unpublished,
 // merge when it has an upstream. Any failed sync is aborted and HEAD verified back at
 // its pre-sync commit: conflict (paths listed) or sync-failed (git's message).
 // Checks: `preflight.checks` (array of shell commands), nested ({"preflight":
@@ -112,11 +112,14 @@ function tail(text) {
 // Runs git at `repo`; never throws on a non-zero exit.
 function makeGit(repo, env) {
   const gitEnv = { ...process.env, ...env, GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' };
-  return (args) => {
+  const G = (args) => {
     const r = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: gitEnv, maxBuffer: 64 * 1024 * 1024 });
     if (r.error) throw r.error;
-    return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+    const res = { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+    G.last = res;
+    return res;
   };
+  return G;
 }
 
 function detectTrunk(requested, G) {
@@ -129,15 +132,23 @@ function detectTrunk(requested, G) {
   return null;
 }
 
-const count = (G, range) => Number(G(['rev-list', '--count', range]).out) || 0;
+// Commit count of a range; null when git fails (the caller reports the error, never a 0).
+const count = (G, range) => {
+  const r = G(['rev-list', '--count', range]);
+  const n = Number(r.out);
+  return r.ok && r.out !== '' && Number.isInteger(n) ? n : null;
+};
 
-// Picks the one base ref. { base, diverged }
+const gitFailure = (G, what) => `${what}: ${(G.last && (G.last.err || G.last.out)) || 'git failed'}`;
+
+// Picks the one base ref. { base, diverged } or { error } when a comparison fails.
 function pickBase(G, trunk, head, hasLocal, hasRemote) {
   const remote = `origin/${trunk}`;
   if (!hasRemote) return { base: trunk, diverged: false };
   if (!hasLocal || head === trunk) return { base: remote, diverged: false };
   const localBehind = count(G, `${trunk}..${remote}`);
   const localAhead = count(G, `${remote}..${trunk}`);
+  if (localBehind === null || localAhead === null) return { error: gitFailure(G, `cannot compare ${trunk} with ${remote}`) };
   if (localBehind > 0 && localAhead > 0) return { base: remote, diverged: true };
   return { base: localAhead > 0 ? trunk : remote, diverged: false };
 }
@@ -165,13 +176,13 @@ function sync(G, { trunk, head, base, ahead, behind, warnings }) {
   let r;
   if (head === trunk) {
     method = ahead === 0 ? 'ff' : 'rebase';
-    r = method === 'ff' ? G(['merge', '--ff-only', '-q', base]) : G(['rebase', '-q', base]);
+    r = method === 'ff' ? G(['merge', '--ff-only', '-q', base]) : G(['rebase', '-q', '--rebase-merges', base]);
   } else if (G(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).ok) {
     method = 'merge';
     r = G(['merge', '--no-edit', '-q', base]);
   } else {
     method = 'rebase';
-    r = G(['rebase', '-q', base]);
+    r = G(['rebase', '-q', '--rebase-merges', base]);
   }
   if (r.ok) return { status: 'synced', method, pulled: behind, testsRequired: true };
   const conflicts = G(['diff', '--name-only', '--diff-filter=U']).out.split('\n').filter(Boolean);
@@ -205,7 +216,12 @@ function preflight(parsed, cwd, env, fs_) {
   result.trunk = trunk;
 
   let fetchFailed = false;
-  if (G(['remote', 'get-url', 'origin']).ok && !parsed['no-fetch']) {
+  const hasOrigin = G(['remote', 'get-url', 'origin']).ok;
+  if (!hasOrigin) {
+    const remotes = G(['remote']).out.split('\n').filter(Boolean);
+    if (remotes.length > 0) warnings.push(`no remote named origin (found: ${remotes.join(', ')}); distance measured on local refs`);
+  }
+  if (hasOrigin && !parsed['no-fetch']) {
     const f = G(['fetch', '--quiet', 'origin', `+refs/heads/${trunk}:refs/remotes/origin/${trunk}`]);
     if (!f.ok) {
       fetchFailed = true;
@@ -220,9 +236,13 @@ function preflight(parsed, cwd, env, fs_) {
   const headName = G(['symbolic-ref', '-q', '--short', 'HEAD']);
   const head = headName.ok ? headName.out : null;
   const picked = pickBase(G, trunk, head, hasLocal, hasRemote);
+  if (picked.error) return { ...result, message: picked.error };
   result.base = picked.base;
-  result.behind = count(G, `HEAD..${picked.base}`);
-  result.ahead = count(G, `${picked.base}..HEAD`);
+  const behind = count(G, `HEAD..${picked.base}`);
+  const ahead = behind === null ? null : count(G, `${picked.base}..HEAD`);
+  if (behind === null || ahead === null) return { ...result, message: gitFailure(G, `cannot measure HEAD against ${picked.base}`) };
+  result.behind = behind;
+  result.ahead = ahead;
   result.status = fetchFailed ? 'unverified' : picked.diverged ? 'trunk-diverged' : result.behind > 0 ? 'behind' : 'current';
   if (fetchFailed) result.message = `could not fetch origin/${trunk}; the distance is not verified`;
   if (picked.diverged) result.message = `local ${trunk} and origin/${trunk} have diverged; reconcile the trunk first`;
@@ -231,8 +251,8 @@ function preflight(parsed, cwd, env, fs_) {
     const s = sync(G, { trunk, head, base: picked.base, ahead: result.ahead, behind: result.behind, warnings });
     Object.assign(result, s);
     if (s.status === 'synced') {
-      result.behind = count(G, `HEAD..${picked.base}`);
-      result.ahead = count(G, `${picked.base}..HEAD`);
+      result.behind = count(G, `HEAD..${picked.base}`) ?? 0;
+      result.ahead = count(G, `${picked.base}..HEAD`) ?? 0;
     }
   }
 
