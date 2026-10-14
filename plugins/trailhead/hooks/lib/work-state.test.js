@@ -213,6 +213,51 @@ for (const argv of [
   ok('clear absent: absent, exit 0', r2.code === 0 && r2.lines[0].status === 'absent');
 }
 
+// --- clear also removes the session-ticket marker (#253) ---------------------
+{
+  const ticketPath = (dir) => path.join(dir, '.trailhead', 'session-ticket');
+  const seed = (dir, { state, marker }) => {
+    fs.mkdirSync(path.join(dir, '.trailhead'), { recursive: true });
+    if (state) fs.writeFileSync(statePath(dir), '{}');
+    if (marker) fs.writeFileSync(ticketPath(dir), '253\n');
+  };
+  const combos = [
+    [true, true, 'cleared', 'removed'],
+    [true, false, 'cleared', 'absent'],
+    [false, true, 'absent', 'removed'],
+    [false, false, 'absent', 'absent'],
+  ];
+  for (const [state, marker, wantStatus, wantMarker] of combos) {
+    const dir = mktmp();
+    seed(dir, { state, marker });
+    const r = run(['clear', '--repo', dir], { cwd: '/' });
+    ok(`clear state=${state} marker=${marker}: exit 0, one line`, r.code === 0 && r.lines.length === 1);
+    ok(`clear state=${state} marker=${marker}: status ${wantStatus}`, r.lines[0].status === wantStatus);
+    ok(`clear state=${state} marker=${marker}: sessionTicket ${wantMarker}`, r.lines[0].sessionTicket === wantMarker);
+    ok(`clear state=${state} marker=${marker}: both files gone`, !fs.existsSync(statePath(dir)) && !fs.existsSync(ticketPath(dir)));
+  }
+  // partial failure: the first removal throws, the second still runs
+  {
+    const dir = mktmp();
+    seed(dir, { state: true, marker: true });
+    const broken = { ...fs, unlinkSync: (p) => { if (p === statePath(dir)) throw new Error('boom state'); return fs.unlinkSync(p); } };
+    const r = run(['clear', '--repo', dir], { cwd: '/', fsMod: broken });
+    ok('clear partial failure: exit 0', r.code === 0);
+    ok('clear partial failure: state skipped with message', r.lines[0].status === 'skipped' && /boom state/.test(r.lines[0].message));
+    ok('clear partial failure: marker still removed', r.lines[0].sessionTicket === 'removed' && !fs.existsSync(ticketPath(dir)));
+    ok('clear partial failure: state file kept', fs.existsSync(statePath(dir)));
+  }
+  // the marker failing never skips the work-state removal
+  {
+    const dir = mktmp();
+    seed(dir, { state: true, marker: true });
+    const broken = { ...fs, unlinkSync: (p) => { if (p === ticketPath(dir)) throw new Error('boom marker'); return fs.unlinkSync(p); } };
+    const r = run(['clear', '--repo', dir], { cwd: '/', fsMod: broken });
+    ok('clear marker failure: state cleared, marker skipped', r.code === 0 && r.lines[0].status === 'cleared' && r.lines[0].sessionTicket === 'skipped');
+    ok('clear marker failure: state file gone', !fs.existsSync(statePath(dir)));
+  }
+}
+
 // --- pure functions ----------------------------------------------------------
 {
   ok('sanitizeState: non-object -> {}', JSON.stringify(sanitizeState(null)) === '{}' && JSON.stringify(sanitizeState('x')) === '{}');

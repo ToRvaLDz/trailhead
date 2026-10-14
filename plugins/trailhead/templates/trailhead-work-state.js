@@ -9,14 +9,17 @@
 //   node trailhead-work-state.js set [--repo <dir>] [--map <n>|none] [--ticket <n>]
 //        [--title <t>] [--step <step>] [--auto true|false] [--auto-done <n>]
 //   node trailhead-work-state.js clear [--repo <dir>]
+// `clear` removes both work-state.json and the session-ticket marker, each
+// attempted independently.
 // --repo defaults to cwd. `set` merges the given fields onto the existing file
 // (only --step at each step change); a --ticket other than the one on file
 // starts from an empty state. File shape:
 //   { map, ticket, title, step, auto, autoDone, session, updatedAt }
 // autoDone: tickets resolved so far in the autonomous run (non-negative
 // integer, default 0; reset to 0 whenever auto is false).
-// Prints one JSON line {"status","path","state"?,"message"?}.
+// Prints one JSON line {"status","path","state"?,"sessionTicket"?,"message"?}.
 //   status: written | cleared | absent | skipped
+//   sessionTicket (clear only): removed | absent | skipped
 // Exit 0 on every normal outcome and on any unexpected I/O error (it must
 // never block the caller: status skipped with the message); exit 2 only on a
 // usage or validation error (nothing is written).
@@ -27,6 +30,7 @@ const crypto = require('crypto');
 
 const STATE_DIR = '.trailhead';
 const STATE_FILE = 'work-state.json';
+const TICKET_MARKER = 'session-ticket';
 const STEPS = ['discuss', 'plan', 'execute', 'verify', 'resolve', 'paused'];
 const TITLE_MAX = 200;
 
@@ -145,6 +149,18 @@ function writeAtomic(dir, file, text, fsMod) {
   }
 }
 
+// Removes one file; never throws. Returns { status, message? } where status is
+// doneLabel (removed), absentLabel (not there) or skipped (I/O error).
+function removeFile(file, fsMod, doneLabel, absentLabel) {
+  try {
+    if (!fsMod.existsSync(file)) return { status: absentLabel };
+    fsMod.unlinkSync(file);
+    return { status: doneLabel };
+  } catch (err) {
+    return { status: 'skipped', message: 'error: ' + (err && err.message ? err.message : String(err)) };
+  }
+}
+
 function writeResult(stdout, result) {
   stdout.write(JSON.stringify(result) + '\n');
 }
@@ -166,12 +182,14 @@ function main(argv, { cwd, stdout, env, fs: fsMod, now } = {}) {
   const file = path.join(dir, STATE_FILE);
   try {
     if (parsed.command === 'clear') {
-      if (!fs_.existsSync(file)) {
-        writeResult(out, { status: 'absent', path: file });
-        return 0;
-      }
-      fs_.unlinkSync(file);
-      writeResult(out, { status: 'cleared', path: file });
+      // Both markers are removed independently: a missing or failing first
+      // removal never skips the second (#253).
+      const state = removeFile(file, fs_, 'cleared', 'absent');
+      const marker = removeFile(path.join(dir, TICKET_MARKER), fs_, 'removed', 'absent');
+      const result = { status: state.status, path: file, sessionTicket: marker.status };
+      const message = [state.message, marker.message].filter(Boolean).join('; ');
+      if (message) result.message = message;
+      writeResult(out, result);
       return 0;
     }
 
