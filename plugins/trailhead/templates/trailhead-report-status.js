@@ -125,7 +125,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--technique' || a === '--file') {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`);
+      if (v === undefined || v === '' || v.startsWith('--')) throw new Error(`${a} needs a value`);
       opts[a === '--technique' ? 'technique' : 'file'] = v;
       i++;
     } else {
@@ -145,7 +145,7 @@ function main(argv, io = {}) {
   let result;
   try {
     const opts = parseArgs(argv);
-    const text = opts.file ? readFile(opts.file) : readStdin();
+    const text = opts.file !== null ? readFile(opts.file) : readStdin();
     result = checkReport(text, opts.technique);
   } catch (e) {
     stderr.write(`${JSON.stringify({ error: e.message })}\n`);
@@ -155,6 +155,7 @@ function main(argv, io = {}) {
   return 0;
 }
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+// exitCode, not process.exit(): exiting at once truncates piped stdout at 64 KB.
+if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
 module.exports = { checkReport, parseArgs, main, TOKENS };
