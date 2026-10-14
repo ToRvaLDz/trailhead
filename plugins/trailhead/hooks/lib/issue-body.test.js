@@ -294,6 +294,17 @@ function writeTmp(text) {
   ok('conflict: a read-back mismatch is a conflict', r.code === 1 && /conflict/.test(r.out));
 }
 {
+  // GitHub stops recording body edits once an issue holds 100: the count stays put.
+  const t = makeTracker({ edits: 100, writeDelta: 0 });
+  const r = runMain(APPEND, t);
+  ok('full edit history: a clean write is not a conflict', r.code === 0 && !/conflict/.test(r.out));
+  ok('full edit history: the output says the check was read-back only', /edit history full/.test(r.out));
+  const t2 = makeTracker({ edits: 100, writeDelta: 0, garbleReadback: true });
+  const r2 = runMain(APPEND, t2);
+  ok('full edit history: a read-back mismatch is still a conflict', r2.code === 1 && /conflict/.test(r2.out));
+  ok('full edit history: the conflict does not point at a history GitHub did not keep', !/re-apply the lost lines/.test(r2.out) || /not recorded/.test(r2.out));
+}
+{
   const t = makeTracker({ writeDelta: 2, edits: 0 });
   const r = runMain(APPEND, t);
   ok('first edit, delta 2: accepted by default (confirmed live)', r.code === 0 && !/conflict/.test(r.out));

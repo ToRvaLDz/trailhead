@@ -314,14 +314,14 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
     }
     // The body is already written: a pin check or pin failure is reported next to
     // that fact (exit 0), never as an abort that looks like nothing was written.
-    let note = '';
+    let note = w.historyFull ? issueBody.HISTORY_FULL_NOTE.replace(/^ \((.*)\)$/, ', $1') : '';
     try {
       if (!isPinned(run, repo, number)) {
         const failed = pin(run, repo, number);
-        note = failed ? `, written, ${failed}` : ', re-pinned';
+        note += failed ? `, written, ${failed}` : ', re-pinned';
       }
     } catch (e) {
-      note = `, written, pin check failed: ${e && e.message ? e.message : String(e)}`;
+      note += `, written, pin check failed: ${e && e.message ? e.message : String(e)}`;
     }
     out.write(`${summaryLine(number, snap)} (${sizes}${note})\n`);
     return 0;

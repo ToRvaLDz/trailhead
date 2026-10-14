@@ -98,7 +98,8 @@ function makeTracker(init = {}) {
     conventions: init.conventions === undefined ? 3 : init.conventions,
     dash: init.dash === undefined ? { number: 33, body: 'Old hand written dashboard body.\n\n## Maps\nlots of prose here\n' + AUDIT + '\n', updatedAt: 'T1' } : init.dash,
     pinned: init.pinned || [33],
-    edits: 1,
+    edits: init.edits === undefined ? 1 : init.edits,
+    editStep: init.editStep === undefined ? 1 : init.editStep,
     labels: [],
     calls: [],
     writes: [],
@@ -139,7 +140,7 @@ function makeTracker(init = {}) {
       const text = fs.readFileSync(args[args.indexOf('--body-file') + 1], 'utf8');
       t.writes.push(text);
       t.dash.body = text;
-      t.edits += 1;
+      t.edits += t.editStep;
       t.dash.updatedAt = 'T2';
       return ok_('');
     }
@@ -373,4 +374,11 @@ for (const argv of [['--bogus'], ['--repo'], ['--repo', 'nope'], ['--set-last-au
   ok('e2e: usage error exits 2', bad.status === 2);
 }
 
+{
+  // GitHub stops recording body edits at 100: the write is clean on an exact read-back.
+  const t = makeTracker({ edits: 100, editStep: 0 });
+  const r = runMain(['--repo', 'o/r'], t);
+  ok('full edit history: the dashboard write is not a conflict', r.code === 0 && !/conflict|aborted/.test(r.out) && t.writes.length === 1);
+  ok('full edit history: the output says the check was read-back only', /edit history full/.test(r.out));
+}
 console.log(`dashboard.test.js: ${passed} checks passed`);

@@ -48,6 +48,10 @@ const EDIT_HISTORY_HINT = "open the issue's edit history (the `edited` menu) and
 // first edit (delta 2). Confirmed live (2026-10-14): a never-edited issue goes
 // from 0 to 2 edits on its first body write, then +1 per write.
 const FIRST_EDIT_DELTA2 = true;
+// GitHub stops recording body edits once an issue holds this many: the count no
+// longer moves, so the post-write check can only rely on the exact read-back.
+const EDIT_HISTORY_CAP = 100;
+const HISTORY_FULL_NOTE = ' (edit history full: post-write check by read-back only)';
 const PLACEHOLDER_RE = /^\s*(?:[-*+]\s+)?[_*]*\(?\s*(?:none(?:\s+yet)?|nothing(?:\s+yet)?|n\/a|tbd|empty)\s*\)?[_*]*\.?\s*$/i;
 
 // --- pure section splice ------------------------------------------------------
@@ -350,10 +354,18 @@ function guardedWrite(issue, input, rawOpts = {}) {
   if (after === null || back.error) {
     return fail(`written, but the post-write check could not run (${back.error || 'edit count unreadable'}): verify the issue body`);
   }
+  const readBackOk = norm(back.body) === norm(next);
+  // A full edit history hides every new edit from the count: read-back only.
+  if (baseline >= EDIT_HISTORY_CAP) {
+    if (!readBackOk) {
+      return fail('conflict: the body read back differs from what was written, and the edit history is full so GitHub has not recorded the overwritten text: verify the issue body', { conflict: true });
+    }
+    return { ok: true, historyFull: true, ...sizes };
+  }
   const delta = after - baseline;
   const firstEdit2 = (opts.firstEditDelta2 === undefined ? FIRST_EDIT_DELTA2 : opts.firstEditDelta2) && baseline === 0;
   const cleanDelta = delta === 1 || (firstEdit2 && delta === 2);
-  if (!cleanDelta || norm(back.body) !== norm(next)) {
+  if (!cleanDelta || !readBackOk) {
     return fail(`conflict: a concurrent edit landed during the write, the overwritten text is in the issue's edit history: ${EDIT_HISTORY_HINT}`, { conflict: true });
   }
   return { ok: true, ...sizes };
@@ -425,7 +437,7 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
   const g = guardedWrite(o.issue, wrapped, { gh, repo: o.repo, guard, scanText: scanText === '' ? ' ' : scanText, dryRun: o.dryRun, tmpdir, firstEditDelta2 });
   if (!g.ok) { out.write(`aborted: ${g.reason}\n`); return 1; }
   if (g.dryRun) out.write(`${prefix}: dry-run: would have ${summary} (body ${g.oldSize} -> ${g.newSize} bytes), nothing written\n`);
-  else out.write(`${prefix}: ${summary}\n`);
+  else out.write(`${prefix}: ${summary}${g.historyFull ? HISTORY_FULL_NOTE : ''}\n`);
   return 0;
 }
 
@@ -440,7 +452,7 @@ function noopFirst(o, compute, wasUnchanged, opts) {
   return !(r && r.error) && wasUnchanged();
 }
 
-module.exports = { applyOp, readSection, defaultGh, PLACEHOLDER_RE, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE };
+module.exports = { applyOp, readSection, defaultGh, PLACEHOLDER_RE, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE, HISTORY_FULL_NOTE };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), {}));
