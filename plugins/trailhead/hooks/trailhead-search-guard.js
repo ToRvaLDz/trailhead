@@ -36,9 +36,8 @@
 // joined `cd X`/`pushd X` whose literal target resolves to exactly that cwd is
 // a no-op, so it does not make later relative reads non-static. Dynamic or
 // special targets (`$VAR`, backticks, `~`, `-`, a bare `cd`) always count as a
-// directory change, and an unknown cwd behaves as before. After a real earlier
-// cd, only an ABSOLUTE `cd <cwd>` restores the static state (a relative `cd .`
-// does not).
+// directory change, and an unknown cwd behaves as before. The exemption only
+// avoids ARMING: once a real cd has armed the guard, nothing disarms it.
 //
 // Blocks with exit 2 + {"decision":"block","code":...,"reason":...}; allows
 // everything else. Crash-safe: any error -> exit 0 (never wedge the user's
@@ -130,7 +129,7 @@ const VERB_CONFIG = {
 
 // Redirection token shapes (tokens are raw, so a quoted word never matches).
 const FD_DUP_RE = /^\d*[<>]&(?:\d+|-)$/; //            2>&1  >&2  >&-  0<&3
-const OUT_SEP_RE = /^(?:\d*|&)>>?\|?$/; //            >  >>  >|  2>  &>  &>>  (target is next token)
+const OUT_SEP_RE = /^(?:\d*|&)?>(?:>|&)?\|?$/; //     >  >>  >|  2>  &>  &>>  >&  2>&  (target is next token)
 const OUT_GLUED_RE = /^(?:\d*|&)>>?\|?./; //          >file  2>/dev/null  &>f  2>>f
 const HEREDOC_SEP_RE = /^\d*<<[<-]?$/; //             <<  <<-  <<<  (tag/word is next token)
 const HEREDOC_GLUED_RE = /^\d*<<./; //                <<EOF  <<-'EOF'  <<<word
@@ -226,21 +225,18 @@ function isCdOrPushdStatement(stmt) {
 }
 
 // Does this cd/pushd statement provably stay in the session cwd? Only with a
-// known absolute cwd and a static literal target resolving to it. `requireAbs`
-// (used once an earlier cd armed the flag) additionally demands an absolute
-// target, since a relative one is resolved against the already-changed dir.
-function cdTargetsSessionCwd(stmt, cwd, requireAbs) {
+// known absolute cwd and exactly one static literal target resolving to it.
+function cdTargetsSessionCwd(stmt, cwd) {
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) return false;
   const tokens = normalizeStatementTokens(tokenize(stmt));
   let i = skipEnvPrefix(tokens) + 1; // past cd/pushd
   while (i < tokens.length && tokens[i].startsWith('-') && tokens[i] !== '-') {
     if (tokens[i++] === '--') break; // option flags (-P/-L/--) before the target
   }
-  if (i >= tokens.length) return false; // bare cd goes to $HOME
+  if (i !== tokens.length - 1) return false; // bare cd goes to $HOME; extra targets are unsure
   const target = stripQuotes(tokens[i]);
   if (!target || target === '-' || target.startsWith('~')) return false;
   if (target.includes('$') || target.includes('`')) return false;
-  if (requireAbs && !path.isAbsolute(target)) return false;
   return path.resolve(cwd, target) === path.resolve(cwd);
 }
 
@@ -300,8 +296,7 @@ function detectSearchHygieneViolation(cmd, { cwd } = {}) {
     // the sole statement) - a lone standalone `cd` is the known limitation
     // above and must never be blocked here.
     if (isCdOrPushdStatement(stmt) && idx < statements.length - 1) {
-      if (!cdTargetsSessionCwd(stmt, cwd, cwdChanged)) cwdChanged = true;
-      else cwdChanged = false; // absolute cd back to the session cwd: static again
+      if (!cdTargetsSessionCwd(stmt, cwd)) cwdChanged = true;
     }
   }
   return null;
