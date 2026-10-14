@@ -33,7 +33,7 @@ ok('the bug Fix block was found', fix.length > 500);
 
 // --- the brief: what the executor does ---------------------------------------------------
 const has = (src, ...needles) => needles.every((n) => src.includes(n));
-ok('brief: atomic conventional commits with a Refs trailer', has(brief, 'atomic', 'conventional', 'Refs: #<n>'));
+ok('brief: atomic conventional commits with a Refs trailer', has(lb, 'atomic', 'conventional', 'refs: #<n>'));
 ok('brief: one commit = one verifiable step', brief.includes('One commit = one verifiable step'));
 ok('brief: TDD per the config.tdd value passed', has(brief, 'config.tdd', '`seams`', '`on`', '`off`'));
 ok('brief: a fix gets a test that fails before and passes after', lb.includes('fails before and passes after'));

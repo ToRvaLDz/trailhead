@@ -11,7 +11,7 @@ The orchestrator passes: the ticket number `<n>`, the PLAN, the base SHA, the `c
 **TDD per the `config.tdd` value passed.** `seams`: test-first at the seams the PLAN names; `on`: test-first throughout; `off`: no test-first requirement. For a fix, where sensible, a test that fails before and passes after.
 
 ## New dependencies
-**Vet before installing any new dependency** (slopsquatting barrier): name and typosquat similarity to popular packages, age / first-seen date, download counts, repository metadata present and matching. On a host with a hook bus the `trailhead-install-guard` `PreToolUse` hook blocks a named public-registry install (npm / PyPI / crates.io / Go / RubyGems) until it is vetted.
+**Vet before installing any new dependency** (slopsquatting barrier): name and typosquat similarity to popular packages, age / first-seen date, downloads (counts), repository metadata present and matching. On a host with a hook bus the `trailhead-install-guard` `PreToolUse` hook blocks a named public-registry install (npm / PyPI / crates.io / Go / RubyGems) until it is vetted.
 - **Clean result, or the orchestrator passed that exact package as user-approved:** install by re-running the exact install command prefixed with `TRAILHEAD_VERIFIED_INSTALL=1`.
 - **Suspicious result on a package the orchestrator did not pass as user-approved:** stop and report. Never install it, never set the sentinel for it, and do not substitute another package on your own judgement.
 
