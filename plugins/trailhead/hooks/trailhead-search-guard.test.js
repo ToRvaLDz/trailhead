@@ -168,7 +168,14 @@ ok('#238 unit: cd <cwd> still violates when cwd unknown',
   detectSearchHygieneViolation('cd /home/u/p && cat rel.txt').file === 'rel.txt');
 ok('#238 unit: relative cd after a real cd stays armed',
   detectSearchHygieneViolation('cd sub && cd . && cat rel.txt', { cwd: CWD }).file === 'rel.txt');
-ok('#238 unit: absolute cd back to cwd disarms',
-  detectSearchHygieneViolation('cd sub && cd /home/u/p && cat rel.txt', { cwd: CWD }) === null);
+// once armed by a real cd, nothing disarms: a cd to the session cwd only avoids arming
+for (const cmd of [
+  'cd sub || cd /home/u/p && cat rel.txt',
+  'cd sub && (cd /home/u/p) && cat rel.txt',
+  'cd sub && cd /home/u/p && cat rel.txt',
+]) ok(`#238 unit: stays armed: ${cmd}`, detectSearchHygieneViolation(cmd, { cwd: CWD }).file === 'rel.txt');
+ok('#238 unit: cd with an extra target is not a no-op',
+  detectSearchHygieneViolation('cd /home/u/p /other && cat rel.txt', { cwd: CWD }).file === 'rel.txt');
+ok('#238 allow: separate-token >& target', allowed(runHook('cd app && cat /abs/a >& out.txt')));
 
 console.log(`✓ search-guard: ${passed} assertions passed`);
