@@ -4,8 +4,14 @@
 # inherit the "type" of the user repo's package.json, so "type": "module" broke it).
 #
 # Never blocks a commit on a startup failure: node missing, the .cjs missing or
-# unreadable, or node crashing at load all exit 0. Only the .cjs's dedicated
+# unreadable, or node crashing at load all exit 0, but print a one-line "inactive"
+# notice on stderr so the failure is not silent. Only the .cjs's dedicated
 # rule-violation code (3) becomes exit 1, which makes git abort the commit.
+
+# Avviso unico su stderr, stesso formato per tutti i casi.
+inactive() {
+  echo "trailhead: commit-msg hook inactive ($1); commit rules not enforced." >&2
+}
 
 case $0 in
   */*) dir=${0%/*} ;;
@@ -13,9 +19,22 @@ case $0 in
 esac
 cjs="$dir/trailhead-commit-msg.cjs"
 
-[ -r "$cjs" ] || exit 0
-command -v node >/dev/null 2>&1 || exit 0
+if [ ! -r "$cjs" ]; then
+  inactive "trailhead-commit-msg.cjs missing or unreadable"
+  exit 0
+fi
+if ! command -v node >/dev/null 2>&1; then
+  inactive "node not found on PATH"
+  exit 0
+fi
 
 node "$cjs" "$@"
-[ "$?" -eq 3 ] && exit 1
-exit 0
+code=$?
+case $code in
+  0) exit 0 ;;
+  3) exit 1 ;;
+  *)
+    inactive "trailhead-commit-msg.cjs failed to run, exit $code"
+    exit 0
+    ;;
+esac
