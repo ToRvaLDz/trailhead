@@ -658,7 +658,41 @@ function scanArgsSkippingPattern(args, config, isMatch) {
   return null;
 }
 
+// --- redirections ----------------------------------------------------------
+
+// Redirection token shapes (tokens are raw, so a quoted word never matches).
+const FD_DUP_RE = /^\d*[<>]&(?:\d+|-)$/; //            2>&1  >&2  >&-  0<&3
+const OUT_SEP_RE = /^(?:\d*|&)?>(?:>|&)?\|?$/; //     >  >>  >|  2>  &>  &>>  >&  2>&  (target is next token)
+const OUT_GLUED_RE = /^(?:\d*|&)>>?\|?./; //          >file  2>/dev/null  &>f  2>>f
+const HEREDOC_SEP_RE = /^\d*<<[<-]?$/; //             <<  <<-  <<<  (tag/word is next token)
+const HEREDOC_GLUED_RE = /^\d*<<./; //                <<EOF  <<-'EOF'  <<<word
+const IN_SEP_RE = /^\d*<$/; //                        <  0<  (target is next token, still a read)
+const IN_GLUED_RE = /^\d*<(.+)$/; //                  <file  0<file
+
+// Return a NEW arg list with redirections removed. Output/dup/heredoc pieces
+// vanish with their targets; an input redirection keeps only its target (a real
+// read). Done before the pattern-skipping walk so a redirection token can never
+// be mistaken for (or swallow) the leading pattern positional of grep/rg/sed/awk.
+function stripRedirections(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    // Separate-operator forms first: `>>` would otherwise also satisfy the glued regex.
+    if (OUT_SEP_RE.test(t) || HEREDOC_SEP_RE.test(t)) { i++; continue; }
+    if (FD_DUP_RE.test(t) || HEREDOC_GLUED_RE.test(t) || OUT_GLUED_RE.test(t)) continue;
+    if (IN_SEP_RE.test(t)) continue; // operator dropped; next token is the read target
+    const m = IN_GLUED_RE.exec(t);
+    if (m) {
+      if (!m[1].startsWith('(')) out.push(m[1]); // `<(cmd)` process substitution: not a file
+      continue;
+    }
+    out.push(t);
+  }
+  return out;
+}
+
 module.exports = {
+  stripRedirections,
   basename,
   stripQuotes,
   stripHeredocBodies,
