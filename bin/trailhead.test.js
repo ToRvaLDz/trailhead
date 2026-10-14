@@ -904,7 +904,7 @@ ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (()
   const reviewingBlock250 = sync250.parseSource(fs.readFileSync(path.join(repoRoot, 'scripts', 'agent-blocks.md'), 'utf8')).reviewing;
   ok('#250: the source defines a reviewing block', typeof reviewingBlock250 === 'string' && reviewingBlock250.length > 0);
   const agentsDir250 = path.join(unsetCodexHomeDir, 'agents');
-  const reviewingNames250 = new Set(['trailhead-verify', 'trailhead-code-review']);
+  const reviewingNames250 = new Set(['trailhead-verify', 'trailhead-review']); // the code-review agent projects as trailhead-review.toml
   const tomls250 = fs.readdirSync(agentsDir250).filter((f) => /^trailhead-.*\.toml$/.test(f));
   ok('#250: all 8 TOMLs are checked', tomls250.length === 8);
   for (const f of tomls250) {
