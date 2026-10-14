@@ -38,18 +38,18 @@ On a host with no hook bus, trailhead does the same checks inline at the start o
 
 ## Commit-msg hook
 
-Alongside the host hooks, trailhead installs a plain git `commit-msg` hook, so the commit rules hold on every host and for every `git commit`, including Codex, which has no hook bus. On each commit it enforces:
+Alongside the host hooks, trailhead installs a plain git `commit-msg` hook (a small `sh` wrapper plus a `trailhead-commit-msg.cjs` file beside it, so it also works in repos whose `package.json` sets `"type": "module"`), so the commit rules hold on every host and for every `git commit`, including Codex, which has no hook bus. On each commit it enforces:
 
 - a [Conventional Commits](https://www.conventionalcommits.org) subject of at most 72 characters;
 - no `Co-Authored-By` trailer;
 - while a `.trailhead/session-ticket` marker is present at the working root, a `Refs: #<n>` trailer matching the ticket number in that marker. A commit missing it is rejected with a message naming the ticket and the fix. A marker that cannot be parsed never blocks a commit, and with no marker the trailer is not required.
 
-The hook never wedges a commit: an unexpected error lets the commit through. `git commit --no-verify` skips it, as with any git hook. Commits made while a stale marker is lying around would wrongly demand the trailer, which is why trailhead removes the marker at the handoff; see [Working as a team](/docs/teamwork).
+The hook never wedges a commit: an unexpected error, a missing node, or a missing logic file lets the commit through. `git commit --no-verify` skips it, as with any git hook. Commits made while a stale marker is lying around would wrongly demand the trailer, which is why trailhead removes the marker at the handoff; see [Working as a team](/docs/teamwork).
 
 **Keeping it installed.** trailhead runs a small sync script at chart or adopt time and at the start of every `work` and `quick`. It reports one of these outcomes:
 
 - **installed**: no hook was there, so the trailhead one was added.
-- **upgraded**: an older trailhead hook (recognised by its own header line, not by filename) was replaced in place with the current one.
+- **upgraded**: an older trailhead hook (including the earlier single-file one; recognised by its own header line, not by filename) was replaced in place with the current layout.
 - **current**: already up to date, left alone.
 - **foreign**: a commit-msg hook that is not trailhead's (a symlink counts) was found. It is never touched, and git does not enforce trailhead's rules there; trailhead tells you so.
 - **skipped**: nothing was set up, because the directory is not a git repo or `core.hooksPath` is set and holds no commit-msg hook.

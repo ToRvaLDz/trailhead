@@ -1384,6 +1384,9 @@ ok('source: teamwork.md fallback resolves the hooks dir via rev-parse --git-path
   teamworkSource.includes('git -C <working-root> rev-parse --git-path hooks'));
 ok('source: teamwork.md fallback classifies by the trailhead header line',
   teamworkSource.includes('// trailhead commit-msg hook (git).'));
+ok('source: teamwork.md fallback knows the sh wrapper header and the .cjs logic file (#257)',
+  teamworkSource.includes('# trailhead commit-msg hook (git).') && teamworkSource.includes('trailhead-commit-msg.cjs'));
+ok('source: substrate-commands.md names the .cjs logic file (#257)', substrateCommandsSource.includes('trailhead-commit-msg.cjs'));
 ok('source: teamwork.md fallback checks the executable bit (test -x)',
   teamworkSource.includes('test -x'));
 ok('source: teamwork.md fallback reads only the first 5 lines',
