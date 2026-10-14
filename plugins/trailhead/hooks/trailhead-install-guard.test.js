@@ -122,6 +122,24 @@ for (const [cmd, eco, names] of pos239) {
   ok(`detects exactly: ${cmd}`, d && d.ecosystem === eco && JSON.stringify(d.packages) === JSON.stringify(names));
 }
 
+// A lockfile flag never excuses a typed name: the named package is still gated.
+const posLock = [
+  ['npm i --frozen-lockfile evilpkg', 'evilpkg'],
+  ['pnpm install --frozen-lockfile evilpkg', 'evilpkg'],
+  ['yarn install --immutable evilpkg', 'evilpkg'],
+  ['npm install evilpkg --frozen', 'evilpkg'],
+];
+for (const [cmd, name] of posLock) {
+  const d = detectInstall(cmd);
+  ok(`detects despite lockfile flag: ${cmd}`, d && d.packages.includes(name));
+  const r = runHook(cmd);
+  ok(`blocks despite lockfile flag: ${cmd}`, r.code === 2 && new RegExp(name).test(r.out));
+}
+
+// Known unmodelled gaps (documented, NOT asserted): this guard reads one plain
+// command per statement, so an install hidden behind `bash -c "..."`, `$( )`,
+// `eval`, `sudo`, or `xargs` is not seen. These pass both before and after #239.
+
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));
 ok('no sentinel', !isVerified('npm install lodash'));
