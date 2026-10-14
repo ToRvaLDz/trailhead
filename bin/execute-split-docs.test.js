@@ -34,6 +34,11 @@ ok('the bug Fix block was found', fix.length > 500);
 // --- the brief: what the executor does ---------------------------------------------------
 const has = (src, ...needles) => needles.every((n) => src.includes(n));
 ok('brief: atomic conventional commits with a Refs trailer', has(lb, 'atomic', 'conventional', 'refs: #<n>'));
+ok('brief: a fix takes the confirmed DIAGNOSIS as its spec', brief.includes('the confirmed `DIAGNOSIS` (bug)'));
+ok('brief: a resumed spawn continues from the commits already made', has(brief, 'Resumed spawn', 'never redo or revert'));
+ok('brief: stop and report finishes the unaffected work first', brief.includes('finish the work it does not affect'));
+ok('Execute and Fix: inline, the session applies the brief and asks the user directly',
+  execute.includes('asking the user directly') && fix.includes('asking the user directly'));
 ok('brief: one commit = one verifiable step', brief.includes('One commit = one verifiable step'));
 ok('brief: TDD per the config.tdd value passed', has(brief, 'config.tdd', '`seams`', '`on`', '`off`'));
 ok('brief: a fix gets a test that fails before and passes after', lb.includes('fails before and passes after'));
