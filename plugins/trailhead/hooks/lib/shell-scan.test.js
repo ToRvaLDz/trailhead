@@ -16,6 +16,7 @@ const {
   inWordContinuations,
   scanArgsSkippingPattern,
   SEARCH_VERB_CONFIG,
+  stripRedirections,
 } = require('./shell-scan.js');
 
 let passed = 0;
@@ -454,6 +455,19 @@ ok('scanArgsSkippingPattern still finds a secret FILE operand after the pattern'
   ok('inWordContinuations finds one inside $(..)', iw('echo $(cat .e\\\nnv)').length === 1);
   ok('inWordContinuations ignores a heredoc body', iw('cat <<E\na\\\nb\nE').length === 0);
   ok('inWordContinuations is empty for plain text', iw('echo hi').length === 0);
+}
+
+// --- stripRedirections ---
+{
+  const sr = (a) => JSON.stringify(stripRedirections(a));
+  ok('stripRedirections drops an fd dup (2>&1)', sr(['x', '2>&1']) === JSON.stringify(['x']));
+  ok('stripRedirections drops a glued output (>f)', sr(['x', '>f']) === JSON.stringify(['x']));
+  ok('stripRedirections drops a separate output and its target (> f)', sr(['x', '>', 'f', 'y']) === JSON.stringify(['x', 'y']));
+  ok('stripRedirections drops a glued append (>>f)', sr(['x', '>>f']) === JSON.stringify(['x']));
+  ok('stripRedirections keeps a glued input target (<f)', sr(['x', '<f']) === JSON.stringify(['x', 'f']));
+  ok('stripRedirections keeps a separate input target (< f)', sr(['x', '<', 'f']) === JSON.stringify(['x', 'f']));
+  ok('stripRedirections drops a glued heredoc (<<EOF)', sr(['x', '<<EOF']) === JSON.stringify(['x']));
+  ok('stripRedirections drops a process substitution (<(x))', sr(['x', '<(x)']) === JSON.stringify(['x']));
 }
 
 // --- the new hooks leave the existing lexer output untouched ---
