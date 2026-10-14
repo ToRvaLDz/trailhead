@@ -7,6 +7,9 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 ### Added
 - **Dashboard view in the map panel.** A `dashboard` button in the panel header shows the repo index in place of a map: a link to the pinned `trailhead:dashboard` issue, every open map (a click opens it) and the whiteboard's open tickets as Frontier / In progress / Blocked with a `work` button per frontier ticket; `map` goes back. The mode survives `/clear`.
 
+### Changed
+- **Verify and code review open with a fixed status line (#250).** The review agents now return their report instead of posting it, and the engine checks the first line before it branches: `status: <token>` from the technique's closed set (`met` / `gaps_found` / `inconclusive` for verify, `clean` / `issues_found` for code review, plus the `critical: <n> · warning: <n> · info: <n>` counts line second). A new `templates/trailhead-report-status.js` accepts an exact report, rewrites the same token written another way (case, decoration, line position, CRLF) and asks the agent once to redo anything ambiguous; a second failure stops at a checkpoint instead of guessing a verdict. The orchestrator posts one `VERIFY` comment per round. The shared agent text now lives in `scripts/agent-blocks.md`, synced into the agents by `scripts/sync-agent-blocks.js` (checked by `npm test`), which also shortens the search-hygiene note in every agent.
+
 ### Fixed
 - **Shared core loads by absolute path (#237).** The skills now load the shared core (`_shared/load-first.md` and the files it lists) with the Read tool on absolute paths resolved from the skill's base directory, instead of `cd ... && cat` relative reads that the search guard denied. The Codex adapter resolves skill references to absolute paths the same way.
 
