@@ -340,6 +340,17 @@ function writeTmp(text) {
   })());
 }
 
+// --- I3: a temp-file fs failure keeps the one-line contract -------------------
+{
+  const aFile = writeTmp('not a directory');
+  for (const [name, tmpdir] of [['missing tmpdir', '/nonexistent-trailhead-dir/sub'], ['tmpdir that is a file', aFile]]) {
+    const t = makeTracker();
+    const r = runMain(APPEND, t, { tmpdir });
+    ok(`I3: ${name}: exit 1, one aborted line`, r.code === 1 && /^aborted: /.test(r.out) && r.out.trim().split('\n').length === 1);
+    ok(`I3: ${name}: gh issue edit never ran, no stack on stderr`, !t.calls.some((c) => c.startsWith('issue edit')) && r.err === '');
+  }
+}
+
 // --- secret scan -------------------------------------------------------------
 {
   const t = makeTracker();

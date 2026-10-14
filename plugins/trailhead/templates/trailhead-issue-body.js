@@ -280,15 +280,21 @@ function editCount(issue, opts, slug = resolveRepo(opts)) {
 const norm = (s) => String(s).replace(/\r\n/g, '\n');
 
 // Writes `text` with gh issue edit through a temp file that is always removed.
+// Returns null on success, else a one-line reason (a temp-file fs failure included).
 function ghWrite(issue, text, opts) {
-  const dir = fs.mkdtempSync(path.join(opts.tmpdir || os.tmpdir(), 'trailhead-issue-body-'));
-  const file = path.join(dir, 'body.md');
+  let dir = null;
   try {
+    dir = fs.mkdtempSync(path.join(opts.tmpdir || os.tmpdir(), 'trailhead-issue-body-'));
+    const file = path.join(dir, 'body.md');
     fs.writeFileSync(file, text);
     const r = opts.gh(['issue', 'edit', String(issue), '--body-file', file, ...repoArgs(opts.repo)]);
     return r.status === 0 ? null : `gh issue edit #${issue} failed: ${firstLine(r.stderr) || 'exit ' + r.status}`;
+  } catch (e) {
+    return `could not stage the body in a temp file, nothing written: ${firstLine(e && e.message)}`;
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    if (dir) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
+    }
   }
 }
 
