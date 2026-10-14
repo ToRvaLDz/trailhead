@@ -26,7 +26,7 @@ Due approcci al lavoro di progetto guidato dagli agenti risolvono ciascuno una m
 
 Lavorando su entrambi, uno schema continuava a ripresentarsi: **usa una mappa e un onboarding in stile Wayfinder per decidere la forma del lavoro, poi un motore in stile GSD per costruire ogni pezzo, senza mai lasciare l'issue tracker.** `trailhead` è quello schema trasformato in un'unica skill, una sua interpretazione autonoma di entrambe le idee anziché un wrapper attorno all'una o all'altra.
 
-> **trailhead è self-contained** nel senso che ha **zero dipendenze da plugin esterni**: gli agent di trailhead e i built-in dell'host vanno bene, e nessun'altra skill o plugin è richiesta. Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; ogni tecnica del motore dispatcha al **proprio agent `trailhead-*`** (`trailhead-executor`, `trailhead-plan`, `trailhead-research`, `trailhead-code-review`, `trailhead-debug`, più `trailhead-fix` e `trailhead-codebase-map`), scritto una volta come file `agents/trailhead-*.md` versionato e **proiettato su ogni host** (su Codex diventa `~/.codex/agents/trailhead-*.toml` generato dalla stessa sorgente). Questi agent sono **thin** (identità + tool policy + un modello guidato dalla config, con il protocollo della tecnica iniettato allo spawn) e girano sul toolkit di subagent nativo dell'host (il tool `Agent` integrato di Claude Code, oppure il toolkit `multi_agent` di Codex). L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: la modalità mockup hosted. Quando abilitata, `artifacts` costruisce il mockup come canvas Design **Artifact** su claude.ai tramite il tool `Artifact` integrato in Claude Code (solo Claude Code, niente da installare), con il tuo design system installato sul canvas. Una seconda modalità hosted, `stitch`, usa l'MCP Google Stitch e funziona sia su **Claude Code sia su Codex**, quindi è l'opzione cross-host; se il suo MCP non è connesso, offre un'installazione una tantum e ripiega sui mockup su disco locale se rifiuti. Dove il tool `Artifact` non c'è (Codex, sessioni con API key), offre di passare a `stitch` prima di ripiegare sul disco locale.
+> **trailhead è self-contained** nel senso che ha **zero dipendenze da plugin esterni**: gli agent di trailhead e i built-in dell'host vanno bene, e nessun'altra skill o plugin è richiesta. Wayfinder e GSD sono *ispirazione*, non dipendenze. Ogni tecnica che quei sistemi impacchettano come skill separata (grilling, TDD, debugging sistematico, codebase mapping, code review) è **integrata qui come protocollo inline**. Il core di trailhead non invoca nessun'altra skill; ogni tecnica del motore dispatcha al **proprio agent `trailhead-*`** (`trailhead-executor`, `trailhead-plan`, `trailhead-research`, `trailhead-code-review`, `trailhead-debug`, più `trailhead-fix` e `trailhead-codebase-map`), scritto una volta come file `agents/trailhead-*.md` versionato e **proiettato su ogni host** (su Codex diventa `~/.codex/agents/trailhead-*.toml` generato dalla stessa sorgente). Questi agent sono **thin** (identità + tool policy + un modello guidato dalla config, con il protocollo della tecnica iniettato allo spawn) e girano sul toolkit di subagent nativo dell'host (il tool `Agent` integrato di Claude Code, oppure il toolkit `multi_agent` di Codex). L'unica cosa da installare è trailhead stesso. C'è un'unica eccezione opt-in: i mockup hosted. `design: artifacts` usa il tool `Artifact` integrato in Claude Code (niente da installare), e `design: stitch` usa l'MCP Google Stitch (offerto come installazione una tantum). Vedi [Mockup prima del codice](#-mockup-prima-del-codice).
 
 Le scelte di design che ne derivano:
 
@@ -238,6 +238,15 @@ I tre che mandano le persone in confusione sono **idea, seed, todo**, quindi ecc
 
 I due tagli che contano: **idea vs seed** è aspettare la *chiarezza* vs aspettare una *condizione* (entrambi atterrano "dopo", per ragioni diverse); **seed vs todo** è impegnato *dopo* vs impegnato *ora*. Sotto tutti e tre sta **`note`** (testo grezzo da ricordare, forse mai lavoro), e di lato c'è **`bug`** (un difetto, non un livello di impegno). Il test per idea vs ticket è sempre: **puoi formulare la domanda con precisione ora?** Sì → un ticket (`todo` se prendibile, `seed` se gated); no → la fog (`idea`).
 
+### Manage: mantenere sani l'install e le mappe
+
+| Comando | Cosa fa |
+|---|---|
+| `/trailhead:config [get\|set …]` | setup guidato a menu; `get` stampa la config effettiva, `set <key> <value>` scrive una chiave (vedi Configuration sotto) |
+| `/trailhead:update` | cerca un trailhead più recente e lo installa dove è sicuro farlo |
+| `/trailhead:prune [map]` | recupera gli slot di sub-issue di una mappa sotto il cap di 100 di GitHub (elimina gli edge chiusi/orfani, mantiene i riferimenti) |
+| `/trailhead:audit [map] [--all]` | verifica i ticket chiusi contro il codice attuale per trovare regressioni, più i duplicati e i raggruppabili tra quelli aperti; in sola lettura finché non confermi |
+
 ---
 
 ## 🎫 Tipi di ticket e i loro motori
@@ -251,13 +260,85 @@ Ogni tipo ha il proprio motore inline: nessuna skill esterna viene invocata.
 | 🧭 `decision` | una scelta | HITL | diverge le opzioni se non chiare, poi grill per convergere su una |
 | 🔬 `research` | un fatto | AFK | un subagent su un branch usa-e-getta (l'unico tipo eseguito in parallelo) |
 | 🎨 `prototype` | una direzione approvata | HITL | un artefatto grezzo usa-e-getta a cui reagire; le schermate UI passano da qui (disco, un canvas Artifacts, o Stitch) prima del codice UI |
-| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **prima un mockup per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + acceptance testing (chiede chi guida, AI o umano, poi browser-drive o UAT conversazionale passo-passo) |
+| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **[prima un mockup](#-mockup-prima-del-codice) per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + [acceptance testing](#-acceptance-testing-uat) (chiede chi guida, AI o umano, poi browser-drive o UAT conversazionale passo-passo) |
 | 🐛 `bug` | codice corretto | HITL/AFK | `repro → diagnose → fix → verify`; un difetto in lavoro chiuso è un ticket *nuovo* (`Regression of:`), non una riapertura |
 | 🔧 `task` | un cambiamento di stato esterno | HITL/AFK | lavoro manuale che sblocca una decision (provisioning accessi, spostamento dati, iscrizioni) |
 
 Due regole pratiche: i build ticket **non fanno mai auto-grill**: su un'ambiguità bloccante la skill si ferma e chiede; e il brainstorming (divergenza) vive nel charting, nel micro-charting di `ticket`, e nella fase di opzioni di una `decision`, mai nel grilling stesso, che converge soltanto.
 
 Quando trailhead pone una scelta forzata, una scelta advisory (non una decisione che plasma la mappa) può offrire anche "lascia scegliere all'agente (con motivazione, poi conferma)", e qualsiasi scelta può offrire "rimanda questa decisione", che la parcheggia come ticket `decision` bloccato o come `seed` finché il suo prerequisito non si risolve.
+
+---
+
+## 🎨 Mockup prima del codice
+
+Ogni ticket che cambia la UI rivolta all'utente (una nuova schermata, un redesign, un layout cambiato) viene **messo in mockup prima di scrivere qualsiasi codice UI**. Reagisci al mockup, lo approvi, e il build lo riproduce fedelmente; l'acceptance testing poi verifica il risultato rispetto a esso. Dove vive il mockup lo decide la chiave `design`:
+
+| `design` | Dove vive il mockup | Host |
+|---|---|---|
+| **`disk`** (default) | un file HTML statico usa-e-getta accanto al codice, collegato dal ticket | qualsiasi |
+| `artifacts` | un **canvas Design Artifact** su claude.ai: lo modifichi visivamente, lo commenti, lo esporti | Claude Code con login a un account claude.ai |
+| `stitch` | un progetto **Google Stitch** (o un design system Stitch) | Claude Code e Codex |
+
+Una domanda di UI ancora aperta riceve **3 varianti strutturalmente diverse** (layout diversi, non colori o testi) tra cui scegliere, non una sola proposta.
+
+### Come appare con `artifacts`
+
+```text
+you       › /trailhead:work                       # ⑤ build: "login screen"
+trailhead › This ticket changes UI. Mock it up first?            → yes
+trailhead › No canvas for this map yet: pick one, paste a URL, or create one?
+you       › create one, "Acme app"
+trailhead › Installed your design system "Acme DS" on the canvas.
+            Canvas: https://claude.ai/artifact/…  ·  page "#42 Login"
+            Artboards: Login-A (split hero) · Login-B (centered card) · Login-C (stepper)
+            Which direction?
+you       › B, but with the social buttons above the form   # oppure modificalo tu sul canvas
+trailhead › Updated Login-B. Approve?                         → approve
+trailhead › Re-read the approved artboard (your live edits included) → planning the build
+```
+
+- **Un canvas per mappa**, in cache in `design.project`; ogni ticket ha la sua pagina del canvas, ogni schermata (e variante) la sua tavola. Le schermate di app hanno un frame fisso (es. un telefono 390×844), le pagine web uno fluido.
+- **Il tuo design system sul canvas.** `design.system` (o quello predefinito del tuo account) viene installato, così l'editor del canvas offre i suoi colori, la sua tipografia e i suoi componenti invece di imitazioni.
+- **Approvi con il link davanti.** Ogni richiesta di approvazione porta l'URL del canvas e i nomi delle tavole; il [guard del link al mockup](#-hooks) blocca quelle che non li hanno.
+- **Modifica liberamente.** Cambia il canvas direttamente o lascia commenti lì; all'approvazione trailhead **rilegge** le tavole e costruisce da *quella* versione, non da quella che ha pubblicato per ultima.
+- **`design.approval`**: `explicit` (default) attende il tuo via libera prima del codice UI; `auto` mostra il mockup e procede.
+
+### `stitch` e `disk`
+
+`design: stitch` usa l'**MCP Google Stitch**, il generatore UI di Google basato su Gemini, ed è l'opzione hosted che gira sia su **Claude Code sia su Codex**. `design.surface` sceglie un progetto Stitch di schermate (`canvas`, default) o un design system Stitch condiviso (`design-system`). Se l'MCP non è connesso, trailhead offre di installarlo una volta (se rifiuti, ripiega sul disco):
+
+```bash
+claude mcp add --scope user --transport http stitch https://stitch.googleapis.com/mcp
+```
+
+Dove `artifacts` non può girare (Codex, o una sessione con API key), trailhead offre di passare a `stitch` prima di ripiegare sul disco, e lo dice: non sostituisce mai in silenzio una modalità hosted con un file locale.
+
+**Passare da claude.ai/design.** Il sito standalone di Claude Design chiude il 14/12/2026 e i suoi design ora vivono in Claude come Artifacts. Una config che dice ancora `design: claude.ai/design` continua a funzionare come `artifacts` (trailhead te lo dice una volta e offre di riscrivere la chiave), ma un progetto claude.ai/design in cache non è riutilizzabile: migra i design system dal banner della pagina Artifacts e lascia che trailhead agganci un nuovo canvas.
+
+---
+
+## 🧪 Acceptance testing (UAT)
+
+I test verdi provano che il codice fa ciò che il *codice* intendeva; l'acceptance testing prova che fa ciò che volevi *tu*. Per tutto ciò che si vede (una nuova schermata, dati che ora compaiono, un flusso cambiato), una suite verde **non chiude il ticket**: la Verify esegue anche una UAT, dopo i test e la code review.
+
+1. **Chiede chi guida.** Prima di ogni passo: **AI-driven** o **human-driven**. Attende una risposta chiara (il silenzio ripete la domanda). Se nessun passo è qualcosa che l'agente può fare in questa sessione (un dispositivo che non raggiunge, credenziali che non ha, un giudizio di feel o di suono), salta la domanda, passa a human-driven e ti dice perché in una riga.
+2. **AI-driven: guida l'app da solo.** Per una web app trova da sé l'URL di destinazione (un dev server in esecuzione, lo script `dev`, la porta configurata del framework), te lo propone da confermare, poi naviga, compila, clicca e verifica cosa c'è a schermo, con uno **screenshot come prova** nel commento `VERIFY` del ticket. **Oltre al browser, guida qualsiasi dispositivo la sessione raggiunga**: un telefono o un emulatore via `adb`, un simulatore iOS, una smart TV, un'app desktop, tramite i comandi e i tool che hai collegato (un MCP di dispositivo, computer use, la CLI della piattaforma). Tornano a te solo i passi che davvero non può fare, uno alla volta.
+3. **Human-driven, o ciò che l'agente non raggiunge: una guida passo-passo.** Un dispositivo non collegato, un account che non ha, un giudizio di feel o di suono: trailhead ti accompagna **un passo alla volta in chat** (cosa fare, dove toccare, cosa dovresti vedere), attende ciò che hai effettivamente visto, poi va avanti. Mai una checklist scaricata addosso da sbrigare da solo.
+4. **Rispetto al mockup approvato.** Se il ticket ne aveva uno, la schermata costruita viene confrontata **elemento per elemento e stato per stato** (layout, spaziature, colore, tipografia, testi; vuoto, caricamento, errore, disabilitato…), partendo dal mockup riletto, mai a memoria. Una deviazione non forzata è un finding, non un "quasi uguale".
+5. **I fallimenti diventano ticket sul momento.** Un passo fallito registra atteso vs. visto e apre subito un follow-up `bug` (o un fix su questo ticket), poi chiede se proseguire.
+6. **Niente passa come "fatto".** Se la UAT non si può eseguire ora (il dispositivo non è a portata, il backend non è deployato), trailhead chiede: eseguirla adesso, o aprire un ticket di follow-up, collegato con una riga `UAT of:`, che porta la checklist completa. Un ticket rivolto all'utente non si chiude mai su una UAT che nessuno ha eseguito.
+
+```text
+trailhead › Tests and review are green. Who drives the UAT: AI or you?   → AI
+trailhead › Acceptance will run against http://localhost:5173, correct?   → yes
+trailhead › ✓ Sign in with GitHub → lands on /dashboard        (screenshot)
+            ✓ Login-B vs. the build: 14/14 elements, 4/4 states match
+            ✓ Android app on the connected phone (adb): GitHub sign-in → home  (screenshot)
+            ? Step 6 is the haptic on "Signed in": does it buzz once, softly?
+```
+
+Config: `acceptance.browser` (`auto` default, `on`, `off`) governa la guida del browser; `off` mantiene i controlli AI-driven via comandi e suite, e chiede comunque chi guida. `testing.webapp` / `testing.url` dicono se l'app è guidabile da browser e dove. Sotto `/trailhead:auto` va in AI-driven; i passi che solo tu puoi fare non vengono mai simulati: il ticket viene messo da parte ed elencato nel riepilogo della run.
 
 ---
 
@@ -326,6 +407,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
 | `models.{plan,execute,research,review,debug,verify,codebase-map}` | un id modello completo **versionato** (**inherit session**) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
 | `design` | **`disk`** \| `artifacts` \| `stitch` | dove vanno i mockup UI: HTML usa-e-getta locale, un canvas Design **Artifact** su claude.ai (solo Claude Code), o Google Stitch (cross-host, via l'MCP Stitch). Il vecchio valore `claude.ai/design` viene letto come `artifacts` |
+| `design.project` | URL del canvas Artifact / id del progetto Stitch | solo `artifacts` e `stitch`: il canvas o il progetto Stitch su cui finiscono i mockup; impostato alla prima schermata UI (scegli, incolla o crea), non a mano. Un vecchio progetto claude.ai/design non viene riutilizzato |
 | `design.surface` | **`canvas`** \| `design-system` | solo `stitch`: un progetto Stitch di schermate (default) o un design system Stitch condiviso |
 | `design.system` | URL di un Design System Artifact | solo `artifacts`: il design system installato sul canvas dei mockup (chiesto alla prima schermata se non impostato) |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
@@ -352,13 +434,7 @@ Esempio di file di config (la stessa forma funziona per il `.trailhead/config.js
 { "ticket": { "language": "en" }, "models": { "plan": "claude-opus-5-5", "execute": "claude-sonnet-5-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
 ```
 
-**Design mockups.** `design: disk` (il default) deposita un mockup HTML statico usa-e-getta accanto al codice e lo collega dal ticket. `design: artifacts` costruisce il mockup come **canvas Design Artifact** su claude.ai, tramite il tool `Artifact` integrato in Claude Code (niente da installare), dove lo affini visivamente, lo commenti e lo esporti; `design: stitch` usa l'**MCP Google Stitch** (`claude mcp add --scope user --transport http stitch https://stitch.googleapis.com/mcp`), il generatore UI di Google basato su Gemini che gira sia su **Claude Code sia su Codex** (l'opzione hosted cross-host).
-
-Con **`artifacts`**, alla prima schermata UI trailhead aggancia un canvas: **sceglierne uno esistente**, **incollare un URL**, oppure **crearne uno nuovo** (ti chiede il nome), e ne mette in cache l'URL in `design.project`. Ogni schermata (e ogni variante) è una propria tavola, raggruppata in una pagina del canvas per ticket; il design system in `design.system` (quello predefinito del tuo account, o quello che scegli) viene installato sul canvas, così colori, tipografia e componenti sono a portata di mano. I messaggi di approvazione riportano l'URL del canvas più il nome di ogni tavola. Una volta che approvi, trailhead **rilegge** le tavole (nel caso tu le abbia modificate live) prima di scrivere qualsiasi codice UI.
-
-Con **`stitch`**, `design.surface` sceglie un progetto Stitch di schermate (`canvas`, default) o un design system Stitch condiviso (`design-system`); trailhead lo sceglie, incolla o crea allo stesso modo, e offre una volta di installare l'MCP Stitch se non è connesso (se rifiuti, ripiega sul disco locale).
-
-**Passare da claude.ai/design.** Il sito standalone di Claude Design chiude il 14/12/2026 e i suoi design ora vivono in Claude come Artifacts. Una config che dice ancora `design: claude.ai/design` continua a funzionare come `artifacts` (trailhead te lo dice una volta e offre di riscrivere la chiave), ma un progetto claude.ai/design in cache non è riutilizzabile: migra i design system dal banner della pagina Artifacts e lascia che trailhead agganci un nuovo canvas. Dove il tool `Artifact` non c'è (Codex, o una sessione con API key), trailhead offre di passare a `stitch` prima di ripiegare sul disco locale. `design.approval` decide se il build attende il tuo esplicito via libera (`explicit`), o procede subito dopo aver mostrato il mockup (`auto`).
+**Mockup di design e acceptance testing.** Come si comportano le chiavi `design.*` (canvas, design system, approvazione, passaggio da claude.ai/design) è in [Mockup prima del codice](#-mockup-prima-del-codice); come `acceptance.browser` e `testing.*` guidano la Verify è in [Acceptance testing](#-acceptance-testing-uat).
 
 ---
 
