@@ -177,11 +177,14 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
   ok('common block states the shared-checkout rule', common.includes('not yours') && common.includes('stop without touching it'));
   ok('common block does not carry the worktree recipe', !common.includes('worktree add'));
   ok('common block does not say to report `blocked`', !common.includes('report `blocked`'));
+  ok('common block allows reverting only your own changes', common.includes('only on a file you changed'));
+  ok('common block forbids branch creation too', common.includes('git checkout -b') && common.includes('the orchestrator sets up the branch'));
 
   const impl = blocks.implementing || '';
   ok('source defines the implementing block', typeof blocks.implementing === 'string' && impl.length > 0);
   for (const needle of ['mktemp -d', 'worktree add --detach', 'worktree remove', 'rev-parse HEAD', 'never stash',
-    'git add -A', 'git add .', 'git commit -a', 'Refs: #<n>']) {
+    'git add -A', 'git add .', 'git commit -a', 'Refs: #<n>', 'git commit -- <path>', 'already staged',
+    'inconclusive', 'in your report']) {
     ok(`implementing block names ${needle}`, impl.includes(needle));
   }
   for (const name of agentNames) {
@@ -191,6 +194,13 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     ok(`${name}: ${wants ? 'carries' : 'does not carry'} the implementing block`, has === wants);
     ok(`${name}: forbids git stash and tracker writes`, md.includes('git stash') && md.includes('gh issue'));
   }
+  // The executor posts nothing: the Execute step hands the tracker writes to the orchestrator (#248).
+  const engines = fs.readFileSync(path.join(root, 'plugins', 'trailhead', 'skills', 'trailhead-work', 'references', 'ticket-engines.md'), 'utf8');
+  const execute = (engines.split('\n').find((l) => l.startsWith('3. **Execute**')) || '');
+  ok('Execute step: the executor returns the fidelity list, the orchestrator posts it',
+    execute.includes('returns the enumerated fidelity list in its report') && execute.includes('the orchestrator posts it as a ticket comment'));
+  ok('Execute step: under `git: pr` the orchestrator creates the branch and opens the PR',
+    execute.includes('the orchestrator creates the branch before the spawn and opens the PR'));
 }
 
-console.log(`sync-agent-blocks.test.js:${passed} checks passed`);
+console.log(`sync-agent-blocks.test.js: ${passed} checks passed`);

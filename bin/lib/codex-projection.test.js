@@ -455,4 +455,4 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   }
 }
 
-console.log(`✓ codex-projection:${passed} assertions passed`);
+console.log(`✓ codex-projection: ${passed} assertions passed`);
