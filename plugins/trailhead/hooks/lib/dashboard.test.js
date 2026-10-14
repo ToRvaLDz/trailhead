@@ -318,6 +318,16 @@ function runMain(argv, t, extra = {}) {
   ok('create: a secret in the generated body aborts the create', guardHit.code === 1 && ghost.created.length === 0);
 }
 
+// --- I2: a pin-check failure after the write is not an abort ------------------
+{
+  const t = makeTracker({ failOn: /pinnedIssues/ });
+  const r = runMain(['--repo', 'o/r'], t);
+  ok('I2: the body was written', t.writes.length === 1);
+  ok('I2: exit 0, one line saying written and the pin check failed', r.code === 0 && r.out.trim().split('\n').length === 1
+    && /written, pin check failed: .*forced failure/.test(r.out) && !/^aborted/.test(r.out));
+  ok('I2: the line still carries the summary and sizes', /^dashboard #33: 3 maps/.test(r.out) && /body \d+ -> \d+ bytes/.test(r.out));
+}
+
 // --- guards ------------------------------------------------------------------
 {
   const t = makeTracker();

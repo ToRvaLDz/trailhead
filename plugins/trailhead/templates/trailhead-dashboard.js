@@ -22,6 +22,9 @@
 //   dashboard #33: 4 maps, whiteboard 1, flags: map-14 exhausted, map-98 near cap 92/100 (body 21034 -> 2210 bytes)
 //   aborted: <reason>
 // Exit 0 on success, 1 on an abort or a conflict, 2 on a usage error (stderr).
+// A pin check or pin failure AFTER the body was written is not an abort: the line
+// says `written, pin check failed: <reason>` (or `written, pin failed ...`) and the
+// exit is 0, since the body is in place; the agent surfaces the pin problem.
 
 const fs = require('fs');
 const os = require('os');
@@ -309,10 +312,16 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
       out.write(`${summaryLine(number, snap)} (dry-run, ${sizes}), nothing written\n`);
       return 0;
     }
+    // The body is already written: a pin check or pin failure is reported next to
+    // that fact (exit 0), never as an abort that looks like nothing was written.
     let note = '';
-    if (!isPinned(run, repo, number)) {
-      const failed = pin(run, repo, number);
-      note = failed ? `, ${failed}` : ', re-pinned';
+    try {
+      if (!isPinned(run, repo, number)) {
+        const failed = pin(run, repo, number);
+        note = failed ? `, written, ${failed}` : ', re-pinned';
+      }
+    } catch (e) {
+      note = `, written, pin check failed: ${e && e.message ? e.message : String(e)}`;
     }
     out.write(`${summaryLine(number, snap)} (${sizes}${note})\n`);
     return 0;
