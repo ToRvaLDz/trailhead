@@ -2,7 +2,7 @@
 // commit-message-check.js: the single source of truth for trailhead's commit
 // message rules, shared by two guardrails so they can never drift:
 //   - trailhead-commit-guard.js         (Claude Code PreToolUse(Bash) hook)
-//   - templates/trailhead-commit-msg    (host-independent git commit-msg hook,
+//   - templates/trailhead-commit-msg.cjs (host-independent git commit-msg hook logic,
 //     installed into .git/hooks at repo first-use so it runs on ANY host)
 // Two rules: NEVER a Co-Authored-By trailer; a Conventional Commits subject
 // (<type>(scope)?: subject) of at most 72 chars. Plus a conditional third rule:

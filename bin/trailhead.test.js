@@ -118,6 +118,12 @@ ok('codex: commit-msg template projected', fs.existsSync(codexTemplate));
 ok('codex: commit-msg template is verbatim (not converted)',
   fs.readFileSync(codexTemplate, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg'), 'utf8'));
 
+// #257: the hook logic ships as a .cjs beside the sh wrapper.
+const codexCommitMsgCjs = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-commit-msg.cjs');
+ok('codex: commit-msg .cjs logic projected', fs.existsSync(codexCommitMsgCjs));
+ok('codex: commit-msg .cjs logic is verbatim (not converted)',
+  fs.readFileSync(codexCommitMsgCjs, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg.cjs'), 'utf8'));
+
 // #185: the commit-msg hook sync script ships wholesale with templates/ too.
 const codexCommitMsgSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');
 ok('codex: commit-msg-sync script projected', fs.existsSync(codexCommitMsgSync));
@@ -1041,6 +1047,12 @@ ok('claude: hooks/lib/model-defaults.json exists (#186)',
 
 // #202: the mod is not delivered by the npm installer yet.
 ok('claude: no hooks/mod/ dir in the npm install (#202)', !fs.existsSync(path.join(claudeDir, 'hooks', 'mod')));
+
+// #257: the hook logic ships as a .cjs beside the sh wrapper.
+const claudeCommitMsgCjs = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg.cjs');
+ok('claude: commit-msg .cjs logic projected', fs.existsSync(claudeCommitMsgCjs));
+ok('claude: commit-msg .cjs logic is byte-identical to source',
+  fs.readFileSync(claudeCommitMsgCjs, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-commit-msg.cjs'), 'utf8'));
 
 // #185: the commit-msg hook sync script ships wholesale with templates/ too.
 const claudeCommitMsgSync = path.join(claudeDir, 'trailhead', 'templates', 'trailhead-commit-msg-sync.js');

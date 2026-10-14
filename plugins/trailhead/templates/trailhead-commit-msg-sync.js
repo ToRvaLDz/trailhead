@@ -2,10 +2,13 @@
 'use strict';
 // trailhead commit-msg hook sync (self-contained, ships in templates/ so it
 // reaches every install channel: bin/trailhead.js copies templates/ wholesale
-// for Claude/npm and Codex alike). Installs the sibling template
-// trailhead-commit-msg into the repo's git hooks dir, upgrades it in place
-// when an OLDER trailhead hook is already there (recognised by its own
-// header line, never by trusting the filename), and never touches a foreign
+// for Claude/npm and Codex alike). Installs the sibling templates into the
+// repo's git hooks dir: trailhead-commit-msg (a small sh wrapper, installed as
+// commit-msg) and trailhead-commit-msg.cjs (the logic, installed beside it; a
+// .cjs is always CommonJS, so a "type": "module" repo cannot break it, #257).
+// Upgrades in place when an OLDER trailhead hook (the legacy single-file JS
+// one, or an outdated wrapper/.cjs) is already there, recognised by its own
+// header line, never by trusting the filename, and never touches a foreign
 // (non-trailhead) hook. #185.
 //
 // CLI: node trailhead-commit-msg-sync.js [--repo <dir>]  (default cwd)
@@ -21,13 +24,17 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
-// La prima riga riconosciuta di ogni versione dell'hook trailhead: basta che
-// una delle prime 5 righe (trim) inizi con questa stringa.
-const TRAILHEAD_MARK = '// trailhead commit-msg hook (git).';
+// Nome del file di logica installato accanto al wrapper commit-msg.
+const CJS_NAME = 'trailhead-commit-msg.cjs';
+
+// La riga riconosciuta di ogni versione dell'hook trailhead: basta che una
+// delle prime 5 righe (trim) inizi con una di queste stringhe. La prima è
+// l'hook JS monofile legacy, la seconda il wrapper sh (layout #257).
+const TRAILHEAD_MARKS = ['// trailhead commit-msg hook (git).', '# trailhead commit-msg hook (git).'];
 
 function isTrailheadHook(text) {
   const lines = String(text == null ? '' : text).split('\n').slice(0, 5);
-  return lines.some((line) => line.trim().startsWith(TRAILHEAD_MARK));
+  return lines.some((line) => TRAILHEAD_MARKS.some((mark) => line.trim().startsWith(mark)));
 }
 
 // Uniforma i fine riga per il confronto di contenuto: CRLF -> LF, non tocca
@@ -65,10 +72,36 @@ function resolveHooksTarget({ repoDir, runGit = defaultRunGit }) {
   return { hooksDir, hooksPathSet };
 }
 
-// Applica la sincronizzazione vera e propria dentro hooksDir. fs è iniettato
-// per testabilità (default: il modulo fs reale).
-function syncCommitMsgHook({ hooksDir, templateText, hooksPathSet, fs: fsMod = fs }) {
+// Scrittura atomica: temp file unico nella stessa dir, poi rename sul
+// destinazione (mai un truncate in place).
+function writeAtomic(fsMod, hooksDir, finalPath, text) {
+  const tmpPath = path.join(hooksDir, `.commit-msg.trailhead-${process.pid}-${crypto.randomBytes(4).toString('hex')}`);
+  try {
+    fsMod.writeFileSync(tmpPath, text);
+    fsMod.chmodSync(tmpPath, 0o755);
+    fsMod.renameSync(tmpPath, finalPath);
+  } catch (err) {
+    try { fsMod.unlinkSync(tmpPath); } catch { /* best effort cleanup */ }
+    throw err;
+  }
+}
+
+// true se il file esiste, non è un symlink e ha esattamente il contenuto atteso.
+function matchesTemplate(fsMod, filePath, text) {
+  try {
+    if (fsMod.lstatSync(filePath).isSymbolicLink()) return false;
+    return normalize(fsMod.readFileSync(filePath, 'utf8')) === normalize(text);
+  } catch {
+    return false;
+  }
+}
+
+// Applica la sincronizzazione vera e propria dentro hooksDir. templateText è il
+// wrapper sh (installato come commit-msg), cjsText la logica (installata come
+// trailhead-commit-msg.cjs). fs è iniettato per testabilità.
+function syncCommitMsgHook({ hooksDir, templateText, cjsText, hooksPathSet, fs: fsMod = fs }) {
   const hookPath = path.join(hooksDir, 'commit-msg');
+  const cjsPath = path.join(hooksDir, CJS_NAME);
 
   if (!fsMod.existsSync(hookPath)) {
     if (hooksPathSet) {
@@ -79,8 +112,9 @@ function syncCommitMsgHook({ hooksDir, templateText, hooksPathSet, fs: fsMod = f
       };
     }
     fsMod.mkdirSync(hooksDir, { recursive: true });
-    fsMod.writeFileSync(hookPath, templateText);
-    fsMod.chmodSync(hookPath, 0o755);
+    // Prima la logica, poi il wrapper: mai un wrapper senza il suo script.
+    writeAtomic(fsMod, hooksDir, cjsPath, cjsText);
+    writeAtomic(fsMod, hooksDir, hookPath, templateText);
     return { status: 'installed', hook: hookPath, message: 'installed the trailhead commit-msg hook.' };
   }
 
@@ -94,22 +128,18 @@ function syncCommitMsgHook({ hooksDir, templateText, hooksPathSet, fs: fsMod = f
     return { status: 'foreign', hook: hookPath, message: 'a foreign commit-msg hook is present; left untouched.' };
   }
 
-  if (normalize(existingText) === normalize(templateText)) {
+  const wrapperCurrent = normalize(existingText) === normalize(templateText);
+  const cjsCurrent = matchesTemplate(fsMod, cjsPath, cjsText);
+
+  if (wrapperCurrent && cjsCurrent) {
     if ((stat.mode & 0o777) !== 0o755) fsMod.chmodSync(hookPath, 0o755);
     return { status: 'current', hook: hookPath, message: 'the trailhead commit-msg hook is already current.' };
   }
 
-  // Upgrade atomico: scrive su un temp file unico nella stessa dir, poi rename
-  // sopra l'hook esistente (mai un truncate in place).
-  const tmpPath = path.join(hooksDir, `.commit-msg.trailhead-${process.pid}-${crypto.randomBytes(4).toString('hex')}`);
-  try {
-    fsMod.writeFileSync(tmpPath, templateText);
-    fsMod.chmodSync(tmpPath, 0o755);
-    fsMod.renameSync(tmpPath, hookPath);
-  } catch (err) {
-    try { fsMod.unlinkSync(tmpPath); } catch { /* best effort cleanup */ }
-    throw err;
-  }
+  // Upgrade: logica per prima, wrapper per ultimo (mai un wrapper senza script).
+  if (!cjsCurrent) writeAtomic(fsMod, hooksDir, cjsPath, cjsText);
+  if (!wrapperCurrent) writeAtomic(fsMod, hooksDir, hookPath, templateText);
+  else if ((stat.mode & 0o777) !== 0o755) fsMod.chmodSync(hookPath, 0o755);
   return { status: 'upgraded', hook: hookPath, message: 'upgraded the trailhead commit-msg hook to the current template.' };
 }
 
@@ -153,7 +183,8 @@ function main(argv, { cwd, stdout } = {}) {
     hooksDirForError = target.hooksDir;
     const templatePath = path.join(__dirname, 'trailhead-commit-msg');
     const templateText = fs.readFileSync(templatePath, 'utf8');
-    const result = syncCommitMsgHook({ hooksDir: target.hooksDir, templateText, hooksPathSet: target.hooksPathSet, fs });
+    const cjsText = fs.readFileSync(path.join(__dirname, CJS_NAME), 'utf8');
+    const result = syncCommitMsgHook({ hooksDir: target.hooksDir, templateText, cjsText, hooksPathSet: target.hooksPathSet, fs });
     writeResult(out, result);
     return 0;
   } catch (err) {
@@ -163,7 +194,7 @@ function main(argv, { cwd, stdout } = {}) {
   }
 }
 
-module.exports = { resolveHooksTarget, isTrailheadHook, normalize, syncCommitMsgHook, parseArgs, main };
+module.exports = { CJS_NAME, resolveHooksTarget, isTrailheadHook, normalize, syncCommitMsgHook, parseArgs, main };
 
 if (require.main === module) {
   const code = main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout });

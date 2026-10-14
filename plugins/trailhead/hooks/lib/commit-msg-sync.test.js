@@ -16,7 +16,10 @@ const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-commit-msg-sync.js');
 const templatePath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-commit-msg');
+const cjsTemplatePath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-commit-msg.cjs');
 const oldFixturePath = path.join(__dirname, 'fixtures', 'commit-msg-a319156');
+// Hook JS monofile pre-#257 (extensionless CommonJS), da migrare al nuovo layout.
+const legacyJsFixturePath = path.join(__dirname, 'fixtures', 'commit-msg-legacy-js');
 
 const {
   resolveHooksTarget,
@@ -29,7 +32,10 @@ let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 const templateText = fs.readFileSync(templatePath, 'utf8');
+const cjsText = fs.readFileSync(cjsTemplatePath, 'utf8');
 const oldHookText = fs.readFileSync(oldFixturePath, 'utf8');
+const legacyJsText = fs.readFileSync(legacyJsFixturePath, 'utf8');
+const CJS_NAME = 'trailhead-commit-msg.cjs';
 
 function mktmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-commit-msg-sync-test-'));
@@ -38,6 +44,9 @@ function mktmp() {
 // --- isTrailheadHook() unit cases -------------------------------------------
 ok('isTrailheadHook: current template is recognised', isTrailheadHook(templateText));
 ok('isTrailheadHook: old (a319156) hook is recognised', isTrailheadHook(oldHookText));
+ok('isTrailheadHook: legacy single-file JS hook is recognised', isTrailheadHook(legacyJsText));
+ok('isTrailheadHook: wrapper header is on a "#" line within the first 5', isTrailheadHook(templateText));
+ok('isTrailheadHook: wrapper is a sh script', templateText.startsWith('#!/bin/sh\n'));
 ok('isTrailheadHook: plain foreign script is not', !isTrailheadHook('#!/bin/sh\necho hi\n'));
 ok('isTrailheadHook: mention outside the first 5 lines, not line-start, is not',
   !isTrailheadHook('#!/bin/sh\necho hi\necho more\necho stuff\necho again\n# trailhead commit-msg hook (git). fake\n'));
@@ -55,13 +64,14 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
 // absent -> installed, 0755
 {
   const dir = mktmp();
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   const hookPath = path.join(dir, 'commit-msg');
   ok('syncCommitMsgHook: absent -> installed', result.status === 'installed');
   ok('syncCommitMsgHook: absent -> hook path returned', result.hook === hookPath);
   ok('syncCommitMsgHook: absent -> file written', fs.existsSync(hookPath));
   ok('syncCommitMsgHook: absent -> content matches template', fs.readFileSync(hookPath, 'utf8') === templateText);
   ok('syncCommitMsgHook: absent -> mode 0755', modeOf(hookPath) === 0o755);
+  ok('syncCommitMsgHook: absent -> .cjs written beside it', fs.readFileSync(path.join(dir, CJS_NAME), 'utf8') === cjsText);
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -71,10 +81,65 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const hookPath = path.join(dir, 'commit-msg');
   fs.writeFileSync(hookPath, oldHookText);
   fs.chmodSync(hookPath, 0o755);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: old -> upgraded', result.status === 'upgraded');
   ok('syncCommitMsgHook: old -> bytes now match template', fs.readFileSync(hookPath, 'utf8') === templateText);
   ok('syncCommitMsgHook: old -> mode 0755', modeOf(hookPath) === 0o755);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// legacy single-file JS hook -> upgraded to wrapper + .cjs
+{
+  const dir = mktmp();
+  const hookPath = path.join(dir, 'commit-msg');
+  fs.writeFileSync(hookPath, legacyJsText);
+  fs.chmodSync(hookPath, 0o755);
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, cjsText, hooksPathSet: false, fs });
+  ok('syncCommitMsgHook: legacy JS -> upgraded', result.status === 'upgraded');
+  ok('syncCommitMsgHook: legacy JS -> wrapper now matches template', fs.readFileSync(hookPath, 'utf8') === templateText);
+  ok('syncCommitMsgHook: legacy JS -> .cjs written', fs.readFileSync(path.join(dir, CJS_NAME), 'utf8') === cjsText);
+  ok('syncCommitMsgHook: legacy JS -> wrapper mode 0755', modeOf(hookPath) === 0o755);
+  const again = syncCommitMsgHook({ hooksDir: dir, templateText, cjsText, hooksPathSet: false, fs });
+  ok('syncCommitMsgHook: legacy JS -> second run is current', again.status === 'current');
+  ok('syncCommitMsgHook: legacy JS -> no temp files left', fs.readdirSync(dir).sort().join(',') === `commit-msg,${CJS_NAME}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// current wrapper but outdated .cjs -> upgraded, .cjs rewritten
+{
+  const dir = mktmp();
+  const hookPath = path.join(dir, 'commit-msg');
+  fs.writeFileSync(hookPath, templateText);
+  fs.chmodSync(hookPath, 0o755);
+  fs.writeFileSync(path.join(dir, CJS_NAME), '// stale\n');
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, cjsText, hooksPathSet: false, fs });
+  ok('syncCommitMsgHook: outdated .cjs -> upgraded', result.status === 'upgraded');
+  ok('syncCommitMsgHook: outdated .cjs -> rewritten', fs.readFileSync(path.join(dir, CJS_NAME), 'utf8') === cjsText);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// current wrapper but .cjs missing -> upgraded, .cjs restored
+{
+  const dir = mktmp();
+  const hookPath = path.join(dir, 'commit-msg');
+  fs.writeFileSync(hookPath, templateText);
+  fs.chmodSync(hookPath, 0o755);
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, cjsText, hooksPathSet: false, fs });
+  ok('syncCommitMsgHook: missing .cjs -> upgraded', result.status === 'upgraded');
+  ok('syncCommitMsgHook: missing .cjs -> restored', fs.readFileSync(path.join(dir, CJS_NAME), 'utf8') === cjsText);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// outdated wrapper (older sh wrapper text) + current .cjs -> upgraded wrapper
+{
+  const dir = mktmp();
+  const hookPath = path.join(dir, 'commit-msg');
+  fs.writeFileSync(hookPath, '#!/bin/sh\n# trailhead commit-msg hook (git). older wrapper\nexit 0\n');
+  fs.chmodSync(hookPath, 0o755);
+  fs.writeFileSync(path.join(dir, CJS_NAME), cjsText);
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, cjsText, hooksPathSet: false, fs });
+  ok('syncCommitMsgHook: outdated wrapper -> upgraded', result.status === 'upgraded');
+  ok('syncCommitMsgHook: outdated wrapper -> now matches template', fs.readFileSync(hookPath, 'utf8') === templateText);
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -83,9 +148,10 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const dir = mktmp();
   const hookPath = path.join(dir, 'commit-msg');
   const crlfTemplate = templateText.replace(/\n/g, '\r\n');
+  fs.writeFileSync(path.join(dir, CJS_NAME), cjsText);
   fs.writeFileSync(hookPath, crlfTemplate);
   fs.chmodSync(hookPath, 0o755);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: CRLF current -> current', result.status === 'current');
   ok('syncCommitMsgHook: CRLF current -> untouched bytes', fs.readFileSync(hookPath, 'utf8') === crlfTemplate);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -96,8 +162,9 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const dir = mktmp();
   const hookPath = path.join(dir, 'commit-msg');
   fs.writeFileSync(hookPath, templateText);
+  fs.writeFileSync(path.join(dir, CJS_NAME), cjsText);
   fs.chmodSync(hookPath, 0o644);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: current 0644 -> status current', result.status === 'current');
   ok('syncCommitMsgHook: current 0644 -> mode fixed to 0755', modeOf(hookPath) === 0o755);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -110,10 +177,11 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const foreign = '#!/bin/sh\necho hi\n';
   fs.writeFileSync(hookPath, foreign);
   fs.chmodSync(hookPath, 0o755);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: foreign shell -> foreign', result.status === 'foreign');
   ok('syncCommitMsgHook: foreign shell -> bytes untouched', fs.readFileSync(hookPath, 'utf8') === foreign);
   ok('syncCommitMsgHook: foreign shell -> mode untouched', modeOf(hookPath) === 0o755);
+  ok('syncCommitMsgHook: foreign shell -> no .cjs written', !fs.existsSync(path.join(dir, CJS_NAME)));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -124,7 +192,7 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const foreign = '#!/bin/sh\necho "trailhead commit-msg hook (git). not really"\nexit 0\n';
   fs.writeFileSync(hookPath, foreign);
   fs.chmodSync(hookPath, 0o755);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: foreign wrapper mentioning phrase -> foreign', result.status === 'foreign');
   ok('syncCommitMsgHook: foreign wrapper -> bytes untouched', fs.readFileSync(hookPath, 'utf8') === foreign);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -138,10 +206,11 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
   const targetContent = '#!/bin/sh\necho real\n';
   fs.writeFileSync(targetPath, targetContent);
   fs.symlinkSync(targetPath, hookPath);
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: false, cjsText, fs });
   ok('syncCommitMsgHook: symlink -> foreign', result.status === 'foreign');
   ok('syncCommitMsgHook: symlink -> still a symlink', fs.lstatSync(hookPath).isSymbolicLink());
   ok('syncCommitMsgHook: symlink target untouched', fs.readFileSync(targetPath, 'utf8') === targetContent);
+  ok('syncCommitMsgHook: symlink -> no .cjs written', !fs.existsSync(path.join(dir, CJS_NAME)));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -149,9 +218,9 @@ function modeOf(p) { return fs.statSync(p).mode & 0o777; }
 {
   const dir = mktmp();
   const hookPath = path.join(dir, 'commit-msg');
-  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: true, fs });
+  const result = syncCommitMsgHook({ hooksDir: dir, templateText, hooksPathSet: true, cjsText, fs });
   ok('syncCommitMsgHook: absent + hooksPathSet -> skipped', result.status === 'skipped');
-  ok('syncCommitMsgHook: absent + hooksPathSet -> nothing created', !fs.existsSync(hookPath));
+  ok('syncCommitMsgHook: absent + hooksPathSet -> nothing created', !fs.existsSync(hookPath) && !fs.existsSync(path.join(dir, CJS_NAME)));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -226,6 +295,7 @@ function assertSingleJsonLine(out, label) {
   const hookPath = path.join(dir, '.git', 'hooks', 'commit-msg');
   ok('e2e fresh repo: hook file exists', fs.existsSync(hookPath));
   ok('e2e fresh repo: hook is executable', (modeOf(hookPath) & 0o111) !== 0);
+  ok('e2e fresh repo: .cjs installed beside it', fs.readFileSync(path.join(dir, '.git', 'hooks', CJS_NAME), 'utf8') === cjsText);
 
   const out2 = runScript(['--repo', dir], { env: gitEnv() });
   const parsed2 = assertSingleJsonLine(out2, 'e2e fresh repo (2nd run)');
@@ -246,6 +316,24 @@ function assertSingleJsonLine(out, label) {
   const parsed = assertSingleJsonLine(out, 'e2e seeded old hook');
   ok('e2e seeded old hook: status upgraded', parsed.status === 'upgraded');
   ok('e2e seeded old hook: content now matches template', fs.readFileSync(hookPath, 'utf8') === templateText);
+  ok('e2e seeded old hook: .cjs installed', fs.readFileSync(path.join(hooksDir, CJS_NAME), 'utf8') === cjsText);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// seeded legacy single-file JS hook -> upgraded to wrapper + .cjs
+{
+  const dir = mktmp();
+  execFileSync('git', ['init', '-q'], { cwd: dir, env: gitEnv() });
+  const hooksDir = path.join(dir, '.git', 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+  const hookPath = path.join(hooksDir, 'commit-msg');
+  fs.writeFileSync(hookPath, legacyJsText);
+  fs.chmodSync(hookPath, 0o755);
+  const out = runScript(['--repo', dir], { env: gitEnv() });
+  const parsed = assertSingleJsonLine(out, 'e2e seeded legacy JS hook');
+  ok('e2e seeded legacy JS hook: status upgraded', parsed.status === 'upgraded');
+  ok('e2e seeded legacy JS hook: wrapper installed', fs.readFileSync(hookPath, 'utf8') === templateText);
+  ok('e2e seeded legacy JS hook: .cjs installed', fs.readFileSync(path.join(hooksDir, CJS_NAME), 'utf8') === cjsText);
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -263,6 +351,7 @@ function assertSingleJsonLine(out, label) {
   const parsed = assertSingleJsonLine(out, 'e2e seeded foreign hook');
   ok('e2e seeded foreign hook: status foreign', parsed.status === 'foreign');
   ok('e2e seeded foreign hook: bytes untouched', fs.readFileSync(hookPath, 'utf8') === foreign);
+  ok('e2e seeded foreign hook: no .cjs written', !fs.existsSync(path.join(hooksDir, CJS_NAME)));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -293,6 +382,7 @@ function assertSingleJsonLine(out, label) {
   const parsed = assertSingleJsonLine(out, 'e2e core.hooksPath old hook');
   ok('e2e core.hooksPath old hook: status upgraded', parsed.status === 'upgraded');
   ok('e2e core.hooksPath old hook: upgraded in .githooks', fs.readFileSync(hookPath, 'utf8') === templateText);
+  ok('e2e core.hooksPath old hook: .cjs lands in .githooks', fs.readFileSync(path.join(githooksDir, CJS_NAME), 'utf8') === cjsText);
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -311,6 +401,7 @@ function assertSingleJsonLine(out, label) {
   const parsed = assertSingleJsonLine(out, 'e2e core.hooksPath foreign hook');
   ok('e2e core.hooksPath foreign hook: status foreign', parsed.status === 'foreign');
   ok('e2e core.hooksPath foreign hook: untouched', fs.readFileSync(hookPath, 'utf8') === foreign);
+  ok('e2e core.hooksPath foreign hook: no .cjs written', !fs.existsSync(path.join(githooksDir, CJS_NAME)));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 

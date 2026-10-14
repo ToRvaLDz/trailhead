@@ -4,7 +4,8 @@
 //
 // Drives the SAME fixtures through two paths:
 //   1. checkCommitMessage() directly (the source of truth).
-//   2. the template hook (templates/trailhead-commit-msg) end-to-end via
+//   2. the template hook (templates/trailhead-commit-msg sh wrapper, which runs
+//      the sibling trailhead-commit-msg.cjs logic) end-to-end via
 //      execFileSync, feeding it the message as a temp file, run from a fresh
 //      mkdtemp cwd (so the template's own .trailhead/session-ticket lookup is
 //      independent of this repo's real marker).
@@ -60,7 +61,7 @@ function runTemplateHook(message, marker) {
   let allowed = true;
   let stderr = '';
   try {
-    execFileSync('node', [templatePath, tmpFile], { cwd: tmp, stdio: 'pipe' });
+    execFileSync('sh', [templatePath, tmpFile], { cwd: tmp, stdio: 'pipe' });
   } catch (e) {
     allowed = false;
     stderr = e.stderr ? e.stderr.toString() : '';
