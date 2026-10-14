@@ -3,9 +3,12 @@
 // No framework: plain asserts, same style as work-state.test.js.
 //
 // Layers covered:
-//   1. checkReport() as a table, for both techniques (#250).
-//   2. The vocabulary equals the tokens the technique files define.
-//   3. The CLI: --file, stdin, one JSON line, exit codes.
+//   1. checkReport() as a table, for the review techniques (#250).
+//   2. The same for the field families: executor, fix, plan, debug, research,
+//      codebase-map (#249): fields, body, the fields problem.
+//   3. The vocabulary equals the tokens the technique files define, and the field
+//      contracts equal what scripts/agent-blocks.md states.
+//   4. The CLI: --file, stdin, one JSON line, exit codes.
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -13,7 +16,7 @@ const fs = require('fs');
 const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-report-status.js');
-const { checkReport, TOKENS } = require(scriptPath);
+const { checkReport, TOKENS, CONTRACTS, FAMILY_OF } = require(scriptPath);
 const techDir = path.resolve(__dirname, '..', '..', 'skills', '_shared', 'techniques');
 
 let passed = 0;
@@ -22,6 +25,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 const K = 'critical: 0 · warning: 1 · info: 2'; // the counts line
 const V = 'verify';
 const C = 'code-review';
+const KEYS = ['action', 'verdict', 'problem', 'report', 'fields', 'body'];
 
 // [name, technique, input, expected]; expected = [action, verdict, problem] and,
 // for a normalise row, the exact normalised report as a fourth element.
@@ -120,7 +124,9 @@ const rows = [
 for (const [name, technique, input, expected] of rows) {
   const r = checkReport(input, technique);
   const [action, verdict, problem, normalised] = expected;
-  ok(`${technique} / ${name}: exactly the four keys`, JSON.stringify(Object.keys(r)) === JSON.stringify(['action', 'verdict', 'problem', 'report']));
+  ok(`${technique} / ${name}: exactly the six keys`, JSON.stringify(Object.keys(r)) === JSON.stringify(KEYS));
+  ok(`${technique} / ${name}: fields ${r.action === 'reask' ? 'null on reask' : '{} for a review'}`, r.action === 'reask' ? r.fields === null : JSON.stringify(r.fields) === '{}');
+  ok(`${technique} / ${name}: body is null`, r.body === null);
   ok(`${technique} / ${name}: action ${action}`, r.action === action);
   ok(`${technique} / ${name}: verdict ${verdict}`, r.verdict === verdict);
   ok(`${technique} / ${name}: problem ${problem}`, r.problem === problem);
@@ -134,8 +140,97 @@ for (const [name, technique, input, expected] of rows) {
   }
 }
 
+// --- the field families (#249) ---------------------------------------------------
+const EX = 'executor';
+const fullImpl = (status, blockers, extra = '') =>
+  `status: ${status}\ncommits:\nabc1234 feat: x\ndef5678 test: y\ntests: npm test, green\ndeviations: none\nblockers: ${blockers}\n${extra}`;
+// [name, technique, input, expected]; expected = [action, verdict, problem, fields-or-null, body, report-for-normalise]
+const frows = [
+  // --- accept ---
+  ['done, fields parsed', EX, fullImpl('done', 'none'), ['accept', 'done', null,
+    { commits: 'abc1234 feat: x\ndef5678 test: y', tests: 'npm test, green', deviations: 'none', blockers: 'none' }, null]],
+  ['fix uses the implementing contract', 'fix', fullImpl('done', 'none'), ['accept', 'done', null, null, null]],
+  ['done with blockers: empty', EX, 'status: done\ncommits: a b\ntests: t\ndeviations:\nblockers:\n', ['accept', 'done', null,
+    { commits: 'a b', tests: 't', deviations: '', blockers: '' }, null]],
+  ['partial with a blocker', EX, fullImpl('partial', 'infeasible: the gradient header'), ['accept', 'partial', null, null, null]],
+  ['blocked, multi-line blockers', EX, fullImpl('blocked', '\n- pkg-x: `npm i pkg-x`, first seen yesterday\n- foreign change in a.js'), ['accept', 'blocked', null, null, null]],
+  ['optional fields are parsed', EX, fullImpl('done', 'none', 'fidelity:\n- header -> reproduced\nsurfaced scope: a follow-up\n'), ['accept', 'done', null, null, null]],
+  ['investigating found', 'research', 'status: found\nanswer: use X\nevidence: https://a.example/doc\nopen questions: none\n', ['accept', 'found', null,
+    { answer: 'use X', evidence: 'https://a.example/doc', 'open questions': 'none' }, null]],
+  ['debug inconclusive keeps open questions', 'debug', 'status: inconclusive\nanswer: not yet\nevidence: a.js:3\nopen questions: which env?\n', ['accept', 'inconclusive', null, null, null]],
+  ['codebase-map needs_input with questions', 'codebase-map', 'status: needs_input\nanswer: partial\nevidence: a.js:1\nopen questions: which root?\n', ['accept', 'needs_input', null, null, null]],
+  ['plan ready, body is the rest', 'plan', 'status: ready\n\n## Steps\n1. a\n2. b\n\nVerification: x\n', ['accept', 'ready', null, {}, '## Steps\n1. a\n2. b\n\nVerification: x']],
+  ['plan needs_input', 'plan', 'status: needs_input\nquestions:\n1. Which db?\n2. Keep v1?\n', ['accept', 'needs_input', null, { questions: '1. Which db?\n2. Keep v1?' }, null]],
+  // --- normalise: layout, fields intact ---
+  ['bold label and token, bullets', EX, '**Status:** DONE\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- blockers: none\n', ['normalise', 'done', null,
+    { commits: 'abc1234 feat: x', tests: 'ok', deviations: 'none', blockers: 'none' }, null,
+    'status: done\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- blockers: none\n']],
+  ['labels in any case and with spaces', 'debug', 'Intro\nStatus: Found\nAnswer: a\nEVIDENCE: e\nOpen Questions: none', ['normalise', 'found', null,
+    { answer: 'a', evidence: 'e', 'open questions': 'none' }, null, 'status: found\nIntro\nAnswer: a\nEVIDENCE: e\nOpen Questions: none']],
+  ['plan ready, status not first: body without the status line', 'plan', 'Here is the plan.\n\nstatus: ready\nStep 1\n', ['normalise', 'ready', null, {}, 'Here is the plan.\n\nStep 1',
+    'status: ready\nHere is the plan.\n\nStep 1\n']],
+  ['a label inside a code fence is not a field', EX, 'status: done\ncommits: a b\ntests: t\ndeviations: none\n```\nblockers: x\n```\nblockers: none\n', ['accept', 'done', null,
+    { commits: 'a b', tests: 't', deviations: 'none\n```\nblockers: x\n```', blockers: 'none' }, null]],
+  ['a label in a blockquote is not a field', EX, 'status: done\ncommits: a\ntests: t\ndeviations: none\n> blockers: x\nblockers: none\n', ['accept', 'done', null, null, null]],
+  ['a label that is not in the closed list is part of the value', EX, 'status: done\ncommits: a\nnote: x\ntests: t\ndeviations: none\nblockers: none\n', ['accept', 'done', null,
+    { commits: 'a\nnote: x', tests: 't', deviations: 'none', blockers: 'none' }, null]],
+
+  // --- reask: the status problems keep precedence over fields ---
+  ['missing status', EX, 'commits: a\ntests: t\ndeviations: none\nblockers: none\n', ['reask', null, 'missing']],
+  ['conflicting outranks fields', EX, 'status: done\nstatus: blocked\nblockers: none\n', ['reask', null, 'conflicting']],
+  ['unknown token outranks fields', EX, 'status: met\ncommits: a\n', ['reask', null, 'unknown-token']],
+  ['a review token is unknown for a field technique', 'plan', 'status: met\n', ['reask', null, 'unknown-token']],
+  ['an implementing token is unknown for investigating', 'research', 'status: done\n', ['reask', null, 'unknown-token']],
+  // --- reask: fields ---
+  ['missing required field (tests)', EX, 'status: done\ncommits: a\ndeviations: none\nblockers: none\n', ['reask', null, 'fields']],
+  ['no fields at all', 'debug', 'status: found\nThe cause is X.\n', ['reask', null, 'fields']],
+  ['done with blockers', EX, fullImpl('done', 'a flagged package'), ['reask', null, 'fields']],
+  ['partial without blockers', EX, fullImpl('partial', 'none'), ['reask', null, 'fields']],
+  ['blocked with an empty blockers', EX, fullImpl('blocked', ''), ['reask', null, 'fields']],
+  ['needs_input without open questions', 'research', 'status: needs_input\nanswer: a\nevidence: e\nopen questions: none\n', ['reask', null, 'fields']],
+  ['needs_input with an empty open questions', 'debug', 'status: needs_input\nanswer: a\nevidence: e\nopen questions:\n', ['reask', null, 'fields']],
+  ['plan needs_input without questions', 'plan', 'status: needs_input\nsome prose\n', ['reask', null, 'fields']],
+  ['plan needs_input with none questions', 'plan', 'status: needs_input\nquestions: none\n', ['reask', null, 'fields']],
+  ['plan ready with an empty body', 'plan', 'status: ready\n\n  \n', ['reask', null, 'fields']],
+  ['plan ready with only a status line', 'plan', 'status: ready', ['reask', null, 'fields']],
+  ['the same label twice', EX, fullImpl('done', 'none', 'tests: again\n'), ['reask', null, 'fields']],
+];
+for (const [name, technique, input, expected] of frows) {
+  const r = checkReport(input, technique);
+  const [action, verdict, problem, fields, body, normalised] = expected;
+  const t = `${technique} / ${name}`;
+  ok(`${t}: exactly the six keys`, JSON.stringify(Object.keys(r)) === JSON.stringify(KEYS));
+  ok(`${t}: action ${action}`, r.action === action);
+  ok(`${t}: verdict ${verdict}`, r.verdict === verdict);
+  ok(`${t}: problem ${problem}`, r.problem === problem);
+  if (action === 'reask') {
+    ok(`${t}: fields and body are null`, r.fields === null && r.body === null);
+    ok(`${t}: report is the original text`, r.report === input);
+    continue;
+  }
+  if (fields) ok(`${t}: fields`, JSON.stringify(r.fields) === JSON.stringify(fields));
+  else ok(`${t}: fields is an object`, r.fields !== null && typeof r.fields === 'object');
+  if (body !== undefined && (technique === 'plan' || body !== null)) ok(`${t}: body`, r.body === body);
+  if (action === 'normalise') {
+    ok(`${t}: normalised report`, r.report === normalised);
+    const again = checkReport(r.report, technique);
+    ok(`${t}: the normalised report is accepted as is, with the same fields and body`,
+      again.action === 'accept' && again.report === r.report && JSON.stringify(again.fields) === JSON.stringify(r.fields) && again.body === r.body);
+  } else {
+    ok(`${t}: report is the original text`, r.report === input);
+  }
+}
+{
+  const r = checkReport(fullImpl('done', 'none', 'fidelity:\n- header -> reproduced\nsurfaced scope: a follow-up\n'), EX);
+  ok('optional fidelity is multi-line', r.fields.fidelity === '- header -> reproduced');
+  ok('optional surfaced scope is read', r.fields['surfaced scope'] === 'a follow-up');
+  const b = checkReport(fullImpl('blocked', '\n- pkg-x: `npm i pkg-x`, first seen yesterday\n- foreign change in a.js'), EX);
+  ok('multi-line blockers keep every entry', b.fields.blockers === '- pkg-x: `npm i pkg-x`, first seen yesterday\n- foreign change in a.js');
+  ok('a report with an unterminated fence still parses its leading fields', checkReport('status: found\nanswer: a\nevidence: e\nopen questions: none\n```\nx', 'research').action === 'accept');
+}
+
 // --- misuse ---------------------------------------------------------------------
-ok('checkReport: unknown technique throws', (() => { try { checkReport('status: met', 'plan'); } catch (e) { return true; } return false; })());
+ok('checkReport: unknown technique throws', (() => { try { checkReport('status: met', 'bogus'); } catch (e) { return true; } return false; })());
 ok('checkReport: missing technique throws', (() => { try { checkReport('status: met'); } catch (e) { return true; } return false; })());
 ok('checkReport: a non-string report is treated as empty', checkReport(undefined, V).problem === 'missing');
 
@@ -148,6 +243,36 @@ ok('vocabulary: verify tokens equal the ones verify.md defines',
   JSON.stringify([...TOKENS.verify].sort()) === JSON.stringify(techniqueTokens('verify.md')) && TOKENS.verify.length === 3);
 ok('vocabulary: code-review tokens equal the ones code-review.md defines',
   JSON.stringify([...TOKENS['code-review']].sort()) === JSON.stringify(techniqueTokens('code-review.md')) && TOKENS['code-review'].length === 2);
+
+// --- the field contracts equal scripts/agent-blocks.md (#249) -----------------------
+{
+  const { parseSource } = require(path.resolve(__dirname, '..', '..', '..', '..', 'scripts', 'sync-agent-blocks.js'));
+  const blocks = parseSource(fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'scripts', 'agent-blocks.md'), 'utf8'));
+  const words = (block, prefix) => {
+    const line = block.split('\n').find((l) => l.startsWith(`- ${prefix}:`)) || '';
+    return [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+  };
+  // `- invariant: `a`, `b` => `field` non-empty.` -> { when, field, rule }
+  const invariants = (block) => block.split('\n').filter((l) => l.startsWith('- invariant:')).map((l) => {
+    const [lhs, rhs] = l.split('=>');
+    return { when: [...lhs.matchAll(/`([^`]+)`/g)].map((m) => m[1]), field: /`([^`]+)`/.exec(rhs)[1], rule: /(non-empty|none)\.$/.exec(rhs)[1] };
+  });
+  for (const family of ['implementing', 'investigating', 'plan']) {
+    const block = blocks[family];
+    ok(`contracts: source defines the ${family} block`, typeof block === 'string');
+    ok(`contracts: ${family} tokens equal the source`, JSON.stringify(CONTRACTS[family].tokens) === JSON.stringify(words(block, 'statuses')));
+    ok(`contracts: ${family} required fields equal the source`, JSON.stringify(CONTRACTS[family].required) === JSON.stringify(words(block, 'required fields')));
+    ok(`contracts: ${family} optional fields equal the source`, JSON.stringify(CONTRACTS[family].optional) === JSON.stringify(words(block, 'optional fields')));
+    ok(`contracts: ${family} invariants equal the source`, JSON.stringify(CONTRACTS[family].invariants) === JSON.stringify(invariants(block)) && invariants(block).length > 0);
+  }
+  const { FAMILIES } = require(path.resolve(__dirname, '..', '..', '..', '..', 'scripts', 'sync-agent-blocks.js'));
+  for (const [technique, family] of Object.entries(FAMILY_OF)) {
+    ok(`contracts: technique ${technique} maps to the family of trailhead-${technique} in the sync script`, FAMILIES[`trailhead-${technique}`] === family);
+    ok(`contracts: TOKENS.${technique} are the ${family} tokens`, JSON.stringify(TOKENS[technique]) === JSON.stringify(CONTRACTS[family].tokens));
+  }
+  ok('contracts: every non-review agent has a technique here',
+    Object.entries(FAMILIES).filter(([, f]) => f !== 'reviewing').every(([a]) => FAMILY_OF[a.replace(/^trailhead-/, '')] !== undefined));
+}
 
 // --- CLI -------------------------------------------------------------------------
 function cli(args, input) {
@@ -162,8 +287,20 @@ const oneLine = (out) => { const lines = out.split('\n').filter(Boolean); return
   const r = cli(['--technique', 'verify', '--file', file('a.md', 'status: met\nbody\n')]);
   const j = oneLine(r.out);
   ok('cli --file accept: exit 0', r.code === 0);
-  ok('cli --file accept: one JSON line with the four keys', !!j && JSON.stringify(Object.keys(j)) === JSON.stringify(['action', 'verdict', 'problem', 'report']));
+  ok('cli --file accept: one JSON line with the six keys', !!j && JSON.stringify(Object.keys(j)) === JSON.stringify(KEYS));
   ok('cli --file accept: values', j.action === 'accept' && j.verdict === 'met' && j.problem === null && j.report === 'status: met\nbody\n');
+  ok('cli --file accept: fields {} and body null for a review', JSON.stringify(j.fields) === '{}' && j.body === null);
+}
+{
+  const r = cli(['--technique', 'plan', '--file', file('p.md', 'status: ready\n\nStep 1\n')]);
+  const j = oneLine(r.out);
+  ok('cli plan ready: exit 0, body is the plan', r.code === 0 && j.action === 'accept' && j.body === 'Step 1');
+  const e = cli(['--technique', 'executor'], fullImpl('done', 'none'));
+  const je = oneLine(e.out);
+  ok('cli executor stdin: fields returned', e.code === 0 && je.action === 'accept' && je.fields.tests === 'npm test, green');
+  const f = cli(['--technique', 'research'], 'status: needs_input\nanswer: a\nevidence: e\n');
+  const jf = oneLine(f.out);
+  ok('cli research: a fields reask, exit 0', f.code === 0 && jf.action === 'reask' && jf.problem === 'fields' && jf.fields === null);
 }
 {
   const r = cli(['--technique', 'verify', '--file', file('b.md', '**Status:** GAPS_FOUND\r\nbody\r\n')]);
@@ -205,7 +342,7 @@ const oneLine = (out) => { const lines = out.split('\n').filter(Boolean); return
 }
 const usageErrors = [
   ['no technique', ['--file', file('d.md', 'status: met')]],
-  ['unknown technique', ['--technique', 'plan', '--file', file('e.md', 'status: met')]],
+  ['unknown technique', ['--technique', 'bogus', '--file', file('e.md', 'status: met')]],
   ['technique without a value', ['--technique']],
   ['unknown flag', ['--technique', 'verify', '--bogus', 'x', '--file', file('f.md', 'status: met')]],
   ['--file without a value', ['--technique', 'verify', '--file']],
