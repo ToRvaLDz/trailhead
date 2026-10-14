@@ -52,9 +52,9 @@ function parseOthers(text, { allowUnavailable }) {
   return normalise(text.split(',').map(Number));
 }
 
-// Strict ISO timestamp -> epoch ms, or null.
+// Strict ISO-8601 timestamp (as written by toISOString) -> epoch ms, or null.
 function parseTime(text) {
-  if (typeof text !== 'string') return null;
+  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(text)) return null;
   const ms = Date.parse(text);
   return Number.isNaN(ms) ? null : ms;
 }
@@ -166,12 +166,11 @@ function writeResult(stdout, result) {
   stdout.write(JSON.stringify(result) + '\n');
 }
 
-function main(argv, { cwd, stdout, env, fs: fsMod, now } = {}) {
+function main(argv, { cwd, stdout, fs: fsMod, now } = {}) {
   const cwd_ = cwd || process.cwd();
   const out = stdout || process.stdout;
   const fs_ = fsMod || fs;
   const now_ = now || new Date();
-  void env;
 
   const parsed = parseArgs(argv || []);
   if (parsed.error) {
@@ -208,6 +207,8 @@ function main(argv, { cwd, stdout, env, fs: fsMod, now } = {}) {
       return 0;
     }
     // Slide the idle window first: reuse is only reported once it is persisted.
+    // No lock: a concurrent record landing between read and write is overwritten,
+    // which at worst leaves a stale fingerprint that re-asks, never a blind reuse.
     const refreshed = { ...raw, usedAt: now_.toISOString() };
     writeAtomic(dir, file, JSON.stringify(refreshed, null, 2) + '\n', fs_);
     writeResult(out, { ...decision, path: file });
@@ -221,6 +222,6 @@ function main(argv, { cwd, stdout, env, fs: fsMod, now } = {}) {
 module.exports = { IDLE_WINDOW_MS, decide, parseOthers, parseArgs, resolveProjectRoot, main };
 
 if (require.main === module) {
-  const code = main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, env: process.env });
+  const code = main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout });
   process.exit(code);
 }

@@ -84,6 +84,8 @@ const rec = (over = {}) => ({ answer: 'no', others: [], recordedAt: iso(T0), use
     ['malformed usedAt', rec({ usedAt: 'yesterday' })],
     ['malformed recordedAt', rec({ recordedAt: 'nope' })],
     ['non-string usedAt', rec({ usedAt: 12 })],
+    ['non-ISO usedAt Date.parse accepts', rec({ usedAt: '2026' })],
+    ['non-ISO recordedAt with offset', rec({ recordedAt: '2026-10-14 10:00:00' })],
     ['future usedAt', rec({ usedAt: iso(at(HOUR)) })],
     ['future recordedAt', rec({ recordedAt: iso(at(HOUR)) })],
   ]) ok(`decide invalid: ${name}`, d(r, []).reason === 'invalid');
