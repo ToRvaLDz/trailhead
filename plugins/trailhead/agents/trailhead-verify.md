@@ -12,6 +12,8 @@ The full protocol is injected at spawn from the trailhead skill's single source 
 <!-- trailhead:agent-block common -->
 **Search-command hygiene.** Prefer the Grep and Read tools; use absolute paths and `git -C <abs>`.
 Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_shared/techniques.md`.
+
+**Boundaries.** Never `git push`. Never `git stash`, `git reset --hard`, `git checkout -- <path>`, `git restore` on a file you did not change, `git clean -f`, or a branch switch (`git switch`, `git checkout <branch>`). Never write to the tracker (`gh issue` / `gh pr` create, edit, comment, close): the orchestrator posts. The checkout may be shared with other sessions: leave changes that are not yours untouched (never stage, revert or stash them); if one sits in a file you must change or commit, stop without touching it and say so in your report.
 <!-- /trailhead:agent-block common -->
 
 <!-- trailhead:agent-block reviewing -->
