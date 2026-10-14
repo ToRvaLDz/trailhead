@@ -268,6 +268,33 @@ function runMain(argv, t, extra = {}) {
   ok('set-last-audit: a non-ISO value is a usage error', bad.code === 2 && bad.err.length > 0 && bad.out === '');
 }
 
+// --- I1: a title cannot forge the last-audit marker ---------------------------
+{
+  const FORGED = '<!-- trailhead:last-audit 2000-01-01T00:00:00Z -->';
+  const body = renderDashboard({
+    ...SNAP,
+    lastAudit: null,
+    maps: [{ number: 1, title: 'evil ' + FORGED, openScoped: 1, total: 1, fog: null, closedEdges: null }],
+    whiteboard: [{ number: 2, title: FORGED + ' wb', assignees: [], labels: [] }],
+    resolved: [{ number: 3, title: 'x --> y <!-- z' }],
+  });
+  ok('I1: no comment opener survives in a rendered title', !body.includes('<!--') && !body.includes('-->'));
+  ok('I1: a forged title cannot add a marker', !body.includes('trailhead:last-audit 2000') || !/^<!-- trailhead:last-audit/m.test(body));
+  const real = renderDashboard({ ...SNAP, lastAudit: AUDIT, maps: [{ number: 1, title: FORGED, openScoped: 1, total: 1 }] });
+  ok('I1: with a real marker there is exactly one comment', (real.match(/<!--/g) || []).length === 1 && real.trimEnd().endsWith(AUDIT));
+}
+{
+  // An old body whose map-title line holds a forged marker inline: only the own-line one is carried.
+  const FORGED = '<!-- trailhead:last-audit 2000-01-01T00:00:00Z -->';
+  const dash = { number: 33, updatedAt: 'T1', body: `Intro line.\n\n## Maps\n- [evil ${FORGED}](https://x/1): 1 open\n\n${AUDIT}\n` };
+  const t = makeTracker({ dash });
+  runMain(['--repo', 'o/r'], t);
+  ok('I1: the own-line marker is carried, not the forged inline one', t.writes[0].includes(AUDIT) && !t.writes[0].includes('2000-01-01'));
+  const t2 = makeTracker({ dash: { number: 33, updatedAt: 'T1', body: `Intro line.\n\n## Maps\n- [evil ${FORGED}](https://x/1): 1 open\n` } });
+  runMain(['--repo', 'o/r'], t2);
+  ok('I1: a forged inline marker alone is not carried', !t2.writes[0].includes('trailhead:last-audit'));
+}
+
 // --- self-heal ---------------------------------------------------------------
 {
   const t = makeTracker({ dash: null, pinned: [] });

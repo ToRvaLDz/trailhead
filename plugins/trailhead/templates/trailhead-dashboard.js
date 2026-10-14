@@ -35,7 +35,7 @@ const TITLE = '📊 trailhead dashboard';
 const NEAR_CAP = 90;
 const CAP = 100;
 const RESOLVED_SHOWN = 10;
-const AUDIT_RE = /<!-- trailhead:last-audit [^ ]* -->/;
+const AUDIT_LINE_RE = /^<!-- trailhead:last-audit [^ ]* -->[ \t\r]*$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 // List-query limits; a list that comes back full is reported as truncated.
 const LIMITS = { maps: 200, scoped: 1000, whiteboard: 200, resolved: 100, inbox: 1000 };
@@ -43,9 +43,19 @@ const NOT_RESOLVED_LABELS = ['trailhead:superseded', 'trailhead:out-of-scope'];
 
 // --- pure render -------------------------------------------------------------
 
-// A title safe to put inside a markdown link text, on one line.
+// A title safe to put inside a markdown link text, on one line. Comment
+// delimiters are neutralised so a title can never forge the last-audit marker.
 function linkText(title) {
-  return String(title).replace(/\s+/g, ' ').trim().replace(/([\[\]])/g, '\\$1');
+  return String(title).replace(/\s+/g, ' ').trim()
+    .replace(/<!--/g, '&lt;!--').replace(/-->/g, '--&gt;')
+    .replace(/([\[\]])/g, '\\$1');
+}
+
+// The last-audit marker the dashboard itself wrote: a line of its own (the last
+// such line), never text embedded in another line.
+function extractAudit(body) {
+  const hits = String(body).split('\n').filter((l) => AUDIT_LINE_RE.test(l));
+  return hits.length ? hits[hits.length - 1].trim() : null;
 }
 
 const issueUrl = (repo, n) => `https://github.com/${repo}/issues/${n}`;
@@ -290,7 +300,7 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
     }
 
     const w = guardedWrite(number, (current) => {
-      const carried = marker || (AUDIT_RE.exec(current) || [null])[0];
+      const carried = marker || extractAudit(current);
       return renderDashboard({ ...snap, lastAudit: carried });
     }, { gh: run, repo, guard: g, dryRun: o.dryRun, tmpdir, firstEditDelta2 });
     if (!w.ok) return abort(w.reason);
