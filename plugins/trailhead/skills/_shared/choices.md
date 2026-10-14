@@ -79,7 +79,7 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 | `auto` isolation work-start ask (concurrency) | Yes (an autonomous run takes it as the current checkout without asking) | No (now-or-never at work-start) |
 | Exhaustion "close the map?" | No (record the human owns) | No |
 | Out-of-scope routing (deferred line → seed/idea/todo) | No (routing the human owns) | This IS a defer already |
-| Ticket-start scope confirm (`work`/`quick` brief) | Yes (a process confirm; `auto` takes it) | No (now-or-never at ticket start) |
+| Ticket-start scope confirm (`work`/`quick` brief) | Yes (a process confirm; `auto` takes it); skipped per **Skip the confirm on a ticket this session already shaped** in `../trailhead-work/SKILL.md` | No (now-or-never at ticket start) |
 | Divergent change at the brief (as-is vs separate ticket) | No (routing the human owns) | No (a deferral is parked by the Pending follow-up guard) |
 
 The one-line test above generalises to any call-site not listed: if the answer is itself a project decision (a `decision`-ticket answer, or a destination/scope change) there is no delegate; a process choice that merely gets mentioned in a later resolution comment is still advisory.

@@ -605,9 +605,9 @@ ok('source: work step 3 keeps the auto sentence (proceeds without stopping to br
   /`auto` proceeds \(takes the delegate option\) without stopping to brief/.test(workStep3));
 ok('source: work step 3 no longer asks the change question as free text',
   !/ask whether they want to change anything/.test(workStep3));
-ok('source: quick brief bullet poses the same menu and keeps a one-line brief for quick "<text>"',
+ok('source: quick brief bullet poses the same menu and keeps a one-line note for quick "<text>"',
   /`AskUserQuestion`/.test(quickBriefBullet) && /\*\*Proceed\*\* \(Recommended\)/.test(quickBriefBullet) &&
-  /one-line brief/.test(quickBriefBullet) && !/one-line confirmation/.test(quickBriefBullet));
+  /one-line note/.test(quickBriefBullet) && !/one-line confirmation/.test(quickBriefBullet));
 ok('source: choices.md call-site table has the ticket-start scope confirm row (delegate yes, defer no)',
   /\| Ticket-start scope confirm \(`work`\/`quick` brief\) \| Yes[^|]*\| No[^|]*\|/.test(choicesScopeSource));
 ok('source: choices.md call-site table has the divergent-change row (delegate no, defer no)',
