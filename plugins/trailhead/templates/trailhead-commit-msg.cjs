@@ -19,8 +19,8 @@
 // On a violation: print the reason to stderr and exit VIOLATION (3); the wrapper
 // maps exactly that code to exit 1 (git aborts the commit); any code other than
 // 0 or 3 (a crash at load) is reported as the one-line "inactive" notice on
-// stderr and exits 0. Otherwise exit 0. Crash-safe: any unexpected error exits 0 (never wedge
-// a commit).
+// stderr and exits 0. Otherwise exit 0. Crash-safe: any unexpected error exits
+// 0 (never wedge a commit).
 //
 // Note: a merge/revert/fixup message already fails the conventional-subject
 // rule below, so it needs no special case; `git commit --amend` keeps whatever
