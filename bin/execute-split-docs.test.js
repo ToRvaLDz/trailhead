@@ -59,7 +59,9 @@ ok('brief: Report names flagged packages with exact install command and evidence
 ok('brief: Report names the fidelity list as element/state -> reproduced or infeasible with why',
   has(report, 'element/state', 'reproduced or infeasible', 'why'));
 ok('brief: Report names surfaced scope', report.toLowerCase().includes('surfaced scope'));
-ok('brief: the fixed report shape is left to the return contract (#249)', report.includes('#249'));
+ok('brief: the report takes the shape of the implementing Return contract',
+  has(report, 'implementing `Return contract`', 'status: done | partial | blocked', '`commits:`', '`blockers:`', '`fidelity:`', '`surfaced scope:`'));
+ok('brief: no longer defers the report shape to a later ticket', !report.includes('#249'));
 
 // --- the brief carries none of the orchestrator-only moves ---------------------------------
 ok('brief: no AskUserQuestion', !brief.includes('AskUserQuestion'));

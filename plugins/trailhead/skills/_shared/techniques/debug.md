@@ -3,6 +3,8 @@ A bug is a science problem: observe, hypothesize, test, confirm, verify. Never p
 
 When run as a subagent, dispatch the **`trailhead-debug`** agent (full tools: it adds instrumentation and regression tests, so it needs Write), passing `config.models.debug` as the model override; **never** an external-plugin debugger agent that another installed tool registered.
 
+**Report.** The agent returns an investigating report (`Return contract` in its definition): `answer:` the confirmed cause stated as a falsifiable hypothesis, `evidence:` the falsification test and its result, `open questions:` what stays unsettled. It never commits or creates a branch: the orchestrator turns the report into the `DIAGNOSIS`.
+
 **Redact as you go.** These notes are posted on public Issues. When you show a command, output, or artifact, replace every secret with `<REDACTED>` and run loops against env vars, never inlined credentials; quote only the signal-carrying lines, not whole dumps. If a redacted artifact isn't enough to move forward, say so and ask the user; never paste the raw one to compensate.
 
 1. **Reproduce: build a feedback loop.** Get ONE command you've actually run that goes red on *this exact symptom* and green when fixed: a failing test at the nearest seam, a curl against a dev server, a CLI diff vs a known-good snapshot, a replayed trace. Tighten it: faster, sharper (assert the specific symptom), deterministic (pin time, seed RNG, freeze network). No red-capable command → do NOT hypothesize; say so, list what you tried, ask for env access or a redacted artifact. For flaky bugs, chase a *higher* repro rate (loop 100×, parallelize, widen timing windows). 50% is debuggable, 1% is not.
