@@ -32,8 +32,10 @@ const s = lines.findIndex((l) => l.startsWith('3. **Brief the ticket and confirm
 const e = lines.findIndex((l, i) => i > s && l.startsWith('4. '));
 ok('step 3 found', s >= 0 && e > s);
 const step3 = lines.slice(s, e).join('\n');
+ok('step 3 carries the definition', step3.includes(DEFINITION));
+// match the fragments in the rule sub-bullet only, not the whole of step 3
+const rule = lines.slice(s, e).find((l) => l.includes(DEFINITION));
 for (const frag of [
-  DEFINITION,
   "from the user's own request for it",
   'a Grilling round on this ticket concluded',
   'created in bulk',
@@ -42,12 +44,15 @@ for (const frag of [
   'resume',
   'one-line',
   'never inferred from tracker metadata',
-]) ok(`step 3 carries: ${frag}`, step3.includes(frag));
+  '`auto` is unchanged',
+]) ok(`rule carries: ${frag}`, rule.includes(frag));
 
 // 3. the quick bullet only points at the rule
 const quick = lines.find((l) => l.startsWith('- **Briefs and confirms scope first'));
 ok('quick bullet found', !!quick);
 ok('quick bullet references the anchor', quick.includes(ANCHOR));
+ok('quick bullet gates the menu on the rule', quick.includes('Whether the menu is posed at all follows'));
+ok('quick "<text>" gets the note, no menu', quick.includes('one-line note, no menu'));
 ok('quick bullet does not restate bulk exclusion', !quick.includes('created in bulk'));
 ok('quick bullet does not restate grill trigger', !quick.includes('a Grilling round on this ticket concluded'));
 
