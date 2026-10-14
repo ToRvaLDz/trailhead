@@ -73,11 +73,37 @@ const B = { common: 'COMMON TEXT', reviewing: 'REVIEWING TEXT' };
   ok('renderAgent: a missing family block is appended after an existing common block',
     added.indexOf(open('common')) < added.indexOf(open('reviewing')) && !added.includes('OLD'));
 
+  const pair = `${open('common')}\nOLD\n${close('common')}`;
+  ok('renderAgent: an open marker without a close throws',
+    throws(() => renderAgent(`${FM}\n${BODY}\n${open('common')}\nOLD\n`, B, 'reviewing')));
+  ok('renderAgent: a close marker without an open throws',
+    throws(() => renderAgent(`${FM}\n${BODY}\nOLD\n${close('common')}\n`, B, 'reviewing')));
+  ok('renderAgent: two marker pairs for the same block throw',
+    throws(() => renderAgent(`${FM}\n${BODY}\n${pair}\n\n${pair}\n`, B, 'reviewing')));
+  ok('renderAgent: a close before its open throws',
+    throws(() => renderAgent(`${FM}\n${BODY}\n${close('common')}\n${open('common')}\n`, B, 'reviewing')));
+  ok('renderAgent: an unbalanced marker of a block this agent does not use throws',
+    throws(() => renderAgent(`${FM}\n${BODY}\n${open('implementing')}\nx\n`, B, 'reviewing')));
   ok('renderAgent: unknown family throws', throws(() => renderAgent(FM + BODY, B, 'nope')));
   ok('renderAgent: unknown agent throws',
     throws(() => renderAgent(FM.replace('trailhead-verify', 'trailhead-ghost') + BODY, B, 'reviewing')));
   ok('renderAgent: missing common block in the source throws',
     throws(() => renderAgent(FM + BODY, { reviewing: 'x' }, 'reviewing')));
+}
+
+// --- syncAll agrees with renderAgent on the agent identity ------------------------
+{
+  const os = require('os');
+  const { syncAll } = require('./sync-agent-blocks.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-sync-agent-blocks-test-'));
+  const src = path.join(dir, 'blocks.md');
+  fs.writeFileSync(src, `${open('common')}\nC\n${close('common')}\n`);
+  fs.writeFileSync(path.join(dir, 'trailhead-verify.md'), FM.replace('trailhead-verify', 'trailhead-plan') + BODY);
+  ok('syncAll: a frontmatter name that differs from the file name throws',
+    throws(() => syncAll({ check: true, agentsDir: dir, sourcePath: src })));
+  fs.writeFileSync(path.join(dir, 'trailhead-verify.md'), FM + BODY);
+  ok('syncAll: a matching name syncs and reports the drift', JSON.stringify(syncAll({ check: true, agentsDir: dir, sourcePath: src })) === JSON.stringify(['trailhead-verify.md']));
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 // --- FAMILIES ------------------------------------------------------------------
