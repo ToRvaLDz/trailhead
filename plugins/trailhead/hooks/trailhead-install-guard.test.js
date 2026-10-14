@@ -86,6 +86,42 @@ ok('detects install after ; chain', (() => { const d = detectInstall('echo hi; p
 ok('detects install in a piped tail', (() => { const d = detectInstall('true | cargo add serde'); return d && d.packages.includes('serde'); })());
 ok('compound with no install stays null', detectInstall('cd app && npm run build && ls') === null);
 
+// --- unit: lockfile installs, redirections, quoted text (#239) ---
+const heredocDoc = ['cat > /tmp/x.md <<\'EOF\'', '| `pnpm install a 2>&1` | x |', 'EOF'].join('\n');
+const neg239 = [
+  'pnpm install --frozen-lockfile --offline 2>&1',
+  'cd app && pnpm install --frozen-lockfile --offline 2>&1 | tail -5',
+  'pnpm install --frozen-lockfile > /tmp/log',
+  'pnpm install --frozen-lockfile --filter web',
+  'pnpm install --frozen-lockfile',
+  'yarn install --immutable',
+  'bun install --frozen-lockfile',
+  'yarn install --frozen-lockfile',
+  'npm install 2>&1',
+  'echo "done; pnpm install lodash"',
+  'echo "a && npm install foo"',
+  'echo "next: pnpm install then build"',
+  'git commit -m "fix: pnpm install guard | npm i x"',
+  heredocDoc,
+];
+for (const cmd of neg239) {
+  ok(`ignores: ${cmd.split('\n')[0]}`, detectInstall(cmd) === null);
+}
+
+// Redirections and quoting must not hide a real named install, nor leak into the name.
+const pos239 = [
+  ['npm install lodash 2>&1', 'npm', ['lodash']],
+  ['pnpm add vite > /tmp/log', 'npm', ['vite']],
+  ['npm install "lodash"', 'npm', ['lodash']],
+  ['echo ok && npm install lodash', 'npm', ['lodash']],
+  ['echo ok; pip install requests', 'pip', ['requests']],
+  ['pnpm add --filter web vite', 'npm', ['vite']],
+];
+for (const [cmd, eco, names] of pos239) {
+  const d = detectInstall(cmd);
+  ok(`detects exactly: ${cmd}`, d && d.ecosystem === eco && JSON.stringify(d.packages) === JSON.stringify(names));
+}
+
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));
 ok('no sentinel', !isVerified('npm install lodash'));
@@ -106,6 +142,13 @@ const a3 = runHook('ls -la');
 ok('non-install allowed (exit 0)', a3.code === 0 && a3.out.trim() === '');
 const a4 = runHook('pip install -r requirements.txt');
 ok('requirements-file install allowed (exit 0)', a4.code === 0 && a4.out.trim() === '');
+
+const a5 = runHook('cd app && pnpm install --frozen-lockfile --offline 2>&1 | tail -5');
+ok('lockfile install with redirection allowed (exit 0)', a5.code === 0 && a5.out.trim() === '');
+const a6 = runHook('echo "done; pnpm install lodash"');
+ok('install text inside echo allowed (exit 0)', a6.code === 0 && a6.out.trim() === '');
+const b3 = runHook('npm install lodash 2>&1');
+ok('named install with redirection still blocks (exit 2)', b3.code === 2 && /lodash/.test(b3.out));
 
 // --- end-to-end: unparseable stdin allowed ---
 const u = (() => {
