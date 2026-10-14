@@ -76,7 +76,7 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 | Prototype "want mockups?" | Yes | No |
 | Teamwork split shape / submodule split | Yes (the shape is advisory) | No |
 | Claim collision | No (coordination stop) | No |
-| `auto` isolation work-start ask (concurrency) | Yes (an autonomous run takes it as the current checkout without asking) | No (now-or-never at work-start) |
+| `auto` isolation work-start ask (concurrency) | Yes (an autonomous run takes it as the current checkout without asking; a remembered answer is reused without asking) | No (now-or-never at work-start) |
 | Exhaustion "close the map?" | No (record the human owns) | No |
 | Out-of-scope routing (deferred line → seed/idea/todo) | No (routing the human owns) | This IS a defer already |
 | Ticket-start scope confirm (`work`/`quick` brief) | Yes (a process confirm; `auto` takes it); skipped per **Skip the confirm on a ticket this session already shaped** in `../trailhead-work/SKILL.md` | No (now-or-never at ticket start) |
