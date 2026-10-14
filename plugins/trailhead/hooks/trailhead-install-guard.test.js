@@ -232,10 +232,30 @@ const cwdRun = (() => {
 ok('hook honours input.cwd for the on-disk check (exit 0)', cwdRun.code === 0);
 fs.rmSync(tmp, { recursive: true, force: true });
 
+// Wrappers peeled with their flags: timeout (+ DURATION), nice, stdbuf, setsid, ionice, doas, command, exec.
+const wrapHits = [
+  'timeout 10 npm i x', 'timeout -s KILL 10 npm i x', 'timeout --signal=KILL 5s npm i x',
+  'timeout -k 1 10 npm i x', 'nice npm i x', 'nice -n 5 npm i x', 'nice -n5 npm i x', 'nice -5 npm i x',
+  'command npm i x', 'command -p npm i x', 'exec npm i x', 'exec -a foo npm i x',
+  'doas npm i x', 'doas -u root npm i x', 'setsid npm i x', 'setsid -w npm i x',
+  'ionice -c 3 npm i x', 'stdbuf -oL npm i x', 'stdbuf -o L npm i x',
+  'sudo timeout 10 nice npm i x',
+  'env -S "env -S \\"npm i lodash\\""',
+  "env -S 'npm i lodash'",
+];
+for (const c of wrapHits) ok(`wrapper hit: ${c}`, detectInstall(c) && detectInstall(c).packages.length > 0);
+const wrapMisses = [
+  'timeout 10 ls', 'nice ls', 'command -v npm', 'command -v npm i x', 'command -V npm i x',
+  'command -pv npm i x', 'exec 3>&1', 'exec -a npm ls', 'doas ls',
+  "env -S 'echo \"npm i lodash\"'", 'env -S "echo \\"npm i lodash\\""',
+];
+for (const c of wrapMisses) ok(`wrapper miss: ${c}`, detectInstall(c) === null);
+
 // Known unmodelled gaps (documented, NOT asserted): this guard reads one plain
-// command per statement plus the five wrappers it peels, so an install behind
-// `bash -c "..."` / `sh -c "..."`, `$( )`, `eval`, or a wrapper outside the five
-// (`timeout`, `nice`, `command`, `exec`, `doas`) is not seen.
+// command per statement plus the wrappers it peels, so an install behind
+// `bash -c "..."` / `sh -c "..."`, `$( )`, `eval`, other wrappers (`chrt`,
+// `taskset`, `flock`, `su -c`), or a GNU long-option prefix abbreviation
+// (`timeout --sig=KILL 5 ...`) is not seen.
 
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));

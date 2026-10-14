@@ -15,8 +15,8 @@
 // `x.tgz`) passes only when it is a path (`./x`, `sub/x`, `/x`, `~/x`) or exists
 // on disk (relative to the command's cwd); otherwise it is a typed name and is gated.
 // The on-disk check resolves against the hook's cwd; it does not follow a
-// preceding `cd` in the same command. Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`) are peeled, with their
-// own flags, so `sudo npm install foo` is gated like the bare form. Parsing is quote-aware (shared
+// preceding `cd` in the same command. Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`, `timeout`, `nice`, `stdbuf`,
+// `setsid`, `ionice`, `doas`, `command`, `exec`) are peeled, with their own flags, so `sudo npm install foo` is gated like the bare form. Parsing is quote-aware (shared
 // lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
 // never a command, and redirections (`2>&1`, `> log`) are never package names.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
@@ -68,6 +68,14 @@ const WRAPPERS = {
     '-n', '--max-args', '-I', '-a', '--arg-file', '-d', '--delimiter', '-E', '-L', '--max-lines',
     '-P', '--max-procs', '-s', '--max-chars',
   ]),
+  timeout: new Set(['-s', '--signal', '-k', '--kill-after']), // + one DURATION operand
+  nice: new Set(['-n', '--adjustment']),
+  stdbuf: new Set(['-i', '-o', '-e', '--input', '--output', '--error']),
+  setsid: new Set(),
+  ionice: new Set(['-c', '--class', '-n', '--classdata']),
+  doas: new Set(['-a', '-C', '-u']),
+  command: new Set(), // -v / -V only look a name up: see isLookupFlag
+  exec: new Set(['-a']),
 };
 const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
@@ -98,6 +106,22 @@ function isSplitFlag(f) {
   return false;
 }
 
+// `command -v` / `-V` (also inside a cluster like `-pv`) only describe a name and
+// execute nothing, so nothing follows that can be an install.
+function isLookupFlag(f) {
+  return !f.startsWith('--') && /[vV]/.test(f);
+}
+
+// The text of an `env -S` payload token. A double-quoted payload (outer quotes
+// stripped) also loses its bash escapes (`\$`, `\``, `\"`, `\\`); single-quoted
+// text is literal. Local on purpose: the shared stripQuotes is left as is.
+function payloadText(payload) {
+  const p = payload || '';
+  const stripped = stripQuotes(p);
+  const dq = p.length >= 2 && p.startsWith('"') && p.endsWith('"');
+  return dq ? stripped.replace(/\\([$`"\\])/g, '$1') : stripped;
+}
+
 // The real command, past leading `NAME=value` assignments and any (nested) wrapper
 // with its flags. Returns { toks, i }: toks may be rewritten when an `env -S`
 // payload is re-tokenized; i is toks.length when nothing is left.
@@ -119,12 +143,14 @@ function skipWrappers(input) {
         let payload;
         if (f.startsWith('--')) payload = eq !== -1 ? f.slice(eq + 1) : toks[i++];
         else payload = sIdx === f.length - 1 ? toks[i++] : f.slice(sIdx + 1);
-        toks = [...tokenize(stripQuotes(payload || '')), ...toks.slice(i)];
+        toks = [...tokenize(payloadText(payload)), ...toks.slice(i)];
         i = 0; // the payload and the rest now form the command line
         break;
       }
+      if (wrapper === 'command' && isLookupFlag(f)) return { toks, i: toks.length };
       if (flagValue(f, valueFlags).next) i++; // consume its separate-token value
     }
+    if (wrapper === 'timeout' && i < toks.length) i++; // the DURATION operand
   }
 }
 
