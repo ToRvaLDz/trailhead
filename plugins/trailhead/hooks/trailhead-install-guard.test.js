@@ -162,6 +162,18 @@ const posWrap = [
   ['FOO=1 sudo -u root time -p pip install requests', 'requests'],
   ['cd app && sudo npm install lodash', 'lodash'],
   ['/usr/bin/sudo npm install lodash', 'lodash'],
+  ['sudo -nu root npm i lodash', 'lodash'],      // bundled short flags, value flag last
+  ['sudo -Eu bob npm i lodash', 'lodash'],
+  ['sudo -iu root npm i lodash', 'lodash'],
+  ['sudo -uroot npm i lodash', 'lodash'],        // attached value
+  ['sudo -nE npm i lodash', 'lodash'],           // cluster with no value flag
+  ['env -S "npm i lodash"', 'lodash'],           // split-string payload is the command
+  ['env -S npm i lodash', 'lodash'],
+  ["env -S 'npm i lodash'", 'lodash'],
+  ['env --split-string="npm i lodash"', 'lodash'],
+  ['env --split-string npm i lodash', 'lodash'],
+  ['env -a name npm i lodash', 'lodash'],        // argv0 value, command follows
+  ['env -S "FOO=1 sudo npm i lodash"', 'lodash'],
 ];
 for (const [cmd, name] of posWrap) {
   const d = detectInstall(cmd);
@@ -177,6 +189,9 @@ const negWrap = [
   'sudo',
   'env',
   'sudo -u',
+  'sudo -nu root ls',
+  'env -S "ls -la"',
+  'env -S "npm install"',
 ];
 for (const cmd of negWrap) {
   ok(`ignores wrapped: ${cmd}`, detectInstall(cmd) === null);
@@ -204,6 +219,7 @@ for (const cmd of negFile) {
 ok('existing file resolved against cwd, not process cwd', detectInstall('npm install foo.tgz', { cwd: os.tmpdir() }) !== null);
 ok('injectable exists check', detectInstall('npm install x.tgz', { exists: () => true }) === null);
 ok('scoped name is never a path', (() => { const d = detectInstall('npm install @scope/pkg.zip', inTmp); return d && d.packages[0] === '@scope/pkg.zip'; })());
+ok('evaluate tolerates null opts', evaluate('npm install lodash', null).kind === 'block');
 const wf = evaluate('npm install foo.tgz', { cwd: tmp });
 ok('evaluate threads cwd (existing file allowed)', wf.kind === 'allow');
 ok('evaluate blocks absent file-like name', evaluate('pip install foo.txt', { cwd: tmp }).kind === 'block');
@@ -215,6 +231,11 @@ const cwdRun = (() => {
 })();
 ok('hook honours input.cwd for the on-disk check (exit 0)', cwdRun.code === 0);
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// Known unmodelled gaps (documented, NOT asserted): this guard reads one plain
+// command per statement plus the five wrappers it peels, so an install behind
+// `bash -c "..."` / `sh -c "..."`, `$( )`, `eval`, or a wrapper outside the five
+// (`timeout`, `nice`, `command`, `exec`, `doas`) is not seen.
 
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));

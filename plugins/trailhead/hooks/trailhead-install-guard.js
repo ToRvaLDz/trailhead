@@ -14,7 +14,8 @@
 // VCS refs carry no typed name and pass through. A file-like name (`foo.txt`,
 // `x.tgz`) passes only when it is a path (`./x`, `sub/x`, `/x`, `~/x`) or exists
 // on disk (relative to the command's cwd); otherwise it is a typed name and is gated.
-// Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`) are peeled, with their
+// The on-disk check resolves against the hook's cwd; it does not follow a
+// preceding `cd` in the same command. Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`) are peeled, with their
 // own flags, so `sudo npm install foo` is gated like the bare form. Parsing is quote-aware (shared
 // lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
 // never a command, and redirections (`2>&1`, `> log`) are never package names.
@@ -60,7 +61,7 @@ const WRAPPERS = {
     '-U', '--other-user', '-r', '--role', '-t', '--type', '-D', '--chdir', '-R', '--chroot',
     '-T', '--command-timeout',
   ]),
-  env: new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string', '-a', '--argv0']),
+  env: new Set(['-u', '--unset', '-C', '--chdir', '-a', '--argv0']), // -S handled apart
   time: new Set(['-f', '--format', '-o', '--output']),
   nohup: new Set(),
   xargs: new Set([
@@ -70,19 +71,59 @@ const WRAPPERS = {
 };
 const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-// Index of the real command in toks: past leading `NAME=value` assignments and
-// any (nested) wrapper with its flags. Returns toks.length when nothing is left.
-function skipWrappers(toks) {
+// How a wrapper flag consumes its value. Returns { next } (value is the NEXT
+// token), { attached } (value is inside this token) or {} (flagless). A short
+// cluster is read like getopt: the first value-taking letter ends it, so `-nu root`
+// takes the next token and `-uroot` carries its value attached.
+function flagValue(f, valueFlags) {
+  if (f.startsWith('--')) {
+    const eq = f.indexOf('=');
+    if (eq !== -1) return { attached: f.slice(eq + 1) };
+    return valueFlags.has(f) ? { next: true } : {};
+  }
+  for (let k = 1; k < f.length; k++) {
+    if (!valueFlags.has('-' + f[k])) continue;
+    return k === f.length - 1 ? { next: true } : { attached: f.slice(k + 1) };
+  }
+  return {};
+}
+
+// `env -S` / `--split-string`: its payload IS the command line, not a flag value.
+function isSplitFlag(f) {
+  if (f.startsWith('--')) return f === '--split-string' || f.startsWith('--split-string=');
+  for (let k = 1; k < f.length; k++) {
+    if (f[k] === 'S') return true;
+    if ('uCa'.includes(f[k])) return false; // value letter first: S is part of its value
+  }
+  return false;
+}
+
+// The real command, past leading `NAME=value` assignments and any (nested) wrapper
+// with its flags. Returns { toks, i }: toks may be rewritten when an `env -S`
+// payload is re-tokenized; i is toks.length when nothing is left.
+function skipWrappers(input) {
+  let toks = input;
   let i = 0;
   for (;;) {
     while (i < toks.length && ENV_ASSIGN.test(toks[i])) i++;
-    const valueFlags = WRAPPERS[basename(toks[i] || '')];
-    if (!valueFlags) return i;
+    const wrapper = basename(toks[i] || '');
+    const valueFlags = WRAPPERS[wrapper];
+    if (!valueFlags) return { toks, i };
     i++; // past the wrapper
     while (i < toks.length && toks[i].startsWith('-')) {
       const f = toks[i++];
       if (f === '--') break; // end of the wrapper's options
-      if (valueFlags.has(f)) i++; // consume its separate-token value
+      if (wrapper === 'env' && isSplitFlag(f)) {
+        const eq = f.indexOf('=');
+        const sIdx = f.indexOf('S');
+        let payload;
+        if (f.startsWith('--')) payload = eq !== -1 ? f.slice(eq + 1) : toks[i++];
+        else payload = sIdx === f.length - 1 ? toks[i++] : f.slice(sIdx + 1);
+        toks = [...tokenize(stripQuotes(payload || '')), ...toks.slice(i)];
+        i = 0; // the payload and the rest now form the command line
+        break;
+      }
+      if (flagValue(f, valueFlags).next) i++; // consume its separate-token value
     }
   }
 }
@@ -143,8 +184,8 @@ function collectPackages(args, ecosystem, opts) {
 // Detect a public-registry install that NAMES at least one package, in a single
 // shell statement. Returns { ecosystem, packages: [names] } or null.
 function detectSegment(stmt, opts) {
-  const toks = tokenize(stmt);
-  let i = skipWrappers(toks); // env prefix + sudo/time/env/nohup/xargs
+  const { toks, i: start } = skipWrappers(tokenize(stmt));
+  let i = start; // env prefix + sudo/time/env/nohup/xargs
   if (i >= toks.length) return null;
 
   const bin = basename(toks[i]);
@@ -210,10 +251,10 @@ function blockVerdict(hit) {
 
 // Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
 // exits or writes; any internal error falls through to allow.
-function evaluate(cmd, { cwd } = {}) {
+function evaluate(cmd, opts) {
   try {
     if (isVerified(cmd)) return { kind: 'allow' }; // agent has vetted these
-    const hit = detectInstall(cmd, { cwd });
+    const hit = detectInstall(cmd, { cwd: opts && opts.cwd });
     if (hit) return blockVerdict(hit);
   } catch {
     // fall through to allow: a guard must never wedge the workflow
