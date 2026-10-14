@@ -18,12 +18,13 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 
 <!-- trailhead:agent-block investigating -->
 **Return contract.** Return the complete report as your final message. Do not post it anywhere (no issue comment, no PR comment): the orchestrator posts it. Never commit, and never create or switch a branch: the report is the only artifact.
-- The first line of the report is `status: <token>`, verbatim, with nothing before it and no other `status:` line.
+- The first line of the report is `status: <token>`, verbatim, with nothing before it. It is the only line starting with `status:`: status text anywhere in the body is quoted in a code fence or a blockquote, or reworded.
 - statuses: `found` | `inconclusive` | `needs_input`.
 - required fields: `answer`, `evidence`, `open questions`.
 - optional fields: none.
 - invariant: `needs_input` => `open questions` non-empty.
 - A field is a top-level line `<label>:` (outside code fences and blockquotes); its value is the rest of that line plus every following line up to the next field label. An empty value or `none` means none.
+- Fields are the end of the report: nothing after the last field.
 - `answer:` the decision-ready answer to the one question you were given, with your confidence.
 - `evidence:` what backs the answer, one item per line: `file:line` for code, the URL for every external claim.
 - `open questions:` what you could not settle, or `none`. With `needs_input` it holds the questions only the user can answer.

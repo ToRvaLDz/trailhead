@@ -69,10 +69,10 @@ ok('reask: ask once, continue the same agent where the host allows, else re-disp
   lc.includes('ask once') && lc.includes('continue the same agent') && lc.includes('re-dispatch the same `trailhead-<technique>` agent')
   && lc.includes('same model override') && lc.includes('malformed report quoted'));
 const prompt = 'Your report could not be accepted: `<problem>` (missing: no `status:` line; unknown-token: `<found>` is not an allowed token; '
-  + 'conflicting: more than one `status:` line with different tokens; counts: the counts line is missing or repeated; fields: a required field is missing or an invariant is broken). '
+  + 'conflicting: more than one `status:` line, so quote or reword any status text in the body, which must not start a line with `status:` outside a code fence or blockquote; counts: the counts line is missing or repeated; fields: a required field is missing or an invariant is broken). '
   + 'Return the complete report again with its first line exactly `status: <token>`, where `<token>` is one of `<allowed tokens>`, '
   + 'and no other `status:` line<for code-review: , and its second line exactly `critical: <n> · warning: <n> · info: <n>`>'
-  + '<for fields: , with each of `<required fields>` as a top-level `<label>:` line and `<the broken invariant>` holding>. '
+  + '<for fields: , with each of `<required fields>` as a top-level `<label>:` line and `<the broken invariant>` holding, with nothing after the last field>. '
   + 'Do not post it anywhere.';
 ok('the corrective prompt, verbatim', para.includes(prompt));
 ok('for code-review the prompt always restates both required lines', lc.includes('always restates both required lines'));

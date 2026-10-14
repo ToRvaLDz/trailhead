@@ -193,6 +193,10 @@ const frows = [
   ['plan needs_input with none questions', 'plan', 'status: needs_input\nquestions: none\n', ['reask', null, 'fields']],
   ['plan ready with an empty body', 'plan', 'status: ready\n\n  \n', ['reask', null, 'fields']],
   ['plan ready with only a status line', 'plan', 'status: ready', ['reask', null, 'fields']],
+  ['a fenced status line inside a plan body is part of the body', 'plan', 'status: ready\n\nA feature about statuses:\n```\nstatus: pending\n```\nDone.\n', ['accept', 'ready', null, {},
+    'A feature about statuses:\n```\nstatus: pending\n```\nDone.']],
+  ['a blockquoted status line inside an answer is ignored', 'research', 'status: found\nanswer: see\n> status: pending\nevidence: e\nopen questions: none\n', ['accept', 'found', null, null, null]],
+  ['prose after the last field becomes its value, so a done report reasks', EX, fullImpl('done', 'none', 'Note: hi\n'), ['reask', null, 'fields']],
   ['the same label twice', EX, fullImpl('done', 'none', 'tests: again\n'), ['reask', null, 'fields']],
 ];
 for (const [name, technique, input, expected] of frows) {

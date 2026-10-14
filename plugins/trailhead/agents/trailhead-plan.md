@@ -18,13 +18,14 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 
 <!-- trailhead:agent-block plan -->
 **Return contract.** Return the complete report as your final message. Do not post it anywhere (no issue comment, no PR comment): the orchestrator posts the PLAN. Never commit.
-- The first line of the report is `status: <token>`, verbatim, with nothing before it and no other `status:` line.
+- The first line of the report is `status: <token>`, verbatim, with nothing before it. It is the only line starting with `status:`: status text anywhere in the body is quoted in a code fence or a blockquote, or reworded.
 - statuses: `ready` | `needs_input`.
 - required fields: none.
 - optional fields: `questions`.
 - invariant: `ready` => `body` non-empty.
 - invariant: `needs_input` => `questions` non-empty.
 - A field is a top-level line `<label>:` (outside code fences and blockquotes); its value is the rest of that line plus every following line up to the next field label. An empty value or `none` means none.
+- With `needs_input`, fields are the end of the report: nothing after the last field.
 - `ready`: the rest of the report is the PLAN (the `body`): the steps, the seams, the files touched and the verification criteria. It is posted verbatim, so write nothing in it that is not the PLAN.
 - `needs_input`: `questions:` holds the blocking questions only; no PLAN.
 <!-- /trailhead:agent-block plan -->

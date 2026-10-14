@@ -20,14 +20,16 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 **Baseline.** At the start, before any change, record the base SHA: the one the orchestrator names, else `git -C <repo> rev-parse HEAD`. To check whether a failure already exists there, never stash or reset: `tmp=$(mktemp -d)`, `git -C <repo> worktree add --detach "$tmp" <base-sha>`, run the check in `$tmp`, then `git -C <repo> worktree remove --force "$tmp"`. The temporary worktree has no installed dependencies: if the check fails there only because of a missing install, call the baseline inconclusive in your report, never pre-existing. Remove every temporary worktree you created before returning.
 
 **Commits.** Commit only your own changes: stage explicit paths (`git add <path>`), never `git add -A`, `git add .` or `git commit -a`, and commit them by path (`git commit -- <path>...`) so a change another session already staged is never swept in. Each commit is atomic and conventional and ends with the ticket's `Refs: #<n>` trailer.
+
 **Return contract.** Return the complete report as your final message. Do not post it anywhere (no issue comment, no PR comment): the orchestrator posts what it needs from it.
-- The first line of the report is `status: <token>`, verbatim, with nothing before it and no other `status:` line.
+- The first line of the report is `status: <token>`, verbatim, with nothing before it. It is the only line starting with `status:`: status text anywhere in the body is quoted in a code fence or a blockquote, or reworded.
 - statuses: `done` | `partial` | `blocked`.
 - required fields: `commits`, `tests`, `deviations`, `blockers`.
 - optional fields: `fidelity`, `surfaced scope`.
 - invariant: `done` => `blockers` none.
 - invariant: `partial`, `blocked` => `blockers` non-empty.
 - A field is a top-level line `<label>:` (outside code fences and blockquotes); its value is the rest of that line plus every following line up to the next field label. An empty value or `none` means none.
+- Fields are the end of the report: nothing after the last field.
 - `commits:` one `<sha> <subject>` per line: every commit carrying the ticket's `Refs: #<n>` since the base SHA, including those of an earlier spawn. The orchestrator checks this list against the repo.
 - `tests:` the command you ran and its result.
 - `deviations:` where you departed from the PLAN (or the DIAGNOSIS), or `none`.

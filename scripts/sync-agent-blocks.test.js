@@ -232,6 +232,9 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     ok(`${family} block: optional fields`, JSON.stringify(bullet(block, 'optional fields')) === JSON.stringify(want.optional));
     ok(`${family} block: states the field grammar`,
       lc.includes('top-level line') && lc.includes('next field label') && lc.includes('empty value or `none` means none'));
+    ok(`${family} block: one status line only, body status text quoted or reworded`,
+      lc.includes('only line starting with `status:`') && lc.includes('code fence or a blockquote, or reworded'));
+    ok(`${family} block: nothing after the last field`, lc.includes('nothing after the last field'));
     ok(`${family} block: no backslash (survives the Codex TOML projection unescaped)`, !block.includes('\\'));
   }
   const inv = (family) => (blocks[family] || '').split('\n').filter((l) => l.startsWith('- invariant:'));
@@ -247,6 +250,7 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
       '- invariant: `ready` => `body` non-empty.',
       '- invariant: `needs_input` => `questions` non-empty.',
     ]));
+  ok('implementing block: a blank line between Commits and Return contract', (blocks.implementing || '').includes('trailer.\n\n**Return contract.**'));
   const impl = blocks.implementing || '';
   for (const needle of ['`<sha> <subject>`', 'exact install command', 'infeasible', 'foreign change', '`fidelity`', 'mockup was passed',
     '`surfaced scope`', 'Refs: #<n>', 'since the base']) {
