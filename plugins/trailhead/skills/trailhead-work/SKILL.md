@@ -9,7 +9,7 @@ argument-hint: "[work|quick|pause|resume|split|auto] [ticket | \"text\" | note]"
 
 ## Load first, in order
 
-Before doing anything, read `../_shared/load-first.md` and follow it: the shared-core load contract (the six core files, in order, then the effective config). `_shared/` is a **sibling** of this cluster's own directory (at `../_shared/`), never a child of it; its absence from a listing of the cluster dir is expected, not a missing core.
+Before doing anything, load `<skill base>/../_shared/load-first.md` and follow it: the shared-core load contract (the six core files, in order, then the effective config). `<skill base>` is this skill's **base directory** (Claude Code prints it as `Base directory for this skill:` when the skill loads; on another host, the directory holding this `SKILL.md`): resolve the path to an **absolute path** and open it with the **Read tool** on that absolute path. Never `cd` into a skills directory and never read a relative path from the shell (a `cd` compound followed by a read is denied by the search guard). The same rule covers every later `../_shared/...` or `references/...` path in this skill: resolve it against the base directory to an absolute path before reading. `_shared/` is a **sibling** of this cluster's own directory (at `../_shared/`), never a child of it; its absence from a listing of the cluster dir is expected, not a missing core.
 
 Config is a property of the project/map, not the working directory: an isolation workspace inherits this config, never re-resolves it from the isolated copy's own root. **For an explicit `work <n>` / `quick <n>`, the named-ticket Preflight below runs *before* this config load:** never load config, or anything else, for a ticket that turns out closed.
 
