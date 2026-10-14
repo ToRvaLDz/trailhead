@@ -210,6 +210,28 @@ for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-v
   ok(`source: ${cl}/SKILL.md does NOT duplicate the core-list signature line`, !fs.readFileSync(path.join(sourceSkillsDir, cl, 'SKILL.md'), 'utf8').includes(loadFirstSignature));
 }
 
+// --- #237: the shared core is loaded by ABSOLUTE path with the Read tool -----
+const clusters237 = ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage'];
+const loadFirst237 = fs.readFileSync(loadFirstSourcePath, 'utf8');
+for (const cl of clusters237) {
+  const src = fs.readFileSync(path.join(sourceSkillsDir, cl, 'SKILL.md'), 'utf8');
+  const start = src.indexOf('## Load first');
+  const rest = src.slice(start + 3);
+  const nextH = rest.search(/\n## /);
+  const para = start < 0 ? '' : (nextH < 0 ? rest : rest.slice(0, nextH));
+  ok(`#237: ${cl} Load first names the base directory`, /base directory/i.test(para));
+  ok(`#237: ${cl} Load first requires an absolute path`, /absolute path/i.test(para));
+  ok(`#237: ${cl} Load first requires the Read tool`, /Read tool/.test(para));
+  ok(`#237: ${cl} Load first has no bare relative "read ../_shared/load-first.md"`, !/read `\.\.\/_shared\/load-first\.md`/i.test(para));
+  ok(`#237: ${cl} SKILL.md has no shell read of a relative _shared/ path`, !/\b(cat|head|tail|sed\s+-n\s+\S+)\s+(\.\.\/)*_shared\//.test(src));
+  ok(`#237: ${cl} SKILL.md has no cd-and-read compound`, !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(src.replace(/`cd <dir> && cat _shared\/\.\.\.`/g, '')));
+}
+ok('#237: load-first.md states the absolute-path rule with the Read tool', /absolute path/i.test(loadFirst237) && /Read tool/.test(loadFirst237));
+ok('#237: load-first.md resolves <lib> and <templates> to absolute paths', loadFirst237.includes('`<lib>`') && loadFirst237.includes('`<templates>`') && /absolute/i.test(loadFirst237.slice(loadFirst237.indexOf('Pinned model review'))));
+ok('#237: load-first.md covers every other ../_shared/ or references/ path', loadFirst237.includes('references/') && /every other/i.test(loadFirst237));
+ok('#237: load-first.md no longer says paths are relative to the cluster SKILL.md', !loadFirst237.includes('relative to the cluster `SKILL.md`') && !loadFirst237.includes('relative to the cluster SKILL.md that'));
+ok('#237: load-first.md has no shell read of a relative _shared/ path', !/\b(cat|head|tail|sed\s+-n\s+\S+)\s+(\.\.\/)*_shared\//.test(loadFirst237) && !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(loadFirst237.replace(/`cd <dir> && cat _shared\/\.\.\.`/g, '')));
+
 // --- #146: single-sourced ticket-language directive (anti-drift) -------------
 // The standing ticket-language rule (write Issue prose + commit bodies in
 // config.ticket.language, decoupled from the chat language) lives in ONE place,
