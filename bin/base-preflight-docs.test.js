@@ -16,7 +16,7 @@ const HELPER = 'trailhead-base-preflight.js';
 // file -> strings it must carry
 const EXPECT = {
   '_shared/teamwork.md': [
-    '**Stale-base preflight.**', HELPER, '--config-root', 'preflight -> sync -> tests -> Code review -> goal check -> UAT', 'preflight -> sync -> tests -> checks -> integration', 'start of Verify',
+    '**Stale-base preflight.**', HELPER, '--config-root', 'preflight -> sync -> checks -> tests -> Code review -> goal check -> UAT', 'preflight -> sync -> checks -> tests -> integration', 're-run the Code review on it before integrating', 'start of Verify',
     '`git: pr` without isolation', 'immediately before the push and PR',
     '`current`', '`synced`', '`conflict`', '`dirty`', '`unverified`', '`trunk-diverged`', '`sync-failed`', 'Fail closed',
     'right before the trunk push', 'integration target', 'non-fast-forward', 'testsRequired', 'preflight.checks',
