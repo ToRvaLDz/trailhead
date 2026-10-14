@@ -224,13 +224,13 @@ for (const cl of clusters237) {
   ok(`#237: ${cl} Load first requires the Read tool`, /Read tool/.test(para));
   ok(`#237: ${cl} Load first has no bare relative "read ../_shared/load-first.md"`, !/read `\.\.\/_shared\/load-first\.md`/i.test(para));
   ok(`#237: ${cl} SKILL.md has no shell read of a relative _shared/ path`, !/\b(cat|head|tail|sed\s+-n\s+\S+)\s+(\.\.\/)*_shared\//.test(src));
-  ok(`#237: ${cl} SKILL.md has no cd-and-read compound`, !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(src.replace(/`cd <dir> && cat _shared\/\.\.\.`/g, '')));
+  ok(`#237: ${cl} SKILL.md has no cd-and-read compound`, !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(src));
 }
 ok('#237: load-first.md states the absolute-path rule with the Read tool', /absolute path/i.test(loadFirst237) && /Read tool/.test(loadFirst237));
-ok('#237: load-first.md resolves <lib> and <templates> to absolute paths', loadFirst237.includes('`<lib>`') && loadFirst237.includes('`<templates>`') && /absolute/i.test(loadFirst237.slice(loadFirst237.indexOf('Pinned model review'))));
+ok('#237: load-first.md resolves <lib> and <templates> to absolute paths', loadFirst237.includes('`<lib>` (an absolute path') && loadFirst237.includes('`<templates>` (an absolute path)'));
 ok('#237: load-first.md covers every other ../_shared/ or references/ path', loadFirst237.includes('references/') && /every other/i.test(loadFirst237));
 ok('#237: load-first.md no longer says paths are relative to the cluster SKILL.md', !loadFirst237.includes('relative to the cluster `SKILL.md`') && !loadFirst237.includes('relative to the cluster SKILL.md that'));
-ok('#237: load-first.md has no shell read of a relative _shared/ path', !/\b(cat|head|tail|sed\s+-n\s+\S+)\s+(\.\.\/)*_shared\//.test(loadFirst237) && !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(loadFirst237.replace(/`cd <dir> && cat _shared\/\.\.\.`/g, '')));
+ok('#237: load-first.md has no shell read of a relative _shared/ path', !/\b(cat|head|tail|sed\s+-n\s+\S+)\s+(\.\.\/)*_shared\//.test(loadFirst237) && !/\bcd\s+\S+\s*&&\s*(cat|head|tail|sed|grep)\b/.test(loadFirst237));
 
 // --- #146: single-sourced ticket-language directive (anti-drift) -------------
 // The standing ticket-language rule (write Issue prose + commit bodies in
