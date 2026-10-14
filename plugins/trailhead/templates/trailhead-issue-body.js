@@ -45,9 +45,9 @@ const PREAMBLE = ':preamble';
 const DEGENERATE_MAX = 20; // a body with fewer non-space characters is degenerate
 const EDIT_HISTORY_HINT = "open the issue's edit history (the `edited` menu) and re-apply the lost lines";
 // Whether GitHub records the original version as an extra edit on an issue's
-// first edit (delta 2). Unconfirmed until the live smoke pins it, so a delta of 2
-// on a never-edited issue is a conflict by default.
-const FIRST_EDIT_DELTA2 = false;
+// first edit (delta 2). Confirmed live (2026-10-14): a never-edited issue goes
+// from 0 to 2 edits on its first body write, then +1 per write.
+const FIRST_EDIT_DELTA2 = true;
 const PLACEHOLDER_RE = /^\s*(?:[-*+]\s+)?[_*]*\(?\s*(?:none(?:\s+yet)?|nothing(?:\s+yet)?|n\/a|tbd|empty)\s*\)?[_*]*\.?\s*$/i;
 
 // --- pure section splice ------------------------------------------------------

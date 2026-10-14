@@ -292,10 +292,10 @@ function writeTmp(text) {
 {
   const t = makeTracker({ writeDelta: 2, edits: 0 });
   const r = runMain(APPEND, t);
-  ok('first edit, delta 2: a conflict until confirmed live', r.code === 1 && /conflict/.test(r.out));
+  ok('first edit, delta 2: accepted by default (confirmed live)', r.code === 0 && !/conflict/.test(r.out));
   const t2 = makeTracker({ writeDelta: 2, edits: 0 });
   const g = guardedWrite(7, (b) => b + '\n- z', { gh: t2.gh, guard: fakeGuard, repo: 'o/r', firstEditDelta2: true });
-  ok('first edit, delta 2: accepted once pinned (opt)', g.ok === true);
+  ok('first edit, delta 2: accepted with the explicit opt', g.ok === true);
   const t3 = makeTracker({ writeDelta: 2, edits: 5 });
   const g3 = guardedWrite(7, (b) => b + '\n- z', { gh: t3.gh, guard: fakeGuard, repo: 'o/r', firstEditDelta2: true });
   ok('delta 2 on an already-edited issue stays a conflict', g3.ok === false && g3.conflict === true);
