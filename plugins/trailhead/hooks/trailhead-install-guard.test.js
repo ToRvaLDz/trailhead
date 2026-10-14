@@ -4,10 +4,12 @@
 const assert = require('assert');
 const { execFileSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 // TRAILHEAD_GUARD_HOOK re-runs this suite through the merged trailhead-bash-guards.js.
 const HOOK = process.env.TRAILHEAD_GUARD_HOOK || path.join(__dirname, 'trailhead-install-guard.js');
-const { detectInstall, isVerified } = require('./trailhead-install-guard.js');
+const { detectInstall, isVerified, evaluate } = require('./trailhead-install-guard.js');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -139,9 +141,80 @@ for (const [cmd, name] of posLock) {
 // A bare `&` (background) is never listed as a package name.
 ok('background & is not a package', JSON.stringify((detectInstall('npm install lodash &') || {}).packages) === JSON.stringify(['lodash']));
 
-// Known unmodelled gaps (documented, NOT asserted): this guard reads one plain
-// command per statement, so an install hidden behind `bash -c "..."`, `$( )`,
-// `eval`, `sudo`, or `xargs` is not seen. These pass both before and after #239.
+// --- unit: wrapped installs and file-like names (#255) ---
+const posWrap = [
+  ['sudo npm install lodash', 'lodash'],
+  ['time pip install requests', 'requests'],
+  ['env FOO=1 npm i lodash', 'lodash'],
+  ['nohup npm install lodash', 'lodash'],
+  ['xargs npm install lodash', 'lodash'],
+  ['sudo -u bob npm install lodash', 'lodash'],   // flag with a separate-token value
+  ['sudo -- npm i lodash', 'lodash'],
+  ['sudo -E npm i lodash', 'lodash'],
+  ['env -u HOME npm i lodash', 'lodash'],
+  ['env -C /tmp FOO=1 npm i lodash', 'lodash'],
+  ['time -p pip install requests', 'requests'],
+  ['time -o /tmp/t pip install requests', 'requests'],
+  ['xargs -n 1 npm install lodash', 'lodash'],
+  ['xargs -I {} pip install requests', 'requests'],
+  ['xargs --max-args=1 npm i lodash', 'lodash'],
+  ['sudo env FOO=1 nohup npm i lodash', 'lodash'],   // chain
+  ['FOO=1 sudo -u root time -p pip install requests', 'requests'],
+  ['cd app && sudo npm install lodash', 'lodash'],
+  ['/usr/bin/sudo npm install lodash', 'lodash'],
+];
+for (const [cmd, name] of posWrap) {
+  const d = detectInstall(cmd);
+  ok(`detects wrapped: ${cmd}`, d && d.packages.includes(name));
+}
+const negWrap = [
+  'sudo npm install',
+  'sudo npm ci',
+  'time npm install --frozen-lockfile',
+  'env FOO=1 npm install',
+  'xargs echo npm install foo',     // xargs runs echo
+  'sudo -u bob ls',
+  'sudo',
+  'env',
+  'sudo -u',
+];
+for (const cmd of negWrap) {
+  ok(`ignores wrapped: ${cmd}`, detectInstall(cmd) === null);
+}
+
+// A file-like suffix is local only for a path or an existing file.
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'install-guard-'));
+fs.writeFileSync(path.join(tmp, 'foo.tgz'), '');
+const inTmp = { cwd: tmp };
+const posFile = ['pip install foo.txt', 'npm install left-pad.toml', 'npm install nope.tgz', 'pip install pkg.whl'];
+for (const cmd of posFile) {
+  const d = detectInstall(cmd, inTmp);
+  ok(`gates absent file-like name: ${cmd}`, d && d.packages.length === 1);
+}
+const negFile = [
+  'pip install ./foo.txt',
+  'pip install sub/req.txt',
+  'pip install /abs/req.txt',
+  'pip install ~/req.txt',
+  'npm install foo.tgz',            // exists in cwd
+];
+for (const cmd of negFile) {
+  ok(`allows path or existing file: ${cmd}`, detectInstall(cmd, inTmp) === null);
+}
+ok('existing file resolved against cwd, not process cwd', detectInstall('npm install foo.tgz', { cwd: os.tmpdir() }) !== null);
+ok('injectable exists check', detectInstall('npm install x.tgz', { exists: () => true }) === null);
+ok('scoped name is never a path', (() => { const d = detectInstall('npm install @scope/pkg.zip', inTmp); return d && d.packages[0] === '@scope/pkg.zip'; })());
+const wf = evaluate('npm install foo.tgz', { cwd: tmp });
+ok('evaluate threads cwd (existing file allowed)', wf.kind === 'allow');
+ok('evaluate blocks absent file-like name', evaluate('pip install foo.txt', { cwd: tmp }).kind === 'block');
+const wrapRun = runHook('sudo npm install lodash');
+ok('blocks a sudo-wrapped install end-to-end (exit 2)', wrapRun.code === 2 && /lodash/.test(wrapRun.out));
+const cwdRun = (() => {
+  const input = JSON.stringify({ cwd: tmp, tool_input: { command: 'npm install foo.tgz' } });
+  try { return { code: 0, out: execFileSync('node', [HOOK], { input }).toString() }; } catch (e) { return { code: e.status }; }
+})();
+ok('hook honours input.cwd for the on-disk check (exit 0)', cwdRun.code === 0);
+fs.rmSync(tmp, { recursive: true, force: true });
 
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));

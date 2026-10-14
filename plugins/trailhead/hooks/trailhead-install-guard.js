@@ -11,7 +11,11 @@
 // Only a NAMED install is gated: installs with no typed name (bare `npm install`,
 // `npm ci`, `install --frozen-lockfile` / `--immutable` with no package, `pip install -r`,
 // `cargo build`, `go mod download`, `bundle install`) and local paths / URLs /
-// VCS refs carry no typed name and pass through. Parsing is quote-aware (shared
+// VCS refs carry no typed name and pass through. A file-like name (`foo.txt`,
+// `x.tgz`) passes only when it is a path (`./x`, `sub/x`, `/x`, `~/x`) or exists
+// on disk (relative to the command's cwd); otherwise it is a typed name and is gated.
+// Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`) are peeled, with their
+// own flags, so `sudo npm install foo` is gated like the bare form. Parsing is quote-aware (shared
 // lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
 // never a command, and redirections (`2>&1`, `> log`) are never package names.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
@@ -19,6 +23,8 @@
 // Self-contained (its only dependency is the sibling lib/ module). Pure functions (incl. evaluate) exported for tests
 // and the merged trailhead-bash-guards.js; runs as a hook when executed directly.
 
+const fs = require('fs');
+const path = require('path');
 const { basename, splitStatements, tokenize, stripQuotes, stripRedirections } = require('./lib/shell-scan.js');
 
 const SENTINEL = /(?:^|\s)TRAILHEAD_VERIFIED_INSTALL=1(?:\s|$)/;
@@ -45,15 +51,60 @@ const VALUE_FLAGS = new Set([
   '--filter', '-F', // pnpm workspace selector: its value is a project, not a package
 ]);
 
+// Command wrappers that run the rest of the line as a command, mapped to the
+// flags that consume a SEPARATE-TOKEN value (so it is not read as the command).
+// Attached forms (`-uroot`, `--user=root`, GNU xargs `-i`/`-e`/`-l`) need no entry.
+const WRAPPERS = {
+  sudo: new Set([
+    '-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from',
+    '-U', '--other-user', '-r', '--role', '-t', '--type', '-D', '--chdir', '-R', '--chroot',
+    '-T', '--command-timeout',
+  ]),
+  env: new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string', '-a', '--argv0']),
+  time: new Set(['-f', '--format', '-o', '--output']),
+  nohup: new Set(),
+  xargs: new Set([
+    '-n', '--max-args', '-I', '-a', '--arg-file', '-d', '--delimiter', '-E', '-L', '--max-lines',
+    '-P', '--max-procs', '-s', '--max-chars',
+  ]),
+};
+const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+// Index of the real command in toks: past leading `NAME=value` assignments and
+// any (nested) wrapper with its flags. Returns toks.length when nothing is left.
+function skipWrappers(toks) {
+  let i = 0;
+  for (;;) {
+    while (i < toks.length && ENV_ASSIGN.test(toks[i])) i++;
+    const valueFlags = WRAPPERS[basename(toks[i] || '')];
+    if (!valueFlags) return i;
+    i++; // past the wrapper
+    while (i < toks.length && toks[i].startsWith('-')) {
+      const f = toks[i++];
+      if (f === '--') break; // end of the wrapper's options
+      if (valueFlags.has(f)) i++; // consume its separate-token value
+    }
+  }
+}
+
+// A file-like name is local only when it is a path or exists on disk. A leading
+// `@` is a scoped npm name, never a path.
+function isLocalFile(t, opts) {
+  if (t.startsWith('@')) return false;
+  if (t.includes('/')) return true;
+  const exists = (opts && opts.exists) || fs.existsSync;
+  return exists(path.resolve((opts && opts.cwd) || process.cwd(), t));
+}
+
 // A positional that is NOT a public-registry name: local path, url, vcs ref, or a
 // file artifact. Go module paths (example.com/foo) look url-ish but ARE the named
 // module, so for go only a leading . / ~ disqualifies.
-function isLocalOrUrl(t, ecosystem) {
+function isLocalOrUrl(t, ecosystem, opts) {
   if (t.startsWith('.') || t.startsWith('/') || t.startsWith('~')) return true;
   if (ecosystem === 'go') return false; // a bare module path is the name; gate it
   if (t.includes('://')) return true;
   if (/^(?:git\+|file:|https?:|hg\+|svn\+|bzr\+)/.test(t)) return true;
-  if (/\.(?:tgz|tar\.gz|whl|gz|zip|txt|toml|lock|cfg)$/.test(t)) return true;
+  if (/\.(?:tgz|tar\.gz|whl|gz|zip|txt|toml|lock|cfg)$/.test(t)) return isLocalFile(t, opts);
   return false;
 }
 
@@ -73,7 +124,7 @@ function bareName(t) {
 
 // Positional package names among the arguments after the verb (redirections
 // already removed). Quotes are stripped so `"lodash"` is the name `lodash`.
-function collectPackages(args, ecosystem) {
+function collectPackages(args, ecosystem, opts) {
   const packages = [];
   for (let j = 0; j < args.length; j++) {
     const t = args[j];
@@ -82,7 +133,7 @@ function collectPackages(args, ecosystem) {
       continue;
     }
     const name = stripQuotes(t);
-    if (!name || name === '&' || isLocalOrUrl(name, ecosystem)) continue;
+    if (!name || name === '&' || isLocalOrUrl(name, ecosystem, opts)) continue;
     const bare = bareName(name);
     if (bare) packages.push(bare);
   }
@@ -91,10 +142,9 @@ function collectPackages(args, ecosystem) {
 
 // Detect a public-registry install that NAMES at least one package, in a single
 // shell statement. Returns { ecosystem, packages: [names] } or null.
-function detectSegment(stmt) {
+function detectSegment(stmt, opts) {
   const toks = tokenize(stmt);
-  let i = 0;
-  while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
+  let i = skipWrappers(toks); // env prefix + sudo/time/env/nohup/xargs
   if (i >= toks.length) return null;
 
   const bin = basename(toks[i]);
@@ -124,7 +174,7 @@ function detectSegment(stmt) {
   const args = stripRedirections(toks.slice(i));
   // A lockfile install (`--frozen-lockfile`, `--immutable`) carries no positional,
   // so it yields no package here; a flag never excuses a name typed beside it.
-  const packages = collectPackages(args, ecosystem);
+  const packages = collectPackages(args, ecosystem, opts);
   if (packages.length === 0) return null; // lockfile/manifest install: nothing typed
   return { ecosystem, packages };
 }
@@ -133,9 +183,9 @@ function detectSegment(stmt) {
 // statement, not just the first. splitStatements is quote- and heredoc-aware, so
 // a separator or install text inside quotes / a heredoc body is not a statement.
 // Returns the first statement's hit, or null.
-function detectInstall(cmd) {
+function detectInstall(cmd, opts) {
   for (const stmt of splitStatements(cmd)) {
-    const hit = detectSegment(stmt);
+    const hit = detectSegment(stmt, opts);
     if (hit) return hit;
   }
   return null;
@@ -160,10 +210,10 @@ function blockVerdict(hit) {
 
 // Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
 // exits or writes; any internal error falls through to allow.
-function evaluate(cmd) {
+function evaluate(cmd, { cwd } = {}) {
   try {
     if (isVerified(cmd)) return { kind: 'allow' }; // agent has vetted these
-    const hit = detectInstall(cmd);
+    const hit = detectInstall(cmd, { cwd });
     if (hit) return blockVerdict(hit);
   } catch {
     // fall through to allow: a guard must never wedge the workflow
@@ -173,12 +223,15 @@ function evaluate(cmd) {
 
 function run(data) {
   let cmd = '';
+  let cwd;
   try {
-    cmd = (JSON.parse(data).tool_input || {}).command || '';
+    const input = JSON.parse(data);
+    cmd = (input.tool_input || {}).command || '';
+    cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined;
   } catch {
     process.exit(0); // unparseable input: nothing to gate
   }
-  const v = evaluate(cmd);
+  const v = evaluate(cmd, { cwd });
   if (v.kind === 'block') {
     process.stdout.write(JSON.stringify(v.payload));
     process.exit(2);
