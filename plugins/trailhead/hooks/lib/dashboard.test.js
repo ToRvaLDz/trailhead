@@ -230,6 +230,31 @@ function runMain(argv, t, extra = {}) {
   ok('W2: mapFlags keeps fog=null unflagged', mapFlags({ openScoped: 0, total: 2, fog: null }).length === 0);
 }
 
+// --- W3: newest closures are inside the window; a hit limit is said out loud --
+{
+  const t = makeTracker();
+  runMain(['--repo', 'o/r'], t);
+  const q = t.calls.find((c) => c.startsWith('issue list --label trailhead:whiteboard --state closed'));
+  ok('W3: the resolved query is sorted by recent updates', /--search sort:updated-desc/.test(q));
+  ok('W3: a normal run reports no truncation', !/truncated/.test(t.writes[0]) && !/truncated/.test(runMain(['--repo', 'o/r', '--dry-run'], makeTracker()).out));
+}
+{
+  const many = (n, extra) => Array.from({ length: n }, (_, i) => ({ number: 5000 + i, title: 't' + i, labels: [], assignees: [], ...extra }));
+  const t = makeTracker({ openIssues: many(1000) });
+  const r = runMain(['--repo', 'o/r'], t);
+  ok('W3: inbox at its limit is said in the output line', r.code === 0 && /truncated: inbox/.test(r.out));
+  ok('W3: the inbox count is rendered as a lower bound', /- Untriaged inbox: 1000\+/.test(t.writes[0]));
+  const w = makeTracker({ whiteboardOpen: many(200, { labels: [{ name: 'trailhead:whiteboard' }] }) });
+  ok('W3: whiteboard at its limit is said', /truncated: whiteboard/.test(runMain(['--repo', 'o/r'], w).out));
+  const dropped = many(100, { closedAt: '2026-10-01T00:00:00Z', labels: [{ name: 'trailhead:whiteboard' }, { name: 'trailhead:out-of-scope' }] });
+  const c = makeTracker({ closed: dropped });
+  ok('W3: a full resolved window that filters down below 10 is said', /truncated: resolved/.test(runMain(['--repo', 'o/r'], c).out));
+  const fine = many(100, { closedAt: '2026-10-01T00:00:00Z', labels: [{ name: 'trailhead:whiteboard' }] });
+  ok('W3: a full resolved window with 10 to show is not truncation', !/truncated/.test(runMain(['--repo', 'o/r'], makeTracker({ closed: fine })).out));
+  const both = runMain(['--repo', 'o/r'], makeTracker({ openIssues: many(1000), whiteboardOpen: many(200, { labels: [{ name: 'trailhead:whiteboard' }] }) }));
+  ok('W3: several truncations listed on the one line', both.out.trim().split('\n').length === 1 && /truncated: whiteboard, inbox/.test(both.out));
+}
+
 // --- last audit --------------------------------------------------------------
 {
   const t = makeTracker();

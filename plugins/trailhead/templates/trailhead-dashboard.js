@@ -37,6 +37,8 @@ const CAP = 100;
 const RESOLVED_SHOWN = 10;
 const AUDIT_RE = /<!-- trailhead:last-audit [^ ]* -->/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+// List-query limits; a list that comes back full is reported as truncated.
+const LIMITS = { maps: 200, scoped: 1000, whiteboard: 200, resolved: 100, inbox: 1000 };
 const NOT_RESOLVED_LABELS = ['trailhead:superseded', 'trailhead:out-of-scope'];
 
 // --- pure render -------------------------------------------------------------
@@ -95,7 +97,7 @@ function renderDashboard(s) {
     lines.push('', `_Recently resolved: ${s.resolved.map((t) => link(s.repo, t.number, `${linkText(t.title)} #${t.number}`)).join(', ')}_`);
   }
   lines.push('', '## 📊 Counts');
-  lines.push(`- Untriaged inbox: ${s.inbox}`);
+  lines.push(`- Untriaged inbox: ${s.inbox}${(s.truncated || []).includes('inbox') ? '+' : ''}`);
   lines.push(`- Whiteboard frontier: ${wb.frontier.length}`);
   lines.push(`- Open maps: ${s.maps.length}`);
   const anchors = [['Codebase', s.anchors.codebase], ['Conventions', s.anchors.conventions]]
@@ -127,8 +129,9 @@ function issueList(gh, repo, extra) {
   return ghJson(gh, ['issue', 'list', ...extra, '-R', repo]);
 }
 
-function gatherMap(gh, repo, m) {
-  const scoped = issueList(gh, repo, ['--label', `trailhead:map-${m.number}`, '--state', 'open', '--json', 'number', '--limit', '1000']);
+function gatherMap(gh, repo, m, truncated) {
+  const scoped = issueList(gh, repo, ['--label', `trailhead:map-${m.number}`, '--state', 'open', '--json', 'number', '--limit', String(LIMITS.scoped)]);
+  if (scoped.length >= LIMITS.scoped) truncated.push(`map-${m.number} scoped`);
   const total = parseInt(ghText(gh, ['api', `repos/${repo}/issues/${m.number}`, '--jq', '.sub_issues_summary.total']), 10);
   if (!Number.isInteger(total)) throw new GatherError(`map #${m.number}: unreadable sub-issue total`);
   const out = { number: m.number, title: m.title, openScoped: scoped.length, total, fog: null, closedEdges: null };
@@ -153,20 +156,27 @@ function firstNumber(gh, repo, label) {
 }
 
 function gatherSnapshot(gh, repo) {
-  const maps = issueList(gh, repo, ['--label', 'trailhead:map', '--state', 'open', '--json', 'number,title', '--limit', '200'])
+  const truncated = [];
+  const capped = (list, limit, name) => { if (list.length >= limit) truncated.push(name); return list; };
+  const maps = capped(issueList(gh, repo, ['--label', 'trailhead:map', '--state', 'open', '--json', 'number,title', '--limit', String(LIMITS.maps)]), LIMITS.maps, 'maps')
     .sort((a, b) => a.number - b.number)
-    .map((m) => gatherMap(gh, repo, m));
-  const whiteboard = issueList(gh, repo, ['--label', 'trailhead:whiteboard', '--state', 'open', '--json', 'number,title,labels,assignees', '--limit', '200'])
+    .map((m) => gatherMap(gh, repo, m, truncated));
+  const whiteboard = capped(issueList(gh, repo, ['--label', 'trailhead:whiteboard', '--state', 'open', '--json', 'number,title,labels,assignees', '--limit', String(LIMITS.whiteboard)]), LIMITS.whiteboard, 'whiteboard')
     .map((t) => ({ number: t.number, title: t.title, labels: names(t.labels), assignees: (t.assignees || []).map((a) => a.login) }));
-  const resolved = issueList(gh, repo, ['--label', 'trailhead:whiteboard', '--state', 'closed', '--json', 'number,title,closedAt,labels', '--limit', '100'])
+  // Most recently updated first, so the newest closures sit inside the fetched
+  // window even on a repo with a long closed history; then ordered by closedAt.
+  const closed = issueList(gh, repo, ['--label', 'trailhead:whiteboard', '--state', 'closed', '--search', 'sort:updated-desc', '--json', 'number,title,closedAt,labels', '--limit', String(LIMITS.resolved)]);
+  const resolved = closed
     .filter((t) => !names(t.labels).some((n) => NOT_RESOLVED_LABELS.includes(n)))
     .sort((a, b) => String(b.closedAt).localeCompare(String(a.closedAt)))
     .slice(0, RESOLVED_SHOWN)
     .map((t) => ({ number: t.number, title: t.title }));
-  const inbox = issueList(gh, repo, ['--state', 'open', '--json', 'number,labels', '--limit', '1000'])
-    .filter((i) => !names(i.labels).some((n) => n.startsWith('trailhead:'))).length;
+  // A full window only matters when it could not fill the shown list.
+  if (closed.length >= LIMITS.resolved && resolved.length < RESOLVED_SHOWN) truncated.push('resolved');
+  const openIssues = capped(issueList(gh, repo, ['--state', 'open', '--json', 'number,labels', '--limit', String(LIMITS.inbox)]), LIMITS.inbox, 'inbox');
+  const inbox = openIssues.filter((i) => !names(i.labels).some((n) => n.startsWith('trailhead:'))).length;
   const anchors = { codebase: firstNumber(gh, repo, 'trailhead:codebase'), conventions: firstNumber(gh, repo, 'trailhead:conventions') };
-  return { repo, maps, whiteboard, resolved, inbox, anchors, lastAudit: null };
+  return { repo, maps, whiteboard, resolved, inbox, anchors, lastAudit: null, truncated };
 }
 
 // --- summary and self-heal ---------------------------------------------------
@@ -180,7 +190,8 @@ function flagSummary(maps) {
 }
 
 function summaryLine(number, snap) {
-  return `dashboard${number === null ? '' : ' #' + number}: ${snap.maps.length} maps, whiteboard ${snap.whiteboard.length}, flags: ${flagSummary(snap.maps)}`;
+  const cut = snap.truncated && snap.truncated.length ? `, truncated: ${snap.truncated.join(', ')}` : '';
+  return `dashboard${number === null ? '' : ' #' + number}: ${snap.maps.length} maps, whiteboard ${snap.whiteboard.length}, flags: ${flagSummary(snap.maps)}${cut}`;
 }
 
 function findDashboard(gh, repo) {
