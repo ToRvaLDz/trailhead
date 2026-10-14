@@ -62,6 +62,23 @@ function agentName(md) {
   return m ? m[1] : null;
 }
 
+// Every marker name in the agent must be a single open followed by a single close
+// (or absent): anything else would sync only the first pair or append a duplicate.
+function assertBalanced(md) {
+  const seen = {};
+  const re = /<!-- (\/?)trailhead:agent-block ([\w-]+) -->/g;
+  let m;
+  while ((m = re.exec(md)) !== null) {
+    const rec = seen[m[2]] || (seen[m[2]] = []);
+    rec.push(m[1] ? 'close' : 'open');
+  }
+  for (const [name, kinds] of Object.entries(seen)) {
+    if (kinds.length !== 2 || kinds[0] !== 'open' || kinds[1] !== 'close') {
+      throw new Error(`unbalanced agent block markers for ${name}: ${kinds.join(', ')}`);
+    }
+  }
+}
+
 const wrap = (name, content) => `${openMarker(name)}\n${content}\n${closeMarker(name)}`;
 
 // Returns the agent text with `common` and the family's block in sync with `blocks`.
@@ -70,6 +87,7 @@ function renderAgent(md, blocks, family) {
   if (!name || !Object.prototype.hasOwnProperty.call(FAMILIES, name)) throw new Error(`unknown agent: ${name}`);
   if (!FAMILY_NAMES.includes(family)) throw new Error(`unknown family: ${family}`);
   if (typeof blocks.common !== 'string') throw new Error('the source has no common block');
+  assertBalanced(md);
 
   const wanted = ['common', family].filter((n, i, a) => a.indexOf(n) === i && typeof blocks[n] === 'string');
   let out = md;
@@ -93,6 +111,7 @@ function syncAll({ check = false, agentsDir = AGENTS_DIR, sourcePath = SOURCE_PA
     const md = fs.readFileSync(full, 'utf8');
     const name = file.slice(0, -3);
     if (!Object.prototype.hasOwnProperty.call(FAMILIES, name)) throw new Error(`unknown agent: ${name}`);
+    if (agentName(md) !== name) throw new Error(`${file}: frontmatter name is ${agentName(md)}, expected ${name}`);
     const next = renderAgent(md, blocks, FAMILIES[name]);
     if (next === md) continue;
     drifted.push(file);
