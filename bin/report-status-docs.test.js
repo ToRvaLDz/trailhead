@@ -16,6 +16,7 @@ const read = (...p) => fs.readFileSync(path.join(skills, ...p), 'utf8');
 const techniques = read('_shared', 'techniques.md');
 const verify = read('_shared', 'techniques', 'verify.md');
 const codeReview = read('_shared', 'techniques', 'code-review.md');
+const acceptance = read('_shared', 'techniques', 'acceptance-testing.md');
 const engines = read('trailhead-work', 'references', 'ticket-engines.md');
 
 // --- the canonical paragraph -------------------------------------------------------
@@ -109,6 +110,16 @@ ok('code-review.md: counts line phrasing kept', codeReview.includes('critical: <
 ok('code-review.md: dispositions and the latest VERIFY comment kept',
   codeReview.includes('`fixed (<commit>)`') && codeReview.includes('latest `VERIFY` comment'));
 ok('code-review.md keeps the #181 Ticket diff rule', codeReview.includes("**Ticket diff: review the ticket's own commits, never a range.**"));
+
+// --- acceptance results are part 3 of the round's single VERIFY comment ---------------
+ok('acceptance-testing.md: results are gathered as it goes and land in part 3 of the round\'s VERIFY comment',
+  acceptance.includes('as it goes') && acceptance.includes("part 3 of the round's single `VERIFY` comment"));
+ok('acceptance-testing.md: the orchestrator posts once the round\'s checks, including acceptance, are done',
+  acceptance.includes('the orchestrator posts once the round\'s checks, including this one, are done'));
+ok('acceptance-testing.md: no longer records "in the VERIFY comment as it goes"', !acceptance.includes('in the `VERIFY` comment as it goes'));
+ok('acceptance-testing.md: the screenshot and the pending checklist go to part 3, not straight into a comment',
+  !acceptance.includes('screenshot into the `VERIFY` comment') && !acceptance.includes('checklist in the `VERIFY` comment'));
+ok('acceptance-testing.md: no em-dash', !acceptance.includes('\u2014'));
 
 for (const [label, src] of [['techniques.md', techniques], ['verify.md', verify], ['code-review.md', codeReview], ['ticket-engines.md', engines]]) {
   ok(`${label}: no em-dash`, !src.includes('—'));
