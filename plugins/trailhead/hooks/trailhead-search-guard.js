@@ -24,6 +24,22 @@
 // cannot see. Blocking a lone `cd` would be far too aggressive (a legitimate,
 // common shape) so it is deliberately left to the prose directive.
 //
+// Redirections are not reads of a relative path: before a verb's args are
+// walked, output redirections (`>`, `>>`, `2>`, `&>`, glued or with a separate
+// target), fd duplications (`2>&1`) and heredoc/herestring introducers are
+// dropped together with their target, so `cat /abs/a > out.txt` or
+// `tail /abs/log 2>/dev/null` are not reported. An input redirection `< f` IS a
+// read: only the operator is dropped and `f` stays in the arg list, so
+// `cd app && cat < rel.txt` still blocks while `wc -l < /abs/a` passes.
+//
+// cwd exemption: when the hook payload carries the session `cwd` (absolute), a
+// joined `cd X`/`pushd X` whose literal target resolves to exactly that cwd is
+// a no-op, so it does not make later relative reads non-static. Dynamic or
+// special targets (`$VAR`, backticks, `~`, `-`, a bare `cd`) always count as a
+// directory change, and an unknown cwd behaves as before. After a real earlier
+// cd, only an ABSOLUTE `cd <cwd>` restores the static state (a relative `cd .`
+// does not).
+//
 // Blocks with exit 2 + {"decision":"block","code":...,"reason":...}; allows
 // everything else. Crash-safe: any error -> exit 0 (never wedge the user's
 // workflow). Self-contained (its own dependency is the sibling lib/ module,
@@ -36,6 +52,7 @@
 // machinery (SEARCH_VERB_CONFIG, scanArgsSkippingPattern) are shared with
 // trailhead-secret-read-guard.js via lib/shell-scan.js (#135 follow-up), so
 // the two guards can never drift into two divergent tokenizers.
+const path = require('path');
 const {
   basename,
   stripQuotes,
@@ -111,10 +128,41 @@ const VERB_CONFIG = {
   more: { patternFirst: false, valueFlags: new Set() },
 };
 
+// Redirection token shapes (tokens are raw, so a quoted word never matches).
+const FD_DUP_RE = /^\d*[<>]&(?:\d+|-)$/; //            2>&1  >&2  >&-  0<&3
+const OUT_SEP_RE = /^(?:\d*|&)>>?\|?$/; //            >  >>  >|  2>  &>  &>>  (target is next token)
+const OUT_GLUED_RE = /^(?:\d*|&)>>?\|?./; //          >file  2>/dev/null  &>f  2>>f
+const HEREDOC_SEP_RE = /^\d*<<[<-]?$/; //             <<  <<-  <<<  (tag/word is next token)
+const HEREDOC_GLUED_RE = /^\d*<<./; //                <<EOF  <<-'EOF'  <<<word
+const IN_SEP_RE = /^\d*<$/; //                        <  0<  (target is next token, still a read)
+const IN_GLUED_RE = /^\d*<(.+)$/; //                  <file  0<file
+
+// Return a NEW arg list with redirections removed. Output/dup/heredoc pieces
+// vanish with their targets; an input redirection keeps only its target (a real
+// read). Done before the pattern-skipping walk so a redirection token can never
+// be mistaken for (or swallow) the leading pattern positional of grep/rg/sed/awk.
+function stripRedirections(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    // Separate-operator forms first: `>>` would otherwise also satisfy the glued regex.
+    if (OUT_SEP_RE.test(t) || HEREDOC_SEP_RE.test(t)) { i++; continue; }
+    if (FD_DUP_RE.test(t) || HEREDOC_GLUED_RE.test(t) || OUT_GLUED_RE.test(t)) continue;
+    if (IN_SEP_RE.test(t)) continue; // operator dropped; next token is the read target
+    const m = IN_GLUED_RE.exec(t);
+    if (m) {
+      if (!m[1].startsWith('(')) out.push(m[1]); // `<(cmd)` process substitution: not a file
+      continue;
+    }
+    out.push(t);
+  }
+  return out;
+}
+
 // Walk a verb's argument tokens (verb itself already stripped) for the first
 // relative FILE argument found, via the shared pattern/flag-skipping walker.
 function scanArgsForRelativeFile(args, config) {
-  return scanArgsSkippingPattern(args, config, isRelativeFileArg);
+  return scanArgsSkippingPattern(stripRedirections(args), config, isRelativeFileArg);
 }
 
 // `git grep`/`git log`/`git show`/`git diff` WITHOUT a `-C` (or --work-tree):
@@ -177,6 +225,25 @@ function isCdOrPushdStatement(stmt) {
   return bin === 'cd' || bin === 'pushd';
 }
 
+// Does this cd/pushd statement provably stay in the session cwd? Only with a
+// known absolute cwd and a static literal target resolving to it. `requireAbs`
+// (used once an earlier cd armed the flag) additionally demands an absolute
+// target, since a relative one is resolved against the already-changed dir.
+function cdTargetsSessionCwd(stmt, cwd, requireAbs) {
+  if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) return false;
+  const tokens = normalizeStatementTokens(tokenize(stmt));
+  let i = skipEnvPrefix(tokens) + 1; // past cd/pushd
+  while (i < tokens.length && tokens[i].startsWith('-') && tokens[i] !== '-') {
+    if (tokens[i++] === '--') break; // option flags (-P/-L/--) before the target
+  }
+  if (i >= tokens.length) return false; // bare cd goes to $HOME
+  const target = stripQuotes(tokens[i]);
+  if (!target || target === '-' || target.startsWith('~')) return false;
+  if (target.includes('$') || target.includes('`')) return false;
+  if (requireAbs && !path.isAbsolute(target)) return false;
+  return path.resolve(cwd, target) === path.resolve(cwd);
+}
+
 // `env -C <dir> <cmd> …`: the directory change and the read live in the SAME
 // statement (env execs its argument as a single command with that cwd), so
 // this is checked independently of the cross-statement `cwdChanged` flag.
@@ -215,7 +282,7 @@ function envDashCRelativeRead(stmt) {
 // with no path argument at all implicitly searches the (now-relative) cwd,
 // but adding that case risks false-positiving on legitimate stdin-reading
 // commands, so it is left to the prose directive.
-function detectSearchHygieneViolation(cmd) {
+function detectSearchHygieneViolation(cmd, { cwd } = {}) {
   const statements = splitStatements(cmd);
   let cwdChanged = false;
   for (let idx = 0; idx < statements.length; idx++) {
@@ -233,7 +300,8 @@ function detectSearchHygieneViolation(cmd) {
     // the sole statement) - a lone standalone `cd` is the known limitation
     // above and must never be blocked here.
     if (isCdOrPushdStatement(stmt) && idx < statements.length - 1) {
-      cwdChanged = true;
+      if (!cdTargetsSessionCwd(stmt, cwd, cwdChanged)) cwdChanged = true;
+      else cwdChanged = false; // absolute cd back to the session cwd: static again
     }
   }
   return null;
@@ -251,9 +319,9 @@ function blockVerdict(hit) {
 
 // Pure verdict for one command: {kind:'allow'} or {kind:'block', payload}. Never
 // exits or writes; any internal error falls through to allow.
-function evaluate(cmd) {
+function evaluate(cmd, { cwd } = {}) {
   try {
-    const hit = detectSearchHygieneViolation(cmd);
+    const hit = detectSearchHygieneViolation(cmd, { cwd });
     if (hit) return blockVerdict(hit);
   } catch {
     // fall through to allow: a guard must never wedge the workflow
@@ -263,12 +331,15 @@ function evaluate(cmd) {
 
 function run(data) {
   let cmd = '';
+  let cwd;
   try {
-    cmd = (JSON.parse(data).tool_input || {}).command || '';
+    const input = JSON.parse(data);
+    cmd = (input.tool_input || {}).command || '';
+    cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined;
   } catch {
     process.exit(0); // unparseable input: nothing to gate
   }
-  const v = evaluate(cmd);
+  const v = evaluate(cmd, { cwd });
   if (v.kind === 'block') {
     process.stdout.write(JSON.stringify(v.payload));
     process.exit(2);
