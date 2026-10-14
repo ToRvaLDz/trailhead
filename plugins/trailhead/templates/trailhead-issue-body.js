@@ -126,6 +126,13 @@ function listEntries(lines, sec) {
   return entries;
 }
 
+// The non-blank content lines of a section, or null when the section is missing.
+function readSection(body, name) {
+  const { lines } = splitBody(String(body));
+  const sec = findSection(lines, name);
+  return sec ? lines.slice(sec.from, sec.to).filter((l) => !isBlank(l)) : null;
+}
+
 // op: { kind: 'append'|'replace'|'remove', section, line|text|match }.
 // Returns { body, changed, summary } or { error }.
 function applyOp(body, op) {
@@ -418,7 +425,7 @@ function noopFirst(o, compute, wasUnchanged, opts) {
   return !(r && r.error) && wasUnchanged();
 }
 
-module.exports = { applyOp, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE };
+module.exports = { applyOp, readSection, defaultGh, PLACEHOLDER_RE, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), {}));
