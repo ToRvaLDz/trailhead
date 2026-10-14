@@ -104,4 +104,41 @@ for (const name of agentNames) {
 }
 ok('agent-blocks.md has no em-dash', !source.includes('—'));
 
+// --- the reviewing block (#250): the fixed status line contract -----------------
+const techDir = path.join(root, 'plugins', 'trailhead', 'skills', '_shared', 'techniques');
+const techniqueTokens = (file) => {
+  const text = fs.readFileSync(path.join(techDir, file), 'utf8');
+  return [...new Set([...text.matchAll(/`status: (\w+)`/g)].map((m) => m[1]))].sort();
+};
+// The backticked words on the block's vocabulary line for one agent, minus the placeholder.
+const blockTokens = (agent) => {
+  const line = (blocks.reviewing || '').split('\n').find((l) => l.startsWith(`- ${agent}:`)) || '';
+  return [...line.matchAll(/`(\w+)`/g)].map((m) => m[1]).sort();
+};
+const reviewing = (blocks.reviewing || '').toLowerCase();
+ok('source defines the reviewing block', typeof blocks.reviewing === 'string' && blocks.reviewing.length > 0);
+ok('reviewing block: the first line of the report is the status line, verbatim',
+  reviewing.includes('first line') && reviewing.includes('verbatim') && reviewing.includes('`status:`'));
+ok('reviewing block: verify vocabulary equals the technique tokens',
+  JSON.stringify(blockTokens('trailhead-verify')) === JSON.stringify(techniqueTokens('verify.md')) &&
+  techniqueTokens('verify.md').length === 3);
+ok('reviewing block: code-review vocabulary equals the technique tokens',
+  JSON.stringify(blockTokens('trailhead-code-review')) === JSON.stringify(techniqueTokens('code-review.md')) &&
+  techniqueTokens('code-review.md').length === 2);
+ok('reviewing block: code-review counts line is line 2',
+  (blocks.reviewing || '').includes('critical: <n> · warning: <n> · info: <n>') && reviewing.includes('line 2'));
+ok('reviewing block: returned as the final message, never posted, the orchestrator posts',
+  reviewing.includes('final message') && reviewing.includes('do not post') && reviewing.includes('the orchestrator posts'));
+ok('reviewing block: read-only, never commit', reviewing.includes('never edit/write') && reviewing.includes('never commit'));
+for (const name of agentNames) {
+  const md = readAgent(name);
+  const has = md.includes(open('reviewing')) && md.includes(close('reviewing'));
+  const wants = FAMILIES[name] === 'reviewing';
+  ok(`${name}: ${wants ? 'carries' : 'does not carry'} the reviewing block`, has === wants);
+}
+for (const name of ['trailhead-verify', 'trailhead-code-review']) {
+  ok(`${name}: no longer says it reports into trailhead's VERIFY comment`,
+    !/reports?\b[^.\n]*into trailhead's `VERIFY` comment/i.test(readAgent(name)));
+}
+
 console.log(`sync-agent-blocks.test.js: ${passed} checks passed`);

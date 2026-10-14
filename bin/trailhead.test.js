@@ -897,6 +897,25 @@ ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (()
   return tomls.every((f) => !/^model = /m.test(fs.readFileSync(path.join(dir, f), 'utf8')));
 })());
 
+// #250: the reviewing block (single source scripts/agent-blocks.md) is projected
+// verbatim into the two reviewing agents' TOMLs and into none of the other six.
+{
+  const sync250 = require(path.join(repoRoot, 'scripts', 'sync-agent-blocks.js'));
+  const reviewingBlock250 = sync250.parseSource(fs.readFileSync(path.join(repoRoot, 'scripts', 'agent-blocks.md'), 'utf8')).reviewing;
+  ok('#250: the source defines a reviewing block', typeof reviewingBlock250 === 'string' && reviewingBlock250.length > 0);
+  const agentsDir250 = path.join(unsetCodexHomeDir, 'agents');
+  const reviewingNames250 = new Set(['trailhead-verify', 'trailhead-code-review']);
+  const tomls250 = fs.readdirSync(agentsDir250).filter((f) => /^trailhead-.*\.toml$/.test(f));
+  ok('#250: all 8 TOMLs are checked', tomls250.length === 8);
+  for (const f of tomls250) {
+    const name = f.replace(/\.toml$/, '');
+    const text = fs.readFileSync(path.join(agentsDir250, f), 'utf8');
+    const has = typeof reviewingBlock250 === 'string' && reviewingBlock250.length > 0 && text.includes(reviewingBlock250);
+    ok(`#250: ${f} ${reviewingNames250.has(name) ? 'carries' : 'does not carry'} the reviewing block verbatim`,
+      has === reviewingNames250.has(name));
+  }
+}
+
 // --- codex migration (#46): install over old prompt shims sweeps them --------
 const migCodexDir = mktmp();
 fs.mkdirSync(path.join(migCodexDir, 'prompts'), { recursive: true });
