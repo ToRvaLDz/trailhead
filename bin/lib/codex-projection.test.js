@@ -436,4 +436,23 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
     autoRef.includes('--auto true --auto-done <n>'));
 }
 
-console.log(`✓ codex-projection: ${passed} assertions passed`);
+// #248: the shared boundary blocks survive the Codex projection of every real agent.
+{
+  const { parseSource } = require('../../scripts/sync-agent-blocks.js');
+  const shared = parseSource(fs.readFileSync(path.join(__dirname, '../../scripts/agent-blocks.md'), 'utf8'));
+  const agentsDir = path.join(__dirname, '../../plugins/trailhead/agents');
+  const files = fs.readdirSync(agentsDir).filter((f) => /^trailhead-.*\.md$/.test(f));
+  ok('projection boundaries: found the eight real agents', files.length === 8);
+  ok('projection boundaries: source has common and implementing blocks', !!shared.common && !!shared.implementing);
+  for (const f of files) {
+    const name = f.slice(0, -3);
+    const body = fs.readFileSync(path.join(agentsDir, f), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '');
+    const out = codexAgentToml({ name, description: 'd', developerInstructions: body, model: null, effort: null });
+    ok(`${name}: projection carries the whole common block`, !!shared.common && out.includes(shared.common));
+    const impl = name === 'trailhead-executor' || name === 'trailhead-fix';
+    ok(`${name}: projection ${impl ? 'carries' : 'omits'} the implementing block`,
+      !!shared.implementing && out.includes(shared.implementing) === impl);
+  }
+}
+
+console.log(`✓ codex-projection:${passed} assertions passed`);

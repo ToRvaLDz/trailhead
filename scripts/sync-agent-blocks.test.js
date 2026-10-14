@@ -167,4 +167,30 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     !/reports?\b[^.\n]*into trailhead's `VERIFY` comment/i.test(readAgent(name)));
 }
 
-console.log(`sync-agent-blocks.test.js: ${passed} checks passed`);
+// --- boundaries (#248) ---
+{
+  const common = blocks.common || '';
+  for (const needle of ['git push', 'git stash', 'git reset --hard', 'git checkout -- <path>', 'git clean -f',
+    'git switch', 'gh issue', 'gh pr', 'the orchestrator posts']) {
+    ok(`common block names ${needle}`, common.includes(needle));
+  }
+  ok('common block states the shared-checkout rule', common.includes('not yours') && common.includes('stop without touching it'));
+  ok('common block does not carry the worktree recipe', !common.includes('worktree add'));
+  ok('common block does not say to report `blocked`', !common.includes('report `blocked`'));
+
+  const impl = blocks.implementing || '';
+  ok('source defines the implementing block', typeof blocks.implementing === 'string' && impl.length > 0);
+  for (const needle of ['mktemp -d', 'worktree add --detach', 'worktree remove', 'rev-parse HEAD', 'never stash',
+    'git add -A', 'git add .', 'git commit -a', 'Refs: #<n>']) {
+    ok(`implementing block names ${needle}`, impl.includes(needle));
+  }
+  for (const name of agentNames) {
+    const md = readAgent(name);
+    const has = md.includes(open('implementing')) && md.includes(close('implementing'));
+    const wants = FAMILIES[name] === 'implementing';
+    ok(`${name}: ${wants ? 'carries' : 'does not carry'} the implementing block`, has === wants);
+    ok(`${name}: forbids git stash and tracker writes`, md.includes('git stash') && md.includes('gh issue'));
+  }
+}
+
+console.log(`sync-agent-blocks.test.js:${passed} checks passed`);
