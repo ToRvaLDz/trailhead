@@ -8,8 +8,8 @@
 // package age, download counts, repo metadata) and checkpoint the human on a
 // suspicious result (block-and-ask). A vetted install proceeds by re-running the
 // command prefixed with the sentinel `TRAILHEAD_VERIFIED_INSTALL=1`.
-// Only a NAMED install is gated: lockfile/manifest installs (bare `npm install`,
-// `npm ci`, `install --frozen-lockfile|--immutable|--frozen`, `pip install -r`,
+// Only a NAMED install is gated: installs with no typed name (bare `npm install`,
+// `npm ci`, `install --frozen-lockfile` / `--immutable` with no package, `pip install -r`,
 // `cargo build`, `go mod download`, `bundle install`) and local paths / URLs /
 // VCS refs carry no typed name and pass through. Parsing is quote-aware (shared
 // lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
@@ -44,10 +44,6 @@ const VALUE_FLAGS = new Set([
   '--no-binary', '--only-binary',
   '--filter', '-F', // pnpm workspace selector: its value is a project, not a package
 ]);
-
-// Switches that make an `install`/`i` resolve strictly from the lockfile, so no
-// package name is ever typed (npm/pnpm/yarn/bun).
-const LOCKFILE_FLAGS = new Set(['--frozen-lockfile', '--immutable', '--frozen']);
 
 // A positional that is NOT a public-registry name: local path, url, vcs ref, or a
 // file artifact. Go module paths (example.com/foo) look url-ish but ARE the named
@@ -86,8 +82,9 @@ function collectPackages(args, ecosystem) {
       continue;
     }
     const name = stripQuotes(t);
-    if (!name || isLocalOrUrl(name, ecosystem)) continue;
-    packages.push(bareName(name));
+    if (!name || name === '&' || isLocalOrUrl(name, ecosystem)) continue;
+    const bare = bareName(name);
+    if (bare) packages.push(bare);
   }
   return packages;
 }
@@ -125,9 +122,8 @@ function detectSegment(stmt) {
   i++;
 
   const args = stripRedirections(toks.slice(i));
-  // A lockfile-only install types no name, whatever else is on the line.
-  if ((verb === 'install' || verb === 'i') && args.some((a) => LOCKFILE_FLAGS.has(a))) return null;
-
+  // A lockfile install (`--frozen-lockfile`, `--immutable`) carries no positional,
+  // so it yields no package here; a flag never excuses a name typed beside it.
   const packages = collectPackages(args, ecosystem);
   if (packages.length === 0) return null; // lockfile/manifest install: nothing typed
   return { ecosystem, packages };

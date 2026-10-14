@@ -136,6 +136,9 @@ for (const [cmd, name] of posLock) {
   ok(`blocks despite lockfile flag: ${cmd}`, r.code === 2 && new RegExp(name).test(r.out));
 }
 
+// A bare `&` (background) is never listed as a package name.
+ok('background & is not a package', JSON.stringify((detectInstall('npm install lodash &') || {}).packages) === JSON.stringify(['lodash']));
+
 // Known unmodelled gaps (documented, NOT asserted): this guard reads one plain
 // command per statement, so an install hidden behind `bash -c "..."`, `$( )`,
 // `eval`, `sudo`, or `xargs` is not seen. These pass both before and after #239.
