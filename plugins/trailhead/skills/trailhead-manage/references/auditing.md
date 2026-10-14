@@ -123,7 +123,7 @@ The marker advance is the **last proposal** of the run, shown with its value and
 - The value is the **cutoff captured in step 2**, never the completion time, so a ticket closed mid-run falls into the next window.
 - An **unchanged** or **evolved** ticket never rewinds the marker.
 - If any ticket was flagged **unverifiable**, in whole or in part (step 4 or step 6), write instead the earliest unverifiable ticket's `closedAt` minus one second (never past the cutoff), so the next default run picks it up again. No extra state, nothing silently dropped.
-- Write it into the dashboard body with the fail-safe read-modify-write (see Body generation in `../../_shared/substrate-commands.md`). `--all` advances it the same way.
+- Write it into the dashboard body: default path `node <templates>/trailhead-dashboard.js --set-last-audit <ISO-8601 UTC>` (the only writer path for the marker; `<templates>` is the same three-dir lookup as `trailhead-work-state.js`, see **Work state file** in `../../_shared/teamwork.md`), or, when the helper is missing, by hand with the fail-safe read-modify-write (see Body generation in `../../_shared/substrate-commands.md`). `--all` advances it the same way.
 
 ## Notes
 
