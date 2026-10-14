@@ -12,7 +12,8 @@
 // surrounding whitespace, the latter keeps a multi-word quoted phrase as ONE
 // opaque token instead of splitting it into separate words.
 //
-// Consumers: trailhead-search-guard.js and trailhead-secret-read-guard.js.
+// Consumers: several guards and libs (grep `lib/shell-scan`), e.g. the search,
+// secret-read, secret and install guards and lib/unmodelled.js.
 // Self-contained, no external dependencies. Best-effort, like the guards that
 // use it: not a full shell parser, just enough to close their known gaps.
 

@@ -253,9 +253,9 @@ const HOOK_FILES = [...BASH_GUARD_MODULES, 'trailhead-bash-guards.js', 'trailhea
 // settings.json / hooks.json (everything but the require()d guard modules).
 const ENTRYPOINT_FILES = HOOK_FILES.filter((f) => !BASH_GUARD_MODULES.includes(f));
 // Runtime libs the hook scripts require (trailhead-commit-guard.js does
-// require('./lib/commit-message-check.js'); trailhead-search-guard.js and
-// trailhead-secret-read-guard.js both do require('./lib/shell-scan.js'), #135
-// follow-up; trailhead-body-guard.js and trailhead-secret-guard.js both do
+// require('./lib/commit-message-check.js'); several guards (grep `lib/shell-scan`:
+// search, secret-read, secret, install, lib/unmodelled.js) do
+// require('./lib/shell-scan.js'), #135 follow-up; trailhead-body-guard.js and trailhead-secret-guard.js both do
 // require('./lib/gh-subcommand.js'), #153 follow-up; trailhead-secret-guard.js
 // also does require('./lib/body-sources.js'), #210; trailhead-check-update.js
 // does require('./lib/model-defaults-review.js'), which in turn reads the
