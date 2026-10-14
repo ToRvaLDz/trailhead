@@ -264,8 +264,7 @@ function resolveRepo(opts) {
 const EDITS_QUERY = 'query($o:String!,$n:String!,$i:Int!){repository(owner:$o,name:$n){issue(number:$i){userContentEdits{totalCount}}}}';
 
 // The issue's edit-history count, or null when it cannot be read.
-function editCount(issue, opts) {
-  const slug = resolveRepo(opts);
+function editCount(issue, opts, slug = resolveRepo(opts)) {
   if (!slug) return null;
   const [owner, name] = slug.split('/');
   const r = opts.gh(['api', 'graphql', '-f', `query=${EDITS_QUERY}`, '-f', `o=${owner}`, '-f', `n=${name}`, '-F', `i=${issue}`]);
@@ -305,15 +304,27 @@ function guardedWrite(issue, input, rawOpts = {}) {
   const fail = (reason, extra) => ({ ok: false, reason, ...extra });
   const compute = typeof input === 'function' ? input : null;
 
+  // The repo slug is resolved once per write (the graphql edit-count reads need it).
+  const slug = opts.dryRun ? null : resolveRepo(opts);
+  if (!opts.dryRun && !slug) return fail('cannot resolve the repository for the post-write check, nothing written');
+
   let cur = readIssue(issue, opts);
   if (cur.error) return fail(cur.error);
   let next;
+  let baseline = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const made = compute ? compute(cur.body) : input;
     if (made && typeof made === 'object' && made.error) return fail(made.error);
     if (typeof made !== 'string' || made.trim() === '') return fail('the resulting body would be empty, nothing written');
     const problem = secretProblem(opts.scanText === undefined ? made : opts.scanText, opts.guard);
     if (problem) return fail(problem);
+    // The edit-count baseline is read BEFORE the final updatedAt re-read: an edit
+    // landing after the baseline either shows in the re-read (moved: re-apply or
+    // abort) or in the post-write delta, never absorbed into the baseline.
+    if (!opts.dryRun) {
+      baseline = editCount(issue, opts, slug);
+      if (baseline === null) return fail('could not read the issue edit count for the post-write check, nothing written');
+    }
     const check = readIssue(issue, opts);
     if (check.error) return fail(check.error);
     if (check.updatedAt === cur.updatedAt) { next = made; break; }
@@ -325,12 +336,10 @@ function guardedWrite(issue, input, rawOpts = {}) {
   const sizes = { oldSize: Buffer.byteLength(cur.body), newSize: Buffer.byteLength(next) };
   if (opts.dryRun) return { ok: true, dryRun: true, ...sizes };
 
-  const baseline = editCount(issue, opts);
-  if (baseline === null) return fail('could not read the issue edit count for the post-write check, nothing written');
   const err = ghWrite(issue, next, opts);
   if (err) return fail(err);
 
-  const after = editCount(issue, opts);
+  const after = editCount(issue, opts, slug);
   const back = readOnce(issue, opts);
   if (after === null || back.error) {
     return fail(`written, but the post-write check could not run (${back.error || 'edit count unreadable'}): verify the issue body`);

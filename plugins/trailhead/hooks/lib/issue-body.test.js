@@ -140,6 +140,8 @@ function makeTracker(init = {}) {
     views: 0,
     onView: init.onView || null, // (t, n) called before answering the n-th view
     beforeEdit: init.beforeEdit || null,
+    onCount: init.onCount || null, // (t, n) called before answering the n-th edit-count read
+    counts: 0,
     editFails: init.editFails || false,
     garbleReadback: init.garbleReadback || false,
     countFails: init.countFails || false,
@@ -168,6 +170,8 @@ function makeTracker(init = {}) {
       return { status: 0, stdout: '', stderr: '' };
     }
     if (sub === 'api graphql') {
+      t.counts += 1;
+      if (t.onCount) t.onCount(t, t.counts);
       if (t.countFails) return { status: 1, stdout: '', stderr: 'graphql down' };
       return { status: 0, stdout: JSON.stringify({ data: { repository: { issue: { userContentEdits: { totalCount: t.edits } } } } }), stderr: '' };
     }
@@ -309,6 +313,31 @@ function writeTmp(text) {
   const t = makeTracker({ editFails: true });
   const r = runMain(APPEND, t);
   ok('abort: gh issue edit failing is reported, temp removed', r.code === 1 && /aborted: /.test(r.out) && !fs.existsSync(t.tmpSeen[0]));
+}
+
+// --- W1: the baseline is read BEFORE the last updatedAt check ----------------
+{
+  const t = makeTracker();
+  runMain(APPEND, t);
+  const countIdx = t.calls.findIndex((c) => c.startsWith('api graphql'));
+  const editIdx = t.calls.findIndex((c) => c.startsWith('issue edit'));
+  const viewsBeforeEdit = t.calls.map((c, i) => (c.startsWith('issue view') && i < editIdx ? i : -1)).filter((i) => i >= 0);
+  ok('W1: the edit-count baseline precedes the final updatedAt re-read', countIdx >= 0 && countIdx < viewsBeforeEdit[viewsBeforeEdit.length - 1]);
+}
+{
+  // An edit landing at the baseline read must not be absorbed into the baseline.
+  const hit = (tr, n) => { if (n === 1) tr.externalEdit(MAP + '\n## Extra\n- landed at the baseline\n'); };
+  const t = makeTracker({ onCount: hit });
+  const g = guardedWrite(7, 'A whole new generated body, long enough.\n', { gh: t.gh, guard: fakeGuard, repo: 'o/r' });
+  ok('W1: an edit at the baseline read aborts a whole-body write, never clean', g.ok === false && t.writes.length === 0);
+  const t2 = makeTracker({ onCount: hit });
+  const r2 = runMain(APPEND, t2);
+  ok('W1: a splice re-applies on the fresh body, keeping the concurrent edit', r2.code === 0 && t2.writes.length === 1 && t2.writes[0].includes('landed at the baseline'));
+  ok('W1: the repo slug is resolved once per write', (() => {
+    const t3 = makeTracker();
+    guardedWrite(7, (b) => b + '\n- z', { gh: t3.gh, guard: fakeGuard });
+    return t3.calls.filter((c) => c.startsWith('repo view')).length === 1;
+  })());
 }
 
 // --- secret scan -------------------------------------------------------------
