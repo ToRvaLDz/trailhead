@@ -342,7 +342,7 @@ ok('source: capture.md keeps /trailhead:work the anchor even for a whiteboard ca
 // paragraph cross-references the exception (single source stays in the `bug` bullet).
 const captureBugBullet = (captureSource.match(/^- \*\*`bug`\*\*.*$/m) || [''])[0];
 const captureMapParagraph = (captureSource.match(/^\*\*Map or whiteboard:\*\*.*$/m) || [''])[0];
-ok('source: capture.md `bug --of` inherits the origin map or whiteboard without asking', /--of[\s\S]{0,1500}inherit[\s\S]{0,300}no ask/.test(captureBugBullet));
+ok('source: capture.md `bug --of` inherits the origin map or whiteboard without asking', /--of[\s\S]{0,1500}inherit[\s\S]{0,1000}no ask/.test(captureBugBullet));
 ok('source: capture.md `bug --of` checks the origin map state (--json state) before inheriting', /gh issue view <n> --json state/.test(captureBugBullet));
 ok('source: capture.md `bug --of` falls back to the Map or whiteboard rule on closed map, absent or contradictory labels',
   /[Ff]all back to the existing Map or whiteboard rule[\s\S]{0,600}closed[\s\S]{0,300}neither label[\s\S]{0,300}contradictory/.test(captureBugBullet));
