@@ -43,14 +43,14 @@ function mkRepo(config, { files = {} } = {}) {
   return dir;
 }
 
-function run(argv, { env = {} } = {}) {
+function run(argv, { env = {}, fsMod } = {}) {
   const chunks = [];
   const errChunks = [];
   const realErr = process.stderr.write.bind(process.stderr);
   process.stderr.write = (s) => { errChunks.push(String(s)); return true; };
   let code;
   try {
-    code = main(argv, { cwd: '/', env: { HOME: '/nonexistent-home', ...env }, stdout: { write: (s) => chunks.push(s) } });
+    code = main(argv, { cwd: '/', env: { HOME: '/nonexistent-home', ...env }, stdout: { write: (s) => chunks.push(s) }, ...(fsMod ? { fs: fsMod } : {}) });
   } finally {
     process.stderr.write = realErr;
   }
@@ -244,6 +244,27 @@ for (const [label, cfg] of [['bad JSON', '{oops'], ['non-array', { isolation: { 
 {
   const r = run(['--from', path.join(mktmp(), 'gone'), '--to', mktmp()], { env: envNoGlobal });
   ok('missing --from dir is skipped', r.code === 0 && ['skipped', 'unset'].includes(r.out.status));
+}
+
+// --- a failed copy leaves no partial destination ------------------------------
+{
+  const from = mkRepo({ isolation: { copy: ['secrets'] } }, { files: { 'secrets/a': 'a', 'secrets/b': 'b' } });
+  const to = mktmp();
+  const failing = {
+    ...fs,
+    cpSync: (src, dst) => { fs.mkdirSync(dst); fs.writeFileSync(path.join(dst, 'a'), 'a'); throw new Error('boom'); },
+  };
+  const r = run(['--from', from, '--to', to], { env: envNoGlobal, fsMod: failing });
+  ok('failed copy not reported copied', r.out.copied.length === 0 && r.out.status === 'nothing');
+  ok('failed copy warns', r.out.warnings.some((w) => /secrets/.test(w) && /boom/.test(w)));
+  ok('partial destination removed', !fs.existsSync(path.join(to, 'secrets')));
+  const r2 = run(['--from', from, '--to', to], { env: envNoGlobal });
+  ok('retry copies it', r2.out.status === 'copied' && fs.existsSync(path.join(to, 'secrets', 'b')));
+  // Cleanup failure adds a warning.
+  const to2 = mktmp();
+  const stuck = { ...failing, rmSync: () => { throw new Error('nope'); } };
+  const r3 = run(['--from', from, '--to', to2], { env: envNoGlobal, fsMod: stuck });
+  ok('cleanup failure warns', r3.out.warnings.some((w) => /clean/.test(w)));
 }
 
 // --- end to end with a fake CLAUDE_CONFIG_DIR ---------------------------------

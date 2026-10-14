@@ -180,6 +180,13 @@ function copyEntries(list, from, to, fs_) {
       result.copied.push(rel);
     } catch (err) {
       result.warnings.push(`could not copy ${rel}: ${err && err.message ? err.message : err}`);
+      // This run created the destination (it did not exist before): drop any
+      // partial copy so the next run retries instead of reporting it present.
+      try {
+        fs_.rmSync(dst, { recursive: true, force: true });
+      } catch (cleanupErr) {
+        result.warnings.push(`could not clean up partial ${rel}: ${cleanupErr && cleanupErr.message ? cleanupErr.message : cleanupErr}`);
+      }
     }
   }
   return result;
