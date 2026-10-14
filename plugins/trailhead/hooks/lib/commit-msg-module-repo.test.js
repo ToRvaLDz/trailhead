@@ -11,6 +11,9 @@ const os = require('os');
 
 const syncScript = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-commit-msg-sync.js');
 
+// Prefisso della riga che il wrapper stampa quando non può applicare le regole (#262).
+const INACTIVE = 'trailhead: commit-msg hook inactive (';
+
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
@@ -48,6 +51,7 @@ function commit(dir, message) {
   const { dir } = makeRepo();
   const r = commit(dir, 'fix: thing\n\nRefs: #1');
   ok('module repo: conventional commit with Refs passes', r.status === 0);
+  ok('module repo: clean commit stays silent', !r.stderr.includes('trailhead:'));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -55,18 +59,31 @@ function commit(dir, message) {
 {
   const { dir } = makeRepo();
   const r = commit(dir, 'fix: thing');
-  ok('module repo: missing Refs is rejected', r.status !== 0);
+  ok('module repo: missing Refs is rejected with exit 1', r.status === 1);
   ok('module repo: rejection carries trailhead message', r.stderr.includes('trailhead:') && r.stderr.includes('Refs: #1'));
   ok('module repo: no ESM load error leaks', !r.stderr.includes('require is not defined'));
+  ok('module repo: a violation carries no inactive notice', !r.stderr.includes(INACTIVE));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-// (c) errori interni/di avvio: mai bloccare un commit
+// (c) errori di avvio: mai bloccare un commit, ma segnalarlo su stderr (#262)
 {
   const { dir, hooksDir } = makeRepo();
   fs.rmSync(path.join(hooksDir, 'trailhead-commit-msg.cjs'));
   const r = commit(dir, 'not conventional at all');
   ok('module repo: missing .cjs lets the commit through', r.status === 0);
+  ok('module repo: missing .cjs prints the inactive notice',
+    r.stderr.includes(INACTIVE + 'trailhead-commit-msg.cjs missing or unreadable)'));
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+// .cjs presente ma illeggibile: da root chmod non toglie la lettura, quindi si salta.
+if (typeof process.getuid !== 'function' || process.getuid() !== 0) {
+  const { dir, hooksDir } = makeRepo();
+  fs.chmodSync(path.join(hooksDir, 'trailhead-commit-msg.cjs'), 0o000);
+  const r = commit(dir, 'not conventional at all');
+  ok('module repo: unreadable .cjs lets the commit through', r.status === 0);
+  ok('module repo: unreadable .cjs prints the inactive notice',
+    r.stderr.includes(INACTIVE + 'trailhead-commit-msg.cjs missing or unreadable)'));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 {
@@ -74,6 +91,8 @@ function commit(dir, message) {
   fs.writeFileSync(path.join(hooksDir, 'trailhead-commit-msg.cjs'), "throw new Error('boom at load');\n");
   const r = commit(dir, 'not conventional at all');
   ok('module repo: .cjs crashing at load lets the commit through', r.status === 0);
+  ok('module repo: .cjs crashing at load prints the inactive notice',
+    r.stderr.includes(INACTIVE + 'trailhead-commit-msg.cjs failed to run, exit '));
   fs.rmSync(dir, { recursive: true, force: true });
 }
 {
@@ -88,6 +107,8 @@ function commit(dir, message) {
   ok('wrapper control: violation exits 1 with node on PATH', withNode.status === 1);
   const noNode = spawnSync('/bin/sh', [hook, msgFile], { cwd: dir, env: { PATH: emptyBin }, encoding: 'utf8' });
   ok('wrapper: node absent from PATH exits 0', noNode.status === 0);
+  ok('wrapper: node absent from PATH prints the inactive notice',
+    (noNode.stderr || '').includes(INACTIVE + 'node not found on PATH)'));
   fs.rmSync(emptyBin, { recursive: true, force: true });
   fs.rmSync(dir, { recursive: true, force: true });
 }
