@@ -15,8 +15,10 @@
 // `x.tgz`) passes only when it is a path (`./x`, `sub/x`, `/x`, `~/x`) or exists
 // on disk (relative to the command's cwd); otherwise it is a typed name and is gated.
 // The on-disk check resolves against the hook's cwd; it does not follow a
-// preceding `cd` in the same command. Command wrappers (`sudo`, `time`, `env`, `nohup`, `xargs`, `timeout`, `nice`, `stdbuf`,
-// `setsid`, `ionice`, `doas`, `command`, `exec`) are peeled, with their own flags, so `sudo npm install foo` is gated like the bare form. Parsing is quote-aware (shared
+// preceding `cd` in the same command. Command wrappers (`sudo`, `time`, `env`,
+// `nohup`, `xargs`, `timeout`, `nice`, `stdbuf`, `setsid`, `ionice`, `doas`,
+// `command`, `exec`) are peeled, with their own flags, so `sudo npm install foo`
+// is gated like the bare form. Parsing is quote-aware (shared
 // lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
 // never a command, and redirections (`2>&1`, `> log`) are never package names.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.

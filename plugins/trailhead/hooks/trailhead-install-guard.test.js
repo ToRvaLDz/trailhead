@@ -239,8 +239,9 @@ const wrapHits = [
   'command npm i x', 'command -p npm i x', 'exec npm i x', 'exec -a foo npm i x',
   'doas npm i x', 'doas -u root npm i x', 'setsid npm i x', 'setsid -w npm i x',
   'ionice -c 3 npm i x', 'stdbuf -oL npm i x', 'stdbuf -o L npm i x',
-  'sudo timeout 10 nice npm i x',
+  'sudo timeout 10 nice npm i x', 'xargs timeout 10 npm i x', 'timeout -- 10 npm i x',
   'env -S "env -S \\"npm i lodash\\""',
+  'env -S "env -S \\"env -S \\\\\\"npm i lodash\\\\\\"\\""',
   "env -S 'npm i lodash'",
 ];
 for (const c of wrapHits) ok(`wrapper hit: ${c}`, detectInstall(c) && detectInstall(c).packages.length > 0);
@@ -255,7 +256,7 @@ for (const c of wrapMisses) ok(`wrapper miss: ${c}`, detectInstall(c) === null);
 // command per statement plus the wrappers it peels, so an install behind
 // `bash -c "..."` / `sh -c "..."`, `$( )`, `eval`, other wrappers (`chrt`,
 // `taskset`, `flock`, `su -c`), or a GNU long-option prefix abbreviation
-// (`timeout --sig=KILL 5 ...`) is not seen.
+// taking a separate value (`timeout --sig KILL 5 ...`) is not seen.
 
 // --- unit: isVerified ---
 ok('sentinel recognised', isVerified('TRAILHEAD_VERIFIED_INSTALL=1 npm install lodash'));
