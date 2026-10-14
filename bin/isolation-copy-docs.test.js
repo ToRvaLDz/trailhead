@@ -15,7 +15,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 // file -> strings it must carry
 const EXPECT = {
   'trailhead-work/SKILL.md': ['trailhead-isolation-copy.js --from <main-checkout> --to <working-root>', 'Gitignored files in a new workspace'],
-  '_shared/teamwork.md': ['trailhead-isolation-copy.js --from <main-checkout> --to <working-root>', 'Gitignored files in a new workspace', 'isolation.copy', 'before any install'],
+  '_shared/teamwork.md': ['trailhead-isolation-copy.js --from <main-checkout> --to <working-root>', 'Gitignored files in a new workspace', 'isolation.copy', 'before any install', '`rejected`', '`warnings`', '`status: skipped`'],
   '_shared/configuration-reference.md': ['`isolation.copy`', 'Isolation copy', '.example', '.sample'],
 };
 
