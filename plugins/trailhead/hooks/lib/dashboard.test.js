@@ -222,6 +222,14 @@ function runMain(argv, t, extra = {}) {
   ok('fog left: not flagged exhausted', /flags: none/.test(r.out) && !t.writes[0].includes('exhausted'));
 }
 
+// --- W2: a missing fog section is unconfirmed, not empty ----------------------
+{
+  const t = makeTracker({ maps: [{ number: 14, title: '🗺 m', scoped: 0, total: 2, body: '## Destination\nSomewhere good, long enough.\n', edges: [] }] });
+  const r = runMain(['--repo', 'o/r'], t);
+  ok('W2: no "Not yet specified" section: not flagged exhausted', r.code === 0 && /flags: none/.test(r.out) && !t.writes[0].includes('exhausted'));
+  ok('W2: mapFlags keeps fog=null unflagged', mapFlags({ openScoped: 0, total: 2, fog: null }).length === 0);
+}
+
 // --- last audit --------------------------------------------------------------
 {
   const t = makeTracker();

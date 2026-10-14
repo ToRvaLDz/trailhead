@@ -136,7 +136,9 @@ function gatherMap(gh, repo, m) {
     // Candidate only: confirm the fog (`## Not yet specified`) is empty.
     const view = ghJson(gh, ['issue', 'view', String(m.number), '--json', 'body', '-R', repo]);
     const fog = readSection(String(view.body || ''), 'Not yet specified');
-    out.fog = fog !== null && fog.some((l) => !PLACEHOLDER_RE.test(l));
+    // A missing section is unconfirmed (fog stays null: no exhausted flag), only
+    // a present and empty one confirms there is no fog left.
+    out.fog = fog === null ? null : fog.some((l) => !PLACEHOLDER_RE.test(l));
   }
   if (total >= NEAR_CAP) {
     const edges = ghJson(gh, ['api', `repos/${repo}/issues/${m.number}/sub_issues?per_page=100`]);
