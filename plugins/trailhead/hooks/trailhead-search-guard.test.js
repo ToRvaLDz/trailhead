@@ -12,8 +12,10 @@ let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 // Run the hook end-to-end: pipe tool_input JSON on stdin, capture {code, out}.
-function runHook(command) {
-  const input = JSON.stringify({ tool_input: { command } });
+function runHook(command, cwd) {
+  const payload = { tool_input: { command } };
+  if (cwd !== undefined) payload.cwd = cwd; // optional top-level session cwd
+  const input = JSON.stringify(payload);
   try {
     const out = execFileSync('node', [HOOK], { input });
     return { code: 0, out: out.toString() };
@@ -113,5 +115,60 @@ ok('cd + grep -- -x <relative file> is blocked (exit 2), `--` must not eat the f
 // --- #134 follow-up: Finding 4 - rg-specific value flags must not misattribute the file ---
 const f1 = runHook('cd app && rg -g "*.js" TODO src/foo.js');
 ok('cd + rg -g <glob> <pattern> <relative file> reports the real file, not the pattern (exit 2)', f1.code === 2 && /search-hygiene/.test(f1.out) && /src\/foo\.js/.test(f1.out) && !/`TODO`/.test(f1.out));
+
+
+// --- #238: redirections are not relative reads; a cd to the session cwd is static ---
+const blocked = (r) => r.code === 2 && /search-hygiene/.test(r.out);
+const allowed = (r) => r.code === 0 && r.out.trim() === '';
+
+for (const [name, cmd] of [
+  ['heredoc-fed cat > abs', 'cd /x && cat > /abs/file <<EOF\nhi\nEOF'],
+  ['append redirect target', 'cd /x && cat /abs/a >> out.txt'],
+  ['output redirect target', 'cd /x && cat /abs/a > out.txt'],
+  ['glued 2>/dev/null', 'cd /x && tail -5 /abs/log 2>/dev/null'],
+  ['separate 2> target', 'cd /x && tail -5 /abs/log 2> err.log'],
+  ['&> target', 'cd /x && cat /abs/a &> out.txt'],
+  ['2>&1 duplication', 'cd /x && cat /abs/a 2>&1'],
+  ['absolute input redirect', 'cd /x && wc -l < /abs/a'],
+  ['grep with 2>/dev/null', 'cd /x && grep -n foo /abs/a 2>/dev/null'],
+  ['herestring', 'cd /x && cat <<<hello'],
+]) ok(`#238 allow: ${name}`, allowed(runHook(cmd)));
+
+for (const [name, cmd, file] of [
+  ['input redirect from relative file', 'cd app && cat < rel.txt', 'rel.txt'],
+  ['relative read before output redirect', 'cd app && cat rel.txt > /abs/out', 'rel.txt'],
+  ['relative read before 2>/dev/null', 'cd app && tail -5 rel.log 2>/dev/null', 'rel.log'],
+  ['relative read before 2>&1', 'cd app && grep -n x rel.txt 2>&1', 'rel.txt'],
+]) {
+  const r = runHook(cmd);
+  ok(`#238 block: ${name}`, blocked(r) && r.out.includes('`' + file + '`'));
+}
+
+const CWD = '/home/u/p';
+for (const [name, cmd] of [
+  ['cd to session cwd', 'cd /home/u/p && cat rel.txt'],
+  ['cd to session cwd with trailing slash', 'cd /home/u/p/ && grep -n x rel.txt'],
+  ['cd .', 'cd . && cat rel.txt'],
+]) ok(`#238 allow with cwd: ${name}`, allowed(runHook(cmd, CWD)));
+
+for (const [name, cmd] of [
+  ['cd elsewhere', 'cd /home/u/other && cat rel.txt'],
+  ['cd relative subdir', 'cd sub && cat rel.txt'],
+  ['cd $HOME', 'cd $HOME && cat rel.txt'],
+  ['cd ~', 'cd ~ && cat rel.txt'],
+  ['cd -', 'cd - && cat rel.txt'],
+]) ok(`#238 block with cwd: ${name}`, blocked(runHook(cmd, CWD)));
+ok('#238 block: cd to would-be cwd without payload cwd', blocked(runHook('cd /home/u/p && cat rel.txt')));
+
+// pure unit checks on the exported detector
+const { detectSearchHygieneViolation } = require('./trailhead-search-guard.js');
+ok('#238 unit: cd <cwd> is static when cwd is known',
+  detectSearchHygieneViolation('cd "/home/u/p" && cat rel.txt', { cwd: CWD }) === null);
+ok('#238 unit: cd <cwd> still violates when cwd unknown',
+  detectSearchHygieneViolation('cd /home/u/p && cat rel.txt').file === 'rel.txt');
+ok('#238 unit: relative cd after a real cd stays armed',
+  detectSearchHygieneViolation('cd sub && cd . && cat rel.txt', { cwd: CWD }).file === 'rel.txt');
+ok('#238 unit: absolute cd back to cwd disarms',
+  detectSearchHygieneViolation('cd sub && cd /home/u/p && cat rel.txt', { cwd: CWD }) === null);
 
 console.log(`✓ search-guard: ${passed} assertions passed`);
