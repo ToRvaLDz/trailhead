@@ -9,12 +9,17 @@
 // suspicious result (block-and-ask). A vetted install proceeds by re-running the
 // command prefixed with the sentinel `TRAILHEAD_VERIFIED_INSTALL=1`.
 // Only a NAMED install is gated: lockfile/manifest installs (bare `npm install`,
-// `npm ci`, `pip install -r`, `cargo build`, `go mod download`, `bundle install`)
-// and local paths / URLs / VCS refs carry no typed name and pass through.
+// `npm ci`, `install --frozen-lockfile|--immutable|--frozen`, `pip install -r`,
+// `cargo build`, `go mod download`, `bundle install`) and local paths / URLs /
+// VCS refs carry no typed name and pass through. Parsing is quote-aware (shared
+// lib/shell-scan.js): text inside quotes or a heredoc (`echo "x; npm i foo"`) is
+// never a command, and redirections (`2>&1`, `> log`) are never package names.
 // Blocks with exit 2 + {"decision":"block",...}; allows everything else.
 // Crash-safe: any error → exit 0 (never wedge the user's workflow).
-// Self-contained, no dependencies. Pure functions (incl. evaluate) exported for tests
+// Self-contained (its only dependency is the sibling lib/ module). Pure functions (incl. evaluate) exported for tests
 // and the merged trailhead-bash-guards.js; runs as a hook when executed directly.
+
+const { basename, splitStatements, tokenize, stripQuotes, stripRedirections } = require('./lib/shell-scan.js');
 
 const SENTINEL = /(?:^|\s)TRAILHEAD_VERIFIED_INSTALL=1(?:\s|$)/;
 
@@ -37,12 +42,12 @@ const VALUE_FLAGS = new Set([
   '-t', '--target', '--prefix', '--root', '--python', '-d', '--dest',
   '-w', '--workspace', '--registry', '-C', '--directory', '--chdir',
   '--no-binary', '--only-binary',
+  '--filter', '-F', // pnpm workspace selector: its value is a project, not a package
 ]);
 
-function basename(p) {
-  const s = String(p).split('/');
-  return s[s.length - 1];
-}
+// Switches that make an `install`/`i` resolve strictly from the lockfile, so no
+// package name is ever typed (npm/pnpm/yarn/bun).
+const LOCKFILE_FLAGS = new Set(['--frozen-lockfile', '--immutable', '--frozen']);
 
 // A positional that is NOT a public-registry name: local path, url, vcs ref, or a
 // file artifact. Go module paths (example.com/foo) look url-ish but ARE the named
@@ -70,10 +75,27 @@ function bareName(t) {
   return n;
 }
 
+// Positional package names among the arguments after the verb (redirections
+// already removed). Quotes are stripped so `"lodash"` is the name `lodash`.
+function collectPackages(args, ecosystem) {
+  const packages = [];
+  for (let j = 0; j < args.length; j++) {
+    const t = args[j];
+    if (t.startsWith('-')) {
+      if (VALUE_FLAGS.has(t)) j++; // consume its separate-token value
+      continue;
+    }
+    const name = stripQuotes(t);
+    if (!name || isLocalOrUrl(name, ecosystem)) continue;
+    packages.push(bareName(name));
+  }
+  return packages;
+}
+
 // Detect a public-registry install that NAMES at least one package, in a single
-// shell segment. Returns { ecosystem, packages: [names] } or null.
-function detectSegment(cmd) {
-  const toks = String(cmd).trim().split(/\s+/).filter(Boolean);
+// shell statement. Returns { ecosystem, packages: [names] } or null.
+function detectSegment(stmt) {
+  const toks = tokenize(stmt);
   let i = 0;
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
   if (i >= toks.length) return null;
@@ -102,27 +124,22 @@ function detectSegment(cmd) {
   if (!ECOSYSTEMS[ecosystem].verbs.includes(verb)) return null;
   i++;
 
-  const packages = [];
-  for (let j = i; j < toks.length; j++) {
-    const t = toks[j];
-    if (t.startsWith('-')) {
-      if (VALUE_FLAGS.has(t)) j++; // consume its separate-token value
-      continue;
-    }
-    if (isLocalOrUrl(t, ecosystem)) continue;
-    packages.push(bareName(t));
-  }
+  const args = stripRedirections(toks.slice(i));
+  // A lockfile-only install types no name, whatever else is on the line.
+  if ((verb === 'install' || verb === 'i') && args.some((a) => LOCKFILE_FLAGS.has(a))) return null;
+
+  const packages = collectPackages(args, ecosystem);
   if (packages.length === 0) return null; // lockfile/manifest install: nothing typed
   return { ecosystem, packages };
 }
 
 // Agents chain commands (`cd app && npm install foo`), so check every shell
-// segment, not just the first. Split on the common separators (&& || ; | and
-// newlines); a registry name never contains one, so a stray split is harmless.
-// Returns the first segment's hit, or null.
+// statement, not just the first. splitStatements is quote- and heredoc-aware, so
+// a separator or install text inside quotes / a heredoc body is not a statement.
+// Returns the first statement's hit, or null.
 function detectInstall(cmd) {
-  for (const seg of String(cmd).split(/&&|\|\||;|\n|\|/)) {
-    const hit = detectSegment(seg);
+  for (const stmt of splitStatements(cmd)) {
+    const hit = detectSegment(stmt);
     if (hit) return hit;
   }
   return null;
