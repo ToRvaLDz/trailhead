@@ -206,4 +206,66 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     execute.includes('the orchestrator creates the branch before the spawn and opens the PR'));
 }
 
+// --- the return contracts of the implementing, investigating and plan blocks (#249) ---
+{
+  // Backticked words of the block bullet `- <prefix>:`; null when the bullet is absent.
+  const bullet = (block, prefix) => {
+    const line = (block || '').split('\n').find((l) => l.startsWith(`- ${prefix}:`));
+    return line === undefined ? null : [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+  };
+  const contracts = {
+    implementing: { statuses: ['done', 'partial', 'blocked'], required: ['commits', 'tests', 'deviations', 'blockers'],
+      optional: ['fidelity', 'surfaced scope'] },
+    investigating: { statuses: ['found', 'inconclusive', 'needs_input'], required: ['answer', 'evidence', 'open questions'], optional: [] },
+    plan: { statuses: ['ready', 'needs_input'], required: [], optional: ['questions'] },
+  };
+  for (const [family, want] of Object.entries(contracts)) {
+    const block = blocks[family] || '';
+    const lc = block.toLowerCase();
+    ok(`${family} block: defined`, block.length > 0);
+    ok(`${family} block: returned as the final message, never posted`,
+      lc.includes('final message') && lc.includes('do not post') && lc.includes('the orchestrator posts'));
+    ok(`${family} block: line 1 is the status line, verbatim`,
+      lc.includes('first line') && lc.includes('verbatim') && block.includes('`status: <token>`'));
+    ok(`${family} block: statuses`, JSON.stringify(bullet(block, 'statuses')) === JSON.stringify(want.statuses));
+    ok(`${family} block: required fields`, JSON.stringify(bullet(block, 'required fields')) === JSON.stringify(want.required));
+    ok(`${family} block: optional fields`, JSON.stringify(bullet(block, 'optional fields')) === JSON.stringify(want.optional));
+    ok(`${family} block: states the field grammar`,
+      lc.includes('top-level line') && lc.includes('next field label') && lc.includes('empty value or `none` means none'));
+    ok(`${family} block: no backslash (survives the Codex TOML projection unescaped)`, !block.includes('\\'));
+  }
+  const inv = (family) => (blocks[family] || '').split('\n').filter((l) => l.startsWith('- invariant:'));
+  ok('implementing block: done => blockers none; partial/blocked => blockers non-empty',
+    JSON.stringify(inv('implementing')) === JSON.stringify([
+      '- invariant: `done` => `blockers` none.',
+      '- invariant: `partial`, `blocked` => `blockers` non-empty.',
+    ]));
+  ok('investigating block: needs_input => open questions non-empty',
+    JSON.stringify(inv('investigating')) === JSON.stringify(['- invariant: `needs_input` => `open questions` non-empty.']));
+  ok('plan block: ready => body non-empty; needs_input => questions non-empty',
+    JSON.stringify(inv('plan')) === JSON.stringify([
+      '- invariant: `ready` => `body` non-empty.',
+      '- invariant: `needs_input` => `questions` non-empty.',
+    ]));
+  const impl = blocks.implementing || '';
+  for (const needle of ['`<sha> <subject>`', 'exact install command', 'infeasible', 'foreign change', '`fidelity`', 'mockup was passed',
+    '`surfaced scope`', 'Refs: #<n>', 'since the base']) {
+    ok(`implementing return contract names ${needle}`, impl.includes(needle));
+  }
+  const inves = blocks.investigating || '';
+  ok('investigating block: never commits, never creates or switches a branch',
+    inves.includes('Never commit') && inves.includes('branch'));
+  ok('investigating block: evidence is file:line and URLs', inves.includes('file:line') && inves.includes('URL'));
+  const planBlock = blocks.plan || '';
+  ok('plan block: the rest of the report is the PLAN, never commits',
+    planBlock.includes('rest of the report is the PLAN') && planBlock.includes('Never commit'));
+  for (const name of agentNames) {
+    const md = readAgent(name);
+    for (const family of Object.keys(contracts)) {
+      const has = md.includes(open(family)) && md.includes(close(family));
+      ok(`${name}: ${FAMILIES[name] === family ? 'carries' : 'does not carry'} the ${family} block`, has === (FAMILIES[name] === family));
+    }
+  }
+}
+
 console.log(`sync-agent-blocks.test.js: ${passed} checks passed`);

@@ -444,14 +444,25 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   const files = fs.readdirSync(agentsDir).filter((f) => /^trailhead-.*\.md$/.test(f));
   ok('projection boundaries: found the eight real agents', files.length === 8);
   ok('projection boundaries: source has common and implementing blocks', !!shared.common && !!shared.implementing);
+  // #249: every agent's projected TOML carries exactly its family block, whole.
+  const familyOf = {
+    'trailhead-verify': 'reviewing', 'trailhead-code-review': 'reviewing',
+    'trailhead-executor': 'implementing', 'trailhead-fix': 'implementing',
+    'trailhead-debug': 'investigating', 'trailhead-research': 'investigating', 'trailhead-codebase-map': 'investigating',
+    'trailhead-plan': 'plan',
+  };
+  const families = ['reviewing', 'implementing', 'investigating', 'plan'];
+  ok('projection boundaries: source has every family block', families.every((f) => !!shared[f]));
   for (const f of files) {
     const name = f.slice(0, -3);
     const body = fs.readFileSync(path.join(agentsDir, f), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '');
     const out = codexAgentToml({ name, description: 'd', developerInstructions: body, model: null, effort: null });
     ok(`${name}: projection carries the whole common block`, !!shared.common && out.includes(shared.common));
-    const impl = name === 'trailhead-executor' || name === 'trailhead-fix';
-    ok(`${name}: projection ${impl ? 'carries' : 'omits'} the implementing block`,
-      !!shared.implementing && out.includes(shared.implementing) === impl);
+    ok(`${name}: has a family`, families.includes(familyOf[name]));
+    for (const fam of families) {
+      ok(`${name}: projection ${familyOf[name] === fam ? 'carries the whole' : 'omits the'} ${fam} block`,
+        !!shared[fam] && out.includes(shared[fam]) === (familyOf[name] === fam));
+    }
   }
 }
 

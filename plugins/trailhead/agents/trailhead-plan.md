@@ -15,3 +15,16 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 
 **Boundaries.** Never `git push`. Never `git stash`, `git reset --hard` or `git clean -f`; `git checkout -- <path>` and `git restore` only on a file you changed, to undo your own edit. Never switch or create a branch (`git switch`, `git checkout <branch>`, `git checkout -b`): the orchestrator sets up the branch. Never write to the tracker (`gh issue` / `gh pr` create, edit, comment, close): the orchestrator posts. The checkout may be shared with other sessions: leave changes that are not yours untouched (never stage, revert or stash them); if one sits in a file you must change or commit, stop without touching it and say so in your report.
 <!-- /trailhead:agent-block common -->
+
+<!-- trailhead:agent-block plan -->
+**Return contract.** Return the complete report as your final message. Do not post it anywhere (no issue comment, no PR comment): the orchestrator posts the PLAN. Never commit.
+- The first line of the report is `status: <token>`, verbatim, with nothing before it and no other `status:` line.
+- statuses: `ready` | `needs_input`.
+- required fields: none.
+- optional fields: `questions`.
+- invariant: `ready` => `body` non-empty.
+- invariant: `needs_input` => `questions` non-empty.
+- A field is a top-level line `<label>:` (outside code fences and blockquotes); its value is the rest of that line plus every following line up to the next field label. An empty value or `none` means none.
+- `ready`: the rest of the report is the PLAN (the `body`): the steps, the seams, the files touched and the verification criteria. It is posted verbatim, so write nothing in it that is not the PLAN.
+- `needs_input`: `questions:` holds the blocking questions only; no PLAN.
+<!-- /trailhead:agent-block plan -->
