@@ -38,6 +38,8 @@ const docsSlugs = [
   'captures',
   'teamwork',
   'configuration',
+  'design',
+  'acceptance-testing',
   'hooks',
 ];
 
@@ -621,6 +623,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-routes: OK: landing and all 15 /docs/* pages resolved, every verb guide section complete, config/hooks semantics asserted, no /en prefix, install/verb facts present, no placeholder copy left, all 15 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 15 /docs/* pages, and 404).'
+  'check-routes: OK: landing and all 17 /docs/* pages resolved, every verb guide section complete, config/hooks semantics asserted, no /en prefix, install/verb facts present, no placeholder copy left, all 15 per-page hero markers present (full-width banner below the title, aria-hidden), sitemap/robots.txt present, every page\'s og:image resolves to a built PNG, and the Cloudflare Web Analytics beacon is asserted on every route (landing, all 17 /docs/* pages, and 404).'
 );
 process.exit(0);
