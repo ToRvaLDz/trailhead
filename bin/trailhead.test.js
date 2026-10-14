@@ -135,6 +135,12 @@ ok('codex: isolation-copy helper projected', fs.existsSync(codexIsolationCopy));
 ok('codex: isolation-copy helper is byte-identical to source',
   fs.readFileSync(codexIsolationCopy, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-isolation-copy.js'), 'utf8'));
 ok('codex: isolation-copy helper keeps its executable bit', (fs.statSync(codexIsolationCopy).mode & 0o111) !== 0);
+// #243: the stale-base preflight helper rides in templates/ on Codex too, executable.
+const codexBasePreflight = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-base-preflight.js');
+ok('codex: base-preflight helper projected', fs.existsSync(codexBasePreflight));
+ok('codex: base-preflight helper is byte-identical to source',
+  fs.readFileSync(codexBasePreflight, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-base-preflight.js'), 'utf8'));
+ok('codex: base-preflight helper keeps its executable bit', (fs.statSync(codexBasePreflight).mode & 0o111) !== 0);
 // Il sync del label guard (migrazione all'if a livello di job) viaggia con templates/.
 const codexLabelGuardSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
 ok('codex: label-guard-sync script is byte-identical to source', fs.existsSync(codexLabelGuardSync) &&
