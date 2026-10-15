@@ -18,10 +18,12 @@ const EXPECT = {
   '_shared/techniques/acceptance-testing.md': [
     '**UAT setup comes next.**', HELPER, '`uat.setup`', '`uat.accounts`', '`unconfigured`', '`invalid`', 'retry', 'treat as a defect', 'Never a silent fallback',
     'never a value', 'step names and results only', 'declined again, it is not re-offered this session', '--config-root',
+    '`run --from <failedStep>`', '`run --from <failedStep + 1>`', '`--only <i>`', '`--step-timeout`', '`--ready-timeout`', 'kills only its `sh`', '> /tmp/dev.log 2>&1 &',
   ],
   '_shared/configuration-reference.md': [
     '| `uat.setup` |', '| `uat.accounts` |', '**UAT setup.**', '`missing-env`', 'References, never values', 'the nested form wins', '`testing.webapp` / `testing.url` are unchanged',
     '**🧰 UAT setup**', '**👤 Test account**', 'never the secret\'s value',
+    '`\\$NAME`', 'outside single quotes', 'redirect its own output', '> /tmp/dev.log 2>&1 &',
   ],
   'trailhead-work/references/auto.md': ['**UAT setup in `auto`**', 'no probe, no proposal, no save offer', 'run-end summary'],
 };
