@@ -61,9 +61,9 @@ const MAPS = [
   { number: 198, title: 'trailhead mod', url: `${URL}/198` },
   { number: 14, title: 'older map', url: `${URL}/14` },
 ]
-// The maps read: one GraphQL call that carries each map's sub-issue counts.
+// The maps read: one GraphQL call that carries each map's sub-issue counts and the whiteboard's.
 const MAPS_QUERY =
-  'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}}}'
+  'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
 const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
 const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql'
@@ -123,6 +123,8 @@ const rig = (on: On, engine?: any) => {
     maps: MAPS as unknown[],
     // Sub-issue totals per map number, as the GraphQL read reports them (a map without one has no summary).
     mapSummary: { 198: { total: 23, completed: 16 }, 14: { total: 5, completed: 2 } } as Record<number, unknown>,
+    // The whiteboard's open and total tickets as the same call reports them (null: the fields are absent).
+    whiteboardCounts: { open: 3, total: 9 } as { open: number; total: number } | null,
     otherMap: OTHER_MAP as unknown,
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
@@ -162,7 +164,9 @@ const rig = (on: On, engine?: any) => {
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
     if (isGraphql(argv)) {
       const nodes = (r.maps as { number: number }[]).map(m => ({ ...m, subIssuesSummary: r.mapSummary[m.number] }))
-      return ok(JSON.stringify({ data: { repository: { issues: { nodes } } } }))
+      const wb = r.whiteboardCounts
+      const counts = wb === null ? {} : { whiteboardOpen: { totalCount: wb.open }, whiteboardAll: { totalCount: wb.total } }
+      return ok(JSON.stringify({ data: { repository: { issues: { nodes }, ...counts } } }))
     }
     if (isMapsList(argv)) return ok(JSON.stringify(r.maps))
     const isOther = argv.includes('14') || argv.includes('trailhead:map-14')
@@ -886,7 +890,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.key)
-    expect(buttons).toEqual(['dashboard', 'map-14', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
+    expect(buttons).toEqual(['open-whiteboard', 'map-14', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
     expect((await ui.find({ key: 'work-209' }))?.props).toMatchObject({ label: 'work', variant: 'primary' })
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
 
@@ -1294,7 +1298,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     expect(await hasKey(ui, 'head-maps')).toBe(false)
     expect(await hasKey(ui, 'group-maps')).toBe(false)
-    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['dashboard', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
+    expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.key)).toEqual(['open-whiteboard', 'work-209', 'work-210', 'work-214', 'refresh', 'close'])
   })
 
   test(`a press on another map shows its tickets, the active-map marker is never written [${surface}]`, async ($, on) => {
@@ -1505,15 +1509,15 @@ for (const surface of SURFACES) {
   })
 
   const pressDashboard = async (ui: any, r: Rig) => {
-    await ui.press({ key: 'dashboard' })
+    await ui.press({ key: 'open-whiteboard' })
     await settle(r)
   }
 
-  test(`the dashboard button shows the maps index and the whiteboard tickets [${surface}]`, async ($, on) => {
+  test(`the Whiteboard row shows the maps index and the whiteboard tickets [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
-    expect((await ui.find({ key: 'dashboard' }))?.props).toMatchObject({ label: 'dashboard' })
+    expect((await ui.find({ key: 'open-whiteboard' }))?.props).toMatchObject({ label: 'Whiteboard' })
     const before = r.calls.length
     await pressDashboard(ui, r)
 
@@ -1527,6 +1531,8 @@ for (const surface of SURFACES) {
     expect((await ui.findAll({ type: 'Link' })).map((l: any) => l.props.href)).toContain(`${URL}/5`)
     expect((await ui.find({ key: 'to-map' }))?.props).toMatchObject({ label: 'map' })
     expect(await hasKey(ui, 'dashboard')).toBe(false)
+    // the view is the whiteboard: its row is not drawn again
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(false)
 
     // every open map is a button, the active one marked
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
@@ -1547,6 +1553,142 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'burndown-section')).toBe(false)
     expect(await textOf(ui, 'age')).toBe('updated just now')
     expect(r.writes).toEqual([])
+  })
+
+  test(`a Whiteboard row above the maps list carries the counts, the header has no dashboard button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.maps = [MAPS[0]]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    // one map open: no maps group, the row is still there, without a per-ticket query
+    expect(await hasKey(ui, 'group-maps')).toBe(false)
+    expect((await ui.find({ key: 'open-whiteboard' }))?.props).toMatchObject({ label: 'Whiteboard' })
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
+    expect((await ui.find({ key: 'whiteboard-aside' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    expect(await hasKey(ui, 'dashboard')).toBe(false)
+    expect(r.calls.filter(argv => argv.includes('trailhead:whiteboard'))).toEqual([])
+    expect(r.calls.filter(isGraphql)).toEqual([MAPS_CALL])
+    // above the maps list and the tickets, below the heading
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('whiteboard-row')).toBeGreaterThan(keys.indexOf('header'))
+    expect(keys.indexOf('whiteboard-row')).toBeLessThan(keys.indexOf('group-frontier'))
+  })
+
+  test(`the Whiteboard row sits above the Maps list [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('whiteboard-row')).toBeLessThan(keys.indexOf('group-maps'))
+    expect(keys.indexOf('whiteboard-row')).toBeGreaterThan(keys.indexOf('header'))
+  })
+
+  test(`a press on the Whiteboard row shows the whiteboard, the map button goes back [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.maps = [MAPS[0]]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(false)
+    await ui.press({ key: 'to-map' })
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
+  })
+
+  test(`the whiteboard counts are drawn as read, zero included, and follow the next read [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboardCounts = { open: 0, total: 0 }
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 0 open / 0')
+    r.whiteboardCounts = { open: 4, total: 11 }
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 4 open / 11')
+  })
+
+  test(`a failed counts read shows the row name-only, never an error [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    const base = r.defaultGh
+    r.gh = argv => (isGraphql(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(true)
+    expect(await hasKey(ui, 'whiteboard-aside')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+
+    // counts that were read once are not kept through a failed read
+    r.gh = null
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
+    r.gh = argv => (isGraphql(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, 'whiteboard-aside')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`both maps reads failing keep the maps list but draw the row name-only [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
+    const base: Gh = argv => withHistory(r, ok(JSON.stringify(r.history)))(argv)
+    r.gh = argv => (isGraphql(argv) || isMapsList(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(true)
+    expect(await hasKey(ui, 'whiteboard-aside')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`unreadable whiteboard fields leave the maps with counts and the row name-only [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboardCounts = null
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(true)
+    expect(await hasKey(ui, 'whiteboard-aside')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`with no active map the Whiteboard row is above the maps and the loading view keeps it [${surface}]`, async ($, on) => {
+    const none = rig(on, $)
+    none.active = null
+    await $.session.start(START)
+    const ui = await openAndMount($, none)
+    expect(await hasKey(ui, 'dashboard')).toBe(false)
+    expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('whiteboard-row')).toBeLessThan(keys.indexOf('group-maps'))
+  })
+
+  test(`the Whiteboard row stays in the loading view of a map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => (release = resolve))
+    const base = r.defaultGh
+    r.gh = async argv => {
+      if (argv[2] === 'view') await held
+      return base(argv)
+    }
+    await $.session.start(START)
+    r.open()
+    const ui = await mountPane($)
+    await settle(r)
+    expect(await textOf(ui, 'loading')).toBe('Loading tickets…')
+    expect(await hasKey(ui, 'open-whiteboard')).toBe(true)
+    release()
+    await settle(r)
   })
 
   test(`the maps list shows each map's open and total from one call [${surface}]`, async ($, on) => {
