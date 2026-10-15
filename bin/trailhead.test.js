@@ -2086,6 +2086,13 @@ ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the c
 {
   ok('source: substrate-commands.md ensures trailhead:uat idempotently',
     /gh label create trailhead:uat --color [0-9A-Fa-f]{6} --description "Pending UAT: an acceptance test still to run" 2>\/dev\/null \|\| true/.test(substrateCommandsSource));
+  {
+    const helperSource = fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-uat-backfill.js'), 'utf8');
+    const docColor = (substrateCommandsSource.match(/gh label create trailhead:uat --color ([0-9A-Fa-f]{6})/) || [])[1];
+    const helperColor = (helperSource.match(/const COLOR = '([0-9A-Fa-f]{6})'/) || [])[1];
+    ok('source: the backfill helper creates trailhead:uat with the same colour as substrate-commands.md',
+      docColor !== undefined && docColor === helperColor);
+  }
   ok('source: substrate-commands.md has no create-then-backfill chain and invokes the backfill helper',
     /trailhead-uat-backfill\.js/.test(substrateCommandsSource) && !/trailhead:uat[^\n]*&&[^\n]*backfill/.test(substrateCommandsSource));
   ok('source: first-use setup runs the backfill helper after the labels',

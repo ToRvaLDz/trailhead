@@ -20,7 +20,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const LABEL = 'trailhead:uat';
-const COLOR = 'C5DEF5';
+const COLOR = 'BFD4F2';
 const DESCRIPTION = 'Pending UAT: an acceptance test still to run';
 const LIMIT = 1000;
 // A line that starts with `UAT of:` (a mid-line mention is not a pointer).
