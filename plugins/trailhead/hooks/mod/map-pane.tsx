@@ -4,14 +4,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, DashboardPaneData, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
   type BurndownSeries,
   burndownEnd,
   burndownSeries,
-  DASHBOARD_LABEL,
   failureReason,
   footerStatus,
   groupTickets,
@@ -34,6 +33,7 @@ import {
   sparkline,
   viewTarget,
   whiteboardHeading,
+  whiteboardRowLayout,
 } from './map-pane-view'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -51,7 +51,7 @@ const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
 const MAPS_LIMIT = 100
-const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}}}`
+const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}`
 const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
@@ -171,15 +171,16 @@ const readList = ($: Dollar, target: number) =>
     readMaps($),
   ])
 
-// The open maps of the repo. A failed or unreadable read is null: the caller keeps the last good list.
-// One GraphQL call gives every map with its sub-issue counts; if it fails or is unreadable the
-// name-only `gh issue list` runs instead (counts null). Both bounded at MAPS_LIMIT open maps.
-const readMaps = async ($: Dollar): Promise<readonly MapSummary[] | null> => {
+// The open maps of the repo and the whiteboard's counts. A failed or unreadable maps read is null: the
+// caller keeps the last good list. One GraphQL call gives every map with its sub-issue counts and the
+// whiteboard's; if it fails or is unreadable the name-only `gh issue list` runs instead (counts null, and
+// the whiteboard null: the row is drawn name-only, never stale). Both bounded at MAPS_LIMIT open maps.
+const readMaps = async ($: Dollar): Promise<{ maps: readonly MapSummary[] | null; whiteboard: MapCounts | null }> => {
   const counted = await gh($, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
   const withCounts = counted.ok ? parseMapsRead(counted.stdout) : null
-  if (withCounts !== null) return withCounts.maps
+  if (withCounts !== null) return withCounts
   const out = await gh($, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
-  return out.ok ? parseMaps(out.stdout) : null
+  return { maps: out.ok ? parseMaps(out.stdout) : null, whiteboard: null }
 }
 
 // What the pane compares to skip a write: times aside, but whether the history is as fresh as the list.
@@ -212,33 +213,35 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
 
   if (target === null) {
     // No map to show: the open maps alone, so one can be picked.
-    const maps = (await readMaps($)) ?? before.maps
+    const mapsRead = await readMaps($)
+    const maps = mapsRead.maps ?? before.maps
     if (await isStale()) return
-    return setPane($, { ...EMPTY, maps })
+    return setPane($, { ...EMPTY, maps, whiteboard: mapsRead.whiteboard })
   }
   const isSameMap = before.map?.number === target
   if (!isSameMap) {
     if (await isStale()) return
-    await setPane($, { ...EMPTY, maps: before.maps, isLoading: true })
+    await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, isLoading: true })
   }
 
   const [view, list, historyRead, mapsRead] = await readList($, target)
-  const maps = mapsRead ?? before.maps
-  await dropClosedView($, mapsRead)
+  const maps = mapsRead.maps ?? before.maps
+  const { whiteboard } = mapsRead
+  await dropClosedView($, mapsRead.maps)
   const now = await $.clock.now()
   if (await isStale()) return
 
   const kept = isSameMap ? before : EMPTY
   const failure = !view.ok ? view.reason : !list.ok ? list.reason : null
-  if (failure !== null) return setPane($, { ...kept, maps, error: failure, isLoading: false })
+  if (failure !== null) return setPane($, { ...kept, maps, whiteboard, error: failure, isLoading: false })
   const map = view.ok ? parseMap(view.stdout, target) : null
   const tickets = list.ok ? parseTickets(list.stdout) : null
-  if (map === null || tickets === null) return setPane($, { ...kept, maps, error: 'gh returned unreadable output', isLoading: false })
+  if (map === null || tickets === null) return setPane($, { ...kept, maps, whiteboard, error: 'gh returned unreadable output', isLoading: false })
 
   // A history that failed alone keeps the last good one of this map (with its own time), never another map's.
   const history = historyRead.ok ? parseHistory(historyRead.stdout) : null
   const historyPart = history !== null ? { history, historyAt: now } : { history: kept.history, historyAt: kept.historyAt }
-  const next: MapPaneData = { map, ...tickets, maps, ...historyPart, fetchedAt: now, error: null, isLoading: false }
+  const next: MapPaneData = { map, ...tickets, maps, whiteboard, ...historyPart, fetchedAt: now, error: null, isLoading: false }
   const isFresh = before.fetchedAt !== null && now - before.fetchedAt < AGE_REFRESH_MS
   if (isFresh && isSameMap && sameValue(shape(before), shape(next))) return
   await setPane($, next)
@@ -264,8 +267,9 @@ async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void
   ])
   const now = await $.clock.now()
   if (await isStale()) return
-  if (mapsRead !== null) await setPane($, { ...(await read($, mapPane)), maps: mapsRead })
-  await dropClosedView($, mapsRead)
+  const shown = await read($, mapPane)
+  await setPane($, { ...shown, maps: mapsRead.maps ?? shown.maps, whiteboard: mapsRead.whiteboard })
+  await dropClosedView($, mapsRead.maps)
 
   const kept = await read($, dashboardPane)
   const tickets = list.ok ? parseTickets(list.stdout, { isWhiteboard: true }) : null
@@ -581,18 +585,20 @@ export function registerMapPane(on: On) {
           />
         </Box>
       )
-    // The header switch: `dashboard` from a map, `map` back from the dashboard.
-    const switchButton = (isOn: boolean) => (
-      <Button
-        key={isOn ? 'dashboard' : 'to-map'}
-        label={isOn ? DASHBOARD_LABEL : MAP_LABEL}
-        onPress={() => pressDashboard($, isOn)}
-      />
-    )
-    const headerRow = (title: ReturnType<typeof text>, isOn: boolean) => (
+    // The dashboard's header: its title, and the `map` button back to the map shown before it.
+    const headerRow = (title: ReturnType<typeof text>) => (
       <Box key="header-row" width={cols} justifyContent="space-between">
         {title}
-        {switchButton(isOn)}
+        <Button key="to-map" label={MAP_LABEL} onPress={() => pressDashboard($, false)} />
+      </Box>
+    )
+    // The way into the whiteboard: a row above the maps list, its counts beside the name like a map row.
+    const wb = whiteboardRowLayout(data.whiteboard, cols)
+    const whiteboardRow = (
+      <Box key="whiteboard-row" marginTop={gap}>
+        {text('whiteboard-mark', {}, wb.mark)}
+        <Button key="open-whiteboard" label={wb.label} onPress={() => pressDashboard($, true)} />
+        {wb.aside === null ? null : text('whiteboard-aside', dim, wb.aside)}
       </Box>
     )
 
@@ -711,7 +717,7 @@ export function registerMapPane(on: On) {
       const isEmpty = isLoaded && board.error === null && board.tickets.length === 0
       return (
         <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
-          {headerRow(title, false)}
+          {headerRow(title)}
           {mapsGroup}
           <Box key="whiteboard" marginTop={gap}>
             {text('head-whiteboard', bold, whiteboardHeading(isLoaded ? board.tickets : null, board.isCapped))}
@@ -729,10 +735,8 @@ export function registerMapPane(on: On) {
     if (target === null) {
       return (
         <Box flexDirection="column" width={cols}>
-          <Box key="empty-row" width={cols} justifyContent="space-between">
-            {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
-            {switchButton(true)}
-          </Box>
+          {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
+          {whiteboardRow}
           {mapsGroup}
         </Box>
       )
@@ -742,16 +746,12 @@ export function registerMapPane(on: On) {
     if (!isCurrent && !data.isLoading && data.error === null) askFill()
 
     const map = isCurrent ? data.map : null
-    const room = headingRoom(cols, DASHBOARD_LABEL)
-    const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, room)
+    const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, cols)
     const header = (
       <Box key="header" flexDirection="column">
-        {headerRow(
-          <Box key="map">
-            <Text {...accent}>{map === null ? heading : link(map.url, heading)}</Text>
-          </Box>,
-          true,
-        )}
+        <Box key="map">
+          <Text {...accent}>{map === null ? heading : link(map.url, heading)}</Text>
+        </Box>
         {map?.destination == null ? null : text('destination', dim, fit(map.destination, cols))}
       </Box>
     )
@@ -761,6 +761,7 @@ export function registerMapPane(on: On) {
           {header}
           {viewing}
           {text('loading', dim, 'Loading tickets…')}
+          {whiteboardRow}
           {mapsGroup}
         </Box>
       )
@@ -790,6 +791,7 @@ export function registerMapPane(on: On) {
       <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
         {header}
         {viewing}
+        {whiteboardRow}
         {mapsGroup}
         {ticketGroups(tickets)}
         {isCurrent && data.error === null && tickets.length === 0 ? (

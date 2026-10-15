@@ -341,8 +341,7 @@ const MARK_PAD = '  '
 // A terminal Button draws `[ label ]`.
 const BUTTON_CHROME = 4
 
-// The header's switch between the map and the dashboard; the title before it gets the rest of the row.
-export const DASHBOARD_LABEL = 'dashboard'
+// The dashboard header's button back to the map; the title before it gets the rest of the row.
 export const MAP_LABEL = 'map'
 export const headingRoom = (columns: number, label: string): number => Math.max(0, columns - label.length - BUTTON_CHROME - 1)
 

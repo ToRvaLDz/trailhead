@@ -1661,11 +1661,13 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'age')).toBe('updated just now')
   })
 
-  test(`with no active map the Whiteboard row is above the maps and the loading view keeps it [${surface}]`, async ($, on) => {
+  test(`with no active map the Whiteboard row sits above the maps [${surface}]`, async ($, on) => {
     const none = rig(on, $)
     none.active = null
     await $.session.start(START)
     const ui = await openAndMount($, none)
+    await completeTurn($)
+    await settle(none)
     expect(await hasKey(ui, 'dashboard')).toBe(false)
     expect(await textOf(ui, 'whiteboard-aside')).toBe(' 3 open / 9')
     const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
