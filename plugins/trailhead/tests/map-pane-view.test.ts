@@ -16,6 +16,7 @@ import {
   parseDashboard,
   parseHistory,
   parseMap,
+  parseMapCounts,
   parseMaps,
   parseTickets,
   rasterCells,
@@ -23,6 +24,7 @@ import {
   rowLayout,
   sparkline,
   viewTarget,
+  whiteboardHeading,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -516,9 +518,9 @@ test('parseMaps keeps the open maps sorted by number, titles flattened', () => {
     ]),
   )
   expect(out).toEqual([
-    { number: 14, title: 'older map' },
-    { number: 20, title: '' },
-    { number: 198, title: 'trailhead mod' },
+    { number: 14, title: 'older map', counts: null },
+    { number: 20, title: '', counts: null },
+    { number: 198, title: 'trailhead mod', counts: null },
   ])
   expect(parseMaps('[]')).toEqual([])
 })
@@ -529,6 +531,91 @@ test('parseMaps rejects what is not a list', () => {
   expect(parseMaps('null')).toBeNull()
 })
 
+const gql = (nodes: unknown[], extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ data: { repository: { issues: { nodes } } }, ...extra })
+
+test('parseMapCounts reads each map with its open and total sub-issues, sorted by number', () => {
+  const out = parseMapCounts(
+    gql([
+      { number: 198, title: 'trailhead\u202e mod\n', url: 'https://x/198', subIssuesSummary: { total: 23, completed: 16 } },
+      { number: 14, title: 'older map', url: 'https://x/14', subIssuesSummary: { total: 5, completed: 5 } },
+      { number: 0, title: 'bad number', subIssuesSummary: { total: 1, completed: 0 } },
+      'junk',
+    ]),
+  )
+  expect(out).toEqual([
+    { number: 14, title: 'older map', counts: { open: 0, total: 5 } },
+    { number: 198, title: 'trailhead mod', counts: { open: 7, total: 23 } },
+  ])
+  expect(parseMapCounts(gql([]))).toEqual([])
+  // completed above total never goes negative
+  expect(parseMapCounts(gql([{ number: 3, title: 't', subIssuesSummary: { total: 2, completed: 4 } }]))).toEqual([
+    { number: 3, title: 't', counts: { open: 0, total: 2 } },
+  ])
+})
+
+test('parseMapCounts keeps a row with a malformed summary, name-only', () => {
+  const out = parseMapCounts(
+    gql([
+      { number: 1, title: 'a' },
+      { number: 2, title: 'b', subIssuesSummary: { total: 'x', completed: 1 } },
+      { number: 3, title: 'c', subIssuesSummary: null },
+    ]),
+  )
+  expect(out).toEqual([
+    { number: 1, title: 'a', counts: null },
+    { number: 2, title: 'b', counts: null },
+    { number: 3, title: 'c', counts: null },
+  ])
+})
+
+test('parseMapCounts is null on anything but a clean reply', () => {
+  const node = { number: 1, title: 'a', subIssuesSummary: { total: 1, completed: 0 } }
+  expect(parseMapCounts('not json')).toBeNull()
+  expect(parseMapCounts('[]')).toBeNull()
+  expect(parseMapCounts('{}')).toBeNull()
+  expect(parseMapCounts('{"data":null}')).toBeNull()
+  expect(parseMapCounts('{"data":{"repository":null}}')).toBeNull()
+  expect(parseMapCounts('{"data":{"repository":{"issues":{"nodes":"x"}}}}')).toBeNull()
+  expect(parseMapCounts(JSON.stringify({ errors: [{ message: 'boom' }] }))).toBeNull()
+  // partial data next to errors is still a failed read
+  expect(parseMapCounts(gql([node], { errors: [{ message: 'partial' }] }))).toBeNull()
+})
+
+test('mapRowLayout asides: counts first, then active, joined by a dot', () => {
+  const m = { number: 198, title: 'trailhead mod', counts: { open: 7, total: 23 } }
+  expect(mapRowLayout(m, { active: 198, viewed: null, columns: 60 }).aside).toBe(' 7 open / 23 · active')
+  expect(mapRowLayout(m, { active: 14, viewed: null, columns: 60 }).aside).toBe(' 7 open / 23')
+  expect(mapRowLayout({ ...m, counts: null }, { active: 198, viewed: null, columns: 60 }).aside).toBe(' active')
+  expect(mapRowLayout({ ...m, counts: null }, { active: 14, viewed: null, columns: 60 }).aside).toBeNull()
+})
+
+test('mapRowLayout cuts the title before the counts, which stay whole', () => {
+  const m = { number: 14, title: 'x'.repeat(200), counts: { open: 7, total: 23 } }
+  const r = mapRowLayout(m, { active: 198, viewed: null, columns: 40 })
+  expect(r.aside).toBe(' 7 open / 23')
+  expect(r.label.endsWith('…')).toBe(true)
+  expect(r.mark.length + r.label.length + 4 + (r.aside?.length ?? 0)).toBeLessThanOrEqual(40)
+  // a map with no title falls back to the number
+  expect(mapRowLayout({ ...m, title: '' }, { active: 198, viewed: null, columns: 40 }).label).toBe('#14')
+})
+
+const wbTicket = (number: number, assignees: string[] = []) => ({
+  number,
+  title: `t${number}`,
+  type: null,
+  state: assignees.length > 0 ? ('in-progress' as const) : ('frontier' as const),
+  assignees,
+  url: '',
+})
+
+test('whiteboardHeading counts the open and the assigned tickets', () => {
+  expect(whiteboardHeading([wbTicket(1), wbTicket(2, ['a']), wbTicket(3, ['a', 'b'])], false)).toBe('Whiteboard · 3 open · 2 assigned')
+  expect(whiteboardHeading([], false)).toBe('Whiteboard · 0 open · 0 assigned')
+  expect(whiteboardHeading([wbTicket(1)], true)).toBe('Whiteboard · 200+ open · 0 assigned')
+  expect(whiteboardHeading(null, false)).toBe('Whiteboard')
+})
+
 test('viewTarget is the viewed map, else the active one', () => {
   expect(viewTarget(198, null)).toBe(198)
   expect(viewTarget(198, 14)).toBe(14)
@@ -537,10 +624,10 @@ test('viewTarget is the viewed map, else the active one', () => {
 })
 
 test('nextViewed resets when the active map changed or the viewed map left the open list', () => {
-  const maps = [{ number: 14, title: 'a' }, { number: 198, title: 'b' }]
+  const maps = [{ number: 14, title: 'a', counts: null }, { number: 198, title: 'b', counts: null }]
   expect(nextViewed(14, { activeChanged: false, maps })).toBe(14)
   expect(nextViewed(14, { activeChanged: true, maps })).toBeNull()
-  expect(nextViewed(14, { activeChanged: false, maps: [{ number: 198, title: 'b' }] })).toBeNull()
+  expect(nextViewed(14, { activeChanged: false, maps: [{ number: 198, title: 'b', counts: null }] })).toBeNull()
   expect(nextViewed(14, { activeChanged: false, maps: [] })).toBeNull()
   // no list read yet (or a failed read): nothing to judge by
   expect(nextViewed(14, { activeChanged: false, maps: null })).toBe(14)
@@ -548,7 +635,7 @@ test('nextViewed resets when the active map changed or the viewed map left the o
 })
 
 test('mapRowLayout marks the active map, bolds the viewed one and presses the others', () => {
-  const m = { number: 14, title: 'older map' }
+  const m = { number: 14, title: 'older map', counts: null }
   expect(mapRowLayout(m, { active: 198, viewed: null, columns: 60 })).toEqual({
     mark: '  ',
     label: '#14 older map',
@@ -557,10 +644,10 @@ test('mapRowLayout marks the active map, bolds the viewed one and presses the ot
     isViewed: false,
     isPressable: true,
   })
-  const act = mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60 })
+  const act = mapRowLayout({ number: 198, title: 'trailhead mod', counts: null }, { active: 198, viewed: null, columns: 60 })
   expect(act).toMatchObject({ mark: '● ', aside: ' active', isActive: true, isViewed: true, isPressable: false })
   // viewing another map: the active one becomes pressable (back to active), the viewed one is not
-  expect(mapRowLayout({ number: 198, title: 't' }, { active: 198, viewed: 14, columns: 60 })).toMatchObject({
+  expect(mapRowLayout({ number: 198, title: 't', counts: null }, { active: 198, viewed: 14, columns: 60 })).toMatchObject({
     isActive: true,
     isViewed: false,
     isPressable: true,
@@ -569,14 +656,14 @@ test('mapRowLayout marks the active map, bolds the viewed one and presses the ot
 })
 
 test('mapRowLayout cuts the title to the room left by the mark and the aside', () => {
-  const long = { number: 198, title: 'x'.repeat(200) }
+  const long = { number: 198, title: 'x'.repeat(200), counts: null }
   const act = mapRowLayout(long, { active: 198, viewed: null, columns: 30 })
   expect(act.label.endsWith('…')).toBe(true)
   expect(act.mark.length + act.label.length + (act.aside?.length ?? 0)).toBeLessThanOrEqual(30)
-  const other = mapRowLayout({ number: 14, title: 'x'.repeat(200) }, { active: 198, viewed: null, columns: 30 })
+  const other = mapRowLayout({ number: 14, title: 'x'.repeat(200), counts: null }, { active: 198, viewed: null, columns: 30 })
   // a Button draws `[ label ]`: four cells of chrome
   expect(other.mark.length + other.label.length + 4).toBeLessThanOrEqual(30)
-  expect(mapRowLayout({ number: 14, title: '' }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
+  expect(mapRowLayout({ number: 14, title: '', counts: null }, { active: 198, viewed: null, columns: 30 }).label).toBe('#14')
 })
 
 test('footerStatus keeps a status that fits beside the two buttons on their row', () => {
@@ -634,9 +721,9 @@ test('parseDashboard takes the lowest numbered index, none when the repo has non
 })
 
 test('mapRowLayout on the dashboard makes every map pressable, the active one still marked', () => {
-  const r = mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60, isDashboard: true })
+  const r = mapRowLayout({ number: 198, title: 'trailhead mod', counts: null }, { active: 198, viewed: null, columns: 60, isDashboard: true })
   expect(r).toMatchObject({ isActive: true, isViewed: false, isPressable: true, mark: '● ', aside: ' active' })
-  expect(mapRowLayout({ number: 198, title: 'trailhead mod' }, { active: 198, viewed: null, columns: 60 }).isPressable).toBe(false)
+  expect(mapRowLayout({ number: 198, title: 'trailhead mod', counts: null }, { active: 198, viewed: null, columns: 60 }).isPressable).toBe(false)
 })
 
 test('headingRoom leaves the switch button its cells, never below zero', () => {
