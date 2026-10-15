@@ -25,6 +25,7 @@ import {
   parseDashboard,
   parseHistory,
   parseMap,
+  parseMapCounts,
   parseMaps,
   parseTickets,
   rasterCells,
@@ -32,6 +33,7 @@ import {
   rowLayout,
   sparkline,
   viewTarget,
+  whiteboardHeading,
 } from './map-pane-view'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -49,6 +51,7 @@ const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
 const MAPS_LIMIT = 100
+const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}}}`
 const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
@@ -168,7 +171,12 @@ const readList = ($: Dollar, target: number) =>
   ])
 
 // The open maps of the repo. A failed or unreadable read is null: the caller keeps the last good list.
+// One GraphQL call gives every map with its sub-issue counts; if it fails or is unreadable the
+// name-only `gh issue list` runs instead (counts null). Both bounded at MAPS_LIMIT open maps.
 const readMaps = async ($: Dollar): Promise<readonly MapSummary[] | null> => {
+  const counted = await gh($, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
+  const withCounts = counted.ok ? parseMapCounts(counted.stdout) : null
+  if (withCounts !== null) return withCounts
   const out = await gh($, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
   return out.ok ? parseMaps(out.stdout) : null
 }
@@ -705,7 +713,7 @@ export function registerMapPane(on: On) {
           {headerRow(title, false)}
           {mapsGroup}
           <Box key="whiteboard" marginTop={gap}>
-            <Text {...bold}>Whiteboard</Text>
+            {text('head-whiteboard', bold, whiteboardHeading(isLoaded ? board.tickets : null, board.isCapped))}
           </Box>
           {!isLoaded && board.error === null ? text('loading', dim, 'Loading dashboard…') : null}
           {ticketGroups(board.tickets)}

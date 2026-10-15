@@ -1315,7 +1315,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'view', '14'],
       ['gh', 'issue', 'list', '--label'],
       ['gh', 'issue', 'list', '--label'],
-      ['gh', 'issue', 'list', '--label'],
+      ['gh', 'api', 'graphql', '-F'],
     ])
     expect(r.calls.some(argv => argv.includes('trailhead:map-14'))).toBe(true)
 
@@ -1597,7 +1597,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
     expect(await textOf(ui, 'head-whiteboard')).toBe('Whiteboard · 4 open · 2 assigned')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303', 'row-306'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
     expect(await textOf(ui, 'holder-302')).toBe('@alice')
     expect(await textOf(ui, 'holder-306')).toBe('@erin')
     expect(await hasKey(ui, 'row-305')).toBe(false)
