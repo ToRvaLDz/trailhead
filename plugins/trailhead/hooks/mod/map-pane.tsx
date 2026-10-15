@@ -589,7 +589,7 @@ export function registerMapPane(on: On) {
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
       const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
-      const holder = r.isInPlay ? { color: ACCENT } : r.isDim ? dim : {}
+      const holder = r.isDim ? dim : {}
       return (
         <Box key={`row-${t.number}`} width={cols} justifyContent="space-between">
           <Box>
@@ -600,6 +600,7 @@ export function registerMapPane(on: On) {
             {r.type === null ? null : text(`type-${t.number}`, dim, r.type)}
           </Box>
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
+          {r.aside?.kind === 'self' ? text(`self-${t.number}`, { color: ACCENT }, r.aside.text) : null}
           {r.aside?.kind === 'queued' ? text(`queued-${t.number}`, { color: AMBER }, r.aside.text) : null}
           {r.aside?.kind === 'work' ? (
             <Button
@@ -632,6 +633,7 @@ export function registerMapPane(on: On) {
       return [
         group('frontier', 'Frontier', groups.frontier),
         group('in-progress', 'In progress', groups.inProgress),
+        group('paused', 'Paused', groups.paused),
         group('blocked', 'Blocked', groups.blocked),
       ]
     }

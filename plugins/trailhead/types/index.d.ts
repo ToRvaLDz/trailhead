@@ -15,7 +15,7 @@ export type PromptSnapshot = { key: string; text: string | null }
 
 // The map pane (#208): what the last `gh` read of the active map gave.
 export type TicketType = 'decision' | 'research' | 'prototype' | 'build' | 'bug' | 'task'
-export type TicketState = 'frontier' | 'in-progress' | 'blocked'
+export type TicketState = 'frontier' | 'in-progress' | 'paused' | 'blocked'
 
 export type PaneTicket = {
   number: number

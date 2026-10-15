@@ -311,8 +311,10 @@ for (const surface of SURFACES) {
     expect(links).toContain(`${URL}/209`)
 
     // holders on every assigned row; the session's own ticket is marked and in the accent
-    expect(await textOf(ui, 'holder-208')).toBe('@ToRvaLDz')
-    expect((await ui.find({ key: 'holder-208' }))?.children[0]).toMatchObject({ props: { color: ACCENT } })
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+    expect((await ui.find({ key: 'self-208' }))?.children[0]).toMatchObject({ props: { color: ACCENT } })
+    expect((await ui.find({ key: 'self-208' }))?.children[0].props).not.toHaveProperty('bold')
+    expect(await ui.find({ key: 'holder-208' })).toBeUndefined()
     expect(await textOf(ui, 'mark-208')).toBe('▸ ')
     expect((await ui.find({ key: 'mark-208' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
     expect((await ui.find({ key: 'ticket-208' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
@@ -331,6 +333,45 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'row-215' })).toBeUndefined()
     expect(await textOf(ui, 'unverified')).toBe('1 unverified ticket hidden (quarantined)')
     expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`a paused ticket sits under Paused between In progress and Blocked, with no work button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    r.tickets = [
+      ...TICKETS,
+      issue(230, 'Paused with a holder', ['trailhead:build', 'trailhead:paused'], ['ToRvaLDz']),
+      issue(231, 'Paused and released', ['trailhead:build', 'trailhead:paused']),
+      issue(232, 'Paused and blocked', ['trailhead:build', 'trailhead:paused', 'trailhead:blocked'], ['bob']),
+    ]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    expect(await textOf(ui, 'head-paused')).toBe('Paused · 3')
+    expect((await ui.find({ key: 'head-paused' }))?.children[0]).toMatchObject({ props: { bold: true } })
+    expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 2')
+    expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 2')
+    // a paused ticket appears in one group only: Frontier, In progress, Paused, Blocked in order
+    expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-230', 'row-231', 'row-232', 'row-211', 'row-213'])
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-frontier', 'group-in-progress', 'group-paused', 'group-blocked'])
+    expect(await textOf(ui, 'holder-230')).toBe('@ToRvaLDz')
+    expect((await ui.find({ key: 'holder-230' }))?.children[0].props).not.toHaveProperty('dimColor')
+    expect(await textOf(ui, 'holder-232')).toBe('@bob')
+    expect(await ui.find({ key: 'holder-231' })).toBeUndefined()
+    for (const n of [230, 231, 232]) expect(await hasKey(ui, `work-${n}`)).toBe(false)
+    expect((await ui.find({ key: 'ticket-231' }))?.children[0].props).not.toHaveProperty('dimColor')
+  })
+
+  test(`the dashboard view groups paused whiteboard tickets the same way [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = [...WHITEBOARD, issue(305, 'Paused loose one', [...WB, 'trailhead:task', 'trailhead:paused'], ['alice'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'head-paused')).toBe('Paused · 1')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-305', 'row-303'])
+    expect(await hasKey(ui, 'work-305')).toBe(false)
+    expect(await textOf(ui, 'holder-305')).toBe('@alice')
   })
 
   test(`ticket rows are spaced apart on the desktop only [${surface}]`, async ($, on) => {

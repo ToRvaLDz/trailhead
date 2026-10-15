@@ -142,13 +142,32 @@ test('parseMap has a null destination when the section is missing or empty, and 
 })
 
 test('groupTickets splits by state, ascending by number', () => {
-  const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked') => ({
+  const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked' | 'paused') => ({
     number, title: '', type: null, state, assignees: [], url: '',
   })
   const g = groupTickets([t(30, 'frontier'), t(5, 'blocked'), t(9, 'in-progress'), t(12, 'frontier'), t(2, 'blocked')])
   expect(g.frontier.map(x => x.number)).toEqual([12, 30])
   expect(g.inProgress.map(x => x.number)).toEqual([9])
   expect(g.blocked.map(x => x.number)).toEqual([2, 5])
+  expect(g.paused).toEqual([])
+})
+
+test('groupTickets puts a paused ticket in the Paused group only', () => {
+  const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked' | 'paused') => ({
+    number, title: '', type: null, state, assignees: [], url: '',
+  })
+  const g = groupTickets([t(8, 'paused'), t(3, 'paused'), t(4, 'in-progress'), t(5, 'blocked'), t(6, 'frontier')])
+  expect(g.paused.map(x => x.number)).toEqual([3, 8])
+  expect([g.frontier, g.inProgress, g.blocked].map(x => x.map(y => y.number))).toEqual([[6], [4], [5]])
+})
+
+test('parseTickets: a paused label wins over blocked and in-progress, with the holder kept', () => {
+  const state = (names: string[], assignees: string[] = []) =>
+    parseTickets(list(issue({ labels: labels(...names), assignees: assignees.map(login => ({ login })) })))?.tickets[0]
+  expect(state(['trailhead:build', 'trailhead:paused'])).toMatchObject({ state: 'paused', assignees: [] })
+  expect(state(['trailhead:build', 'trailhead:paused', 'trailhead:blocked'], ['alice'])).toMatchObject({ state: 'paused', assignees: ['alice'] })
+  expect(state(['trailhead:build', 'trailhead:paused'], ['alice'])?.state).toBe('paused')
+  expect(state(['trailhead:build'], ['alice'])?.state).toBe('in-progress')
 })
 
 test('failureReason names one short cause', () => {
@@ -223,6 +242,28 @@ test('rowLayout: holders are drawn as @login on in-progress and blocked rows', (
   const loose = layout(ticket({ state: 'blocked' }))
   expect(loose.aside).toBeNull()
   expect(loose.isDim).toBe(true)
+})
+
+test('rowLayout: a paused row shows its holder when assigned, never a work button', () => {
+  expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'holder', text: '@alice' })
+  expect(layout(ticket({ state: 'paused' })).aside).toBeNull()
+  expect(layout(ticket({ state: 'paused' }), { pendingWork: 209 }).aside).toBeNull()
+  expect(layout(ticket({ state: 'paused' })).isDim).toBe(false)
+})
+
+test('rowLayout: the ticket in play says this session instead of its holder', () => {
+  const r = layout(ticket({ state: 'in-progress', assignees: ['me'] }), { isInPlay: true, hasMarkColumn: true })
+  expect(r.aside).toEqual({ kind: 'self', text: 'this session' })
+  expect(layout(ticket({ state: 'in-progress', assignees: ['me'] }), { hasMarkColumn: true }).aside).toEqual({ kind: 'holder', text: '@me' })
+})
+
+test('rowLayout: the this-session aside is counted in the row width', () => {
+  const t = ticket({ title: 'x'.repeat(200), state: 'in-progress', assignees: ['me'] })
+  for (const columns of [30, 40, 60]) {
+    const r = layout(t, { columns, isInPlay: true, hasMarkColumn: true })
+    const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside?.text.length ?? 0) + 1
+    expect(used).toBeLessThanOrEqual(columns)
+  }
 })
 
 test('rowLayout: the mark column marks the ticket in play and pads the others', () => {

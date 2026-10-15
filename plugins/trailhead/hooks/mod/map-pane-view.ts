@@ -10,6 +10,7 @@ export type ParsedTickets = { tickets: readonly PaneTicket[]; unverifiedCount: n
 export type TicketGroups = {
   frontier: readonly PaneTicket[]
   inProgress: readonly PaneTicket[]
+  paused: readonly PaneTicket[]
   blocked: readonly PaneTicket[]
 }
 export type Failure = { error: unknown } | { exitCode: number; stderr: string }
@@ -53,8 +54,15 @@ const typeOf = (names: readonly string[]): TicketType | null => {
   return found === undefined ? null : (found.slice(LABEL_PREFIX.length) as TicketType)
 }
 
+// A paused label wins over blocked and in-progress: the ticket shows once, under Paused.
 const stateOf = (names: readonly string[], assignees: readonly string[]): TicketState =>
-  names.includes(`${LABEL_PREFIX}blocked`) ? 'blocked' : assignees.length > 0 ? 'in-progress' : 'frontier'
+  names.includes(`${LABEL_PREFIX}paused`)
+    ? 'paused'
+    : names.includes(`${LABEL_PREFIX}blocked`)
+      ? 'blocked'
+      : assignees.length > 0
+        ? 'in-progress'
+        : 'frontier'
 
 // Only an https link is kept; anything else would be drawn as plain text.
 const safeUrl = (raw: unknown): string => (typeof raw === 'string' && /^https:\/\//.test(raw) ? raw : '')
@@ -201,7 +209,7 @@ const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number
 
 export const groupTickets = (tickets: readonly PaneTicket[]): TicketGroups => {
   const of = (state: TicketState) => tickets.filter(t => t.state === state).sort(byNumber)
-  return { frontier: of('frontier'), inProgress: of('in-progress'), blocked: of('blocked') }
+  return { frontier: of('frontier'), inProgress: of('in-progress'), paused: of('paused'), blocked: of('blocked') }
 }
 
 const errorText = (err: unknown): string => {
@@ -238,7 +246,7 @@ export const ageLabel = (ms: number): string => {
   return `${Math.floor(ms / 3_600_000)}h ago`
 }
 
-export type RowAside = { kind: 'work' | 'queued' | 'holder'; text: string }
+export type RowAside = { kind: 'work' | 'queued' | 'holder' | 'self'; text: string }
 export type RowLayout = {
   mark: string | null
   label: string
@@ -280,7 +288,11 @@ export const footerStatus = (status: string, columns: number): FooterStatus => {
   return Array.from(status).length <= room ? { text: status, isInline: true } : { text: fit(status, columns), isInline: false }
 }
 
-const asideOf = (t: PaneTicket, pendingWork: number | null): RowAside | null => {
+const SELF_ASIDE: RowAside = { kind: 'self', text: 'this session' }
+
+// The ticket in play says `this session`; otherwise a frontier row has its button and the rest their holder.
+const asideOf = (t: PaneTicket, pendingWork: number | null, isInPlay: boolean): RowAside | null => {
+  if (isInPlay) return SELF_ASIDE
   if (t.state === 'frontier') return pendingWork === t.number ? { kind: 'queued', text: 'queued' } : { kind: 'work', text: 'work' }
   return t.assignees.length === 0 ? null : { kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') }
 }
@@ -291,7 +303,7 @@ const asideWidth = (a: RowAside | null): number =>
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
   const mark = ctx.isInPlay ? MARK : ctx.hasMarkColumn ? MARK_PAD : null
-  const aside = asideOf(t, ctx.pendingWork)
+  const aside = asideOf(t, ctx.pendingWork, ctx.isInPlay)
   const type = t.type === null ? null : ` ${t.type}`
   const prefix = `#${t.number}`
   const room = ctx.columns - (mark?.length ?? 0) - asideWidth(aside) - (type?.length ?? 0) - prefix.length - 1
