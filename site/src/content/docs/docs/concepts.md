@@ -19,7 +19,7 @@ Each **ticket** is a child issue with a type label and a one-question body. See 
 
 ## Frontier
 
-The **frontier** is the set of open, unassigned tickets whose blockers are all closed: what's takeable right now. You claim a ticket by assigning it to yourself, resolve it with the engine for its type, then record the answer as a comment, close it, and gist it back onto the map.
+The **frontier** is the set of open, unassigned tickets whose blockers are all closed and that are not paused: what's takeable right now. You claim a ticket by assigning it to yourself, resolve it with the engine for its type, then record the answer as a comment, close it, and gist it back onto the map.
 
 ## Fog
 
@@ -45,6 +45,6 @@ Everything the map needs is expressed as GitHub labels, so state is queryable in
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 - **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
 
-The frontier is then a single query (open, unassigned, not `trailhead:blocked`), no body-parsing needed.
+The frontier is then a single query (open, unassigned, not `trailhead:blocked`, not paused), no body-parsing needed.
 
 Next: [Workflow](/docs/workflow) for the lifecycle loop these pieces move through, or [Ticket types](/docs/ticket-types) for how each type is resolved, or [Commands](/docs/commands) for the full verb list.

@@ -22,7 +22,7 @@ Show the low-res map: destination, decisions, frontier, fog.
 **What it does**
 
 1. Makes sure the repo's pinned dashboard exists and is pinned (see `dashboard` below), creating or re-pinning it only if needed.
-2. Renders the map by name: Destination; Frontier (takeable now, each with its type, shown as a set to choose from rather than a ranked list; whiteboard tickets are excluded); In progress (with who holds each); Blocked (with what each waits on, and an advisory line if the written `## Blocked by` differs from the native dependency); Decisions so far; Not yet specified and parked fog (each top-level fog entry numbered for that render so you can name one); Out of scope; and an inbox count.
+2. Renders the map by name: Destination; Frontier (takeable now, each with its type, shown as a set to choose from rather than a ranked list; whiteboard tickets and paused tickets are excluded); In progress (with who holds each); Paused (tickets set aside on a `PAUSED` checkpoint, with the holder if any; `/trailhead:resume <n>` takes one back); Blocked (with what each waits on, and an advisory line if the written `## Blocked by` differs from the native dependency); Decisions so far; Not yet specified and parked fog (each top-level fog entry numbered for that render so you can name one); Out of scope; and an inbox count.
 3. Flags any Out of scope line that is really deferred (a gate, a "for now" qualifier, a feature wanted later) and suggests `/trailhead:inbox` to re-route it.
 4. If the map is exhausted (no open tickets and no fog left), says so and asks whether to close the map issue. A yes closes it and refreshes the dashboard; a no leaves it open. It never closes unprompted.
 
@@ -57,7 +57,7 @@ None.
 **What it does**
 
 1. Finds the repo's `trailhead:dashboard` issue, creating and pinning it if missing (it takes the fixed third pinned slot beside the codebase and conventions issues).
-2. Regenerates its body from the live tracker and shows it: a link to every open map (GitHub renders each map's progress bar natively), the whiteboard section, and counts such as the untriaged inbox size and the whiteboard frontier size.
+2. Regenerates its body from the live tracker and shows it: a link to every open map (GitHub renders each map's progress bar natively), the whiteboard section (Frontier, In progress, Paused, Blocked and Unverified groups; a paused ticket shows once, under Paused, and is not counted in the whiteboard frontier), and counts such as the untriaged inbox size and the whiteboard frontier size.
 3. Flags each open map that is exhausted but still open as `exhausted · closeable` and offers to close it, routing any deferred Out of scope line first. It flags a map near GitHub's 100 sub-issue cap as `near cap · <total>/100` (or `at cap`, with `· prunable` when closed edges can be reclaimed) and offers `/trailhead:prune`. Both are offers only, never automatic.
 
 **What it writes**
@@ -90,7 +90,7 @@ None.
 **What it does**
 
 1. Makes sure the pinned dashboard exists and is pinned (same self-heal as `map`).
-2. Renders the whiteboard by name: Frontier (open, unassigned, unblocked `trailhead:whiteboard` tickets, each with its type, as a set to choose from), In progress (claimed tickets and who holds each), and Blocked (with what each waits on). Unlike a map it has no destination, decisions or fog: it holds only loose work.
+2. Renders the whiteboard by name: Frontier (open, unassigned, unblocked, not paused `trailhead:whiteboard` tickets, each with its type, as a set to choose from), In progress (claimed tickets and who holds each), Paused (tickets set aside on a `PAUSED` checkpoint; `/trailhead:resume <n>` takes one back), and Blocked (with what each waits on). Unlike a map it has no destination, decisions or fog: it holds only loose work.
 3. Pick a frontier ticket with `/trailhead:work <n>` (works it whole and can split) or `/trailhead:quick <n>` (no split).
 
 **What it writes**

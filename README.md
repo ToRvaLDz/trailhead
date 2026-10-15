@@ -36,7 +36,7 @@ The design choices that fall out of it:
 
 - **Built for teams, because the plan is shared.** The tracker is the single source of truth, so the map is a **shared workspace**, not one person's local file. Many people (and their agents) work it at once, and the mechanics keep them from colliding:
   - **Claiming.** You take a ticket by assigning it to yourself; the assignee *is* the lock. A collision stops you and asks, rather than clobbering someone else's work. Whoever claims a ticket owns it end to end and closes it, no separate approver.
-  - **A shared frontier, one ticket per session.** The **frontier** (open, unassigned, unblocked tickets) is the common queue of what's takeable now; each person picks a different one. Resolving a ticket ends the session, so work stays in reviewable, single-ticket chunks.
+  - **A shared frontier, one ticket per session.** The **frontier** (open, unassigned, unblocked, not paused tickets) is the common queue of what's takeable now; each person picks a different one. Resolving a ticket ends the session, so work stays in reviewable, single-ticket chunks.
   - **Isolation for concurrent sessions on one machine.** Two agents editing one checkout corrupt each other, so the `isolation:` convention (default **`auto`**, which asks at each ticket's work-start whether you'll work more than one at once and then picks the right mode by repo shape) gives each in-flight ticket its own **`git worktree`** (or a full **`clone`** for path-bound apps, or repos with submodules, a worktree can't safely isolate) when you run more than one at once; disjoint `Scope:` lines let non-overlapping work run in parallel and serialise only where it truly overlaps.
   - **Pause, resume, split.** Any ticket can be **paused** with a checkpoint comment and **resumed** later by anyone (once released), or **split** into children when it outgrows a session, with blockers re-pointed so the frontier stays honest.
   - **Several maps at once.** A repo can carry **more than one live map** (parallel milestones or features), each with its own scoped frontier, so two people can drive two efforts on the same repo without stepping on each other, and you can park one map to work another.
@@ -87,7 +87,7 @@ A **map** is one GitHub issue labelled `trailhead:map`. It's an index, not a sto
 
 What does **not** need its own map is a single, defined piece of work with no open questions, small enough to finish in one session. That is just **one ticket**, a direct `build` (or a `todo`): a *work* you take with `/trailhead:work` and resolve in a sitting, no charting required. **Rule of thumb: decisions to make, or too big for one sitting → a map; "just do X" → a single work.** A feature that starts as a lone work but turns out to need decisions gets promoted to its own map (or split); a map whose questions all evaporate collapses back to a handful of works. And a repo can hold **several maps at once** (parallel milestones or features), each with its own frontier, so you can park one and work another.
 
-Each **ticket** is a child issue with a type label and a one-question body. The **frontier** is the set of open, unassigned tickets whose blockers are all closed: what's takeable right now. You claim a ticket by assigning it to yourself, resolve it with the engine for its type, then record the answer as a comment, close it, and gist it back onto the map.
+Each **ticket** is a child issue with a type label and a one-question body. The **frontier** is the set of open, unassigned tickets whose blockers are all closed and that are not paused: what's takeable right now. You claim a ticket by assigning it to yourself, resolve it with the engine for its type, then record the answer as a comment, close it, and gist it back onto the map.
 
 As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached.
 
@@ -352,7 +352,7 @@ Everything the map needs is expressed as GitHub labels, so state is queryable in
 - **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
 - **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
 
-The **frontier** is then a single query (open, unassigned, not `trailhead:blocked`), no body-parsing needed.
+The **frontier** is then a single query (open, unassigned, not `trailhead:blocked`, not paused), no body-parsing needed.
 
 ## 👥 Working as a team
 

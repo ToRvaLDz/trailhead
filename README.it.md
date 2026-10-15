@@ -36,7 +36,7 @@ Le scelte di design che ne derivano:
 
 - **Costruito per i team, perché il piano è condiviso.** Il tracker è l'unica fonte di verità, quindi la mappa è un **workspace condiviso**, non il file locale di una singola persona. Molte persone (e i loro agenti) ci lavorano contemporaneamente, e i meccanismi impediscono che si scontrino:
   - **Claiming.** Prendi un ticket assegnandolo a te stesso; l'assegnatario *è* il lock. Una collisione ti ferma e chiede, invece di sovrascrivere il lavoro di qualcun altro. Chi rivendica un ticket lo possiede dall'inizio alla fine e lo chiude, senza un approvatore separato.
-  - **Una frontier condivisa, un ticket per sessione.** La **frontier** (ticket aperti, non assegnati, non bloccati) è la coda comune di ciò che è prendibile ora; ognuno ne sceglie uno diverso. Risolvere un ticket termina la sessione, così il lavoro resta in porzioni revisionabili, un ticket alla volta.
+  - **Una frontier condivisa, un ticket per sessione.** La **frontier** (ticket aperti, non assegnati, non bloccati, non in pausa) è la coda comune di ciò che è prendibile ora; ognuno ne sceglie uno diverso. Risolvere un ticket termina la sessione, così il lavoro resta in porzioni revisionabili, un ticket alla volta.
   - **Isolation per sessioni concorrenti su una macchina.** Due agenti che modificano un unico checkout si corrompono a vicenda, quindi la convenzione `isolation:` (default **`auto`**, che chiede al work-start di ogni ticket se lavorerai più di un ticket alla volta e poi sceglie la modalità giusta in base alla forma del repo) dà a ogni ticket in corso il proprio **`git worktree`** (o un intero **`clone`** per le app legate a un path, o i repo con submodule, che un worktree non riesce a isolare in sicurezza) quando ne lavori più di uno alla volta; righe `Scope:` disgiunte lasciano girare in parallelo lavori non sovrapposti e serializzano solo dove c'è vera sovrapposizione.
   - **Pause, resume, split.** Qualsiasi ticket può essere messo in **pause** con un commento di checkpoint e **ripreso** più tardi da chiunque (una volta rilasciato), o **splittato** in figli quando supera la dimensione di una sessione, con i blocker ripuntati così la frontier resta onesta.
   - **Più mappe insieme.** Un repo può portare **più di una mappa attiva** (milestone o feature parallele), ciascuna con la propria frontier con scope, così due persone possono condurre due sforzi sullo stesso repo senza pestarsi i piedi, e puoi parcheggiare una mappa per lavorarne un'altra.
@@ -87,7 +87,7 @@ Una **map** è una singola issue GitHub etichettata `trailhead:map`. È un indic
 
 Ciò che **non** ha bisogno di una propria mappa è un singolo pezzo di lavoro definito senza domande aperte, abbastanza piccolo da finire in una sessione. Quello è semplicemente **un ticket**, un `build` diretto (o un `todo`): un *work* che prendi con `/trailhead:work` e risolvi in una seduta, senza bisogno di tracciare. **Regola pratica: decisioni da prendere, o troppo grande per una seduta → una mappa; "fai solo X" → un singolo work.** Una feature che nasce come un work isolato ma si scopre aver bisogno di decisioni viene promossa a una propria mappa (o splittata); una mappa le cui domande evaporano tutte collassa di nuovo in una manciata di work. E un repo può contenere **più mappe insieme** (milestone o feature parallele), ciascuna con la propria frontier, così puoi parcheggiarne una e lavorarne un'altra.
 
-Ogni **ticket** è una child issue con una label di tipo e un corpo di una sola domanda. La **frontier** è l'insieme dei ticket aperti, non assegnati, i cui blocker sono tutti chiusi: ciò che è prendibile proprio ora. Rivendichi un ticket assegnandolo a te stesso, lo risolvi con il motore per il suo tipo, poi registri la risposta come commento, lo chiudi, e ne fai il gist di nuovo sulla mappa.
+Ogni **ticket** è una child issue con una label di tipo e un corpo di una sola domanda. La **frontier** è l'insieme dei ticket aperti, non assegnati, i cui blocker sono tutti chiusi e che non sono in pausa: ciò che è prendibile proprio ora. Rivendichi un ticket assegnandolo a te stesso, lo risolvi con il motore per il suo tipo, poi registri la risposta come commento, lo chiudi, e ne fai il gist di nuovo sulla mappa.
 
 Man mano che i ticket si risolvono, la fog si dirada: domande che erano troppo vaghe da formulare diventano abbastanza nitide da diventare ticket, una alla volta, finché non resta nulla da decidere o costruire e la destination è raggiunta.
 
@@ -352,7 +352,7 @@ Tutto ciò di cui la mappa ha bisogno è espresso come label GitHub, così lo st
 - **State:** `trailhead:blocked` (ha un blocker aperto) · `seed` (parcheggiato su un trigger) · `out-of-scope` (chiuso, oltre la destination) · `superseded` (chiuso, splittato in figli)
 - **Container:** `trailhead:whiteboard` (un ticket sciolto, senza mappa, fuori dalla frontier di ogni mappa, sulla frontier propria della whiteboard)
 
-La **frontier** è quindi una singola query (aperto, non assegnato, non `trailhead:blocked`), senza bisogno di parsare il corpo.
+La **frontier** è quindi una singola query (aperto, non assegnato, non `trailhead:blocked`, non in pausa), senza bisogno di parsare il corpo.
 
 ## 👥 Lavorare in team
 

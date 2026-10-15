@@ -100,7 +100,7 @@ Checkpoint the ticket in play so anyone can resume it.
 **What it does**
 
 1. Commits any work in progress as atomic commits so nothing is stranded.
-2. Posts a `PAUSED` checkpoint: what is done, the exact next step, and local state (branch, the worktree or clone path under isolation, how to run it), then adds the `trailhead:paused` label so the ticket shows under `Paused` in the panel.
+2. Posts a `PAUSED` checkpoint: what is done, the exact next step, and local state (branch, the worktree or clone path under isolation, how to run it), then adds the `trailhead:paused` label so the ticket shows under `Paused` on every surface (panel, map, whiteboard, dashboard). A paused ticket is off the frontier until resumed: bare `/trailhead:work` never picks it, `/trailhead:resume` (or an explicit `work <n>` / `quick <n>`) takes it back.
 3. Keeps your claim if you will return soon, or releases it (unassigns) if the pause is open-ended so someone else can take over.
 4. Refreshes the dashboard if the paused ticket is a whiteboard quick whose refresh was still deferred.
 
@@ -201,7 +201,7 @@ Run the frontier autonomously until a stop condition or exhaustion.
 **What it does**
 
 1. Resumes first any of your tickets left in a `PAUSED` state by an interrupted run.
-2. Loops over the frontier: claims an auto-workable ticket (`build`, `bug`, an AFK `task`, an AFK `research`), resolves it with its normal configured cycle, unblocks dependents, and rescans until nothing auto-workable is left. This suspends the one-ticket-per-session rule; there is no cap on tickets, time or tokens.
+2. Loops over the frontier: claims an auto-workable ticket (`build`, `bug`, an AFK `task`, an AFK `research`), resolves it with its normal configured cycle, unblocks dependents, and rescans until nothing auto-workable is left. Paused tickets are off the frontier: a fresh run picks back up each paused ticket you own first (the resume step), never through the frontier scan. This suspends the one-ticket-per-session rule; there is no cap on tickets, time or tokens.
 3. Takes advisory choices as the delegate option without the confirm gate. Human-necessary items are set aside, not decided: decision convergences, scope or destination changes, out-of-scope rulings, fog that needs dissolving, HITL tasks with human-only steps, and a claim collision.
 4. Never performs a release, `git push`, PR, delete or force, or any outward-facing action. It sets that step aside for you. Under `git: pr` this means each ticket is finished locally and its push and PR are left for you, so a run drains less per invocation than under `git: main`.
 5. On a ticket that will not verify it extends past the normal fix rounds (no-progress rule, plus up to 3 extra rounds), then pauses the stuck ticket with its claim and moves on.
