@@ -2060,6 +2060,29 @@ ok('source: the declared module file exists, relative to hooks.json (#202)',
 ok('source: hooks.json keeps its command hooks next to the module (#202)',
   ['PreToolUse', 'PostToolUse', 'SessionStart'].every((ev) => (pluginHooksJson.hooks?.[ev] || []).length > 0));
 
+// --- #259: `trailhead:paused` label marks a paused ticket (pause adds, resume/claim drop) ---
+const workSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'SKILL.md'), 'utf8');
+const firstUseLine = (substrateCommandsSource.match(/^1\. Create any missing labels.*$/m) || [''])[0];
+ok('source: first-use setup lists nineteen labels including trailhead:paused',
+  /all nineteen:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`'));
+ok('source: no stale "eighteen labels" count remains in the shared skills',
+  !/eighteen/.test(substrateCommandsSource) && !/eighteen/.test(substrateSource));
+ok('source: substrate-commands.md ensures trailhead:paused idempotently',
+  /gh label create trailhead:paused --color FBCA04 --description "Paused: a PAUSED checkpoint holds its next step" 2>\/dev\/null \|\| true/.test(substrateCommandsSource));
+ok('source: substrate.md documents trailhead:paused as set by pause, cleared by resume or claim, off the frontier query',
+  /\*\*`trailhead:paused`\*\*[\s\S]{0,500}pause[\s\S]{0,200}resume[\s\S]{0,200}claim[\s\S]{0,300}frontier query/.test(substrateSource));
+const pauseBullet = (teamworkSource.match(/^- \*\*Pause\*\*.*$/m) || [''])[0];
+const resumeBullet = (teamworkSource.match(/^- \*\*Resume\*\*.*$/m) || [''])[0];
+ok('source: teamwork.md pause adds trailhead:paused (created idempotently) after the PAUSED comment',
+  /post a \*\*`PAUSED`\*\* checkpoint comment[\s\S]{0,1200}add the `trailhead:paused` label[\s\S]{0,120}creating it idempotently first[\s\S]{0,80}after the `PAUSED` comment/.test(pauseBullet));
+ok('source: teamwork.md resume removes trailhead:paused only after the claim is confirmed',
+  /gh issue edit <n> --remove-label trailhead:paused/.test(resumeBullet) &&
+  /only after the claim is confirmed[\s\S]{0,300}a refused resume leaves the ticket visibly paused/.test(resumeBullet));
+ok('source: work SKILL.md claim step drops trailhead:paused from a claimed paused ticket',
+  /\*\*Claim\*\* it:[\s\S]{0,600}carries `trailhead:paused`[\s\S]{0,120}drop it at the claim/.test(workSkillSource));
+ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the claim',
+  /^- \*\*Same isolation setup as `work`\.\*\*.*claimed ticket that carries `trailhead:paused` drops it at the claim/m.test(workSkillSource));
+
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
 }
