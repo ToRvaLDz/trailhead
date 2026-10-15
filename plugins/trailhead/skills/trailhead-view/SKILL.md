@@ -31,8 +31,9 @@ A single `trailhead:map` issue is the canonical artifact: an **index**, not a st
 
 Render, by name:
 - **Destination**: the one-line where-we're-headed.
-- **Frontier**: takeable now (open, unassigned, not blocked/unverified, and **not** `trailhead:whiteboard`, which has its own view), each with its type. Present independent tickets as a **set to choose from**, not a crowned first (see **Frontier order carries no priority** in `../_shared/substrate.md`).
+- **Frontier**: takeable now (open, unassigned, not blocked/unverified, **not** `trailhead:paused`, and **not** `trailhead:whiteboard`, which has its own view), each with its type. Present independent tickets as a **set to choose from**, not a crowned first (see **Frontier order carries no priority** in `../_shared/substrate.md`).
 - **In progress**: claimed tickets, with who holds each.
+- **Paused**: tickets set aside on a `PAUSED` checkpoint (`trailhead:paused`), shown once here whatever their assignee or blocked state, with the holder if any; take one back with `/trailhead:resume <n>`.
 - **Blocked**: with what each waits on; flag any **blocked-by drift** (prose `## Blocked by` differs from the native dependency, see **Blocked-by reconciliation** in `../_shared/substrate.md`) as an advisory line.
 - **Decisions so far**: the index of what's settled.
 - **Not yet specified** + **parked fog**: the coarse fog with **each top-level entry numbered** (`1.`, `2.`, ...; one number per top-level bullet or line, numbered top-to-bottom in displayed order and restarting at 1 on every render, nested sub-points not numbered separately), and a count/link of open `trailhead:fog` issues. The numbers are a **render-time handle**, stable within a single render and never persisted into the map body: they exist so a specific fog point can be named by its number when offering to dissolve or graduate one. Resolve any number the user gives against the **current** render's list; if the map changed since it was rendered, re-render and confirm the point before graduating it.
@@ -70,7 +71,7 @@ A repo's trailhead surface is spread across issues: one or more maps, a whiteboa
 
 It holds:
 - a link to **every open `trailhead:map`** (found via the `trailhead:map` label); GitHub renders each map's sub-issue **progress bar natively**, so the dashboard only links, it never recomputes per-ticket progress. **Per open map it also runs one cheap `0 open scoped issues?` pre-filter** and, for a candidate confirmed to have no remaining fog (see the exhaustion check in `../_shared/substrate-commands.md`), flags an **exhausted-but-open** map (destination reached, map issue never closed) as `exhausted · closeable`, so the render can offer to close it (below). It also flags each open map **`near cap · <total>/100`** (total >= 90) or **`at cap`** (total >= 100) from `sub_issues_summary.total`, appending **`· prunable`** when the map has closed edges to reclaim, so the render can offer `/trailhead:prune` (below);
-- the **whiteboard** as its own section (frontier / in-progress / blocked, or a link to the `whiteboard` view);
+- the **whiteboard** as its own section (frontier / in-progress / paused / blocked, or a link to the `whiteboard` view);
 - dynamic **counts**: untriaged inbox size, whiteboard frontier size.
 - a hidden `<!-- trailhead:last-audit <ISO-8601 UTC> -->` line, when the body already has one, is **preserved verbatim** on every regeneration (it is the `/trailhead:audit` window marker; see Body generation in `../_shared/substrate-commands.md`).
 
@@ -98,12 +99,13 @@ Not all work belongs to a map. A **bug**, a **todo**, or a one-off **task** may 
 It has its **own frontier**, off every map's (see **Map frontier vs whiteboard frontier** in `../_shared/substrate.md`):
 ```bash
 gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open \
-  --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+  --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
 ```
 
 **`whiteboard`** renders this as a read-only view, a mirror of the `map` render minus destination, decisions, and fog (the whiteboard has no direction, only loose work), by name:
-- **Frontier**: takeable now (open, unassigned, not blocked/unverified whiteboard tickets), each with its type. Present independent tickets as a **set to choose from**, not a crowned first (see **Frontier order carries no priority** in `../_shared/substrate.md`).
+- **Frontier**: takeable now (open, unassigned, not blocked/unverified and **not** `trailhead:paused` whiteboard tickets), each with its type. Present independent tickets as a **set to choose from**, not a crowned first (see **Frontier order carries no priority** in `../_shared/substrate.md`).
 - **In progress**: claimed whiteboard tickets, with who holds each.
+- **Paused**: whiteboard tickets set aside on a `PAUSED` checkpoint (`trailhead:paused`), shown once here whatever their assignee or blocked state, with the holder if any; take one back with `/trailhead:resume <n>`.
 - **Blocked**: any blocked whiteboard ticket, with what it waits on (a whiteboard ticket can still block on another).
 
 **Dashboard self-heal.** Like the `map` render, ensure the repo's pinned `trailhead:dashboard` index exists and is pinned before rendering (create + pin only if missing, re-pin if the pin was dropped; never rewrite its body here). See the **Render the dashboard** self-heal above.
