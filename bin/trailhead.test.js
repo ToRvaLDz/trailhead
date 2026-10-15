@@ -2108,6 +2108,8 @@ ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the c
     /UAT follow-up[\s\S]{0,1500}`trailhead:uat`/.test(ticketEnginesSource.split('\n').filter((l) => /^A ticket whose body carries/.test(l)).join('\n')));
   ok('source: work SKILL.md work-start runs the backfill helper once per clone, marker gated',
     /trailhead-uat-backfill\.js[^\n]*--marker[^\n]*\.trailhead\/uat-backfill/.test(workSkillSource));
+  ok('source: work SKILL.md passes the backfill marker as an absolute path under the working root',
+    /trailhead-uat-backfill\.js[^\n]*--marker <working-root>\/\.trailhead\/uat-backfill/.test(workSkillSource));
   ok('source: .gitignore ignores .trailhead/uat-backfill',
     /^\.trailhead\/uat-backfill$/m.test(fs.readFileSync(path.join(repoRoot, '.gitignore'), 'utf8')));
   ok('source: work SKILL.md mentions the uat-backfill marker as gitignored per-clone state',
