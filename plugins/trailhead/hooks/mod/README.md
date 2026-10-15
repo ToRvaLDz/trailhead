@@ -107,8 +107,14 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `back` button). The maps read is the 4th of a refresh; a failure of it alone keeps the last list and sets no
   footer error. Each refresh captures its target (viewed, else active) once and rechecks it before every state
   write, so a refresh in flight when the view changes never commits the old map's tickets.
-- **Dashboard view**: a `dashboard` button at the right of the header row (and beside the no-active-map
-  message) switches the pane to the repo index, the `isDashboard` atom. It draws a `Dashboard` title (a link
+- **Whiteboard row**: above the Maps list (in the map view, its loading state and the no-active-map view,
+  even with a single map) a `Whiteboard` button switches the pane to the repo index, the `isDashboard` atom.
+  Beside the name it carries the whiteboard's counts in a map row's shape, dim: `<open> open / <total>`
+  (open whiteboard tickets over all of them). They come from the maps read's single GraphQL call (two
+  aliased `totalCount` connections on `trailhead:whiteboard`), never a per-ticket query. If that call
+  fails or its whiteboard fields are unreadable the row is drawn name-only, no counts and no error (the
+  `whiteboard` field of the `mapPane` atom is `null`; a failed read never keeps stale counts).
+- **Dashboard view**: the `Whiteboard` row (the header has no button for it) opens the repo index. It draws a `Dashboard` title (a link
   to the pinned `trailhead:dashboard` issue when there is one) with a `map` button that goes back to the map
   shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
   dashboard and views that map, the active one marked `●`), and a `Whiteboard · <n> open · <m> assigned` section (counted
