@@ -5,7 +5,7 @@ All notable changes to trailhead are recorded here. This project follows [Semant
 ## Unreleased
 
 ### Added
-- **Dashboard view in the map panel.** A `dashboard` button in the panel header shows the repo index in place of a map: a link to the pinned `trailhead:dashboard` issue, every open map (a click opens it) and the whiteboard's open tickets as Frontier / In progress / Blocked with a `work` button per frontier ticket; `map` goes back. The mode survives `/clear`.
+- **Dashboard view in the map panel.** A `Whiteboard` row above the maps list, with its `N open / M` counts (name-only when they cannot be read), shows the repo index in place of a map: a link to the pinned `trailhead:dashboard` issue, every open map (a click opens it) and the whiteboard's open tickets as Frontier / In progress / Blocked with a `work` button per frontier ticket; `map` goes back. The mode survives `/clear`.
 
 ### Changed
 - **The acceptance testing ask gains a skip option (#254).** The drive-mode ask now offers skip (waive acceptance) next to AI-driven and human-driven, at all three UAT start paths. A skip is a waiver, not a deferral: the `VERIFY` comment records `acceptance: waived by the user (unconfirmed)`, never a pass, no UAT follow-up is opened, the Pending-UAT guard does not fire, and the resolution comment states the waiver (a `UAT of:` follow-up closes as waived). The delegate option and `auto` never pick skip. When no step is agent-performable the ask is no longer skipped outright: it drops only the AI-driven option and asks human-driven or skip, with the one-line reason.

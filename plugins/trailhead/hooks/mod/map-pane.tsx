@@ -403,7 +403,7 @@ const pressView = ($: Dollar, number: number | null): void => {
   void viewMap($, number).catch(err => debug($, `trailhead mod: map view failed: ${String(err)}`))
 }
 
-// The header switch: the dashboard, or back to the map shown before it (the view is kept).
+// The switch to the dashboard (the Whiteboard row), or back to the map shown before it (the view is kept).
 async function setDashboard($: Dollar, isOn: boolean) {
   await update($, isDashboard, () => isOn)
   void requestRefresh($, { bypassFloor: true })
