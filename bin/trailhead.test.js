@@ -2061,7 +2061,6 @@ ok('source: hooks.json keeps its command hooks next to the module (#202)',
   ['PreToolUse', 'PostToolUse', 'SessionStart'].every((ev) => (pluginHooksJson.hooks?.[ev] || []).length > 0));
 
 // --- #259: `trailhead:paused` label marks a paused ticket (pause adds, resume/claim drop) ---
-const workSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'SKILL.md'), 'utf8');
 const firstUseLine = (substrateCommandsSource.match(/^1\. Create any missing labels.*$/m) || [''])[0];
 ok('source: first-use setup lists nineteen labels including trailhead:paused',
   /all nineteen:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`'));
@@ -2074,12 +2073,12 @@ ok('source: substrate.md documents trailhead:paused as set by pause, cleared by 
 const pauseBullet = (teamworkSource.match(/^- \*\*Pause\*\*.*$/m) || [''])[0];
 const resumeBullet = (teamworkSource.match(/^- \*\*Resume\*\*.*$/m) || [''])[0];
 ok('source: teamwork.md pause adds trailhead:paused (created idempotently) after the PAUSED comment',
-  /post a \*\*`PAUSED`\*\* checkpoint comment[\s\S]{0,1200}add the `trailhead:paused` label[\s\S]{0,120}creating it idempotently first[\s\S]{0,80}after the `PAUSED` comment/.test(pauseBullet));
+  /post a \*\*`PAUSED`\*\* checkpoint comment[\s\S]{0,1200}add the `trailhead:paused` label[\s\S]{0,120}creating it idempotently first[\s\S]{0,200}after the `PAUSED` comment/.test(pauseBullet));
 ok('source: teamwork.md resume removes trailhead:paused only after the claim is confirmed',
   /gh issue edit <n> --remove-label trailhead:paused/.test(resumeBullet) &&
   /only after the claim is confirmed[\s\S]{0,300}a refused resume leaves the ticket visibly paused/.test(resumeBullet));
 ok('source: work SKILL.md claim step drops trailhead:paused from a claimed paused ticket',
-  /\*\*Claim\*\* it:[\s\S]{0,600}carries `trailhead:paused`[\s\S]{0,120}drop it at the claim/.test(workSkillSource));
+  /\*\*Claim\*\* it:[\s\S]{0,1200}carries `trailhead:paused`[\s\S]{0,120}drops it at the claim/.test(workSkillSource));
 ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the claim',
   /^- \*\*Same isolation setup as `work`\.\*\*.*claimed ticket that carries `trailhead:paused` drops it at the claim/m.test(workSkillSource));
 
