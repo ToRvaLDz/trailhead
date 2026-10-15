@@ -61,6 +61,13 @@ const MAPS = [
   { number: 198, title: 'trailhead mod', url: `${URL}/198` },
   { number: 14, title: 'older map', url: `${URL}/14` },
 ]
+// The maps read: one GraphQL call that carries each map's sub-issue counts.
+const MAPS_QUERY =
+  'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}}}'
+const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
+const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
+const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql'
+const isMapsList = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:map')
 const OTHER_TICKETS = [issue(140, 'Old frontier ticket', ['trailhead:build']), issue(141, 'Old held ticket', ['trailhead:task'], ['carol'])]
 const OTHER_HISTORY = OTHER_TICKETS.map(t => hrow(t.number, t.labels.map(l => l.name), null))
 
@@ -114,6 +121,8 @@ const rig = (on: On, engine?: any) => {
     map: MAP as unknown,
     // The open maps list, and the second map's own answers (view, open list, history).
     maps: MAPS as unknown[],
+    // Sub-issue totals per map number, as the GraphQL read reports them (a map without one has no summary).
+    mapSummary: { 198: { total: 23, completed: 16 }, 14: { total: 5, completed: 2 } } as Record<number, unknown>,
     otherMap: OTHER_MAP as unknown,
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
@@ -151,7 +160,11 @@ const rig = (on: On, engine?: any) => {
   const defaultGh: Gh = argv => {
     if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
-    if (argv[2] === 'list' && argv.includes('trailhead:map')) return ok(JSON.stringify(r.maps))
+    if (isGraphql(argv)) {
+      const nodes = (r.maps as { number: number }[]).map(m => ({ ...m, subIssuesSummary: r.mapSummary[m.number] }))
+      return ok(JSON.stringify({ data: { repository: { issues: { nodes } } } }))
+    }
+    if (isMapsList(argv)) return ok(JSON.stringify(r.maps))
     const isOther = argv.includes('14') || argv.includes('trailhead:map-14')
     if (argv[2] === 'view') return ok(JSON.stringify(isOther ? r.otherMap : r.map))
     return ok(JSON.stringify(argv.includes('all') ? (isOther ? r.otherHistory : r.history) : isOther ? r.otherTickets : r.tickets))
@@ -261,7 +274,7 @@ const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.in
 // A gh that answers as the default does, except for the history read.
 const withHistory = (r: Rig, answer: GhOut): Gh => argv => {
   if (argv.includes('all')) return answer
-  if (argv.includes('trailhead:map')) return ok(JSON.stringify(r.maps))
+  if (isGraphql(argv) || isMapsList(argv)) return r.defaultGh(argv)
   return argv[2] === 'view' ? ok(JSON.stringify(r.map)) : ok(JSON.stringify(r.tickets))
 }
 const hasKey = async (ui: any, key: string): Promise<boolean> => (await ui.find({ key })) !== undefined
@@ -289,7 +302,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'view', '198', '--json', 'title,body,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
-      ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url'],
+      MAPS_CALL,
     ])
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect((await ui.find({ type: 'Link' }))?.props).toMatchObject({ href: `${URL}/198` })
@@ -641,7 +654,7 @@ for (const surface of SURFACES) {
     await completeTurn($)
     await settle(r)
     // the open maps are still read, so one can be picked; no map is
-    expect(r.calls).toEqual([['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']])
+    expect(r.calls).toEqual([MAPS_CALL])
   })
 
   test(`first fetch in flight: the map number and Loading tickets [${surface}]`, async ($, on) => {
@@ -995,7 +1008,7 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await hasKey(ui, 'viewing')).toBe(false)
-    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
+    expect(await textOf(ui, 'map-aside-14')).toBe(' 3 open / 5 · active')
   })
 
   test(`a manual /clear keeps the pane filled, with no turn and inside the floor [${surface}]`, async ($, on) => {
@@ -1261,7 +1274,7 @@ for (const surface of SURFACES) {
     expect(await keysOf(ui, 'map-row-')).toEqual(['map-row-14', 'map-row-198'])
     expect(await textOf(ui, 'map-mark-198')).toBe('● ')
     expect((await ui.find({ key: 'map-mark-198' }))?.children[0]).toMatchObject({ props: { color: ACCENT } })
-    expect(await textOf(ui, 'map-aside-198')).toBe(' active')
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
     expect(await textOf(ui, 'map-label-198')).toBe('#198 trailhead mod')
     expect((await ui.find({ key: 'map-label-198' }))?.children[0]).toMatchObject({ props: { bold: true } })
     expect(await textOf(ui, 'map-mark-14')).toBe('  ')
@@ -1355,7 +1368,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await hasKey(ui, 'viewing')).toBe(false)
     expect(await textOf(ui, 'map-label-14')).toBe('#14 older map')
-    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
+    expect(await textOf(ui, 'map-aside-14')).toBe(' 3 open / 5 · active')
     expect((await ui.find({ key: 'map-198' }))?.props).toMatchObject({ label: '#198 trailhead mod' })
   })
 
@@ -1377,18 +1390,18 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await hasKey(ui, 'viewing')).toBe(false)
-    expect(await textOf(ui, 'map-aside-14')).toBe(' active')
-    expect(await hasKey(ui, 'map-aside-198')).toBe(false)
+    expect(await textOf(ui, 'map-aside-14')).toBe(' 3 open / 5 · active')
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23')
   })
 
-  test(`a failed maps read keeps the last list and sets no footer error [${surface}]`, async ($, on) => {
+  test(`both maps reads failing keep the last list and set no footer error [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
 
     const base: Gh = argv => withHistory(r, ok(JSON.stringify(r.history)))(argv)
-    r.gh = argv => (argv.includes('trailhead:map') ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    r.gh = argv => (isGraphql(argv) || isMapsList(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
     r.tickets = [issue(300, 'fresh one', ['trailhead:build'])]
     await r.clock.advance(FLOOR)
     await completeTurn($)
@@ -1398,7 +1411,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'age')).toBe('updated just now')
 
     // unreadable output is the same
-    r.gh = argv => (argv.includes('trailhead:map') ? ok('not json') : base(argv))
+    r.gh = argv => (isGraphql(argv) || isMapsList(argv) ? ok('not json') : base(argv))
     await r.clock.advance(FLOOR)
     await completeTurn($)
     await settle(r)
@@ -1507,7 +1520,7 @@ for (const surface of SURFACES) {
     expect(r.calls.slice(before)).toEqual([
       ['gh', 'issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
-      ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url'],
+      MAPS_CALL,
     ])
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
     expect((await ui.find({ key: 'dashboard-title' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
@@ -1519,10 +1532,11 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
     expect((await ui.find({ key: 'map-198' }))?.props).toMatchObject({ label: '#198 trailhead mod' })
     expect(await hasKey(ui, 'map-14')).toBe(true)
-    expect(await textOf(ui, 'map-aside-198')).toBe(' active')
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
 
     // the whiteboard by state, the quarantined one only counted, no map tickets
     expect(await hasKey(ui, 'whiteboard')).toBe(true)
+    expect(await textOf(ui, 'head-whiteboard')).toBe('Whiteboard · 3 open · 1 assigned')
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 1')
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 1')
     expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 1')
@@ -1533,6 +1547,61 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'burndown-section')).toBe(false)
     expect(await textOf(ui, 'age')).toBe('updated just now')
     expect(r.writes).toEqual([])
+  })
+
+  test(`the maps list shows each map's open and total from one call [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(argv => argv.includes('trailhead:map') || isGraphql(argv))).toEqual([MAPS_CALL])
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
+    expect(await textOf(ui, 'map-aside-14')).toBe(' 3 open / 5')
+    // a map the read gave no summary for is drawn name-only
+    r.mapSummary = { 198: { total: 23, completed: 16 } }
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, 'map-aside-14')).toBe(false)
+    expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
+  })
+
+  test(`a failing counts read falls back to the name-only list with no footer error [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    const base = r.defaultGh
+    r.gh = argv => (isGraphql(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(argv => argv.includes('trailhead:map') || isGraphql(argv))).toEqual([MAPS_CALL, MAPS_LIST_CALL])
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await textOf(ui, 'map-aside-198')).toBe(' active')
+    expect(await hasKey(ui, 'map-aside-14')).toBe(false)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+
+    // a reply with errors is a failed read too
+    r.gh = argv => (isGraphql(argv) ? ok(JSON.stringify({ data: { repository: { issues: { nodes: [] } } }, errors: [{ message: 'x' }] })) : base(argv))
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+    expect(await hasKey(ui, 'map-aside-14')).toBe(false)
+  })
+
+  test(`the dashboard heading counts the whiteboard and every assigned trusted ticket is a row [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = [
+      ...WHITEBOARD,
+      issue(305, 'Assigned but quarantined', [...WB, 'trailhead:task', 'trailhead:unverified'], ['dave']),
+      issue(306, 'Paused with a holder', [...WB, 'trailhead:task', 'trailhead:paused'], ['erin']),
+    ]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'head-whiteboard')).toBe('Whiteboard · 4 open · 2 assigned')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303', 'row-306'])
+    expect(await textOf(ui, 'holder-302')).toBe('@alice')
+    expect(await textOf(ui, 'holder-306')).toBe('@erin')
+    expect(await hasKey(ui, 'row-305')).toBe(false)
+    expect(await textOf(ui, 'unverified')).toBe('2 unverified tickets hidden (quarantined)')
   })
 
   test(`the map button goes back to the map shown before [${surface}]`, async ($, on) => {
