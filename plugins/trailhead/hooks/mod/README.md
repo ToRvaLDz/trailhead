@@ -90,9 +90,12 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   closes the panel. A status too long for the room beside the buttons moves to a row of its own under them. Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
   on the first fetch, `No active map. Run /trailhead:map to pick one.`, `No open tickets. Fog may remain: /trailhead:map`.
-- **Maps list and viewing**: with more than one open map (`gh issue list --label trailhead:map --state open`),
+- **Maps list and viewing**: with more than one open map (one `gh api graphql` call for the open
+  `trailhead:map` issues with their sub-issue counts, bounded at 100 maps, no pagination),
   a `Maps · n` group sits under the header: one row per map, sorted by number, `#n title` cut to the width.
-  The active map has `●` in the accent and an `active` aside; the viewed map is bold; every other row is a
+  Each row ends with a dim `<open> open / <total>` count; if the call fails or is unreadable the pane falls
+  back to `gh issue list --label trailhead:map --state open` and draws the names only.
+  The active map has `●` in the accent and an `active` aside (after the counts, `7 open / 23 · active`); the viewed map is bold; every other row is a
   `Button`. A press shows that map's tickets, burn-down and `work` buttons (browse); it never writes
   `.trailhead/active-map`. Pressing the active map's row, or `back to active` (in the dim line
   `viewing #n · active #m` shown while another map is viewed), goes back. A `work` press on a viewed
@@ -108,7 +111,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   message) switches the pane to the repo index, the `isDashboard` atom. It draws a `Dashboard` title (a link
   to the pinned `trailhead:dashboard` issue when there is one) with a `map` button that goes back to the map
   shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
-  dashboard and views that map, the active one marked `●`), and a `Whiteboard` section: the open
+  dashboard and views that map, the active one marked `●`), and a `Whiteboard · <n> open · <m> assigned` section (counted
+  over the listed tickets; `200+ open` when the list is capped): the open
   `trailhead:ticket` + `trailhead:whiteboard` tickets as Frontier / In progress / Paused / Blocked, with the same rows,
   holders and `work` buttons (the work verb takes a whiteboard ticket as is). Unverified ones are counted only.
   Its reads replace the map's in a refresh: the whiteboard list, `gh issue list --label trailhead:dashboard
