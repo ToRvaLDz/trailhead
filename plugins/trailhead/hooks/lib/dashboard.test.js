@@ -15,7 +15,7 @@ const fs = require('fs');
 const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-dashboard.js');
-const { renderDashboard, mapFlags, main } = require(scriptPath);
+const { renderDashboard, mapFlags, classify, main } = require(scriptPath);
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -72,6 +72,31 @@ const SNAP = {
   ok('mapFlags: at cap', JSON.stringify(mapFlags({ openScoped: 4, total: 100, closedEdges: false })) === JSON.stringify(['at cap · 100/100']));
   ok('mapFlags: at cap prunable', JSON.stringify(mapFlags({ openScoped: 4, total: 100, closedEdges: true })) === JSON.stringify(['at cap · 100/100 · prunable']));
   ok('mapFlags: 89 is not near cap', mapFlags({ openScoped: 4, total: 89 }).length === 0);
+}
+
+// #263: classify() follows the panel's precedence (unverified > paused > blocked > in progress > frontier)
+{
+  const wbT = (number, assignees, ...extra) => ({ number, title: `T${number}`, assignees, labels: ['trailhead:ticket', 'trailhead:whiteboard', ...extra] });
+  const nums = (list) => list.map((t) => t.number);
+  const c = classify([
+    wbT(1, []),
+    wbT(2, ['me']),
+    wbT(3, [], 'trailhead:blocked'),
+    wbT(4, [], 'trailhead:paused'),
+    wbT(5, ['me'], 'trailhead:paused'),
+    wbT(6, [], 'trailhead:paused', 'trailhead:blocked'),
+    wbT(7, [], 'trailhead:paused', 'trailhead:unverified'),
+    wbT(8, ['me'], 'trailhead:blocked'),
+    wbT(9, [], 'trailhead:unverified'),
+  ]);
+  ok('classify: a paused ticket lands in paused, assigned or not, blocked or not', JSON.stringify(nums(c.paused)) === JSON.stringify([4, 5, 6]));
+  ok('classify: paused+unverified is quarantined as unverified', JSON.stringify(nums(c.unverified)) === JSON.stringify([7, 9]));
+  ok('classify: assigned+blocked is blocked', JSON.stringify(nums(c.blocked)) === JSON.stringify([3, 8]));
+  ok('classify: plain assigned is in progress, plain unassigned is frontier', JSON.stringify(nums(c.inProgress)) === JSON.stringify([2]) && JSON.stringify(nums(c.frontier)) === JSON.stringify([1]));
+  const body = renderDashboard({ ...SNAP, whiteboard: [wbT(30, []), wbT(31, ['me']), wbT(33, [], 'trailhead:paused'), wbT(34, ['me'], 'trailhead:paused'), wbT(32, [], 'trailhead:blocked')] });
+  ok('render: a Paused group sits between In progress and Blocked', /In progress \(1\):\n- \[T31 #31\][^\n]*\nPaused \(2\):\n- \[T33 #33\][^\n]*\n- \[T34 #34\][^\n]*\nBlocked \(1\):/.test(body));
+  ok('render: a paused ticket shows only under Paused', body.split('T33 #33').length === 2 && body.split('T34 #34').length === 2);
+  ok('render: Whiteboard frontier excludes paused tickets', /- Whiteboard frontier: 1\n/.test(body));
 }
 
 // --- fake tracker ------------------------------------------------------------
