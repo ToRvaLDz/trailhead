@@ -8,6 +8,7 @@ node_modules/
 .trailhead/models-collapse-notice
 .trailhead/model-defaults-ack
 .trailhead/label-guard-ack
+.trailhead/uat-backfill
 .trailhead/tmp-*
 plugins/trailhead/.claude-plugin/types/
 plugins/trailhead/tsconfig.json

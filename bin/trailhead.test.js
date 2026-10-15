@@ -2062,10 +2062,10 @@ ok('source: hooks.json keeps its command hooks next to the module (#202)',
 
 // --- #259: `trailhead:paused` label marks a paused ticket (pause adds, resume/claim drop) ---
 const firstUseLine = (substrateCommandsSource.match(/^1\. Create any missing labels.*$/m) || [''])[0];
-ok('source: first-use setup lists nineteen labels including trailhead:paused',
-  /all nineteen:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`'));
-ok('source: no stale "eighteen labels" count remains in the shared skills',
-  !/eighteen/.test(substrateCommandsSource) && !/eighteen/.test(substrateSource));
+ok('source: first-use setup lists twenty labels including trailhead:paused and trailhead:uat',
+  /all twenty:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`') && firstUseLine.includes('`trailhead:uat`'));
+ok('source: no stale "eighteen" or "nineteen" label count remains in the shared skills',
+  !/eighteen|nineteen/.test(substrateCommandsSource) && !/eighteen|nineteen/.test(substrateSource));
 ok('source: substrate-commands.md ensures trailhead:paused idempotently',
   /gh label create trailhead:paused --color FBCA04 --description "Paused: a PAUSED checkpoint holds its next step" 2>\/dev\/null \|\| true/.test(substrateCommandsSource));
 ok('source: substrate.md documents trailhead:paused as set by pause, cleared by resume or claim, off the frontier (#263)',
@@ -2081,6 +2081,36 @@ ok('source: work SKILL.md claim step drops trailhead:paused from a claimed pause
   /\*\*Claim\*\* it:[\s\S]{0,1200}carries `trailhead:paused`[\s\S]{0,120}drops it at the claim/.test(workSkillSource));
 ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the claim',
   /^- \*\*Same isolation setup as `work`\.\*\*.*claimed ticket that carries `trailhead:paused` drops it at the claim/m.test(workSkillSource));
+
+// --- #261: `trailhead:uat` label marks a pending UAT follow-up (marker, not a state) ---
+{
+  ok('source: substrate-commands.md ensures trailhead:uat idempotently',
+    /gh label create trailhead:uat --color [0-9A-Fa-f]{6} --description "Pending UAT: an acceptance test still to run" 2>\/dev\/null \|\| true/.test(substrateCommandsSource));
+  ok('source: substrate-commands.md has no create-then-backfill chain and invokes the backfill helper',
+    /trailhead-uat-backfill\.js/.test(substrateCommandsSource) && !/trailhead:uat[^\n]*&&[^\n]*backfill/.test(substrateCommandsSource));
+  ok('source: first-use setup runs the backfill helper after the labels',
+    /^1\. Create any missing labels[\s\S]{0,1500}?trailhead-uat-backfill\.js/m.test(substrateCommandsSource));
+  ok('source: substrate.md documents trailhead:uat as a marker label right after the state labels, not a state, not a frontier filter',
+    /\*\*`trailhead:uat`\*\*[\s\S]{0,700}marker[\s\S]{0,400}not a state[\s\S]{0,400}never a frontier filter/.test(substrateSource)
+    && substrateSource.indexOf('**`trailhead:uat`**') > substrateSource.indexOf('**`trailhead:paused`**')
+    && substrateSource.indexOf('**`trailhead:uat`**') < substrateSource.indexOf('**Frontier**'));
+  ok('source: acceptance-testing.md option (b) opens the follow-up with trailhead:uat in the gh issue create --label list, label ensured first',
+    /open a follow-up ticket before that close[\s\S]{0,900}--label[^\n]{0,200}`?trailhead:uat/.test(acceptanceTestingSource)
+    && /ensur\w* (the )?`?trailhead:uat`? (label )?idempotently/.test(acceptanceTestingSource));
+  ok('source: ticket-engines.md UAT follow-ups section names the label',
+    /UAT follow-up[\s\S]{0,1500}`trailhead:uat`/.test(ticketEnginesSource.split('\n').filter((l) => /^A ticket whose body carries/.test(l)).join('\n')));
+  ok('source: work SKILL.md work-start runs the backfill helper once per clone, marker gated',
+    /trailhead-uat-backfill\.js[^\n]*--marker[^\n]*\.trailhead\/uat-backfill/.test(workSkillSource));
+  ok('source: .gitignore ignores .trailhead/uat-backfill',
+    /^\.trailhead\/uat-backfill$/m.test(fs.readFileSync(path.join(repoRoot, '.gitignore'), 'utf8')));
+  ok('source: work SKILL.md mentions the uat-backfill marker as gitignored per-clone state',
+    /`\.trailhead\/uat-backfill`[^\n]*(gitignored|never committed)/.test(workSkillSource));
+  const producerSources = { 'acceptance-testing.md': acceptanceTestingSource, 'site acceptance-testing.md': siteAcceptanceSource };
+  for (const [name, src] of Object.entries(producerSources)) {
+    ok(`source: ${name} writes the pointer as UAT of: [<parent name>](<parent url>)`,
+      src.includes('UAT of: [<parent name>](<parent url>)') && !/UAT of: <parent name>\(link\)|UAT of: #<n>/.test(src));
+  }
+}
 
 // --- #263: a paused ticket is off the frontier on every surface ---
 {
