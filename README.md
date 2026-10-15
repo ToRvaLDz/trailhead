@@ -197,7 +197,7 @@ The map panel lists the open maps to view, the frontier with a `work` button per
 
 ![The panel viewing another map, with a viewing and active header and a back to active button](assets/screenshots/map-panel-viewing.png)
 
-A click only views a map, and `back to active` returns to the active one. The active map changes when you work one of its tickets. The `dashboard` button in the header shows the repo index instead: every open map (a click opens it) and the whiteboard's loose tickets by state, each frontier one with its `work` button; `map` goes back.
+A click only views a map, and `back to active` returns to the active one. The active map changes when you work one of its tickets. A `Whiteboard` row above the maps list, with its `N open / M` counts, shows the repo index instead: every open map (a click opens it) and the whiteboard's loose tickets by state, each frontier one with its `work` button; `map` goes back.
 
 ![The Burn-down section of the panel: counts line and a chart of open tickets over time](assets/screenshots/burndown.png)
 
