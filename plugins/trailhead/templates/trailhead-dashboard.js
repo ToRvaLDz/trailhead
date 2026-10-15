@@ -76,14 +76,16 @@ function mapFlags(m) {
   return flags;
 }
 
-// Classifies the open whiteboard tickets: in progress (assigned), blocked,
-// unverified, frontier (everything else).
+// Classifies the open whiteboard tickets with the panel's precedence: unverified
+// (quarantined first), paused, blocked, in progress (assigned), frontier
+// (everything else). A ticket lands in exactly one bucket. #263.
 function classify(whiteboard) {
-  const out = { frontier: [], inProgress: [], blocked: [], unverified: [] };
+  const out = { frontier: [], inProgress: [], paused: [], blocked: [], unverified: [] };
   for (const t of whiteboard) {
-    if (t.assignees && t.assignees.length) out.inProgress.push(t);
+    if (t.labels.includes('trailhead:unverified')) out.unverified.push(t);
+    else if (t.labels.includes('trailhead:paused')) out.paused.push(t);
     else if (t.labels.includes('trailhead:blocked')) out.blocked.push(t);
-    else if (t.labels.includes('trailhead:unverified')) out.unverified.push(t);
+    else if (t.assignees && t.assignees.length) out.inProgress.push(t);
     else out.frontier.push(t);
   }
   return out;
@@ -101,7 +103,7 @@ function renderDashboard(s) {
   const wb = classify(s.whiteboard);
   lines.push('', '## 🧷 Whiteboard (map-less tickets)');
   if (s.whiteboard.length === 0) lines.push('_Nothing on the whiteboard._');
-  for (const [label, list] of [['Frontier', wb.frontier], ['In progress', wb.inProgress], ['Blocked', wb.blocked], ['Unverified', wb.unverified]]) {
+  for (const [label, list] of [['Frontier', wb.frontier], ['In progress', wb.inProgress], ['Paused', wb.paused], ['Blocked', wb.blocked], ['Unverified', wb.unverified]]) {
     if (list.length === 0) continue;
     lines.push(`${label} (${list.length}):`);
     for (const t of list) lines.push(`- ${link(s.repo, t.number, `${linkText(t.title)} #${t.number}`)}`);
