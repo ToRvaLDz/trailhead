@@ -26,8 +26,11 @@
 // --repo (non-zero -> failed); with a `check`, poll it after `run` until it passes or
 // --ready-timeout (default 60 s) elapses (-> not-ready). Each run/check invocation is
 // killed after --step-timeout (default 600 s): a run -> timeout; a check counts as
-// failing. Stops at the first failing step. Output goes to a temp file, never a pipe,
-// so a backgrounded process (a dev server) cannot block the helper.
+// failing; while polling, each check is capped at the remaining ready time. Stops at the
+// first failing step. A `run`'s output goes to a temp file, never a pipe, so a backgrounded
+// process (a dev server) cannot block the helper; it should redirect its own output, else
+// it keeps writing to that (deleted) file. A `check`'s output is ignored.
+// `$NAME` / `${NAME}` inside single quotes or written `\$NAME` is not a reference.
 // Prints one JSON line:
 //   {"status","steps":[{index,name,result,code?,output?,missing?}],"failedStep"?,
 //    "accounts"?,"warnings":[],"message"?}
@@ -73,7 +76,7 @@ function parseArgs(argv) {
     if (out[k] !== undefined && !/^\d+$/.test(out[k])) return { error: `usage: --${k} needs a non-negative integer` };
   }
   for (const k of ['ready-timeout', 'step-timeout']) {
-    if (out[k] !== undefined && !(Number(out[k]) > 0)) return { error: `usage: --${k} needs a positive number of seconds` };
+    if (out[k] !== undefined && !(Number.isFinite(Number(out[k])) && Number(out[k]) > 0)) return { error: `usage: --${k} needs a positive number of seconds` };
   }
   if (out.from !== undefined && out.only !== undefined) return { error: 'usage: --from and --only are exclusive' };
   return out;
@@ -99,6 +102,7 @@ function readFile(file, fs_) {
     return { state: 'invalid', message: `${file} is not valid JSON` };
   }
   if (!isObject(cfg)) return { state: 'invalid', message: `${file} is not a JSON object` };
+  if (has(cfg, 'uat') && !isObject(cfg.uat)) return { state: 'invalid', message: `uat in ${file} must be an object` };
   return { state: 'ok', cfg };
 }
 
@@ -175,11 +179,36 @@ function readConfig(configRoot, env, fs_, warnings) {
   return out;
 }
 
+// Text with the spans that are never env references blanked out: single-quoted spans
+// and backslash-escaped characters (`\$`). A single quote inside double quotes is literal.
+function liveText(t) {
+  let out = '';
+  let single = false;
+  let double = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (single) {
+      if (c === "'") single = false;
+      out += ' ';
+    } else if (c === '\\') {
+      i++;
+      out += '  ';
+    } else if (c === "'" && !double) {
+      single = true;
+      out += ' ';
+    } else {
+      if (c === '"') double = !double;
+      out += c;
+    }
+  }
+  return out;
+}
+
 function refsOf(...texts) {
   const names = [];
   for (const t of texts) {
     if (typeof t !== 'string') continue;
-    for (const m of t.matchAll(REF)) {
+    for (const m of liveText(t).matchAll(REF)) {
       const n = m[1] || m[2];
       if (!names.includes(n)) names.push(n);
     }
@@ -216,14 +245,20 @@ function redactor(names, env) {
   return (text) => pairs.reduce((t, [n, v]) => t.split(v).join(`$${n}`), text);
 }
 
-// Runs `sh -c command` at repo with output going to a temp file. Returns
+// Runs `sh -c command` at repo; the output of a `run` goes to a temp file (a check's is ignored). Returns
 // { code, timedOut, tail } where tail is the bounded last chunk of the output.
 function sh(command, repo, env, timeoutMs, wantOutput) {
+  const timeout = Math.max(1, Math.ceil(timeoutMs));
+  if (!wantOutput) {
+    const r = spawnSync('sh', ['-c', command], { cwd: repo, env, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
+    const timedOut = Boolean(r.error && r.error.code === 'ETIMEDOUT');
+    return { code: r.status, timedOut, spawnError: r.error && !timedOut ? r.error.message : null, tail: '' };
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-uat-'));
   const file = path.join(dir, 'out');
   const fd = fs.openSync(file, 'w');
   try {
-    const r = spawnSync('sh', ['-c', command], { cwd: repo, env, stdio: ['ignore', fd, fd], timeout: timeoutMs, killSignal: 'SIGKILL' });
+    const r = spawnSync('sh', ['-c', command], { cwd: repo, env, stdio: ['ignore', fd, fd], timeout, killSignal: 'SIGKILL' });
     const timedOut = Boolean(r.error && r.error.code === 'ETIMEDOUT');
     const res = { code: r.status, timedOut, spawnError: r.error && !timedOut ? r.error.message : null, tail: '' };
     if (wantOutput) {
@@ -262,7 +297,8 @@ function runStep(step, index, ctx) {
   if (!step.check) return { ...base, result: 'ran' };
   const deadline = Date.now() + readyMs;
   for (;;) {
-    if (passes(sh(step.check, repo, env, stepMs, false))) return { ...base, result: 'ran' };
+    const remaining = deadline - Date.now();
+    if (passes(sh(step.check, repo, env, Math.max(1, Math.min(stepMs, remaining)), false))) return { ...base, result: 'ran' };
     const left = deadline - Date.now();
     if (left <= 0) break;
     sleep(Math.min(POLL_MS, left));
@@ -301,7 +337,12 @@ function execute(parsed, cwd, env, fs_) {
     redact: redactor(names, merged),
   };
   for (const i of indexes) {
-    const r = runStep(cfg.setup[i], i, ctx);
+    let r;
+    try {
+      r = runStep(cfg.setup[i], i, ctx);
+    } catch (err) {
+      return { ...result, message: 'error: ' + (err && err.message ? err.message : String(err)) };
+    }
     result.steps.push(r);
     if (!['skipped', 'ran'].includes(r.result)) return { ...result, status: 'failed', failedStep: i };
   }

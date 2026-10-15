@@ -17,7 +17,12 @@ const eq = (name, actual, expected) => {
   passed++;
 };
 
-const mktmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-uat-setup-test-')));
+const tmpDirs = [];
+const mktmp = () => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-uat-setup-test-')));
+  tmpDirs.push(d);
+  return d;
+};
 const writeConfig = (root, obj) => {
   fs.mkdirSync(path.join(root, '.trailhead'), { recursive: true });
   fs.writeFileSync(path.join(root, '.trailhead', 'config.json'), typeof obj === 'string' ? obj : JSON.stringify(obj));
@@ -53,6 +58,13 @@ const proj = (cfg) => { const d = mktmp(); if (cfg !== undefined) writeConfig(d,
   ok('parseArgs: valueless flag', parseArgs(['plan', '--repo']).error);
   ok('parseArgs: --only and --from are exclusive', parseArgs(['run', '--repo', '/x', '--only', '0', '--from', '1']).error);
   ok('parseArgs: bad timeout', parseArgs(['run', '--repo', '/x', '--ready-timeout', 'abc']).error);
+  for (const v of ['Infinity', '1e999', '-1', '0', 'NaN']) {
+    ok(`parseArgs: --step-timeout ${v} rejected`, parseArgs(['run', '--repo', '/x', '--step-timeout', v]).error);
+    ok(`parseArgs: --ready-timeout ${v} rejected`, parseArgs(['run', '--repo', '/x', '--ready-timeout', v]).error);
+  }
+  ok('parseArgs: fractional timeout accepted', !parseArgs(['run', '--repo', '/x', '--step-timeout', '0.5']).error);
+  const inf = run(['run', '--repo', '/x', '--step-timeout', 'Infinity']);
+  eq('infinite timeout exits 2 with no stdout', [inf.code, inf.lines.length], [2, 0]);
   const r = run([]);
   eq('usage error exits 2', r.code, 2);
   ok('usage error writes stderr, no stdout', r.err.includes('usage') && r.lines.length === 0);
@@ -113,6 +125,9 @@ const proj = (cfg) => { const d = mktmp(); if (cfg !== undefined) writeConfig(d,
   invalid('non-string check', { uat: { setup: [{ name: 'a', run: 'true', check: 1 }] } });
   invalid('unknown key', { uat: { setup: [{ name: 'a', run: 'true', extra: 1 }] } });
   invalid('accounts not an object', { uat: { accounts: [] } });
+  invalid('uat is a string', { uat: 'x' });
+  invalid('uat is an array', { uat: [] });
+  invalid('uat is null', { uat: null });
   invalid('account without secret', { uat: { setup: [], accounts: { qa: { user: 'u' } } } });
   invalid('account without user', { uat: { setup: [], accounts: { qa: { secret: '$X' } } } });
   invalid('literal secret rejected', { uat: { setup: [], accounts: { qa: { user: 'u', secret: 'hunter2' } } } });
@@ -195,6 +210,47 @@ const proj = (cfg) => { const d = mktmp(); if (cfg !== undefined) writeConfig(d,
   ok('missing-env runs nothing', !fs.existsSync(marker));
 }
 {
+  // shell-local $names are not env references: single quotes and \$ escape
+  const marker = path.join(mktmp(), 'ran');
+  const pl = plan(proj({ uat: { setup: [{ name: 'local', run: "for f in a b; do echo \\$f; done; awk '{print $NF}' </dev/null; echo '$QUOTED'; echo \\$ESC; echo \"\\$ESC2\"; echo $REAL", check: "echo '${Q2}' >/dev/null" }] } }), [], { REAL: 'v' });
+  eq('plan: only unquoted, unescaped refs listed', pl.out.steps[0].env.map((e) => e.name), ['REAL']);
+  const loc = go(proj({ uat: { setup: [{ name: 'local', run: `awk '{print $NF}' </dev/null; echo '$NOPE_UNSET' >/dev/null; echo \\$NOPE_UNSET2 >/dev/null; touch ${marker}` }] } }));
+  eq('run: single-quoted and escaped refs need no env', [loc.out.status, loc.out.steps[0].result, fs.existsSync(marker)], ['ready', 'ran', true]);
+  const dq = go(proj({ uat: { setup: [{ name: 'dq', run: 'echo "$DQ_MISSING"' }] } }));
+  eq('double-quoted ref still required', [dq.out.steps[0].result, dq.out.steps[0].missing], ['missing-env', ['DQ_MISSING']]);
+  const sq = go(proj({ uat: { setup: [{ name: 'sq', run: "echo 'it''s' $SQ_MISSING" }] } }));
+  eq('ref after adjacent quotes still required', sq.out.steps[0].missing, ['SQ_MISSING']);
+}
+{
+  // a tiny fractional timeout still becomes a valid >= 1 ms spawn timeout
+  const r = go(proj({ uat: { setup: [{ name: 'hang', run: 'sleep 30' }] } }), ['--step-timeout', '0.0001']);
+  eq('sub-millisecond timeout: timeout result', r.out.steps[0].result, 'timeout');
+}
+{
+  // a mid-run exception keeps the steps already collected
+  const gone = mktmp();
+  const prev = process.env.TMPDIR;
+  process.env.TMPDIR = gone;
+  try {
+    const r = go(proj({ uat: { setup: [
+      { name: 'a', run: 'true', check: `rm -rf ${gone}` },
+      { name: 'b', run: 'true' },
+    ] } }));
+    eq('mid-run exception: invalid with message', [r.out.status, typeof r.out.message], ['invalid', 'string']);
+    eq('mid-run exception: collected steps kept', r.out.steps.map((s) => [s.index, s.result]), [[0, 'skipped']]);
+  } finally {
+    if (prev === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = prev;
+  }
+}
+{
+  // the poll after run caps each check at the remaining ready time
+  const dir = mktmp();
+  const t0 = Date.now();
+  const r = go(proj({ uat: { setup: [{ name: 'slow', run: `touch ${dir}/ran`, check: `test -f ${dir}/ran && sleep 30` }] } }), ['--ready-timeout', '1']);
+  eq('slow check while polling: not-ready', r.out.steps[0].result, 'not-ready');
+  ok('poll check capped at the remaining ready time', Date.now() - t0 < 8000);
+}
+{
   // not-ready: the run succeeds but the check never passes
   const d = proj({ uat: { setup: [{ name: 'srv', run: 'true', check: 'false' }] } });
   const t0 = Date.now();
@@ -253,5 +309,8 @@ const proj = (cfg) => { const d = mktmp(); if (cfg !== undefined) writeConfig(d,
   eq('e2e: usage error exits 2', code, 2);
   ok('e2e: helper is executable', (fs.statSync(scriptPath).mode & 0o111) !== 0);
 }
+
+// --- cleanup --------------------------------------------------------------------
+for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
 
 console.log(`uat-setup.test.js: ${passed} checks passed`);
