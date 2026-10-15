@@ -67,7 +67,7 @@ Read-only renders of where the work stands. [Full guide](/docs/commands/view).
 | [`/trailhead:seed <text>`](/docs/commands/capture#seed) | a blocked ticket (trigger noted) | *I'll do it when X happens* |
 | [`/trailhead:idea <text>`](/docs/commands/capture#idea) | the fog (`Not yet specified`) | *maybe I'll do it*: graduates to a ticket if it sharpens |
 | [`/trailhead:note <text>`](/docs/commands/capture#note) | verbatim text | *remember this*: not necessarily work |
-| [`/trailhead:bug [--of <ticket>] <text>`](/docs/commands/capture#bug) | a `bug` ticket | a defect; `--of` records it as a `Regression of:` a closed ticket |
+| [`/trailhead:bug [--of <ticket>] <text>`](/docs/commands/capture#bug) | a `bug` ticket | a defect; `--of` records it as a `Regression of:` a closed ticket, filed where that ticket lives |
 
 The four fog/ticket captures form a spectrum of commitment and timing: note < idea < seed < todo. See [Captures & the whiteboard](/docs/captures) for the full spectrum and the whiteboard.
 

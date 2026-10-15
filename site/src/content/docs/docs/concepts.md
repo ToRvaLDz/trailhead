@@ -42,7 +42,8 @@ Everything the map needs is expressed as GitHub labels, so state is queryable in
 - **Structural:** `trailhead:map`, `trailhead:ticket`
 - **Repo-scoped anchors (one each per repo, pinned):** `trailhead:codebase`, `trailhead:conventions`, `trailhead:dashboard`
 - **Type (one per ticket):** `trailhead:decision` · `research` · `prototype` · `build` · `bug` · `task`
-- **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children)
+- **State:** `trailhead:blocked` (has an open blocker) · `seed` (parked on a trigger) · `out-of-scope` (closed, beyond the destination) · `superseded` (closed, split into children) · `paused` (checkpointed with a `PAUSED` comment, off every frontier until resumed)
+- **Marker:** `trailhead:uat` (a pending UAT follow-up, listed in its own group in the panel; a marker, not a state)
 - **Container:** `trailhead:whiteboard` (a loose, map-less ticket, off every map's frontier, on the whiteboard's own)
 
 The frontier is then a single query (open, unassigned, not `trailhead:blocked`, not paused), no body-parsing needed.

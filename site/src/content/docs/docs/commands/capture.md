@@ -153,11 +153,11 @@ Capture a bug ticket; use `--of` for a regression.
 **Arguments**
 
 - `text` (required): what is wrong, with the repro if you know it.
-- `--of <ticket>` (optional): a ticket number, `#n`, name or URL. Use it for a defect in already-closed work: it records a `Regression of: <ticket>` pointer in the body. A bug in closed work is always a new ticket, never a reopen (the one exception is a ticket closed before its Verify ever passed).
+- `--of <ticket>` (optional): a ticket number, `#n`, name or URL. Use it for a defect in already-closed work: it records a `Regression of: <ticket>` pointer in the body and inherits the origin's destination. A bug in closed work is always a new ticket, never a reopen (the one exception is a ticket closed before its Verify ever passed).
 
 **What it does**
 
-1. Asks map or whiteboard when a map is open.
+1. Asks map or whiteboard when a map is open, except under `--of`: the bug lands where the origin ticket lives (its map, or the whiteboard) with no question.
 2. Creates the `bug` ticket and confirms. It does not derail you: capture and continue, and resolve it in a dedicated session.
 3. If the bug blocks the ticket you are working, it is added to that ticket's `## Blocked by` and that ticket gets `trailhead:blocked`.
 

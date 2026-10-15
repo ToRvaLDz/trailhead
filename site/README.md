@@ -1,9 +1,9 @@
 # trailhead site
 
-This `site/` subtree is the trailhead website: a placeholder landing page at
-`/` plus a Starlight-powered docs skeleton at `/docs/`. It is excluded from
+This `site/` subtree is the trailhead website: the landing page at
+`/` plus the Starlight-powered docs at `/docs/`. It is excluded from
 the npm package by the root `files` whitelist in the repo's top-level
-`package.json` — it ships only as source in the git repo, never as part of
+`package.json`: it ships only as source in the git repo, never as part of
 the published `@marcomigozzi/trailhead` package.
 
 ## Deployment
@@ -33,6 +33,7 @@ npm run check:routes # assert routes against the current dist/ (no rebuild)
 
 ## Status
 
-This is a skeleton scaffold (see ticket #103): the landing page and docs
-content are placeholders. Real landing design, docs content, the custom
-domain, SEO, analytics, and CI are tracked separately and out of scope here.
+The landing page and docs content are real and live here. Site CI
+(`.github/workflows/site-ci.yml`) builds the site, checks the output routes
+and runs a dead-link check on pull requests and pushes that touch `site/**`.
+It does not deploy: Cloudflare Pages deploys on push to main.

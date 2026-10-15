@@ -44,7 +44,7 @@ Alongside the host hooks, trailhead installs a plain git `commit-msg` hook (a sm
 - no `Co-Authored-By` trailer;
 - while a `.trailhead/session-ticket` marker is present at the working root, a `Refs: #<n>` trailer matching the ticket number in that marker. A commit missing it is rejected with a message naming the ticket and the fix. A marker that cannot be parsed never blocks a commit, and with no marker the trailer is not required.
 
-The hook never wedges a commit: an unexpected error, a missing node, or a missing logic file lets the commit through. `git commit --no-verify` skips it, as with any git hook. Commits made while a stale marker is lying around would wrongly demand the trailer, which is why trailhead removes the marker at the handoff; see [Working as a team](/docs/teamwork).
+The hook never wedges a commit: an unexpected error, a missing node, or a missing logic file lets the commit through. In those cases it prints a one-line notice to stderr, `trailhead: commit-msg hook inactive (<reason>); commit rules not enforced.`, so you know the rules were not checked. `git commit --no-verify` skips it, as with any git hook. Commits made while a stale marker is lying around would wrongly demand the trailer, which is why trailhead removes the marker at the handoff; see [Working as a team](/docs/teamwork).
 
 **Keeping it installed.** trailhead runs a small sync script at chart or adopt time and at the start of every `work` and `quick`. It reports one of these outcomes:
 
