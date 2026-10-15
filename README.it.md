@@ -260,7 +260,7 @@ Ogni tipo ha il proprio motore inline: nessuna skill esterna viene invocata.
 | 🧭 `decision` | una scelta | HITL | diverge le opzioni se non chiare, poi grill per convergere su una |
 | 🔬 `research` | un fatto | AFK | un subagent su un branch usa-e-getta (l'unico tipo eseguito in parallelo) |
 | 🎨 `prototype` | una direzione approvata | HITL | un artefatto grezzo usa-e-getta a cui reagire; le schermate UI passano da qui (disco, un canvas Artifacts, o Stitch) prima del codice UI |
-| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **[prima un mockup](#-mockup-prima-del-codice) per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + [acceptance testing](#-acceptance-testing-uat) (chiede chi guida, AI o umano, poi browser-drive o UAT conversazionale passo-passo) |
+| 🔨 `build` | codice funzionante | HITL/AFK | `discuss → plan → execute → verify`: commit atomici, TDD ai seam, **[prima un mockup](#-mockup-prima-del-codice) per la UI rivolta all'utente** (tecnica Prototype, gated da `design.approval`), code review + [acceptance testing](#-acceptance-testing-uat) (chiede chi guida, AI o umano, o skip per rinunciare, poi browser-drive o UAT conversazionale passo-passo) |
 | 🐛 `bug` | codice corretto | HITL/AFK | `repro → diagnose → fix → verify`; un difetto in lavoro chiuso è un ticket *nuovo* (`Regression of:`), non una riapertura |
 | 🔧 `task` | un cambiamento di stato esterno | HITL/AFK | lavoro manuale che sblocca una decision (provisioning accessi, spostamento dati, iscrizioni) |
 
@@ -322,12 +322,12 @@ Dove `artifacts` non può girare (Codex, o una sessione con API key), trailhead 
 
 I test verdi provano che il codice fa ciò che il *codice* intendeva; l'acceptance testing prova che fa ciò che volevi *tu*. Per tutto ciò che si vede (una nuova schermata, dati che ora compaiono, un flusso cambiato), una suite verde **non chiude il ticket**: la Verify esegue anche una UAT, dopo i test e la code review.
 
-1. **Chiede chi guida.** Prima di ogni passo: **AI-driven** o **human-driven**. Attende una risposta chiara (il silenzio ripete la domanda). Se nessun passo è qualcosa che l'agente può fare in questa sessione (un dispositivo che non raggiunge, credenziali che non ha, un giudizio di feel o di suono), salta la domanda, passa a human-driven e ti dice perché in una riga.
+1. **Chiede chi guida.** Prima di ogni passo: **AI-driven**, **human-driven** o **skip**. Attende una risposta chiara (il silenzio ripete la domanda). Se nessun passo è qualcosa che l'agente può fare in questa sessione (un dispositivo che non raggiunge, credenziali che non ha, un giudizio di feel o di suono), toglie l'opzione AI-driven e chiede **human-driven** o **skip**, dicendoti perché in una riga. **Skip è una rinuncia, non un rinvio**: rinunci all'acceptance, il commento `VERIFY` la registra come `waived by the user (unconfirmed)`, cioè non confermata, mai come superata, e non si apre alcun follow-up. L'agente non lo sceglie mai al posto tuo, nemmeno sotto `/trailhead:auto`.
 2. **AI-driven: guida l'app da solo.** Per una web app trova da sé l'URL di destinazione (un dev server in esecuzione, lo script `dev`, la porta configurata del framework), te lo propone da confermare, poi naviga, compila, clicca e verifica cosa c'è a schermo, con uno **screenshot come prova** nel commento `VERIFY` del ticket. **Oltre al browser, guida qualsiasi dispositivo la sessione raggiunga**: un telefono o un emulatore via `adb`, un simulatore iOS, una smart TV, un'app desktop, tramite i comandi e i tool che hai collegato (un MCP di dispositivo, computer use, la CLI della piattaforma). Tornano a te solo i passi che davvero non può fare, uno alla volta.
 3. **Human-driven, o ciò che l'agente non raggiunge: una guida passo-passo.** Un dispositivo non collegato, un account che non ha, un giudizio di feel o di suono: trailhead ti accompagna **un passo alla volta in chat** (cosa fare, dove toccare, cosa dovresti vedere), attende ciò che hai effettivamente visto, poi va avanti. Mai una checklist scaricata addosso da sbrigare da solo.
 4. **Rispetto al mockup approvato.** Se il ticket ne aveva uno, la schermata costruita viene confrontata **elemento per elemento e stato per stato** (layout, spaziature, colore, tipografia, testi; vuoto, caricamento, errore, disabilitato…), partendo dal mockup riletto, mai a memoria. Una deviazione non forzata è un finding, non un "quasi uguale".
 5. **I fallimenti diventano ticket sul momento.** Un passo fallito registra atteso vs. visto e apre subito un follow-up `bug` (o un fix su questo ticket), poi chiede se proseguire.
-6. **Niente passa come "fatto".** Se la UAT non si può eseguire ora (il dispositivo non è a portata, il backend non è deployato), trailhead chiede: eseguirla adesso, o aprire un ticket di follow-up, collegato con una riga `UAT of:`, che porta la checklist completa. Un ticket rivolto all'utente non si chiude mai su una UAT che nessuno ha eseguito.
+6. **Niente passa come "fatto".** Se la UAT non si può eseguire ora (il dispositivo non è a portata, il backend non è deployato), trailhead chiede: eseguirla adesso, o aprire un ticket di follow-up, collegato con una riga `UAT of:`, che porta la checklist completa. Un ticket rivolto all'utente non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente (registrato come non confermato).
 
 ```text
 trailhead › Tests and review are green. Who drives the UAT: AI or you?   → AI
@@ -338,7 +338,7 @@ trailhead › ✓ Sign in with GitHub → lands on /dashboard        (screenshot
             ? Step 6 is the haptic on "Signed in": does it buzz once, softly?
 ```
 
-Config: `acceptance.browser` (`auto` default, `on`, `off`) governa la guida del browser; `off` mantiene i controlli AI-driven via comandi e suite, e chiede comunque chi guida. `testing.webapp` / `testing.url` dicono se l'app è guidabile da browser e dove. Sotto `/trailhead:auto` va in AI-driven; i passi che solo tu puoi fare non vengono mai simulati: il ticket viene messo da parte ed elencato nel riepilogo della run.
+Config: `acceptance.browser` (`auto` default, `on`, `off`) governa la guida del browser; `off` mantiene i controlli AI-driven via comandi e suite, e chiede comunque chi guida. `testing.webapp` / `testing.url` dicono se l'app è guidabile da browser e dove. Sotto `/trailhead:auto` va in AI-driven; i passi che solo tu puoi fare non vengono mai simulati: il ticket viene messo da parte ed elencato nel riepilogo della run, e non sceglie mai skip.
 
 ---
 
@@ -412,7 +412,7 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `design.system` | URL di un Design System Artifact | solo `artifacts`: il design system installato sul canvas dei mockup (chiesto alla prima schermata se non impostato) |
 | `design.approval` | **`explicit`** \| `auto` | attendi l'approvazione del mockup prima del codice UI, o procedi senza bloccare |
 | `tdd` | **`seams`** \| `on` \| `off` | come il motore `build` testa |
-| `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify (dopo aver chiesto chi guida, AI o umano); `off` esegue comunque controlli AI-driven via comandi, e ti accompagna in una UAT conversazionale per ciò che solo tu puoi fare (passo-passo in chat, non una checklist da fare da solo) |
+| `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify (dopo aver chiesto chi guida, AI o umano, o skip); `off` esegue comunque controlli AI-driven via comandi, e ti accompagna in una UAT conversazionale per ciò che solo tu puoi fare (passo-passo in chat, non una checklist da fare da solo) |
 | `testing.webapp` / `testing.url` | bool / URL | è browser-drivabile, e dove |
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |
