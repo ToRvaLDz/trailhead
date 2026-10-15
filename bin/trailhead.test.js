@@ -2068,8 +2068,8 @@ ok('source: no stale "eighteen labels" count remains in the shared skills',
   !/eighteen/.test(substrateCommandsSource) && !/eighteen/.test(substrateSource));
 ok('source: substrate-commands.md ensures trailhead:paused idempotently',
   /gh label create trailhead:paused --color FBCA04 --description "Paused: a PAUSED checkpoint holds its next step" 2>\/dev\/null \|\| true/.test(substrateCommandsSource));
-ok('source: substrate.md documents trailhead:paused as set by pause, cleared by resume or claim, off the frontier query',
-  /\*\*`trailhead:paused`\*\*[\s\S]{0,500}pause[\s\S]{0,200}resume[\s\S]{0,200}claim[\s\S]{0,300}frontier query/.test(substrateSource));
+ok('source: substrate.md documents trailhead:paused as set by pause, cleared by resume or claim, off the frontier (#263)',
+  /\*\*`trailhead:paused`\*\*[\s\S]{0,500}pause[\s\S]{0,200}resume[\s\S]{0,200}claim[\s\S]{0,400}excluded from the frontier/.test(substrateSource));
 const pauseBullet = (teamworkSource.match(/^- \*\*Pause\*\*.*$/m) || [''])[0];
 const resumeBullet = (teamworkSource.match(/^- \*\*Resume\*\*.*$/m) || [''])[0];
 ok('source: teamwork.md pause adds trailhead:paused (created idempotently) after the PAUSED comment',
@@ -2081,6 +2081,60 @@ ok('source: work SKILL.md claim step drops trailhead:paused from a claimed pause
   /\*\*Claim\*\* it:[\s\S]{0,1200}carries `trailhead:paused`[\s\S]{0,120}drops it at the claim/.test(workSkillSource));
 ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the claim',
   /^- \*\*Same isolation setup as `work`\.\*\*.*claimed ticket that carries `trailhead:paused` drops it at the claim/m.test(workSkillSource));
+
+// --- #263: a paused ticket is off the frontier on every surface ---
+{
+  const viewSkillSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-view', 'SKILL.md'), 'utf8');
+  const siteDocs = path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs');
+  const siteViewSource = fs.readFileSync(path.join(siteDocs, 'commands', 'view.md'), 'utf8');
+  const siteWorkSource = fs.readFileSync(path.join(siteDocs, 'commands', 'work.md'), 'utf8');
+  const changelogSource = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
+  const searchExprs = (src) => [...src.matchAll(/--search\s+"([^"]*no:assignee[^"]*)"/g)].map((m) => m[1]);
+  const base = 'no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused';
+  const wbExcl = `${base} -label:trailhead:whiteboard`;
+  const tally = (exprs) => exprs.reduce((acc, e) => ({ ...acc, [e]: (acc[e] || 0) + 1 }), {});
+  const sameTally = (got, want) => JSON.stringify(Object.entries(got).sort()) === JSON.stringify(Object.entries(want).sort());
+
+  ok('source: substrate-commands.md frontier queries each exclude paused (two repo-wide, four label-scoped or whiteboard or count)',
+    sameTally(tally(searchExprs(substrateCommandsSource)), { [wbExcl]: 2, [base]: 4 }));
+  ok('source: multi-map.md scoped frontier query excludes paused', sameTally(tally(searchExprs(multiMapSource)), { [base]: 1 }));
+  ok('source: trailhead-view SKILL.md whiteboard frontier query excludes paused', sameTally(tally(searchExprs(viewSkillSource)), { [base]: 1 }));
+  ok('source: the cookbook frontier comment says not paused',
+    /# the frontier: open, unassigned, not blocked, not unverified, not paused, one query/.test(substrateCommandsSource));
+
+  ok('source: substrate.md Frontier definition excludes trailhead:paused',
+    /\*\*Frontier\*\* = open, unassigned tickets that are \*\*not\*\* `trailhead:blocked`, \*\*not\*\* `trailhead:unverified` and \*\*not\*\* `trailhead:paused`/.test(substrateSource));
+  const pausedBullet = (substrateSource.match(/^- \*\*`trailhead:paused`\*\*.*$/m) || [''])[0];
+  ok('source: substrate.md paused bullet: excluded from the frontier, taken back with /trailhead:resume',
+    /excluded from the frontier/.test(pausedBullet) && /\/trailhead:resume/.test(pausedBullet));
+  ok('source: the old "does not change the frontier query" wording is gone',
+    !/does not change the frontier query/.test(substrateSource));
+
+  const paused = /^- \*\*In progress\*\*[^\n]*\n- \*\*Paused\*\*[^\n]*\/trailhead:resume <n>`[^\n]*\n- \*\*Blocked\*\*/gm;
+  ok('source: the map and whiteboard renders both list a Paused group between In progress and Blocked',
+    (viewSkillSource.match(paused) || []).length === 2);
+  ok('source: both render Frontier bullets say not paused',
+    (viewSkillSource.match(/^- \*\*Frontier\*\*:[^\n]*not[^\n]*`trailhead:paused`/gm) || []).length === 2);
+
+  ok('source: multi-map.md park & switch resumes with /trailhead:resume only',
+    /Resume later with `\/trailhead:resume`/.test(multiMapSource) && !/just `\/trailhead:work` once that map is active/.test(multiMapSource));
+
+  ok('source: work SKILL.md: bare work takes the paused-excluding frontier, a named work or quick still works a paused ticket',
+    /Otherwise take a frontier ticket[\s\S]{0,600}never a `trailhead:paused` ticket/.test(workSkillSource) &&
+    /If the user names one, use it[\s\S]{0,500}a named ticket may be[\s\S]{0,40}paused/.test(workSkillSource) &&
+    /carries `trailhead:paused` drops it at the claim/.test(workSkillSource));
+
+  ok('source: auto.md resumes owned paused tickets in step 2 and no longer says they come back on the frontier',
+    /\*\*each\*\* ticket you own[\s\S]{0,200}`trailhead:paused`/.test(autoSource) &&
+    !/paused\/stuck tickets are back on the frontier/.test(autoSource) && !/paused[^.\n]{0,40}back on the frontier/.test(autoSource));
+  ok('source: site work.md says a paused ticket is off the frontier until resumed',
+    /off the frontier until (it is )?resumed/.test(siteWorkSource));
+  ok('source: site view.md describes the Paused group off the frontier', /Paused/.test(siteViewSource) && /not paused|off the frontier/.test(siteViewSource));
+  const conceptsSource = fs.readFileSync(path.join(siteDocs, 'concepts.md'), 'utf8');
+  ok('source: concepts.md, README.md and README.it.md frontier definitions mention paused',
+    /not paused/.test(conceptsSource) && /not paused/.test(readmeSource) && /in pausa/.test(readmeItSource));
+  ok('source: CHANGELOG Unreleased > Changed has a #263 entry', /### Changed[\s\S]*?\(#263\)/.test(changelogSource.split('## 0.14.0')[0]));
+}
 
 for (const d of tmpDirs) {
   fs.rmSync(d, { recursive: true, force: true });
