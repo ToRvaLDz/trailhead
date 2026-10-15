@@ -26,8 +26,10 @@ export type PaneTicket = {
   url: string
 }
 
-// One open map of the repo, as the maps list shows it.
-export type MapSummary = { number: number; title: string }
+// A map's sub-issue counts: `open` still to do, `total` all of them.
+export type MapCounts = { open: number; total: number }
+// One open map of the repo, as the maps list shows it; `counts` null = unknown, drawn name-only.
+export type MapSummary = { number: number; title: string; counts: MapCounts | null }
 
 export type MapInfo = { number: number; title: string; destination: string | null; url: string }
 

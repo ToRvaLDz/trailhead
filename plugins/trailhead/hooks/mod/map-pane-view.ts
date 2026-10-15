@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, DashboardRef, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -146,7 +146,42 @@ export const parseMaps = (stdout: string): readonly MapSummary[] | null => {
   return raw
     .filter(isRecord)
     .filter(r => isPosInt(r.number))
-    .map((r): MapSummary => ({ number: r.number as number, title: typeof r.title === 'string' ? flatten(r.title) : '' }))
+    .map((r): MapSummary => ({ number: r.number as number, title: typeof r.title === 'string' ? flatten(r.title) : '', counts: null }))
+    .sort((a, b) => a.number - b.number)
+}
+
+const countsOf = (raw: unknown): MapCounts | null => {
+  if (!isRecord(raw)) return null
+  const { total, completed } = raw
+  if (!Number.isInteger(total) || !Number.isInteger(completed) || (total as number) < 0 || (completed as number) < 0) return null
+  return { open: Math.max(0, (total as number) - (completed as number)), total: total as number }
+}
+
+// The GraphQL reply of the maps read: the open maps with their sub-issue counts, same row rules as
+// `parseMaps`. A malformed summary keeps the row name-only. Not that shape, or any `errors` (even next
+// to partial `data`), is unreadable: the caller falls back to the name-only list.
+export const parseMapCounts = (stdout: string): readonly MapSummary[] | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || 'errors' in raw || !isRecord(raw.data)) return null
+  const repo = raw.data.repository
+  const issues = isRecord(repo) ? repo.issues : null
+  const nodes = isRecord(issues) ? issues.nodes : null
+  if (!Array.isArray(nodes)) return null
+  return nodes
+    .filter(isRecord)
+    .filter(r => isPosInt(r.number))
+    .map(
+      (r): MapSummary => ({
+        number: r.number as number,
+        title: typeof r.title === 'string' ? flatten(r.title) : '',
+        counts: countsOf(r.subIssuesSummary),
+      }),
+    )
     .sort((a, b) => a.number - b.number)
 }
 
@@ -190,19 +225,29 @@ export type MapRowLayout = {
 export type MapRowContext = { active: number | null; viewed: number | null; columns: number; isDashboard?: boolean }
 
 const ACTIVE_MARK = '● '
-const ACTIVE_ASIDE = ' active'
+const ACTIVE_LABEL = 'active'
+const ASIDE_SEP = ' · '
 
 // What one row of the maps list draws, cut to the pane width (a pressable row is a Button).
 export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout => {
   const isActive = m.number === ctx.active
   const isViewed = ctx.isDashboard !== true && m.number === viewTarget(ctx.active, ctx.viewed)
   const mark = isActive ? ACTIVE_MARK : '  '
-  const aside = isActive ? ACTIVE_ASIDE : null
+  const parts = [m.counts === null ? null : `${m.counts.open} open / ${m.counts.total}`, isActive ? ACTIVE_LABEL : null]
+  const shown = parts.filter((p): p is string => p !== null)
+  const aside = shown.length === 0 ? null : ` ${shown.join(ASIDE_SEP)}`
   const prefix = `#${m.number}`
   const isPressable = !isViewed
   const room = ctx.columns - mark.length - (aside?.length ?? 0) - (isPressable ? BUTTON_CHROME : 0) - prefix.length - 1
   const title = fit(m.title, room)
   return { mark, label: title === '' ? prefix : `${prefix} ${title}`, aside, isActive, isViewed, isPressable }
+}
+
+// The whiteboard heading with its counts over the listed (trusted) tickets; bare before the first good read.
+export const whiteboardHeading = (tickets: readonly PaneTicket[] | null, isCapped: boolean): string => {
+  if (tickets === null) return 'Whiteboard'
+  const open = isCapped ? `${LIST_LIMIT}+` : String(tickets.length)
+  return `Whiteboard · ${open} open · ${tickets.filter(t => t.assignees.length > 0).length} assigned`
 }
 
 const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number
