@@ -677,7 +677,7 @@ for (const phrase of [
   '**wait for an explicit answer**',
   '**silence or an ambiguous reply re-asks**',
   '**One-path skip**',
-  '**state the reason in one line**',
+  '**states the reason in one line**',
   'VERIFY',
   'only for the steps it cannot perform',
   'runs unchanged',
@@ -832,9 +832,8 @@ for (const phrase of [
   'never a pass',
   'the Pending-UAT guard does not fire',
   'no follow-up',
-  'never picks skip',
-  'delegate',
-  '`auto`',
+  'The delegate option never picks skip',
+  '`auto` never picks skip',
   'UAT of:',
   'closes as waived',
   'resolution comment',
@@ -846,9 +845,26 @@ const oneAskLine = driveModeSpan.split('\n').find((l) => l.startsWith('  - **One
 ok('source: one-path skip no longer suppresses the ask outright (drops only the AI-driven option)',
   oneAskLine.includes('drops only the AI-driven option') && oneAskLine.includes('human-driven or skip') && !oneAskLine.includes('skip the ask'));
 ok('source: one-path skip still states the reason in one line, naming the blocking class',
-  oneAskLine.includes('**state the reason in one line**') && oneAskLine.includes('blocking class'));
+  oneAskLine.includes('**states the reason in one line**') && oneAskLine.includes('blocking class') && !oneAskLine.includes('prefaced by'));
+ok('source: on the reduced ask (no performable step) the delegate option resolves to human-driven, never skip',
+  /delegate option resolves to human-driven \(never skip\)/.test(oneAskLine));
 ok('source: Pending-UAT bullet distinguishes a waiver from a deferral', pendingUatLine.includes('a waiver is not a deferral'));
+ok('source: Pending-UAT bullet pins the waiver exception (picked skip, recorded as unconfirmed, nothing opened)',
+  /The one exception is an explicit waiver[^.]*\. The human picked skip at the drive-mode ask[^.]*unconfirmed in `VERIFY`[^.]*nothing is opened/.test(pendingUatLine));
+const waiverResolveRe = /resolv(e|ing) on a confirmed pass, or on an explicit waiver if the user skips at the ask/;
+ok('source: Pending-UAT bullet option (a) resolves on a confirmed pass or an explicit waiver',
+  waiverResolveRe.test(pendingUatLine) && !pendingUatLine.includes('only on a confirmed pass'));
+ok('source: both ticket-engines Resolve lines let option (a) resolve on a confirmed pass or an explicit waiver',
+  guardLines254Early().length === 2 && guardLines254Early().every((l) => waiverResolveRe.test(l) && !l.includes('only on a confirmed pass')));
+ok('source: with-no-ticket preflight-then-ask phrase still occurs exactly twice in ticket-engines.md',
+  ticketEnginesSource.split('with no ticket (the stale-base preflight first, then the drive-mode ask').length - 1 === 2);
+ok('source: both Verify steps let the user skip, recorded as waived',
+  verifyStepLines.length === 2 && verifyStepLines.every((l) => /or skip \(waive acceptance\), recorded as waived/.test(l)));
+ok('source: techniques.md index row and auto.md lead-in name skip',
+  /ask who drives \(AI or human, or skip\)/.test(fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'techniques.md'), 'utf8')) &&
+  autoSource.includes('drive-mode ask (AI-driven, human-driven, or skip)'));
 
+function guardLines254Early() { return ticketEnginesSource.split('\n').filter((l) => l.includes('Pending-UAT guard (before the close)')); }
 const guardLines254 = ticketEnginesSource.split('\n').filter((l) => l.includes('Pending-UAT guard (before the close)'));
 ok('source: both Pending-UAT guard lines say the guard does not fire when acceptance was explicitly waived',
   guardLines254.length === 2 && guardLines254.every((l) => l.includes('explicitly waived')));
@@ -858,26 +874,28 @@ ok('source: the UAT follow-ups section closes on a confirmed pass or an explicit
   uatFollowupSection.includes('confirmed pass or an explicit waiver') && uatFollowupSection.includes('closes as waived'));
 const driveRowLine = choicesSource.split('\n').find((l) => /^\|[^\n]*[Dd]rive-mode ask/.test(l)) || '';
 ok('source: choices.md drive-mode row names skip and states delegate never picks it',
-  driveRowLine.includes('skip') && /delegate never picks (it|skip)/.test(driveRowLine));
+  driveRowLine.includes('skip') && /delegate never picks skip/.test(driveRowLine) && driveRowLine.includes('reduced ask') && driveRowLine.includes('human-driven'));
 ok('source: configuration-reference.md acceptance.browser paragraph names skip alongside AI-driven / human-driven',
   /\*\*acceptance\.browser\.\*\*[\s\S]{0,200}human-driven,? or skip/.test(configReferenceSource));
 ok('source: auto.md states auto never picks skip', /never picks skip[^\n]*waiving acceptance/.test(autoSource));
 
 // Docs mirror: README, README.it, site (waiver recorded as unconfirmed; no unconditional "never closes").
 ok('README.md acceptance testing section names the waiver (skip) recorded as unconfirmed',
-  /Acceptance testing \(UAT\)[\s\S]{0,4000}waive[\s\S]{0,200}unconfirmed/.test(readmeSource));
+  /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(readmeSource));
 ok('README.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(readmeSource));
 ok('README.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(readmeSource));
+ok('docs: auto never-picks-skip antecedent is the auto run, in all three docs',
+  /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(readmeSource) && /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource) && /elencato nel riepilogo della run; `\/trailhead:auto` non sceglie mai skip/.test(readmeItSource));
 ok('README.md build row and acceptance.browser row name skip',
   /🔨 `build`[\s\S]{0,500}or skip/.test(readmeSource) && /`acceptance\.browser`[\s\S]{0,300}or skip/.test(readmeSource));
 ok('README.it.md acceptance testing section names the waiver (skip) recorded as unconfirmed',
-  /Acceptance testing \(UAT\)[\s\S]{0,4500}rinuncia[\s\S]{0,300}non confermat/.test(readmeItSource));
+  /\*\*Skip è una rinuncia, non un rinvio\*\*[^\n]{0,160}`waived by the user \(unconfirmed\)`, cioè non confermata/.test(readmeItSource));
 ok('README.it.md no-performable-step case asks human-driven o skip', /human-driven\*\* o \*\*skip\*\*/.test(readmeItSource));
 ok('README.it.md point 6 allows an explicit waiver', /non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente/.test(readmeItSource));
 ok('README.it.md build row and acceptance.browser row name skip',
   /🔨 `build`[\s\S]{0,500}o skip/.test(readmeItSource) && /`acceptance\.browser`[\s\S]{0,300}o skip/.test(readmeItSource));
 const siteAcceptanceSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'acceptance-testing.md'), 'utf8');
-ok('site acceptance-testing.md names the waiver (skip) recorded as unconfirmed', /waive[\s\S]{0,200}unconfirmed/.test(siteAcceptanceSource));
+ok('site acceptance-testing.md names the waiver (skip) recorded as unconfirmed', /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(siteAcceptanceSource));
 ok('site ticket-types.md build row and configuration.mdx acceptance.browser row name skip',
