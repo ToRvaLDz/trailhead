@@ -147,6 +147,12 @@ ok('codex: base-preflight helper projected', fs.existsSync(codexBasePreflight));
 ok('codex: base-preflight helper is byte-identical to source',
   fs.readFileSync(codexBasePreflight, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-base-preflight.js'), 'utf8'));
 ok('codex: base-preflight helper keeps its executable bit', (fs.statSync(codexBasePreflight).mode & 0o111) !== 0);
+// #252: the UAT setup helper rides in templates/ on Codex too, executable.
+const codexUatSetup = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-uat-setup.js');
+ok('codex: uat-setup helper projected', fs.existsSync(codexUatSetup));
+ok('codex: uat-setup helper is byte-identical to source',
+  fs.readFileSync(codexUatSetup, 'utf8') === fs.readFileSync(path.join(repoRoot, 'plugins', 'trailhead', 'templates', 'trailhead-uat-setup.js'), 'utf8'));
+ok('codex: uat-setup helper keeps its executable bit', (fs.statSync(codexUatSetup).mode & 0o111) !== 0);
 // Il sync del label guard (migrazione all'if a livello di job) viaggia con templates/.
 const codexLabelGuardSync = path.join(codexDir, 'skills', 'trailhead', 'templates', 'trailhead-label-guard-sync.js');
 ok('codex: label-guard-sync script is byte-identical to source', fs.existsSync(codexLabelGuardSync) &&
