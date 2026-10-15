@@ -20,11 +20,14 @@ import {
   parseMaps,
   parseMapsRead,
   parseTickets,
+  parseUatParents,
   rasterCells,
   refreshDecision,
   rowLayout,
   sparkline,
+  uatParentLine,
   viewTarget,
+  withUatParents,
   whiteboardHeading,
   whiteboardRowLayout,
 } from '../hooks/mod/map-pane-view'
@@ -63,10 +66,10 @@ test('parseTickets maps a gh list to rows with type, state and holders', () => {
   )
   expect(out?.unverifiedCount).toBe(0)
   expect(out?.tickets).toEqual([
-    { number: 209, title: 'Burn-down view', type: 'build', state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209' },
-    { number: 212, title: 'Held', type: 'research', state: 'in-progress', assignees: ['alice'], url: 'https://github.com/o/r/issues/209' },
-    { number: 211, title: 'Gated', type: 'bug', state: 'blocked', assignees: ['bob'], url: 'https://github.com/o/r/issues/209' },
-    { number: 214, title: 'No type', type: null, state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209' },
+    { number: 209, title: 'Burn-down view', type: 'build', state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
+    { number: 212, title: 'Held', type: 'research', state: 'in-progress', assignees: ['alice'], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
+    { number: 211, title: 'Gated', type: 'bug', state: 'blocked', assignees: ['bob'], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
+    { number: 214, title: 'No type', type: null, state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
   ])
 })
 
@@ -172,6 +175,76 @@ test('parseTickets: a paused label wins over blocked and in-progress, with the h
   expect(state(['trailhead:build', 'trailhead:paused', 'trailhead:blocked'], ['alice'])).toMatchObject({ state: 'paused', assignees: ['alice'] })
   expect(state(['trailhead:build', 'trailhead:paused'], ['alice'])?.state).toBe('paused')
   expect(state(['trailhead:build'], ['alice'])?.state).toBe('in-progress')
+})
+
+test('parseTickets sets isUat from the trailhead:uat label, with no parent yet', () => {
+  const t = (...names: string[]) => parseTickets(list(issue({ labels: labels(...names) })))?.tickets[0]
+  expect(t('trailhead:task', 'trailhead:uat')).toMatchObject({ isUat: true, uatOf: null, state: 'frontier' })
+  expect(t('trailhead:task')).toMatchObject({ isUat: false, uatOf: null })
+  // a marker, not a state: the state is unchanged
+  expect(t('trailhead:seed', 'trailhead:blocked', 'trailhead:uat')).toMatchObject({ isUat: true, state: 'blocked' })
+})
+
+const body = (text: string, number = 5) => ({ number, body: text })
+const uatList = (...rows: unknown[]) => JSON.stringify(rows)
+
+test('parseUatParents maps a ticket to the parent named by its UAT of: line', () => {
+  const out = parseUatParents(
+    uatList(
+      body('Intro\n\nUAT of: [Burn-down view](https://github.com/o/r/issues/209)\n\n- [ ] step', 301),
+      body('UAT of: #210', 302),
+      body('no pointer here', 303),
+      body('mentions UAT of: [x](https://github.com/o/r/issues/1) mid-line', 304),
+      body('UAT of: [Win](https://github.com/o/r/issues/212)\r\nmore', 305),
+    ),
+  )
+  expect(out?.get(301)).toEqual({ number: 209, title: 'Burn-down view' })
+  expect(out?.get(302)).toEqual({ number: 210, title: '' })
+  expect(out?.get(303)).toBeUndefined()
+  expect(out?.get(304)).toBeUndefined()
+  expect(out?.get(305)).toEqual({ number: 212, title: 'Win' })
+})
+
+test('parseUatParents strips control characters from a parent title and skips unusable rows', () => {
+  const out = parseUatParents(
+    uatList(body('UAT of: [a\u0007b​c‮d](https://github.com/o/r/issues/7)', 1), { number: 'x', body: 'UAT of: #3' }, { number: 2, body: 5 }, 'junk', body('UAT of: [t](https://example.com/nope)', 3)),
+  )
+  expect(out?.get(1)).toEqual({ number: 7, title: 'abcd' })
+  expect(out?.size).toBe(1)
+})
+
+test('parseUatParents is null on non-JSON or a non-list', () => {
+  expect(parseUatParents('{nope')).toBeNull()
+  expect(parseUatParents('{}')).toBeNull()
+})
+
+test('withUatParents sets the parent on a UAT ticket only, and leaves the tickets alone without a read', () => {
+  const t = (number: number, isUat: boolean) => ({ number, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat, uatOf: null })
+  const tickets = [t(1, true), t(2, false), t(3, true)]
+  const out = withUatParents(tickets, new Map([[1, { number: 9, title: 'P' }], [2, { number: 8, title: 'Q' }]]))
+  expect(out.map(x => x.uatOf)).toEqual([{ number: 9, title: 'P' }, null, null])
+  expect(tickets[0]?.uatOf).toBeNull()
+  expect(withUatParents(tickets, null)).toEqual(tickets)
+})
+
+test('uatParentLine draws tests <title> #<n>, fitted to the width, and nothing without a parent', () => {
+  const t = (uatOf: { number: number; title: string } | null) => ({ number: 1, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat: true, uatOf })
+  expect(uatParentLine(t(null), 60)).toBeNull()
+  expect(uatParentLine(t({ number: 209, title: 'Burn-down view' }), 60)).toBe('tests Burn-down view #209')
+  expect(uatParentLine(t({ number: 210, title: '' }), 60)).toBe('tests #210')
+  const cut = uatParentLine(t({ number: 209, title: 'x'.repeat(200) }), 30) as string
+  expect(Array.from(cut).length).toBe(30)
+  expect(cut.endsWith('… #209')).toBe(true)
+})
+
+test('groupTickets lists a UAT ticket once, under UAT, ascending; a paused one stays under Paused', () => {
+  const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked' | 'paused', isUat: boolean) => ({
+    number, title: '', type: null, state, assignees: [], url: '', isUat, uatOf: null,
+  })
+  const g = groupTickets([t(9, 'frontier', true), t(4, 'blocked', true), t(6, 'in-progress', true), t(7, 'paused', true), t(2, 'frontier', false), t(3, 'blocked', false)])
+  expect(g.uat.map(x => x.number)).toEqual([4, 6, 9])
+  expect(g.paused.map(x => x.number)).toEqual([7])
+  expect([g.frontier, g.inProgress, g.blocked].map(x => x.map(y => y.number))).toEqual([[2], [], [3]])
 })
 
 test('failureReason names one short cause', () => {

@@ -66,6 +66,8 @@ const MAPS_QUERY =
   'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
 const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
+// The pending-UAT read of one scope (a map label, or the whiteboard): the tickets with their bodies.
+const uatCall = (scope: string) => ['gh', 'issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', '200', '--json', 'number,body']
 const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql'
 const isMapsList = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:map')
 const OTHER_TICKETS = [issue(140, 'Old frontier ticket', ['trailhead:build']), issue(141, 'Old held ticket', ['trailhead:task'], ['carol'])]
@@ -129,6 +131,8 @@ const rig = (on: On, engine?: any) => {
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
     whiteboard: WHITEBOARD as unknown[],
+    // The UAT read's answer: one row per UAT ticket, `{ number, body }`; null makes the read fail.
+    uat: [] as unknown[] | null,
     dashboard: DASHBOARD as unknown[],
     gh: null as Gh | null,
     // What `gh` answers when no test replaced it; a test can wrap it.
@@ -160,6 +164,7 @@ const rig = (on: On, engine?: any) => {
     },
   }
   const defaultGh: Gh = argv => {
+    if (argv.includes('trailhead:uat')) return r.uat === null ? { exitCode: 1, stdout: '', stderr: 'boom' } : ok(JSON.stringify(r.uat))
     if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
     if (isGraphql(argv)) {
@@ -274,7 +279,7 @@ const settle = async (r: Rig) => {
   for (let i = 0; i < 10; i += 1) await r.clock.settle()
 }
 // The open-list reads; the history read rides along with each and is not counted.
-const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('open') && !argv.includes('trailhead:map')).length
+const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('open') && !argv.includes('trailhead:map') && !argv.includes('trailhead:uat')).length
 // A gh that answers as the default does, except for the history read.
 const withHistory = (r: Rig, answer: GhOut): Gh => argv => {
   if (argv.includes('all')) return answer
@@ -307,6 +312,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
       MAPS_CALL,
+      uatCall('trailhead:map-198'),
     ])
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect((await ui.find({ type: 'Link' }))?.props).toMatchObject({ href: `${URL}/198` })
@@ -350,6 +356,78 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'row-215' })).toBeUndefined()
     expect(await textOf(ui, 'unverified')).toBe('1 unverified ticket hidden (quarantined)')
     expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
+
+  test(`a UAT ticket sits under UAT between In progress and Paused, with its parent line and its work button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    r.tickets = [
+      ...TICKETS,
+      issue(240, 'UAT of the burn-down', ['trailhead:task', 'trailhead:uat']),
+      issue(241, 'Device UAT seed', ['trailhead:seed', 'trailhead:blocked', 'trailhead:uat']),
+      issue(242, 'Held UAT', ['trailhead:task', 'trailhead:uat'], ['alice']),
+      issue(243, 'Paused UAT', ['trailhead:task', 'trailhead:uat', 'trailhead:paused']),
+    ]
+    r.uat = [
+      { number: 240, body: `Run it\n\nUAT of: [Burn-down view of the map](${URL}/209)\n` },
+      { number: 241, body: `UAT of: #212` },
+      { number: 243, body: `UAT of: [Paused parent](${URL}/150)` },
+    ]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    expect(await textOf(ui, 'head-uat')).toBe('UAT · 3')
+    expect((await ui.find({ key: 'head-uat' }))?.children[0]).toMatchObject({ props: { bold: true } })
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-frontier', 'group-in-progress', 'group-uat', 'group-paused', 'group-blocked'])
+    // each ticket once: a UAT row is in no other group, a paused UAT stays under Paused
+    expect(await keysOf(ui, 'row-')).toEqual([
+      'row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-240', 'row-241', 'row-242', 'row-243', 'row-211', 'row-213',
+    ])
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
+    expect(await textOf(ui, 'head-paused')).toBe('Paused · 1')
+    // the parent line, dim, under the row; none without a parent
+    expect(await textOf(ui, 'uat-of-240')).toBe('tests Burn-down view of the map #209')
+    expect((await ui.find({ key: 'uat-of-240' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    expect(await textOf(ui, 'uat-of-241')).toBe('tests #212')
+    expect(await hasKey(ui, 'uat-of-242')).toBe(false)
+    expect(await textOf(ui, 'uat-of-243')).toBe('tests Paused parent #150')
+    // a marker, not a state: a frontier UAT task keeps its work button, a held one its holder, a seed stays dim
+    expect(await hasKey(ui, 'work-240')).toBe(true)
+    expect(await textOf(ui, 'holder-242')).toBe('@alice')
+    expect(await hasKey(ui, 'work-242')).toBe(false)
+    expect(await hasKey(ui, 'work-241')).toBe(false)
+    expect((await ui.find({ key: 'ticket-241' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+  })
+
+  test(`no UAT ticket draws no UAT group [${surface}]`, async ($, on) => {
+    const none = rig(on, $)
+    await $.session.start(START)
+    const ui0 = await openAndMount($, none)
+    expect(await hasKey(ui0, 'group-uat')).toBe(false)
+  })
+
+  test(`a failed UAT read draws the UAT rows without the parent line, no error [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [...TICKETS, issue(240, 'UAT of the burn-down', ['trailhead:task', 'trailhead:uat'])]
+    r.uat = null
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
+    expect(await hasKey(ui, 'uat-of-240')).toBe(false)
+    expect(await hasKey(ui, 'error')).toBe(false)
+  })
+
+  test(`the dashboard view groups UAT whiteboard tickets with their parent, reading the whiteboard scope [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = [...WHITEBOARD, issue(306, 'Loose UAT', [...WB, 'trailhead:task', 'trailhead:uat'])]
+    r.uat = [{ number: 306, body: `UAT of: [Loose parent](${URL}/290)` }]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(r.calls.some(argv => JSON.stringify(argv) === JSON.stringify(uatCall('trailhead:whiteboard')))).toBe(true)
+    expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
+    expect(await textOf(ui, 'uat-of-306')).toBe('tests Loose parent #290')
   })
 
   test(`a paused ticket sits under Paused between In progress and Blocked, with no work button [${surface}]`, async ($, on) => {
@@ -1315,11 +1393,12 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'burndown-counts')).toBe('open 2 · done 0 · removed 0 · peak 2')
     // the ticket in play belongs to the other map: nothing here is marked
     expect(await hasKey(ui, 'mark-208')).toBe(false)
-    expect(r.calls.slice(-4).map(argv => argv.slice(0, 4))).toEqual([
+    expect(r.calls.slice(-5).map(argv => argv.slice(0, 4))).toEqual([
       ['gh', 'issue', 'view', '14'],
       ['gh', 'issue', 'list', '--label'],
       ['gh', 'issue', 'list', '--label'],
       ['gh', 'api', 'graphql', '-F'],
+      ['gh', 'issue', 'list', '--label'],
     ])
     expect(r.calls.some(argv => argv.includes('trailhead:map-14'))).toBe(true)
 
@@ -1525,6 +1604,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
       ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
       MAPS_CALL,
+      uatCall('trailhead:whiteboard'),
     ])
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
     expect((await ui.find({ key: 'dashboard-title' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })

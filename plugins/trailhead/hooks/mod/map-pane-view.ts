@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapsRead, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapsRead, MapSummary, PaneTicket, TicketState, TicketType, UatParent } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -10,6 +10,7 @@ export type ParsedTickets = { tickets: readonly PaneTicket[]; unverifiedCount: n
 export type TicketGroups = {
   frontier: readonly PaneTicket[]
   inProgress: readonly PaneTicket[]
+  uat: readonly PaneTicket[]
   paused: readonly PaneTicket[]
   blocked: readonly PaneTicket[]
 }
@@ -93,9 +94,50 @@ export const parseTickets = (stdout: string, opts: { isWhiteboard?: boolean } = 
         state: stateOf(names, assignees),
         assignees,
         url: safeUrl(r.url),
+        isUat: names.includes(`${LABEL_PREFIX}uat`),
+        uatOf: null,
       }
     })
   return { tickets, unverifiedCount, isCapped: raw.length >= LIST_LIMIT }
+}
+
+// `gh issue list --label trailhead:uat ... --json number,body`: ticket number -> the parent its first
+// `UAT of:` line names, `[<name>](<url>/issues/<n>)` (or a bare `#<n>`, with an empty title). A row with
+// no such line, or an unreadable one, is skipped; not a list is unreadable (null).
+export const parseUatParents = (stdout: string): ReadonlyMap<number, UatParent> | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  const parents = new Map<number, UatParent>()
+  for (const r of raw.filter(isRecord)) {
+    if (!isPosInt(r.number) || typeof r.body !== 'string') continue
+    const line = r.body.split(/\r?\n/).find(l => l.startsWith('UAT of:'))
+    if (line === undefined) continue
+    const pointer = line.slice('UAT of:'.length).trim()
+    const link = /^\[([^\]]*)\]\(https:\/\/[^)\s]*\/issues\/(\d+)[^)]*\)/.exec(pointer)
+    const bare = /^#(\d+)\b/.exec(pointer)
+    const found = link !== null ? { number: Number(link[2]), title: flatten(link[1] as string) } : bare !== null ? { number: Number(bare[1]), title: '' } : null
+    if (found !== null && isPosInt(found.number)) parents.set(r.number, found)
+  }
+  return parents
+}
+
+// The tickets with the parent of each UAT one; a missing read leaves them as they are.
+export const withUatParents = (tickets: readonly PaneTicket[], parents: ReadonlyMap<number, UatParent> | null): readonly PaneTicket[] =>
+  parents === null ? tickets : tickets.map(t => (t.isUat ? { ...t, uatOf: parents.get(t.number) ?? null } : t))
+
+// The dim line under a UAT row, `tests <parent title> #<n>`, cut to the pane width; null without a parent.
+export const uatParentLine = (t: PaneTicket, columns: number): string | null => {
+  if (t.uatOf === null) return null
+  const suffix = ` #${t.uatOf.number}`
+  const prefix = 'tests'
+  if (t.uatOf.title === '') return fit(`${prefix}${suffix}`, columns)
+  const title = fit(t.uatOf.title, columns - prefix.length - 1 - suffix.length)
+  return `${prefix} ${title}${suffix}`
 }
 
 // Markdown emphasis, code ticks and links reduced to their text.
@@ -280,9 +322,13 @@ export const whiteboardHeading = (tickets: readonly PaneTicket[] | null, isCappe
 
 const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number
 
+// Paused wins, then a UAT ticket (whatever its state), then the state: each ticket shows once.
+type Place = TicketState | 'uat'
+const placeOf = (t: PaneTicket): Place => (t.state === 'paused' ? 'paused' : t.isUat ? 'uat' : t.state)
+
 export const groupTickets = (tickets: readonly PaneTicket[]): TicketGroups => {
-  const of = (state: TicketState) => tickets.filter(t => t.state === state).sort(byNumber)
-  return { frontier: of('frontier'), inProgress: of('in-progress'), paused: of('paused'), blocked: of('blocked') }
+  const of = (place: Place) => tickets.filter(t => placeOf(t) === place).sort(byNumber)
+  return { frontier: of('frontier'), inProgress: of('in-progress'), uat: of('uat'), paused: of('paused'), blocked: of('blocked') }
 }
 
 const errorText = (err: unknown): string => {

@@ -17,6 +17,9 @@ export type PromptSnapshot = { key: string; text: string | null }
 export type TicketType = 'decision' | 'research' | 'prototype' | 'build' | 'bug' | 'task'
 export type TicketState = 'frontier' | 'in-progress' | 'paused' | 'blocked'
 
+// The parent a pending UAT ticket tests (from its `UAT of:` body line); title is empty for a bare `#<n>`.
+export type UatParent = { number: number; title: string }
+
 export type PaneTicket = {
   number: number
   title: string
@@ -24,6 +27,10 @@ export type PaneTicket = {
   state: TicketState
   assignees: readonly string[]
   url: string
+  // Carries `trailhead:uat`: a marker beside `state`, only the grouping moves it (paused still wins).
+  isUat: boolean
+  // The parent it tests, once read; null when unknown (no body read, or no usable `UAT of:` line).
+  uatOf: UatParent | null
 }
 
 // A map's sub-issue counts: `open` still to do, `total` all of them.

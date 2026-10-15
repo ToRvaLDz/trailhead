@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, UatParent, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
@@ -27,11 +27,14 @@ import {
   parseMaps,
   parseMapsRead,
   parseTickets,
+  parseUatParents,
   rasterCells,
   refreshDecision,
   rowLayout,
   sparkline,
+  uatParentLine,
   viewTarget,
+  withUatParents,
   whiteboardHeading,
   whiteboardRowLayout,
 } from './map-pane-view'
@@ -47,6 +50,7 @@ export const GH_TIMEOUT_MS = 20_000
 const AGE_REFRESH_MS = 60_000
 const ACTIVE_MAP_PATH = '.trailhead/active-map'
 const TICKET_FIELDS = 'number,title,labels,assignees,url'
+const UAT_FIELDS = 'number,body'
 const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
@@ -169,7 +173,15 @@ const readList = ($: Dollar, target: number) =>
     gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
     gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
     readMaps($),
+    readUat($, `trailhead:map-${target}`),
   ])
+
+// The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent
+// each one tests. A failed or unreadable read is null: the rows still group by label, only the parent line goes.
+const readUat = async ($: Dollar, scope: string): Promise<ReadonlyMap<number, UatParent> | null> => {
+  const out = await gh($, ['issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', UAT_FIELDS])
+  return out.ok ? parseUatParents(out.stdout) : null
+}
 
 // The open maps of the repo and the whiteboard's counts. A failed or unreadable maps read is null: the
 // caller keeps the last good list. One GraphQL call gives every map with its sub-issue counts and the
@@ -224,7 +236,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
     await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, isLoading: true })
   }
 
-  const [view, list, historyRead, mapsRead] = await readList($, target)
+  const [view, list, historyRead, mapsRead, uatParents] = await readList($, target)
   const maps = mapsRead.maps ?? before.maps
   const { whiteboard } = mapsRead
   await dropClosedView($, mapsRead.maps)
@@ -241,7 +253,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
   // A history that failed alone keeps the last good one of this map (with its own time), never another map's.
   const history = historyRead.ok ? parseHistory(historyRead.stdout) : null
   const historyPart = history !== null ? { history, historyAt: now } : { history: kept.history, historyAt: kept.historyAt }
-  const next: MapPaneData = { map, ...tickets, maps, whiteboard, ...historyPart, fetchedAt: now, error: null, isLoading: false }
+  const next: MapPaneData = { map, ...tickets, tickets: withUatParents(tickets.tickets, uatParents), maps, whiteboard, ...historyPart, fetchedAt: now, error: null, isLoading: false }
   const isFresh = before.fetchedAt !== null && now - before.fetchedAt < AGE_REFRESH_MS
   if (isFresh && isSameMap && sameValue(shape(before), shape(next))) return
   await setPane($, next)
@@ -260,10 +272,11 @@ async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void
   if (before.fetchedAt === null && !before.isLoading && before.error === null) {
     await update($, dashboardPane, () => ({ ...before, isLoading: true }))
   }
-  const [list, index, mapsRead] = await Promise.all([
+  const [list, index, mapsRead, uatParents] = await Promise.all([
     gh($, ['issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
     gh($, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
     readMaps($),
+    readUat($, 'trailhead:whiteboard'),
   ])
   const now = await $.clock.now()
   if (await isStale()) return
@@ -278,7 +291,7 @@ async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void
   // A failed index read alone keeps the last link: the list is what the view is about.
   const parsed = index.ok ? parseDashboard(index.stdout) : null
   const dashboard = parsed === null ? kept.dashboard : parsed.ref
-  const next: DashboardPaneData = { dashboard, ...tickets, fetchedAt: now, error: null, isLoading: false }
+  const next: DashboardPaneData = { dashboard, ...tickets, tickets: withUatParents(tickets.tickets, uatParents), fetchedAt: now, error: null, isLoading: false }
   if (!sameValue(kept, next)) await update($, dashboardPane, () => next)
 }
 
@@ -608,7 +621,7 @@ export function registerMapPane(on: On) {
       const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isDim ? dim : {}
-      return (
+      const line = (
         <Box key={`row-${t.number}`} width={cols} justifyContent="space-between">
           <Box>
             {r.mark === null ? null : text(`mark-${t.number}`, r.isInPlay ? accent : {}, r.mark)}
@@ -628,6 +641,15 @@ export function registerMapPane(on: On) {
               onPress={() => void startWork($, t.number).catch(err => debug($, `trailhead mod: work press failed: ${String(err)}`))}
             />
           ) : null}
+        </Box>
+      )
+      const parent = uatParentLine(t, cols)
+      return parent === null ? (
+        line
+      ) : (
+        <Box key={`entry-${t.number}`} flexDirection="column">
+          {line}
+          {text(`uat-of-${t.number}`, dim, parent)}
         </Box>
       )
     }
@@ -651,6 +673,7 @@ export function registerMapPane(on: On) {
       return [
         group('frontier', 'Frontier', groups.frontier),
         group('in-progress', 'In progress', groups.inProgress),
+        group('uat', 'UAT', groups.uat),
         group('paused', 'Paused', groups.paused),
         group('blocked', 'Blocked', groups.blocked),
       ]
