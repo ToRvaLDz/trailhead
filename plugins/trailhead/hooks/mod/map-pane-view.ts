@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
+import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapsRead, MapSummary, PaneTicket, TicketState, TicketType } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -157,10 +157,22 @@ const countsOf = (raw: unknown): MapCounts | null => {
   return { open: Math.max(0, (total as number) - (completed as number)), total: total as number }
 }
 
+// A GraphQL `totalCount` as a count, else null.
+const totalOf = (raw: unknown): number | null =>
+  isRecord(raw) && Number.isInteger(raw.totalCount) && (raw.totalCount as number) >= 0 ? (raw.totalCount as number) : null
+
+// The whiteboard's open and total tickets; unusable (missing, negative, open above total) is unknown.
+const whiteboardOf = (repo: Record<string, unknown>): MapCounts | null => {
+  const open = totalOf(repo.whiteboardOpen)
+  const total = totalOf(repo.whiteboardAll)
+  return open === null || total === null || open > total ? null : { open, total }
+}
+
 // The GraphQL reply of the maps read: the open maps with their sub-issue counts, same row rules as
-// `parseMaps`. A malformed summary keeps the row name-only. Not that shape, or any `errors` (even next
-// to partial `data`), is unreadable: the caller falls back to the name-only list.
-export const parseMapCounts = (stdout: string): readonly MapSummary[] | null => {
+// `parseMaps`, and the whiteboard's counts. A malformed summary keeps the row name-only; unusable
+// whiteboard fields leave only `whiteboard` null. Not that shape, or any `errors` (even next to
+// partial `data`), is unreadable: the caller falls back to the name-only list.
+export const parseMapsRead = (stdout: string): MapsRead | null => {
   let raw: unknown
   try {
     raw = JSON.parse(stdout)
@@ -171,8 +183,8 @@ export const parseMapCounts = (stdout: string): readonly MapSummary[] | null => 
   const repo = raw.data.repository
   const issues = isRecord(repo) ? repo.issues : null
   const nodes = isRecord(issues) ? issues.nodes : null
-  if (!Array.isArray(nodes)) return null
-  return nodes
+  if (!isRecord(repo) || !Array.isArray(nodes)) return null
+  const maps = nodes
     .filter(isRecord)
     .filter(r => isPosInt(r.number))
     .map(
@@ -183,6 +195,7 @@ export const parseMapCounts = (stdout: string): readonly MapSummary[] | null => 
       }),
     )
     .sort((a, b) => a.number - b.number)
+  return { maps, whiteboard: whiteboardOf(repo) }
 }
 
 // `gh issue list --label trailhead:dashboard --json number,url`: the pinned index, the lowest number
@@ -228,12 +241,15 @@ const ACTIVE_MARK = '● '
 const ACTIVE_LABEL = 'active'
 const ASIDE_SEP = ' · '
 
+// `<open> open / <total>`: the counts beside a map or the whiteboard.
+export const countsLabel = (c: MapCounts): string => `${c.open} open / ${c.total}`
+
 // What one row of the maps list draws, cut to the pane width (a pressable row is a Button).
 export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout => {
   const isActive = m.number === ctx.active
   const isViewed = ctx.isDashboard !== true && m.number === viewTarget(ctx.active, ctx.viewed)
   const mark = isActive ? ACTIVE_MARK : '  '
-  const parts = [m.counts === null ? null : `${m.counts.open} open / ${m.counts.total}`, isActive ? ACTIVE_LABEL : null]
+  const parts = [m.counts === null ? null : countsLabel(m.counts), isActive ? ACTIVE_LABEL : null]
   const shown = parts.filter((p): p is string => p !== null)
   const aside = shown.length === 0 ? null : ` ${shown.join(ASIDE_SEP)}`
   const prefix = `#${m.number}`
@@ -241,6 +257,18 @@ export const mapRowLayout = (m: MapSummary, ctx: MapRowContext): MapRowLayout =>
   const room = ctx.columns - mark.length - (aside?.length ?? 0) - (isPressable ? BUTTON_CHROME : 0) - prefix.length - 1
   const title = fit(m.title, room)
   return { mark, label: title === '' ? prefix : `${prefix} ${title}`, aside, isActive, isViewed, isPressable }
+}
+
+export type WhiteboardRowLayout = { mark: string; label: string; aside: string | null }
+const WHITEBOARD_LABEL = 'Whiteboard'
+
+// The Whiteboard row above the maps list: a Button with its counts beside it, name-only when they are
+// unknown or would not fit (the name is kept whole).
+export const whiteboardRowLayout = (counts: MapCounts | null, columns: number): WhiteboardRowLayout => {
+  const mark = '  '
+  const aside = counts === null ? null : ` ${countsLabel(counts)}`
+  const fits = aside !== null && mark.length + BUTTON_CHROME + WHITEBOARD_LABEL.length + aside.length <= columns
+  return { mark, label: WHITEBOARD_LABEL, aside: fits ? aside : null }
 }
 
 // The whiteboard heading with its counts over the listed (trusted) tickets; bare before the first good read.

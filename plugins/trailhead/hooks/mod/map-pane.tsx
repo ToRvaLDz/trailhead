@@ -25,8 +25,8 @@ import {
   parseDashboard,
   parseHistory,
   parseMap,
-  parseMapCounts,
   parseMaps,
+  parseMapsRead,
   parseTickets,
   rasterCells,
   refreshDecision,
@@ -66,6 +66,7 @@ const EMPTY: MapPaneData = {
   map: null,
   tickets: [],
   maps: [],
+  whiteboard: null,
   unverifiedCount: 0,
   isCapped: false,
   history: null,
@@ -175,8 +176,8 @@ const readList = ($: Dollar, target: number) =>
 // name-only `gh issue list` runs instead (counts null). Both bounded at MAPS_LIMIT open maps.
 const readMaps = async ($: Dollar): Promise<readonly MapSummary[] | null> => {
   const counted = await gh($, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
-  const withCounts = counted.ok ? parseMapCounts(counted.stdout) : null
-  if (withCounts !== null) return withCounts
+  const withCounts = counted.ok ? parseMapsRead(counted.stdout) : null
+  if (withCounts !== null) return withCounts.maps
   const out = await gh($, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
   return out.ok ? parseMaps(out.stdout) : null
 }

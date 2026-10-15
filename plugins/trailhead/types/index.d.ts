@@ -31,6 +31,9 @@ export type MapCounts = { open: number; total: number }
 // One open map of the repo, as the maps list shows it; `counts` null = unknown, drawn name-only.
 export type MapSummary = { number: number; title: string; counts: MapCounts | null }
 
+// What the maps read gives: the open maps and the whiteboard's counts (null when they were unreadable).
+export type MapsRead = { maps: readonly MapSummary[]; whiteboard: MapCounts | null }
+
 export type MapInfo = { number: number; title: string; destination: string | null; url: string }
 
 // One ticket of the map's history, in epoch ms; `closedAt` null while open.
@@ -47,6 +50,8 @@ export type MapPaneData = {
   isCapped: boolean
   // The repo's open maps (empty until a first good read, then the last good one).
   maps: readonly MapSummary[]
+  // The whiteboard's open and total tickets; null = unknown, the Whiteboard row is drawn name-only.
+  whiteboard: MapCounts | null
   history: BurndownHistory | null
   historyAt: number | null
   fetchedAt: number | null
