@@ -100,7 +100,7 @@ Checkpoint the ticket in play so anyone can resume it.
 **What it does**
 
 1. Commits any work in progress as atomic commits so nothing is stranded.
-2. Posts a `PAUSED` checkpoint: what is done, the exact next step, and local state (branch, the worktree or clone path under isolation, how to run it).
+2. Posts a `PAUSED` checkpoint: what is done, the exact next step, and local state (branch, the worktree or clone path under isolation, how to run it), then adds the `trailhead:paused` label so the ticket shows under `Paused` in the panel.
 3. Keeps your claim if you will return soon, or releases it (unassigns) if the pause is open-ended so someone else can take over.
 4. Refreshes the dashboard if the paused ticket is a whiteboard quick whose refresh was still deferred.
 
@@ -134,7 +134,7 @@ Resume a paused ticket from its checkpoint.
 **What it does**
 
 1. Reads the ticket's latest `PAUSED` checkpoint and the `DISCUSS` and `PLAN` comments above it.
-2. Picks up at the recorded next step. A released ticket can be resumed by anyone; a still-claimed one only by its owner.
+2. Picks up at the recorded next step. A released ticket can be resumed by anyone; a still-claimed one only by its owner. Once the claim is confirmed it removes the `trailhead:paused` label (a refused resume leaves the ticket paused); a `work` or `quick` claim of a paused ticket drops it too.
 3. Under `worktree` or `clone` isolation, re-enters the workspace recorded in the checkpoint.
 
 **What it writes**

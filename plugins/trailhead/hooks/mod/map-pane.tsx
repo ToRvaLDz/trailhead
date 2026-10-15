@@ -101,6 +101,7 @@ const CLEAR_COMMAND = 'clear'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
 const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
+const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
 
 type Dollar = EngineInterface
 type Timer = { cancel: () => void }
@@ -518,6 +519,7 @@ export function registerMapPane(on: On) {
     const board = await read($, dashboardPane)
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
+    const own = await read($, ownTicket)
     const pending = await read($, pendingWork)
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
@@ -585,7 +587,8 @@ export function registerMapPane(on: On) {
       </Box>
     )
 
-    const isInPlay = (t: PaneTicket) => play !== null && !orphaned && play.ticket === t.number
+    // This session's own ticket survives a work-state file another session took over; without one, the file decides.
+    const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
       const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}

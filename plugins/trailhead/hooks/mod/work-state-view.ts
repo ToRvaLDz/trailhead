@@ -66,6 +66,23 @@ const stableJson = (value: unknown): string => {
   return `{${keys.map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`).join(',')}}`
 }
 
+// The state belongs to this session (a state with no session counts as its own, like the orphan rule).
+const isOwn = (state: WorkState | null, session: string): boolean =>
+  state !== null && (state.session === null || state.session === session)
+
+// The ticket this session owns across a work-state file shared with other sessions. A state it wrote
+// sets it; one another session wrote leaves it; a missing file clears it only when the last state read
+// was this session's (its own Resolve), so another session's cleanup never drops the mark.
+export const nextOwnTicket = (
+  prev: number | null,
+  lastState: WorkState | null,
+  nextState: WorkState | null,
+  session: string,
+): number | null => {
+  if (nextState !== null) return isOwn(nextState, session) ? nextState.ticket : prev
+  return isOwn(lastState, session) ? null : prev
+}
+
 export const sameValue = (a: unknown, b: unknown): boolean => stableJson(a) === stableJson(b)
 
 export const statusLine = (state: WorkState | null, isOrphaned: boolean): string | undefined => {

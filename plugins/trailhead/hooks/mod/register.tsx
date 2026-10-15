@@ -9,11 +9,13 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { PromptSnapshot, WorkState } from '../../types'
 import { registerMapPane } from './map-pane'
 import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
-import { fit, isMissing, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
+import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
 export const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 export const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
+// The ticket this session works, kept across a work-state file other sessions share.
+export const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
 export const promptSnapshot = atom({ plugin: 'trailhead', key: 'promptSnapshot' } as const, null as PromptSnapshot | null)
 
 const STATE_PATH = '.trailhead/work-state.json'
@@ -95,16 +97,27 @@ async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
   pin($, state, isStale)
 }
 
+// Decided from the state read before this refresh replaces it.
+async function setOwnTicket($: Dollar, next: WorkState | null) {
+  const prev = await read($, ownTicket)
+  const value = nextOwnTicket(prev, await read($, workState), next, await $.session.id())
+  if (value !== prev) await update($, ownTicket, () => value)
+}
+
 async function refresh($: Dollar) {
   let text: string
   try {
     text = (await $.fs.read(STATE_PATH)) as string
   } catch (err) {
     // A missing file means no ticket in play; any other failure is transient: keep the last state.
-    if (isMissing(err)) await apply($, null, false)
+    if (isMissing(err)) {
+      await setOwnTicket($, null)
+      await apply($, null, false)
+    }
     return
   }
   const state = parseWorkState(text)
+  await setOwnTicket($, state)
   if (state === null) return apply($, null, false)
   const session = await $.session.id()
   return apply($, state, state.session !== null && state.session !== session)

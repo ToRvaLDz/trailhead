@@ -72,7 +72,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `In progress · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
   (a link to the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket
   in play in this session is marked `▸` in the accent and says `this session` in place of its holder;
-  blocked rows are dim. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a
+  blocked rows are dim. The `ownTicket` atom keeps that mark when another session's work state takes
+  over the shared file (a state stamped with another session leaves it; a missing file clears it only
+  when the last state read was this session's, i.e. its own Resolve); with no own ticket the work
+  state decides, as before. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a
   `work`/`quick` claim) shows once, under `Paused`, between In progress and Blocked, with its holder
   when assigned and never a `work` button; the label wins over `trailhead:blocked` and an assignee. A
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs

@@ -72,6 +72,8 @@ declare module 'claude-code' {
     trailhead: {
       workState: WorkState | null
       isOrphaned: boolean
+      // The ticket this session works, kept when another session's state takes over the shared file.
+      ownTicket: number | null
       promptSnapshot: PromptSnapshot | null
       mapPane: MapPaneData
       activeMap: number | null

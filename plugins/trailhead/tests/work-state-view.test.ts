@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { fit, parseWorkState, pipeline, sameValue, statusLine } from '../hooks/mod/work-state-view'
+import { fit, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from '../hooks/mod/work-state-view'
 
 const valid = {
   map: 198,
@@ -83,4 +83,28 @@ test('fit cuts with an ellipsis by code point and leaves a short text whole', ()
   expect(fit('abcdef', 4)).toBe('abc…')
   expect(fit('abcdef', 1)).toBe('…')
   expect(fit('a' + '\u{1F680}'.repeat(5), 3)).toBe('a\u{1F680}…')
+})
+
+// nextOwnTicket(prev, lastState, nextState, session): the ticket this session owns across a shared file.
+const stamped = (ticket: number, session: string | null) => ({ ...valid, ticket, session })
+
+test('nextOwnTicket takes the ticket of a state stamped with this session', () => {
+  expect(nextOwnTicket(null, null, stamped(259, 's1'), 's1')).toBe(259)
+  expect(nextOwnTicket(212, stamped(212, 's1'), stamped(259, 's1'), 's1')).toBe(259)
+  // a state with no session is this one's, like the orphan rule
+  expect(nextOwnTicket(null, null, stamped(259, null), 's1')).toBe(259)
+})
+
+test('nextOwnTicket leaves the ticket alone when another session wrote the file', () => {
+  expect(nextOwnTicket(259, stamped(259, 's1'), stamped(212, 's2'), 's1')).toBe(259)
+  expect(nextOwnTicket(null, null, stamped(212, 's2'), 's1')).toBeNull()
+})
+
+test('nextOwnTicket clears on a missing file only when the last state read was this session\'s', () => {
+  expect(nextOwnTicket(259, stamped(259, 's1'), null, 's1')).toBeNull()
+  expect(nextOwnTicket(259, stamped(259, null), null, 's1')).toBeNull()
+  // own state, then another session's, then a missing file: the last read was not ours
+  expect(nextOwnTicket(259, stamped(212, 's2'), null, 's1')).toBe(259)
+  expect(nextOwnTicket(259, null, null, 's1')).toBe(259)
+  expect(nextOwnTicket(null, null, null, 's1')).toBeNull()
 })

@@ -88,7 +88,7 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened', 'ownTicket']
 
 const PANE_PROPS = {
   title: 'Map',
@@ -542,6 +542,70 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'row-208' })).toBeDefined()
     expect(await ui.find({ key: 'mark-208' })).toBeUndefined()
     expect(await ui.find({ key: 'mark-212' })).toBeUndefined()
+  })
+
+  test(`another session's work state does not move this session's mark [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+
+    // a second session on the same map takes over the shared file
+    r.work = stateText({ ticket: 212, title: 'Native gh-backed tools', session: NEXT_SESSION })
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+    expect(await textOf(ui, 'mark-208')).toBe('▸ ')
+    expect(await ui.find({ key: 'self-212' })).toBeUndefined()
+    expect(await textOf(ui, 'holder-212')).toBe('@alice')
+
+    // and then removes it: the last state read was not ours, so the mark stays
+    r.work = null
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+  })
+
+  test(`this session's own Resolve, which removes the file, clears the mark [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+    r.work = null
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await ui.find({ key: 'self-208' })).toBeUndefined()
+    expect(await ui.find({ key: 'mark-208' })).toBeUndefined()
+    expect(await textOf(ui, 'holder-208')).toBe('@ToRvaLDz')
+  })
+
+  test(`each session marks its own ticket on the same map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.session = NEXT_SESSION
+    r.work = stateText({ ticket: 212, title: 'Native gh-backed tools', session: NEXT_SESSION })
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'self-212')).toBe('this session')
+    expect(await textOf(ui, 'mark-212')).toBe('▸ ')
+    expect(await textOf(ui, 'holder-208')).toBe('@ToRvaLDz')
+    expect(await ui.find({ key: 'self-208' })).toBeUndefined()
+  })
+
+  test(`a /clear starts the new session with no ticket of its own [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'self-208')).toBe('this session')
+    await $.command.run({ command: 'clear', args: '' })
+    await settle(r)
+    expect(await ui.find({ key: 'self-208' })).toBeUndefined()
+    expect(await ui.find({ key: 'mark-208' })).toBeUndefined()
   })
 
   test(`unverified tickets are counted in the plural [${surface}]`, async ($, on) => {
