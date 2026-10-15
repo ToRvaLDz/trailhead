@@ -14,10 +14,10 @@ gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_i
 gh api --method POST repos/{owner}/{repo}/issues/<blocked>/dependencies/blocked_by -F issue_id="$(gh api repos/{owner}/{repo}/issues/<blocker> --jq .id)"
 # the label rides in the --label list at creation for a ticket already known-blocked (fires no issues.labeled event); use --add-label ONLY when a ticket becomes blocked LATER (a single event, never a bulk burst):
 gh issue edit <blocked> --add-label "trailhead:blocked"
-# the frontier: open, unassigned, not blocked, not unverified, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
-gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:whiteboard"
+# the frontier: open, unassigned, not blocked, not unverified, not paused, one query (add --label trailhead:map-<map> to scope to one map when several are live; add -label:trailhead:whiteboard to a single-map repo-wide query to keep loose tickets off it)
+gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused -label:trailhead:whiteboard"
 # the whiteboard frontier: map-less loose tickets, its own query
-gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
 # unblock a ticket once its last blocker closes (label only; native edge auto-reflects)
 gh issue edit <n> --remove-label "trailhead:blocked"
 # claim
@@ -101,17 +101,17 @@ gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_i
 
 Map frontier, single map, repo-wide (excludes whiteboard tickets so they don't leak in):
 ```bash
-gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:whiteboard"
+gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused -label:trailhead:whiteboard"
 ```
 
 Scoped map frontier, when several maps are live (add the map's label):
 ```bash
-gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
 ```
 
 Whiteboard frontier (its own query, off every map's):
 ```bash
-gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
 ```
 
 Blocked-by reconciliation read (drift check, advisory only, never auto-fix):
@@ -193,7 +193,7 @@ Count queries, `--json ... --jq 'length'` style:
 gh issue list --state open --json number,labels \
   --jq '[.[] | select([.labels[].name] | any(startswith("trailhead:")) | not)] | length'
 # whiteboard frontier size: the whiteboard frontier query above, counted
-gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified" --json number --jq 'length'
+gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused" --json number --jq 'length'
 # per-map exhaustion pre-filter: open issues scoped to map <n>; count == 0 makes it a candidate (not yet a verdict)
 gh issue list --label "trailhead:map-<n>" --state open --json number --jq 'length'
 # confirm no fog before flagging a candidate closeable: its body's `## Not yet specified` must be empty

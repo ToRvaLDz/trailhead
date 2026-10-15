@@ -10,12 +10,12 @@ Both are set at chart and on every ticket **in the same pass** (create the ticke
 **Scoped frontier** (one query, per map):
 ```bash
 gh issue list --label "trailhead:ticket" --label "trailhead:map-<n>" --state open \
-  --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified"
+  --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
 ```
 
 **Active map.** Which map a session works is the **active map**: a `.trailhead/active-map` marker at the working root (one line `#<n>`, **gitignored**, per-session local state like `session-ticket`, never committed). `/trailhead:work` and `/trailhead:map` default to it; naming a map/ticket explicitly always overrides. A named ticket that carries a `trailhead:map-<n>` label makes that map the active map (write `.trailhead/active-map`); a whiteboard ticket leaves the active map alone. Each checkout/clone (so each teammate) has its own.
 
-**Park & switch** = **pause** the in-flight ticket (`/trailhead:pause`, a `PAUSED` checkpoint), then point the active map at the other's number. Nothing else to save: every map lives on the Issues, durable. Resume later with `/trailhead:resume`, or just `/trailhead:work` once that map is active again.
+**Park & switch** = **pause** the in-flight ticket (`/trailhead:pause`, a `PAUSED` checkpoint), then point the active map at the other's number. Nothing else to save: every map lives on the Issues, durable. Resume later with `/trailhead:resume` (a paused ticket is off the frontier, so bare `/trailhead:work` never picks it up).
 
 **Discovery.** `gh issue list --label "trailhead:map" --state open` enumerates the live maps. `/trailhead:map` with **no active map and more than one open** lists them and asks which; `/trailhead:map <n>` shows that one and makes it active.
 

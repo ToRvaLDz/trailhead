@@ -2121,7 +2121,7 @@ ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the c
 
   ok('source: work SKILL.md: bare work takes the paused-excluding frontier, a named work or quick still works a paused ticket',
     /Otherwise take a frontier ticket[\s\S]{0,600}never a `trailhead:paused` ticket/.test(workSkillSource) &&
-    /If the user names one, use it[\s\S]{0,500}a named ticket may be[\s\S]{0,40}paused/.test(workSkillSource) &&
+    /\*\*named\*\* ticket may also be a `trailhead:paused` one, which `work <n>` \/ `quick <n>` takes back/.test(workSkillSource) &&
     /carries `trailhead:paused` drops it at the claim/.test(workSkillSource));
 
   ok('source: auto.md resumes owned paused tickets in step 2 and no longer says they come back on the frontier',
