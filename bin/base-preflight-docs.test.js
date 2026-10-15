@@ -55,7 +55,7 @@ ok('Resolve names git: pr without isolation',
 ok('Resolve runs it before the Pending-UAT guard',
   [buildResolve, bugResolve].every((i) => lines[i].indexOf('Stale-base preflight') < lines[i].indexOf('Pending-UAT guard')));
 ok('Pending-UAT option (a) runs the preflight first',
-  engines.split('with no ticket (the stale-base preflight first, then the drive-mode ask').length === 3);
+  engines.split('with no ticket (the stale-base preflight first, then the UAT setup, then the drive-mode ask').length === 3);
 ok('UAT follow-up starts with the preflight', engines.includes('starting with the stale-base preflight'));
 
 for (const rel of ['_shared/teamwork.md', '_shared/configuration-reference.md', '_shared/techniques/acceptance-testing.md', 'trailhead-work/references/ticket-engines.md', 'trailhead-work/references/auto.md']) {
