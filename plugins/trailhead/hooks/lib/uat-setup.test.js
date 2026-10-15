@@ -222,6 +222,30 @@ const proj = (cfg) => { const d = mktmp(); if (cfg !== undefined) writeConfig(d,
   eq('ref after adjacent quotes still required', sq.out.steps[0].missing, ['SQ_MISSING']);
 }
 {
+  // un commento di shell non apre span tra apici e i suoi riferimenti sono ignorati
+  const marker = path.join(mktmp(), 'ran');
+  const cm = go(proj({ uat: { setup: [{ name: 'cm', run: "# don't forget\necho dev=$DEVICE_ID" }] } }));
+  eq('apostrophe in a comment: later ref still required', [cm.out.steps[0].result, cm.out.steps[0].missing], ['missing-env', ['DEVICE_ID']]);
+  const cref = go(proj({ uat: { setup: [{ name: 'cref', run: `echo hi # uses $COMMENT_ONLY\ntouch ${marker}` }] } }));
+  eq('ref inside a comment is not required', [cref.out.steps[0].result, fs.existsSync(marker)], ['ran', true]);
+  const mid = go(proj({ uat: { setup: [{ name: 'mid', run: 'echo a#b $HASH_MISSING' }] } }));
+  eq('# not at a word start is no comment', mid.out.steps[0].missing, ['HASH_MISSING']);
+  const dqh = go(proj({ uat: { setup: [{ name: 'dqh', run: 'echo "# $DQH_MISSING"' }] } }));
+  eq('# inside double quotes is no comment', dqh.out.steps[0].missing, ['DQH_MISSING']);
+  // quote aperta a fine testo: fail closed, ogni riferimento conta
+  const open = go(proj({ uat: { setup: [{ name: 'open', run: "echo it's $OPEN_MISSING '$OPEN_QUOTED'" }] } }));
+  eq('unbalanced single quote: every ref required', open.out.steps[0].missing, ['OPEN_MISSING', 'OPEN_QUOTED']);
+  const openD = go(proj({ uat: { setup: [{ name: 'openD', run: "echo \"x $OPEND_MISSING '$OPEND_Q'" }] } }));
+  eq('unbalanced double quote: every ref required', openD.out.steps[0].missing, ['OPEND_MISSING', 'OPEND_Q']);
+}
+{
+  const big = parseArgs(['run', '--repo', '/x', '--step-timeout', '86401']);
+  ok('parseArgs: --step-timeout above 86400 rejected', big.error);
+  ok('parseArgs: --ready-timeout above 86400 rejected', parseArgs(['run', '--repo', '/x', '--ready-timeout', '86401']).error);
+  ok('parseArgs: 86400 accepted', !parseArgs(['run', '--repo', '/x', '--step-timeout', '86400', '--ready-timeout', '86400']).error);
+  eq('oversized timeout exits 2', run(['run', '--repo', '/x', '--ready-timeout', '999999']).code, 2);
+}
+{
   // a tiny fractional timeout still becomes a valid >= 1 ms spawn timeout
   const r = go(proj({ uat: { setup: [{ name: 'hang', run: 'sleep 30' }] } }), ['--step-timeout', '0.0001']);
   eq('sub-millisecond timeout: timeout result', r.out.steps[0].result, 'timeout');

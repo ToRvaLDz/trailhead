@@ -30,7 +30,8 @@
 // first failing step. A `run`'s output goes to a temp file, never a pipe, so a backgrounded
 // process (a dev server) cannot block the helper; it should redirect its own output, else
 // it keeps writing to that (deleted) file. A `check`'s output is ignored.
-// `$NAME` / `${NAME}` inside single quotes or written `\$NAME` is not a reference.
+// `$NAME` / `${NAME}` inside single quotes, in a `#` comment or written `\$NAME` is not a
+// reference; with an unbalanced quote every `$NAME` counts. Timeouts are capped at 86400 s.
 // Prints one JSON line:
 //   {"status","steps":[{index,name,result,code?,output?,missing?}],"failedStep"?,
 //    "accounts"?,"warnings":[],"message"?}
@@ -52,6 +53,7 @@ const READ_BYTES = 65536;
 const POLL_MS = 500;
 const DEFAULT_READY_S = 60;
 const DEFAULT_STEP_S = 600;
+const MAX_TIMEOUT_S = 86400;
 const STEP_KEYS = ['name', 'run', 'check', 'note'];
 const ACCOUNT_KEYS = ['user', 'secret'];
 const VALUED = ['repo', 'config-root', 'from', 'only', 'ready-timeout', 'step-timeout'];
@@ -76,7 +78,7 @@ function parseArgs(argv) {
     if (out[k] !== undefined && !/^\d+$/.test(out[k])) return { error: `usage: --${k} needs a non-negative integer` };
   }
   for (const k of ['ready-timeout', 'step-timeout']) {
-    if (out[k] !== undefined && !(Number.isFinite(Number(out[k])) && Number(out[k]) > 0)) return { error: `usage: --${k} needs a positive number of seconds` };
+    if (out[k] !== undefined && !(Number.isFinite(Number(out[k])) && Number(out[k]) > 0 && Number(out[k]) <= MAX_TIMEOUT_S)) return { error: `usage: --${k} needs a positive number of seconds, at most ${MAX_TIMEOUT_S}` };
   }
   if (out.from !== undefined && out.only !== undefined) return { error: 'usage: --from and --only are exclusive' };
   return out;
@@ -180,7 +182,9 @@ function readConfig(configRoot, env, fs_, warnings) {
 }
 
 // Text with the spans that are never env references blanked out: single-quoted spans
-// and backslash-escaped characters (`\$`). A single quote inside double quotes is literal.
+// and backslash-escaped characters (`\$`) and comments (a `#` at a word start outside quotes,
+// to end of line). A single quote inside double quotes is literal. Fail closed: a quote span
+// still open at the end drops every exemption, so every `$NAME` counts.
 function liveText(t) {
   let out = '';
   let single = false;
@@ -193,6 +197,9 @@ function liveText(t) {
     } else if (c === '\\') {
       i++;
       out += '  ';
+    } else if (c === '#' && !double && (i === 0 || /[\s;&|()]/.test(t[i - 1]))) {
+      while (i < t.length && t[i] !== '\n') { out += ' '; i++; }
+      if (i < t.length) out += '\n';
     } else if (c === "'" && !double) {
       single = true;
       out += ' ';
@@ -201,7 +208,7 @@ function liveText(t) {
       out += c;
     }
   }
-  return out;
+  return single || double ? t : out;
 }
 
 function refsOf(...texts) {
