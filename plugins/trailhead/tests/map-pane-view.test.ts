@@ -5,6 +5,7 @@ import {
   axisStart,
   burndownEnd,
   burndownSeries,
+  countsLabel,
   failureReason,
   footerStatus,
   groupTickets,
@@ -16,8 +17,8 @@ import {
   parseDashboard,
   parseHistory,
   parseMap,
-  parseMapCounts,
   parseMaps,
+  parseMapsRead,
   parseTickets,
   rasterCells,
   refreshDecision,
@@ -25,6 +26,7 @@ import {
   sparkline,
   viewTarget,
   whiteboardHeading,
+  whiteboardRowLayout,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -531,11 +533,12 @@ test('parseMaps rejects what is not a list', () => {
   expect(parseMaps('null')).toBeNull()
 })
 
-const gql = (nodes: unknown[], extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ data: { repository: { issues: { nodes } } }, ...extra })
+const WB_FIELDS = { whiteboardOpen: { totalCount: 3 }, whiteboardAll: { totalCount: 9 } }
+const gql = (nodes: unknown[], extra: Record<string, unknown> = {}, repo: Record<string, unknown> = WB_FIELDS) =>
+  JSON.stringify({ data: { repository: { issues: { nodes }, ...repo } }, ...extra })
 
-test('parseMapCounts reads each map with its open and total sub-issues, sorted by number', () => {
-  const out = parseMapCounts(
+test('parseMapsRead reads each map with its open and total sub-issues, sorted by number', () => {
+  const out = parseMapsRead(
     gql([
       { number: 198, title: 'trailhead\u202e mod\n', url: 'https://x/198', subIssuesSummary: { total: 23, completed: 16 } },
       { number: 14, title: 'older map', url: 'https://x/14', subIssuesSummary: { total: 5, completed: 5 } },
@@ -543,43 +546,86 @@ test('parseMapCounts reads each map with its open and total sub-issues, sorted b
       'junk',
     ]),
   )
-  expect(out).toEqual([
+  expect(out?.maps).toEqual([
     { number: 14, title: 'older map', counts: { open: 0, total: 5 } },
     { number: 198, title: 'trailhead mod', counts: { open: 7, total: 23 } },
   ])
-  expect(parseMapCounts(gql([]))).toEqual([])
+  expect(parseMapsRead(gql([]))?.maps).toEqual([])
   // completed above total never goes negative
-  expect(parseMapCounts(gql([{ number: 3, title: 't', subIssuesSummary: { total: 2, completed: 4 } }]))).toEqual([
+  expect(parseMapsRead(gql([{ number: 3, title: 't', subIssuesSummary: { total: 2, completed: 4 } }]))?.maps).toEqual([
     { number: 3, title: 't', counts: { open: 0, total: 2 } },
   ])
 })
 
-test('parseMapCounts keeps a row with a malformed summary, name-only', () => {
-  const out = parseMapCounts(
+test('parseMapsRead keeps a row with a malformed summary, name-only', () => {
+  const out = parseMapsRead(
     gql([
       { number: 1, title: 'a' },
       { number: 2, title: 'b', subIssuesSummary: { total: 'x', completed: 1 } },
       { number: 3, title: 'c', subIssuesSummary: null },
     ]),
   )
-  expect(out).toEqual([
+  expect(out?.maps).toEqual([
     { number: 1, title: 'a', counts: null },
     { number: 2, title: 'b', counts: null },
     { number: 3, title: 'c', counts: null },
   ])
 })
 
-test('parseMapCounts is null on anything but a clean reply', () => {
+test('parseMapsRead reads the whiteboard counts beside the maps', () => {
+  expect(parseMapsRead(gql([]))?.whiteboard).toEqual({ open: 3, total: 9 })
+  // nothing on the whiteboard is a real count, drawn as is
+  const none = { whiteboardOpen: { totalCount: 0 }, whiteboardAll: { totalCount: 0 } }
+  expect(parseMapsRead(gql([], {}, none))?.whiteboard).toEqual({ open: 0, total: 0 })
+})
+
+test('parseMapsRead gives a null whiteboard, maps intact, when its fields are missing or unusable', () => {
+  const node = { number: 1, title: 'a', subIssuesSummary: { total: 4, completed: 1 } }
+  const bad: Record<string, unknown>[] = [
+    {},
+    { whiteboardOpen: { totalCount: 3 } },
+    { whiteboardAll: { totalCount: 9 } },
+    { whiteboardOpen: null, whiteboardAll: { totalCount: 9 } },
+    { whiteboardOpen: { totalCount: -1 }, whiteboardAll: { totalCount: 9 } },
+    { whiteboardOpen: { totalCount: 1.5 }, whiteboardAll: { totalCount: 9 } },
+    { whiteboardOpen: { totalCount: '3' }, whiteboardAll: { totalCount: 9 } },
+    { whiteboardOpen: { totalCount: 10 }, whiteboardAll: { totalCount: 9 } },
+  ]
+  for (const repo of bad) {
+    expect(parseMapsRead(gql([node], {}, repo))).toEqual({ maps: [{ number: 1, title: 'a', counts: { open: 3, total: 4 } }], whiteboard: null })
+  }
+})
+
+test('parseMapsRead is null on anything but a clean reply', () => {
   const node = { number: 1, title: 'a', subIssuesSummary: { total: 1, completed: 0 } }
-  expect(parseMapCounts('not json')).toBeNull()
-  expect(parseMapCounts('[]')).toBeNull()
-  expect(parseMapCounts('{}')).toBeNull()
-  expect(parseMapCounts('{"data":null}')).toBeNull()
-  expect(parseMapCounts('{"data":{"repository":null}}')).toBeNull()
-  expect(parseMapCounts('{"data":{"repository":{"issues":{"nodes":"x"}}}}')).toBeNull()
-  expect(parseMapCounts(JSON.stringify({ errors: [{ message: 'boom' }] }))).toBeNull()
+  expect(parseMapsRead('not json')).toBeNull()
+  expect(parseMapsRead('[]')).toBeNull()
+  expect(parseMapsRead('{}')).toBeNull()
+  expect(parseMapsRead('{"data":null}')).toBeNull()
+  expect(parseMapsRead('{"data":{"repository":null}}')).toBeNull()
+  expect(parseMapsRead('{"data":{"repository":{"issues":{"nodes":"x"}}}}')).toBeNull()
+  expect(parseMapsRead(JSON.stringify({ errors: [{ message: 'boom' }] }))).toBeNull()
   // partial data next to errors is still a failed read
-  expect(parseMapCounts(gql([node], { errors: [{ message: 'partial' }] }))).toBeNull()
+  expect(parseMapsRead(gql([node], { errors: [{ message: 'partial' }] }))).toBeNull()
+})
+
+test('countsLabel words open over total', () => {
+  expect(countsLabel({ open: 7, total: 23 })).toBe('7 open / 23')
+  expect(countsLabel({ open: 0, total: 0 })).toBe('0 open / 0')
+})
+
+test('whiteboardRowLayout puts the counts beside the name, a null read leaves it name-only', () => {
+  expect(whiteboardRowLayout({ open: 3, total: 9 }, 60)).toEqual({ mark: '  ', label: 'Whiteboard', aside: ' 3 open / 9' })
+  expect(whiteboardRowLayout({ open: 0, total: 0 }, 60).aside).toBe(' 0 open / 0')
+  expect(whiteboardRowLayout(null, 60)).toEqual({ mark: '  ', label: 'Whiteboard', aside: null })
+})
+
+test('whiteboardRowLayout keeps the name whole and drops the counts when they do not fit', () => {
+  // mark 2 + `[ Whiteboard ]` 14 + ` 3 open / 9` 11 = 27 cells
+  expect(whiteboardRowLayout({ open: 3, total: 9 }, 27).aside).toBe(' 3 open / 9')
+  const narrow = whiteboardRowLayout({ open: 3, total: 9 }, 26)
+  expect(narrow.aside).toBeNull()
+  expect(narrow.label).toBe('Whiteboard')
 })
 
 test('mapRowLayout asides: counts first, then active, joined by a dot', () => {
