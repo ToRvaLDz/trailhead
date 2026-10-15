@@ -14,7 +14,7 @@ Whoever claims a ticket **owns it end to end**: they work it and close it themse
    > 2. **Take it over**: I'll keep it and post a comment notifying @<other-login> that you're taking it.
 
    Do exactly what the user chooses; never resolve the collision silently.
-4. **Unclaim if you stop.** Pausing or abandoning a ticket → remove your assignment so it returns to the frontier. A claimed-but-idle ticket is invisible work.
+4. **Unclaim if you stop.** Abandoning a ticket → remove your assignment so it returns to the frontier. Pausing it open-endedly → remove your assignment too, but it stays off the frontier (`trailhead:paused`) until someone takes it back with `/trailhead:resume` or a named `work <n>` / `quick <n>`. A claimed-but-idle ticket is invisible work.
 5. **Never touch a ticket someone else holds.** Don't edit its body, labels, or state; contribute via a comment and let its owner incorporate it.
 
 ## Isolating concurrent sessions
