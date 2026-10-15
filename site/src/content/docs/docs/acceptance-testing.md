@@ -27,6 +27,6 @@ trailhead › ✓ Sign in with GitHub → lands on /dashboard        (screenshot
 
 ## Configuration
 
-`acceptance.browser` (`auto` default, `on`, `off`) governs browser driving; `off` keeps AI-driven checks via commands and the suite, and still asks who drives. `testing.webapp` / `testing.url` say whether the app is browser-drivable and where. Under `/trailhead:auto`, it goes AI-driven; steps only you can do are never faked: the ticket is set aside and listed in the run's summary, and it never picks skip.
+`acceptance.browser` (`auto` default, `on`, `off`) governs browser driving; `off` keeps AI-driven checks via commands and the suite, and still asks who drives. `testing.webapp` / `testing.url` say whether the app is browser-drivable and where. Under `/trailhead:auto`, it goes AI-driven; steps only you can do are never faked: the ticket is set aside and listed in the run's summary; `/trailhead:auto` never picks skip.
 
 Next: [Hooks](/docs/hooks) for the guardrails; [Design mockups](/docs/design) covers how the mockup that acceptance checks against is made, and the `acceptance` and `testing` keys are in [Configuration](/docs/configuration).

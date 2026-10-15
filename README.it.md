@@ -338,7 +338,7 @@ trailhead › ✓ Sign in with GitHub → lands on /dashboard        (screenshot
             ? Step 6 is the haptic on "Signed in": does it buzz once, softly?
 ```
 
-Config: `acceptance.browser` (`auto` default, `on`, `off`) governa la guida del browser; `off` mantiene i controlli AI-driven via comandi e suite, e chiede comunque chi guida. `testing.webapp` / `testing.url` dicono se l'app è guidabile da browser e dove. Sotto `/trailhead:auto` va in AI-driven; i passi che solo tu puoi fare non vengono mai simulati: il ticket viene messo da parte ed elencato nel riepilogo della run, e non sceglie mai skip.
+Config: `acceptance.browser` (`auto` default, `on`, `off`) governa la guida del browser; `off` mantiene i controlli AI-driven via comandi e suite, e chiede comunque chi guida. `testing.webapp` / `testing.url` dicono se l'app è guidabile da browser e dove. Sotto `/trailhead:auto` va in AI-driven; i passi che solo tu puoi fare non vengono mai simulati: il ticket viene messo da parte ed elencato nel riepilogo della run; `/trailhead:auto` non sceglie mai skip.
 
 ---
 

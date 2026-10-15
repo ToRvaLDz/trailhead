@@ -884,6 +884,7 @@ ok('README.md acceptance testing section names the waiver (skip) recorded as unc
   /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(readmeSource));
 ok('README.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(readmeSource));
 ok('README.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(readmeSource));
+const siteAcceptanceSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'acceptance-testing.md'), 'utf8');
 ok('docs: auto never-picks-skip antecedent is the auto run, in all three docs',
   /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(readmeSource) && /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource) && /elencato nel riepilogo della run; `\/trailhead:auto` non sceglie mai skip/.test(readmeItSource));
 ok('README.md build row and acceptance.browser row name skip',
@@ -894,7 +895,6 @@ ok('README.it.md no-performable-step case asks human-driven o skip', /human-driv
 ok('README.it.md point 6 allows an explicit waiver', /non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente/.test(readmeItSource));
 ok('README.it.md build row and acceptance.browser row name skip',
   /🔨 `build`[\s\S]{0,500}o skip/.test(readmeItSource) && /`acceptance\.browser`[\s\S]{0,300}o skip/.test(readmeItSource));
-const siteAcceptanceSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'acceptance-testing.md'), 'utf8');
 ok('site acceptance-testing.md names the waiver (skip) recorded as unconfirmed', /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(siteAcceptanceSource));
