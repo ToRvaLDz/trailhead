@@ -863,7 +863,7 @@ ok('source: Pending-UAT bullet option (a) resolves on a confirmed pass or an exp
 ok('source: both ticket-engines Resolve lines let option (a) resolve on a confirmed pass or an explicit waiver',
   guardLines254Early().length === 2 && guardLines254Early().every((l) => waiverResolveRe.test(l) && !l.includes('only on a confirmed pass')));
 ok('source: with-no-ticket preflight-then-ask phrase still occurs exactly twice in ticket-engines.md',
-  ticketEnginesSource.split('with no ticket (the stale-base preflight first, then the drive-mode ask').length - 1 === 2);
+  ticketEnginesSource.split('with no ticket (the stale-base preflight first, then the UAT setup, then the drive-mode ask').length - 1 === 2);
 ok('source: both Verify steps let the user skip, recorded as waived',
   verifyStepLines.length === 2 && verifyStepLines.every((l) => /or skip \(waive acceptance\), recorded as waived/.test(l)));
 ok('source: techniques.md index row and auto.md lead-in name skip',
