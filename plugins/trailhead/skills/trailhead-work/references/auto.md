@@ -6,7 +6,7 @@ Load the same shared core the cluster loads (`../../_shared/principles.md`, `sub
 
 ## Preconditions and engagement
 1. **Pick the map** exactly as bare `work` does: the map named in the argument, else the active map (`.trailhead/active-map`); if neither and more than one is open, list them and ask.
-2. **Resume an interrupted ticket first.** Before scanning the frontier, check for a ticket **you own** (assigned to you) on this map that is in a `PAUSED` state from a prior interrupted run. If one exists, pick it back up via the **`resume`** engine (`../../_shared/teamwork.md`) and carry it to resolution first, then continue into the loop below. This is how an interrupted run is continued: the human re-invokes `/trailhead:auto`, and auto resumes the in-flight ticket before taking anything new.
+2. **Resume an interrupted ticket first.** Before scanning the frontier, check for **each** ticket you own (assigned to you) on this map that carries `trailhead:paused` (a `PAUSED` state from a prior interrupted or stuck run). A paused ticket is off the frontier, so this step is the only way a run picks one back up, never the frontier scan. For each one, pick it back up via the **`resume`** engine (`../../_shared/teamwork.md`) and carry it to resolution first, then continue into the loop below. This is how an interrupted run is continued: the human re-invokes `/trailhead:auto`, and auto resumes the in-flight ticket before taking anything new.
 3. **Load config once** from the map's project root, as every session does. `auto` reads no config of its own (there is none, per the decisions).
 
 ## The safety rail (always on, checked FIRST)
@@ -45,7 +45,7 @@ On the green path a ticket resolves and the loop continues. On a **Verify failur
 ## Reporting, interruption, resume
 - **In-run reporting = both.** The per-ticket engine comments (`DISCUSS`/`PLAN`/`VERIFY`/resolution, etc.) land on the Issues **as usual**, and auto **also emits a live chat progress line** as it advances (e.g. which ticket it just resolved and what it is taking next), so the human can watch a run without reading the tracker.
 - **Interruption = the host interrupt (Stop/Esc), the only mid-run halt.** There is no separate "stop after this ticket". Atomic commits plus ticket-boundary checkpoints make interruption **safe by construction**: on interrupt the in-flight ticket **keeps its claim and gets a `PAUSED` checkpoint** (per `../../_shared/teamwork.md`), cleanly resumable.
-- **Resume = the human re-invokes.** `auto` never resumes on its own. The human runs `/trailhead:auto` again; engagement step 2 above picks the interrupted ticket back up via `/trailhead:resume` before scanning, and the run's earlier set-aside (human-necessary) and paused/stuck tickets are back on the frontier for this fresh run to reconsider.
+- **Resume = the human re-invokes.** `auto` never resumes on its own. The human runs `/trailhead:auto` again; engagement step 2 above picks the interrupted ticket back up via `/trailhead:resume` before scanning, and the run's earlier set-aside (human-necessary) tickets are back on the frontier for this fresh run to reconsider. Paused or stuck tickets are not: they stay off the frontier until resumed (owned ones through step 2, the rest by `/trailhead:resume`).
 
 ## Run-end summary (every terminus)
 Whatever ends the run (frontier drained or human interrupt), auto emits **one run-end summary**, in **two places**: a **chat block** for the human, and the **same summary posted as a comment on the map issue** (the durable tracker record). The summary states:
