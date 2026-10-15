@@ -193,7 +193,7 @@ La mod di trailhead (Claude Code 2.1.287+) è inclusa nel plugin e disegna il la
 
 ![Il pannello della mappa affiancato al transcript: mappe aperte, frontier con un pulsante work per ticket, in corso, bloccati e un footer con refresh e close](assets/screenshots/map-panel.png)
 
-Il pannello della mappa elenca le mappe aperte da consultare, la frontier con un pulsante `work` per ogni ticket che pulisce il contesto e avvia il ticket, chi tiene cosa (il tuo ticket è segnato `this session`), i ticket in pausa in un gruppo `Paused` e cosa è bloccato. Il footer ha `refresh` e `close`. `/trailhead:panel` lo apre e lo chiude, e si apre da solo una volta in fullscreen.
+Il pannello della mappa elenca le mappe aperte da consultare, la frontier con un pulsante `work` per ogni ticket che pulisce il contesto e avvia il ticket, chi tiene cosa (il tuo ticket è segnato `this session`), i follow-up UAT in sospeso in un gruppo `UAT` (ognuno con il ticket che collauda), i ticket in pausa in un gruppo `Paused` e cosa è bloccato. Il footer ha `refresh` e `close`. `/trailhead:panel` lo apre e lo chiude, e si apre da solo una volta in fullscreen.
 
 ![Il pannello che mostra un'altra mappa, con l'intestazione viewing e active e il pulsante back to active](assets/screenshots/map-panel-viewing.png)
 
@@ -327,7 +327,7 @@ I test verdi provano che il codice fa ciò che il *codice* intendeva; l'acceptan
 3. **Human-driven, o ciò che l'agente non raggiunge: una guida passo-passo.** Un dispositivo non collegato, un account che non ha, un giudizio di feel o di suono: trailhead ti accompagna **un passo alla volta in chat** (cosa fare, dove toccare, cosa dovresti vedere), attende ciò che hai effettivamente visto, poi va avanti. Mai una checklist scaricata addosso da sbrigare da solo.
 4. **Rispetto al mockup approvato.** Se il ticket ne aveva uno, la schermata costruita viene confrontata **elemento per elemento e stato per stato** (layout, spaziature, colore, tipografia, testi; vuoto, caricamento, errore, disabilitato…), partendo dal mockup riletto, mai a memoria. Una deviazione non forzata è un finding, non un "quasi uguale".
 5. **I fallimenti diventano ticket sul momento.** Un passo fallito registra atteso vs. visto e apre subito un follow-up `bug` (o un fix su questo ticket), poi chiede se proseguire.
-6. **Niente passa come "fatto".** Se la UAT non si può eseguire ora (il dispositivo non è a portata, il backend non è deployato), trailhead chiede: eseguirla adesso, o aprire un ticket di follow-up, collegato con una riga `UAT of:`, che porta la checklist completa. Un ticket rivolto all'utente non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente (registrato come non confermato).
+6. **Niente passa come "fatto".** Se la UAT non si può eseguire ora (il dispositivo non è a portata, il backend non è deployato), trailhead chiede: eseguirla adesso, o aprire un ticket di follow-up, collegato con una riga `UAT of:` e marcato con l'etichetta `trailhead:uat` così ogni UAT in sospeso si trova con una sola etichetta, che porta la checklist completa. Un ticket rivolto all'utente non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente (registrato come non confermato).
 
 ```text
 trailhead › Tests and review are green. Who drives the UAT: AI or you?   → AI

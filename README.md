@@ -193,7 +193,7 @@ The trailhead mod (Claude Code 2.1.287+) ships inside the plugin and draws the w
 
 ![The map panel docked beside the transcript: open maps, frontier with a work button per ticket, in progress, blocked, and a footer with refresh and close](assets/screenshots/map-panel.png)
 
-The map panel lists the open maps to view, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what (your own ticket is marked `this session`), the paused ones in a `Paused` group, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
+The map panel lists the open maps to view, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what (your own ticket is marked `this session`), the pending UAT follow-ups in a `UAT` group (each naming the ticket it tests), the paused ones in a `Paused` group, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
 
 ![The panel viewing another map, with a viewing and active header and a back to active button](assets/screenshots/map-panel-viewing.png)
 
@@ -327,7 +327,7 @@ Passing tests prove the code does what the *code* intended; acceptance testing p
 3. **Human-driven, or what the agent can't reach: a guided walkthrough.** A device that isn't connected, an account it doesn't hold, a call on feel or sound: trailhead walks you through it **one step at a time in the chat** (what to do, where to tap, what you should see), waits for what you actually saw, then moves on. Never a checklist dumped on you to self-serve.
 4. **Against the approved mockup.** When the ticket had one, the built screen is checked against it **element by element and state by state** (layout, spacing, colour, type, copy; empty, loading, error, disabled…), from the re-read mockup, never from memory. An unforced deviation is a finding, not "close enough".
 5. **Failures become tickets on the spot.** A failed step records expected vs. seen and opens a `bug` follow-up (or a fix on this ticket) right away, then asks whether to carry on.
-6. **Nothing slips through as "done".** If the UAT can't run now (the device isn't at hand, the backend isn't deployed), trailhead asks: run it now, or open a follow-up ticket, linked back with a `UAT of:` line, that carries the full checklist. A user-facing ticket never closes on a UAT nobody ran unless you explicitly waive it, recorded as unconfirmed.
+6. **Nothing slips through as "done".** If the UAT can't run now (the device isn't at hand, the backend isn't deployed), trailhead asks: run it now, or open a follow-up ticket, linked back with a `UAT of:` line and tagged with the `trailhead:uat` label so every pending UAT is findable by one label, that carries the full checklist. A user-facing ticket never closes on a UAT nobody ran unless you explicitly waive it, recorded as unconfirmed.
 
 ```text
 trailhead › Tests and review are green. Who drives the UAT: AI or you?   → AI

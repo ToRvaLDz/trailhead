@@ -69,7 +69,7 @@ only where no mod does (it says the panel is not available). Claude Code only: t
 projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex-projection.js`).
 
 - **What it shows**: the map as a link with its destination (dim), then `Frontier · n`,
-  `In progress · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
+  `In progress · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
   (a link to the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket
   in play in this session is marked `▸` in the accent and says `this session` in place of its holder;
   blocked rows are dim. The `ownTicket` atom keeps that mark when another session's work state takes
@@ -78,6 +78,12 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   state decides, as before. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a
   `work`/`quick` claim) shows once, under `Paused`, between In progress and Blocked, with its holder
   when assigned and never a `work` button; the label wins over `trailhead:blocked` and an assignee. A
+  ticket carrying `trailhead:uat` (a pending UAT follow-up, a marker never a state) shows once, under `UAT`,
+  between In progress and Paused, whatever its state (`paused` wins), keeping its `work` button or holder, with a
+  dim `tests <parent title> #<n>` line under it. The parent comes from the `UAT of:` line of its body, read once
+  per refresh by `gh issue list --label trailhead:uat --label trailhead:map-<n>` (`--label trailhead:whiteboard`
+  on the whiteboard view) `--json number,body`, capped like the ticket list at 200: beyond that, or when the read
+  fails, a UAT row is drawn without its parent line (the rows still group by label). A
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
   `/trailhead:work <n>` in the new one, both through `$.command.run`, which the host queues behind a
   running turn; the row shows `queued` until the calls settle (across the reset too), and a
@@ -119,7 +125,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
   dashboard and views that map, the active one marked `●`), and a `Whiteboard · <n> open · <m> assigned` section (counted
   over the listed tickets; `200+ open` when the list is capped): the open
-  `trailhead:ticket` + `trailhead:whiteboard` tickets as Frontier / In progress / Paused / Blocked, with the same rows,
+  `trailhead:ticket` + `trailhead:whiteboard` tickets as Frontier / In progress / UAT / Paused / Blocked, with the same rows,
   holders and `work` buttons (the work verb takes a whiteboard ticket as is). Unverified ones are counted only.
   Its reads replace the map's in a refresh: the whiteboard list, `gh issue list --label trailhead:dashboard
   --json number,url` and the maps list; a failed list keeps the last one with the footer reason, a failed index
