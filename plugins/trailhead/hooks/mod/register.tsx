@@ -28,6 +28,8 @@ const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
 const SECTION_ID = 'trailhead:work-state'
+const STALE_NOTE =
+  'No trailhead ticket is in play any more: the earlier `# trailhead work state` section of the system prompt is stale.'
 
 type Dollar = EngineInterface
 
@@ -70,20 +72,36 @@ const debug = ($: Dollar, message: string) => {
   }
 }
 
-// The latched text: rebuilt only when its key changed or the snapshot was reset.
+// What the state says now: its key and section text, with the links following the pin.
 // The links follow the pin, so a shell `cd` out of the repo never loses them; no pin only costs the links.
-// With `persist` false (a /context render) the snapshot is computed but never stored.
-async function currentSnapshot($: Dollar, persist: boolean): Promise<PromptSnapshot> {
+async function liveSnapshot($: Dollar): Promise<PromptSnapshot> {
   const state = await read($, workState)
   const orphaned = await read($, isOrphaned)
   const pinned = await read($, repoPin)
   const repo = pinned === null ? null : { host: pinned.host, slug: pinned.slug }
-  const key = snapshotKey(state, orphaned, repo)
+  return { key: snapshotKey(state, orphaned, repo), text: promptSection(state, orphaned, repo) }
+}
+
+// The latched text: rebuilt only when its key changed or the snapshot was reset.
+// With `persist` false (a /context render) the snapshot is computed but never stored.
+async function currentSnapshot($: Dollar, persist: boolean): Promise<PromptSnapshot> {
+  const live = await liveSnapshot($)
   const latched = await read($, promptSnapshot)
-  if (latched !== null && latched.key === key) return latched
-  const built = { key, text: promptSection(state, orphaned, repo) }
-  if (persist) await setSnapshot($, built)
-  return built
+  if (latched !== null && latched.key === live.key) return latched
+  if (persist) await setSnapshot($, live)
+  return live
+}
+
+// The engine composes once per process, so the latch is what the model was told. A change after
+// that rides the next prompt as context (once per change); no latch yet means the compose will carry it.
+async function changeNote($: Dollar): Promise<string | null> {
+  const latched = await read($, promptSnapshot)
+  if (latched === null) return null
+  const live = await liveSnapshot($)
+  if (live.key === latched.key) return null
+  await setSnapshot($, live)
+  if (live.text !== null) return live.text
+  return latched.text === null ? null : STALE_NOTE
 }
 
 async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
@@ -182,6 +200,17 @@ export const register: Register = on => {
       debug($, `trailhead mod: work state section failed: ${String(err)}`)
       return result
     }
+  })
+
+  // A change after the one compose reaches the model here; fail-open, the prompt always goes on.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.command !== undefined) return next(e)
+    await safeRefresh($)
+    const note = await changeNote($)
+    return next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
+  }).catch(($, e, next) => {
+    debug($, 'trailhead mod: work state context failed')
+    return next(e)
   })
 
   // After a compaction the agent re-reads the live state: refresh, then rebuild the snapshot.

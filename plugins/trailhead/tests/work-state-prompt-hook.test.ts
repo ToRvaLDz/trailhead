@@ -249,3 +249,61 @@ test('an analysis render shows the section but writes nothing', async ($, on) =>
   expect(s.text).toContain('#204')
   expect(r.writes).toBe(writes)
 })
+
+// A plugin's own prompt: the engine stub beneath answers with the context that arrived.
+const submit = async ($: any): Promise<readonly string[]> => ($.prompt.submit({ text: 'next' }) as Promise<{ context?: readonly string[] }>).then(r => r.context ?? [])
+
+test('a state written after the one compose reaches the model as context, once', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  expect(await compose($)).toEqual(ENGINE)
+  r.file = stateText()
+  const first = await submit($)
+  expect(first).toHaveLength(1)
+  expect(first[0]).toContain('#204 "Inject the work state"')
+  expect(await submit($)).toEqual([])
+})
+
+test('a step change alone attaches nothing to the next prompt', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText({ step: 'execute' })
+  expect(await submit($)).toEqual([])
+})
+
+test('a state removed after the compose attaches the stale note once', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.file = null
+  const first = await submit($)
+  expect(first).toHaveLength(1)
+  expect(first[0]).toContain('# trailhead work state')
+  expect(first[0]).toContain('stale')
+  expect(await submit($)).toEqual([])
+})
+
+test('before any compose a prompt gets nothing attached', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  expect(await submit($)).toEqual([])
+})
+
+test('a failing read never drops the prompt', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  r.repoFails = true
+  const result = (await $.prompt.submit({ text: 'next' })) as { text?: string }
+  expect(result.text).toBe('next')
+})

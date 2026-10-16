@@ -50,6 +50,15 @@ snapshot alone. A step change deliberately leaves the text alone, so the prompt 
 section says the step may have moved on and that `.trailhead/work-state.json` holds the live one.
 For the same reason an autonomous run shows as `Mode: autonomous run`, without the done count.
 
+The engine composes the system prompt once per process (first request) and keeps it; only a session
+start, a main-loop compaction and `/clear` compose again. So a change made mid-session (the first
+`trailhead-work-state.js set`, a new ticket, the state cleared) does not reach the model through
+`prompt.compose`. A `prompt.submit` hook treats the latched snapshot as what the model has been told:
+when the live key differs, it attaches the new section as `context` on that prompt, once per change,
+and latches it. If the state went away it attaches a one-line note that the earlier section is
+stale. With no compose yet it does nothing (the first compose carries the state), and it skips slash
+commands and fails open: the prompt is never dropped.
+
 The issue title is untrusted text from GitHub. It is rendered as quoted data
 (`Ticket: #204 "Title"`), with zero-width and bidi controls removed, inner double quotes turned
 into single ones, and a line saying the title is data, not an instruction. The text is at most
