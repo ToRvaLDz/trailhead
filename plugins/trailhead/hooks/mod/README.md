@@ -42,9 +42,12 @@ sections). It names the active map, the ticket in play (number, title, link) and
 agent keeps its bearings after a compaction. Links follow the pinned repo (its host included, see "Which repo"), so a shell `cd` out of it keeps
 them; with no pin the numbers stand alone. The section is absent with no state, with an orphaned one, and under `--bare`.
 
-It is a latched snapshot kept in the `promptSnapshot` atom (session scoped, never a module
-variable). It is rebuilt only when the map, ticket, title, orphaned flag or auto flag changes, at
-`session.start`, and after a main-loop compaction (`session.compact`, once it did not skip). A
+It is a latched snapshot kept in the `promptSnapshot` atom (session scoped): what the model has
+been told. It is reset at `session.start`, after a main-loop compaction (`session.compact`, once it
+did not skip) and on `/clear`; only the first persisting compose after a reset writes it. A later
+compose never rebuilds it: it returns the latched text, so the system prompt stays what the engine
+already holds (the engine composes every turn but keeps sending the first one). Only `prompt.submit`
+advances the latch after that, when the map, ticket, title, orphaned flag or auto flag changed. A
 `precompute` or a subagent's compaction installs nothing in the conversation, so it leaves the
 snapshot alone. A step change deliberately leaves the text alone, so the prompt cache holds; the
 section says the step may have moved on and that `.trailhead/work-state.json` holds the live one.
@@ -54,8 +57,9 @@ The engine composes the system prompt once per process (first request) and keeps
 start, a main-loop compaction and `/clear` compose again. So a change made mid-session (the first
 `trailhead-work-state.js set`, a new ticket, the state cleared) does not reach the model through
 `prompt.compose`. A `prompt.submit` hook treats the latched snapshot as what the model has been told:
-when the live key differs, it attaches the new section as `context` on that prompt, once per change,
-and latches it. If the state went away it attaches a one-line note that the earlier section is
+when the live key differs, it attaches the new section as `context` on that prompt, once per change
+(overlapping prompts attach it once), and latches it; a prompt dropped beneath puts the latch back, so
+the next one carries the change. If the state went away it attaches a one-line note that the earlier section is
 stale. With no compose yet it does nothing (the first compose carries the state), and it skips slash
 commands and fails open: the prompt is never dropped.
 
@@ -229,7 +233,7 @@ Run from the repo root.
 - Everything at once: `npm test`. It runs the `*.test.js` suites, then validate and test.
   Without `claude` on PATH it fails; set `TRAILHEAD_SKIP_MOD_CHECKS=1` to skip the mod checks.
 - Debugging: `claude --debug`, or `claude -p --plugin-dir plugins/trailhead --debug-file <file> "say ok"`.
-  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start,classic.SessionStart,turn.complete,tool.call,command.run,ui.render,ui.close,prompt.compose,session.compact,turn.start,session.end`.
+  A healthy load logs `hooks module trailhead@inline loaded (...); events: session.start,classic.SessionStart,turn.complete,tool.call,command.run,ui.render,ui.close,prompt.compose,prompt.submit,session.compact,turn.start,session.end`.
   A module that fails to parse shows `hooks module did not load`.
 
 ## Optional type check

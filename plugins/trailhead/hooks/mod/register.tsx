@@ -58,8 +58,13 @@ async function setOrphaned($: Dollar, value: boolean) {
   if (current !== value) await update($, isOrphaned, () => value)
 }
 
+// What the latch was last set to in this process. Overlapping calls may see the atom as it stood when
+// they began, so the compare-and-set in changeNote trusts this copy first; a hot reload falls back to the atom.
+let told: PromptSnapshot | null | typeof UNSET = UNSET
+
 // null means "rebuild on the next compose"; written only when it changes.
 async function setSnapshot($: Dollar, value: PromptSnapshot | null) {
+  told = value
   const current = await read($, promptSnapshot)
   if (!sameValue(current, value)) await update($, promptSnapshot, () => value)
 }
@@ -82,26 +87,43 @@ async function liveSnapshot($: Dollar): Promise<PromptSnapshot> {
   return { key: snapshotKey(state, orphaned, repo), text: promptSection(state, orphaned, repo) }
 }
 
-// The latched text: rebuilt only when its key changed or the snapshot was reset.
-// With `persist` false (a /context render) the snapshot is computed but never stored.
+// The latch is what the model was told. Only the first persisting compose after a reset (latch null:
+// session start, compaction, /clear) writes it; a later compose returns the latched text, so the system
+// prompt stays what the engine already holds (it composes every turn but keeps sending the first one).
+// After that only prompt.submit advances the latch. A non-persisting (/context) compose never writes.
 async function currentSnapshot($: Dollar, persist: boolean): Promise<PromptSnapshot> {
-  const live = await liveSnapshot($)
   const latched = await read($, promptSnapshot)
-  if (latched !== null && latched.key === live.key) return latched
+  if (latched !== null) return latched
+  const live = await liveSnapshot($)
   if (persist) await setSnapshot($, live)
   return live
 }
 
-// The engine composes once per process, so the latch is what the model was told. A change after
-// that rides the next prompt as context (once per change); no latch yet means the compose will carry it.
-async function changeNote($: Dollar): Promise<string | null> {
-  const latched = await read($, promptSnapshot)
-  if (latched === null) return null
+// The latch compare-and-set runs one at a time, so two overlapping prompts attach a change once.
+let latchQueue: Promise<unknown> = Promise.resolve()
+function serial<T>(task: () => Promise<T>): Promise<T> {
+  const run = latchQueue.then(task, task)
+  latchQueue = run.catch(() => undefined)
+  return run
+}
+
+// A change after the latch reaches the model as context on the next prompt, once per change; no latch
+// yet means the compose will carry it. The latch moves to the live snapshot here; `previous` is what to
+// put back if the prompt does not enter.
+async function changeNote($: Dollar): Promise<{ note: string | null; previous: PromptSnapshot | null; live: PromptSnapshot | null }> {
+  const latched = told !== UNSET ? told : await read($, promptSnapshot)
+  if (latched === null) return { note: null, previous: null, live: null }
   const live = await liveSnapshot($)
-  if (live.key === latched.key) return null
+  if (live.key === latched.key) return { note: null, previous: null, live: null }
   await setSnapshot($, live)
-  if (live.text !== null) return live.text
-  return latched.text === null ? null : STALE_NOTE
+  const note = live.text !== null ? live.text : latched.text === null ? null : STALE_NOTE
+  return { note, previous: latched, live }
+}
+
+// A dropped prompt told the model nothing: put the latch back, unless something else moved it since.
+async function restoreLatch($: Dollar, previous: PromptSnapshot, live: PromptSnapshot) {
+  const current = told !== UNSET ? told : await read($, promptSnapshot)
+  if (current !== null && current.key === live.key) await setSnapshot($, previous)
 }
 
 async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
@@ -206,8 +228,12 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (e.command !== undefined) return next(e)
     await safeRefresh($)
-    const note = await changeNote($)
-    return next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
+    const { note, previous, live } = await serial(() => changeNote($))
+    const result = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
+    if (result.drop !== undefined && previous !== null && live !== null) {
+      await serial(() => restoreLatch($, previous, live)).catch(err => debug($, `trailhead mod: latch restore failed: ${String(err)}`))
+    }
+    return result
   }).catch(($, e, next) => {
     debug($, 'trailhead mod: work state context failed')
     return next(e)

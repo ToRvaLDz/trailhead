@@ -30,6 +30,7 @@ const rig = (on: On) => {
     // The hosts `gh auth status --hostname` accepts besides github.com.
     authHosts: [] as string[],
     skipCompact: false,
+    denyWrites: false,
     composes: 0,
     repoReads: 0,
     writes: 0,
@@ -53,7 +54,7 @@ const rig = (on: On) => {
   on('ui.status', () => ({ value: undefined }))
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
     r.writes += 1
-    return next(e)
+    return r.denyWrites ? { deny: 'state is read-only' } : next(e)
   })
   on('prompt.compose', () => {
     r.composes += 1
@@ -95,7 +96,7 @@ test('no section without a file, and none when the state is orphaned', async ($,
   expect(await compose($)).toEqual(ENGINE)
 })
 
-test('a step change leaves the text untouched; a ticket change rebuilds it', async ($, on) => {
+test('a step change leaves the text untouched; a ticket change rebuilds it after a compaction', async ($, on) => {
   const r = rig(on)
   r.file = stateText()
   await $.session.start(START)
@@ -105,6 +106,9 @@ test('a step change leaves the text untouched; a ticket change rebuilds it', asy
   expect((mine(await compose($)) as Section).text).toBe(first)
   r.file = stateText({ ticket: 205, title: 'Next ticket', step: 'execute' })
   await turn($)
+  // A later compose never advances the latch: the text stays what the model was told.
+  expect((mine(await compose($)) as Section).text).toBe(first)
+  await $.session.compact({ messages: SUMMARY })
   const next = (mine(await compose($)) as Section).text
   expect(next).toContain('#205 "Next ticket"')
   expect(next).toContain('execute')
@@ -177,6 +181,7 @@ test('the links follow the pin: they survive a cd out of the repo', async ($, on
   r.remote = null
   r.file = stateText({ ticket: 205, title: 'Next ticket' })
   await turn($)
+  await $.session.compact({ messages: SUMMARY })
   const s = mine(await compose($)) as Section
   expect(s.text).toContain('#205 "Next ticket" https://github.com/ToRvaLDz/trailhead/issues/205')
   expect(s.text).toContain('#198 https://github.com/ToRvaLDz/trailhead/issues/198')
@@ -200,6 +205,7 @@ test('a move of the pin to another repo rebuilds the links, whatever the ticket'
   expect((mine(await compose($)) as Section).text).toContain('https://github.com/ToRvaLDz/trailhead/issues/204')
   r.remote = 'https://github.com/o/other.git'
   await turn($)
+  await $.session.compact({ messages: SUMMARY })
   const s = mine(await compose($)) as Section
   expect(s.text).toContain('#204 "Inject the work state" https://github.com/o/other/issues/204')
   expect(s.text).not.toContain('ToRvaLDz')
@@ -306,4 +312,128 @@ test('a failing read never drops the prompt', async ($, on) => {
   r.repoFails = true
   const result = (await $.prompt.submit({ text: 'next' })) as { text?: string }
   expect(result.text).toBe('next')
+})
+
+// The real engine composes every turn but keeps sending the first system prompt.
+test('an engine compose per turn never advances the latch: the submit still carries the change', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  expect(await compose($, ['lean', 'print', 'skills'])).toEqual(ENGINE)
+  r.file = stateText()
+  await turn($)
+  expect(await compose($, ['lean', 'print', 'skills'])).toEqual(ENGINE)
+  const first = await submit($)
+  expect(first).toHaveLength(1)
+  expect(first[0]).toContain('#204 "Inject the work state"')
+  expect(await submit($)).toEqual([])
+})
+
+test('a compose after the latch is set returns the latched text, not the live one', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  const first = (mine(await compose($)) as Section).text
+  r.file = stateText({ ticket: 205, title: 'Next ticket' })
+  await turn($)
+  expect((mine(await compose($, ['analysis'])) as Section).text).toBe(first)
+})
+
+test('a prompt dropped beneath keeps the change for the next one', async ($, on) => {
+  const r = rig(on)
+  let drops = 1
+  on('prompt.submit', (_$, e) => (drops-- > 0 ? { drop: 'busy' } : { text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  const dropped = (await $.prompt.submit({ text: 'next' })) as { drop?: string }
+  expect(dropped.drop).toBe('busy')
+  const again = await submit($)
+  expect(again).toHaveLength(1)
+  expect(again[0]).toContain('#204')
+  expect(await submit($)).toEqual([])
+})
+
+test('a failing latch write never drops the prompt', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  r.denyWrites = true
+  const result = (await $.prompt.submit({ text: 'next' })) as { text?: string }
+  expect(result.text).toBe('next')
+})
+
+test('two overlapping prompts attach the change once', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  const all = await Promise.all([submit($), submit($)])
+  expect(all.flat()).toHaveLength(1)
+})
+
+test('a slash command attaches nothing and keeps the change for the next prompt', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  const cmd = (await $.prompt.submit({ text: '/compact', command: 'compact' })) as { context?: readonly string[] }
+  expect(cmd.context ?? []).toEqual([])
+  expect(await submit($)).toHaveLength(1)
+})
+
+test('an orphaned state after a latched one gives the stale note', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText({ session: 'sess-other' })
+  const first = await submit($)
+  expect(first).toHaveLength(1)
+  expect(first[0]).toContain('stale')
+})
+
+test('an existing context is kept and the section appended', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  const result = (await $.prompt.submit({ text: 'next', context: ['earlier'] })) as { context?: readonly string[] }
+  expect(result.context?.[0]).toBe('earlier')
+  expect(result.context).toHaveLength(2)
+  expect(result.context?.[1]).toContain('#204')
+})
+
+test('a compaction or a clear resets the latch: a prompt before the next compose gets nothing', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  on('classic.SessionStart', () => ({}))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  await $.session.compact({ messages: SUMMARY })
+  r.file = stateText({ ticket: 205, title: 'Next ticket' })
+  expect(await submit($)).toEqual([])
+  await compose($)
+  await $.classic.SessionStart({ source: 'clear' })
+  r.file = stateText({ ticket: 206, title: 'Third' })
+  expect(await submit($)).toEqual([])
+})
+
+test('a ticket to ticket change attaches the new section', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText({ ticket: 205, title: 'Next ticket' })
+  const first = await submit($)
+  expect(first).toHaveLength(1)
+  expect(first[0]).toContain('#205 "Next ticket"')
 })
