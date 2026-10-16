@@ -5,7 +5,8 @@ next to the command hooks. It shows the ticket in play, read from `.trailhead/wo
 (written by the skills through `templates/trailhead-work-state.js`; the mod only reads it).
 The engine writes it in the ticket's own workspace, so when the pinned checkout has none the mod looks in the
 repo's other checkouts (`git worktree list`, sibling `<repo>-t<n>` clones) and adopts the one naming this session
-(`work-state-locate.ts`).
+(`work-state-locate.ts`). After a `/clear` a state in another checkout is not shown (it names the old session),
+unlike the own checkout's orphaned display.
 The typed contract lives in `plugins/trailhead/types/index.d.ts`, wired through the
 `types` key of `plugin.json`. The module is declared in `hooks/hooks.json` under
 `"modules"` (exactly one path, relative to `hooks.json`). The pure parts (parsing the file,
