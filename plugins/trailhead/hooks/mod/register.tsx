@@ -9,6 +9,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { PromptSnapshot, RepoPin, WorkState } from '../../types'
 import { onPinMove, registerMapPane } from './map-pane'
 import { pinPath, refreshPin } from './repo-pin'
+import { isOwnState, locateOwnState, noteFound } from './work-state-locate'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
@@ -154,13 +155,29 @@ async function setOwnTicket($: Dollar, next: WorkState | null) {
   if (value !== prev) await update($, ownTicket, () => value)
 }
 
+// The state text: the pinned checkout's file, whatever the session cwd is now; without a pin (no GitHub
+// repo ever seen) it stays relative to the cwd, as before. A missing file there sends the lookup to the
+// repo's other checkouts (#270): the engine writes the state in the ticket's own workspace. A lookup that
+// finds nothing rethrows the own miss, so the caller sees what it saw before.
+async function readStateText($: Dollar, init: { isStart?: boolean }): Promise<string> {
+  const pin = await refreshPin($, { ...init, onMove: moved => onPinMove($, moved) }).catch(() => null)
+  try {
+    const text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
+    if (pin !== null && isOwnState(text, await $.session.id())) noteFound(pin.root)
+    return text
+  } catch (err) {
+    if (pin === null || !isMissing(err)) throw err
+    const found = await locateOwnState($, pin.root, await $.session.id())
+    noteFound(found === null ? null : found.root)
+    if (found === null) throw err
+    return found.text
+  }
+}
+
 async function refresh($: Dollar, init: { isStart?: boolean } = {}) {
   let text: string
   try {
-    // The file under the pinned repo, whatever the session cwd is now; without a pin (no GitHub
-    // repo ever seen) it stays relative to the cwd, as before.
-    const pin = await refreshPin($, { ...init, onMove: moved => onPinMove($, moved) }).catch(() => null)
-    text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
+    text = await readStateText($, init)
   } catch (err) {
     // A missing file means no ticket in play; any other failure is transient: keep the last state.
     if (isMissing(err)) {
