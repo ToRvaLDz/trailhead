@@ -163,6 +163,13 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `turn.complete`, whether or not the pane is open), then `gh issue view <map>` and
   `gh issue list --label trailhead:map-<map> --state open` (plus the history read under "Burn-down" and the maps list read) through `$.process.run`,
   where `<map>` is the viewed map, else the active one. A result is dropped if the pane closed or the shown map changed while `gh` ran.
+- **Which repo**: the one the session started in, pinned (`repo-pin.ts`) from `$.session.repo()` when its
+  remote is on GitHub, and checked again on each refresh and `turn.complete`. Every `gh` call runs with the
+  pinned root as `cwd` (and explicit owner/repo for the GraphQL read), and `.trailhead/active-map` and
+  `.trailhead/work-state.json` are read by absolute path under it, so a shell `cd` out of the repo changes
+  nothing. A check outside any repo, or in a non-GitHub one, keeps the pin; a move into another GitHub repo
+  moves it and empties what the pane held for the old one. With nothing ever pinned the pane says
+  `Not in a GitHub repository: open the session in a trailhead repo` and makes no `gh` call.
 - **When it refreshes**: only while the pane is open (a closed pane costs no `gh` call). Opening it,
   `session.start`, `turn.complete`, a Bash call that runs `gh issue edit|close|create|comment|reopen`,
   the `refresh` button, and a slow timer started on open. Never two fetches inside `MIN_REFRESH_MS`:
