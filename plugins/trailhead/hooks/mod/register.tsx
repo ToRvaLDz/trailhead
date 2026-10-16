@@ -8,8 +8,8 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { PromptSnapshot, RepoPin, WorkState } from '../../types'
 import { onPinMove, registerMapPane } from './map-pane'
-import { pinPath, refreshPin } from './repo-pin'
-import { isOwnState, locateOwnState, noteFound } from './work-state-locate'
+import { pinKey, pinPath, refreshPin } from './repo-pin'
+import { isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
@@ -33,6 +33,7 @@ const STALE_NOTE =
   'No trailhead ticket is in play any more: the earlier `# trailhead work state` section of the system prompt is stale.'
 
 type Dollar = EngineInterface
+type RefreshInit = { isStart?: boolean; fresh?: boolean }
 
 // The status text last pinned; the sentinel makes the first refresh set or clear it.
 // (A hot reload resets it, which only costs one repeated status call.)
@@ -157,24 +158,27 @@ async function setOwnTicket($: Dollar, next: WorkState | null) {
 
 // The state text: the pinned checkout's file, whatever the session cwd is now; without a pin (no GitHub
 // repo ever seen) it stays relative to the cwd, as before. A missing file there sends the lookup to the
-// repo's other checkouts (#270): the engine writes the state in the ticket's own workspace. A lookup that
-// finds nothing rethrows the own miss, so the caller sees what it saw before.
-async function readStateText($: Dollar, init: { isStart?: boolean }): Promise<string> {
-  const pin = await refreshPin($, { ...init, onMove: moved => onPinMove($, moved) }).catch(() => null)
+// repo's other checkouts (#270): the engine writes the state in the ticket's own workspace. A clean miss
+// rethrows the own one, so the caller sees what it saw before; a broken lookup, when the state was found
+// elsewhere before, is a transient error that keeps the last state. `fresh` (a helper call just wrote
+// the state) skips the lookup's no-state memory.
+async function readStateText($: Dollar, init: RefreshInit): Promise<string> {
+  const pin = await refreshPin($, { isStart: init.isStart, onMove: moved => onPinMove($, moved) }).catch(() => null)
   try {
     const text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
-    if (pin !== null && isOwnState(text, await $.session.id())) noteFound(pin.root)
+    if (pin !== null && isOwnState(text, await $.session.id())) noteFound({ key: pinKey(pin), root: pin.root })
     return text
   } catch (err) {
     if (pin === null || !isMissing(err)) throw err
-    const found = await locateOwnState($, pin.root, await $.session.id())
-    noteFound(found === null ? null : found.root)
-    if (found === null) throw err
-    return found.text
+    const key = pinKey(pin)
+    const found = await locateOwnState($, { key, root: pin.root }, await $.session.id(), init.fresh === true)
+    if (found.kind === 'found') return found.text
+    if (found.kind === 'failed' && wasFoundElsewhere(key, pin.root)) throw new Error('trailhead mod: work state lookup failed')
+    throw err
   }
 }
 
-async function refresh($: Dollar, init: { isStart?: boolean } = {}) {
+async function refresh($: Dollar, init: RefreshInit = {}) {
   let text: string
   try {
     text = await readStateText($, init)
@@ -193,7 +197,7 @@ async function refresh($: Dollar, init: { isStart?: boolean } = {}) {
   return apply($, state, state.session !== null && state.session !== session)
 }
 
-function safeRefresh($: Dollar, init: { isStart?: boolean } = {}): Promise<void> {
+function safeRefresh($: Dollar, init: RefreshInit = {}): Promise<void> {
   queue = queue.then(() => refresh($, init)).catch(err => {
     try {
       $.ui.log(`trailhead mod: work state refresh failed: ${String(err)}`, { to: 'debug' })
@@ -305,7 +309,7 @@ export const register: Register = on => {
   // The helper runs through Bash: read again once the call has run.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (typeof e.command === 'string' && e.command.includes(HELPER)) await safeRefresh($)
+    if (typeof e.command === 'string' && e.command.includes(HELPER)) await safeRefresh($, { fresh: true })
     return result
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))

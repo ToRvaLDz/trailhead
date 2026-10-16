@@ -3,7 +3,7 @@
 // may sit in the main checkout. Pure parts first, then the engine part that looks the state up.
 import type { EngineInterface } from 'claude-code'
 
-import { parseWorkState } from './work-state-view'
+import { isMissing, parseWorkState } from './work-state-view'
 
 const STATE_PATH = '.trailhead/work-state.json'
 const LOOKUP_TIMEOUT_MS = 5_000
@@ -43,54 +43,101 @@ export const isOwnState = (text: string, session: string): boolean => parseWorkS
 // The first candidate's text that is this session's state.
 export const pickOwn = (texts: readonly (string | null)[], session: string): number => texts.findIndex(text => text !== null && isOwnState(text, session))
 
-// The checkout where this session's state was last found; machinery, like `remembered` in repo-pin.ts.
-let lastFound: string | null = null
+// The checkout where this session's state was last found, with the repo it belongs to; machinery, like
+// `remembered` in repo-pin.ts. A checkout of another repo is never tried.
+let lastFound: { key: string; root: string } | null = null
 
-export const noteFound = (root: string | null): void => {
-  lastFound = root
+export const noteFound = (found: { key: string; root: string } | null): void => {
+  lastFound = found
+}
+// Whether the state was last found in this repo, in a checkout other than the pinned one.
+export const wasFoundElsewhere = (key: string, pinned: string): boolean =>
+  lastFound !== null && lastFound.key === key && trim(lastFound.root) !== trim(pinned)
+
+// A scan that found nothing is not repeated for NO_STATE_MS, per repo and session. Time comes from the
+// engine clock; without one nothing is kept.
+const NO_STATE_MS = 10_000
+const misses = new Map<string, number>()
+
+export const resetLocate = (): void => {
+  lastFound = null
+  misses.clear()
 }
 
-async function listWorktrees($: EngineInterface, root: string): Promise<string[]> {
+async function nowOf($: EngineInterface): Promise<number | null> {
   try {
-    const out = await $.process.run(['git', 'worktree', 'list', '--porcelain'], { cwd: root, timeoutMs: LOOKUP_TIMEOUT_MS })
-    return out.exitCode === 0 ? parseWorktrees(out.stdout) : []
+    return await $.clock.now()
   } catch {
-    return []
+    return null
   }
 }
 
-async function listSiblings($: EngineInterface, mainRoot: string): Promise<string[]> {
+// null: the listing itself failed (not the same as an empty one).
+async function listWorktrees($: EngineInterface, root: string): Promise<string[] | null> {
+  try {
+    const out = await $.process.run(['git', 'worktree', 'list', '--porcelain'], { cwd: root, timeoutMs: LOOKUP_TIMEOUT_MS })
+    return out.exitCode === 0 ? parseWorktrees(out.stdout) : null
+  } catch {
+    return null
+  }
+}
+
+async function listSiblings($: EngineInterface, mainRoot: string): Promise<string[] | null> {
   try {
     const entries = await $.fs.list(dirname(mainRoot))
     return siblingClones(mainRoot, entries.filter(entry => entry.kind === 'dir').map(entry => entry.name))
   } catch {
-    return []
+    return null
   }
 }
 
-async function readAt($: EngineInterface, root: string): Promise<string | null> {
+// The file's text; null when it is not there, undefined when the read failed any other way.
+async function readAt($: EngineInterface, root: string): Promise<string | null | undefined> {
   try {
     return (await $.fs.read(`${root}/${STATE_PATH}`)) as string
-  } catch {
-    return null
+  } catch (err) {
+    return isMissing(err) ? null : undefined
   }
 }
 
-// This session's state text from another checkout of the repo, with the checkout it came from; null when
-// none has it or the lookup fails (the caller then treats the state as missing, as before).
-export async function locateOwnState($: EngineInterface, pinned: string, session: string): Promise<{ text: string; root: string } | null> {
+export type Lookup = { kind: 'found'; text: string; root: string } | { kind: 'none' } | { kind: 'failed' }
+
+const NONE: Lookup = { kind: 'none' }
+
+async function scan($: EngineInterface, pinned: string, session: string): Promise<{ kind: 'found'; text: string; root: string } | { kind: 'miss'; hadFailure: boolean }> {
+  const worktrees = await listWorktrees($, pinned)
+  const siblings = await listSiblings($, worktrees?.[0] ?? pinned)
+  const roots = candidates(pinned, worktrees ?? [], siblings ?? [])
+  const texts = await Promise.all(roots.map(root => readAt($, root)))
+  const i = pickOwn(texts.map(text => text ?? null), session)
+  if (i !== -1) return { kind: 'found', text: texts[i] as string, root: roots[i] }
+  return { kind: 'miss', hadFailure: worktrees === null || siblings === null || texts.includes(undefined) }
+}
+
+// This session's state from another checkout of the repo. 'none' is a clean miss; 'failed' means the
+// lookup itself broke (git, the listing, a read), so the caller keeps what it had. `fresh` skips the
+// no-state memory (a helper call just wrote a state).
+export async function locateOwnState($: EngineInterface, pin: { key: string; root: string }, session: string, fresh = false): Promise<Lookup> {
   try {
-    // The remembered checkout is read first and alone, so a steady state costs no process.
-    const first = lastFound === null || trim(lastFound) === trim(pinned) ? null : lastFound
+    // The remembered checkout of this repo is read first and alone, so a steady state costs no process.
+    const first = lastFound !== null && lastFound.key === pin.key && trim(lastFound.root) !== trim(pin.root) ? lastFound.root : null
     const fast = first === null ? null : await readAt($, first)
-    if (first !== null && fast !== null && isOwnState(fast, session)) return { text: fast, root: first }
-    const worktrees = await listWorktrees($, pinned)
-    const siblings = await listSiblings($, worktrees[0] ?? pinned)
-    const roots = candidates(pinned, worktrees, siblings)
-    const texts = await Promise.all(roots.map(root => readAt($, root)))
-    const i = pickOwn(texts, session)
-    return i === -1 ? null : { text: texts[i] as string, root: roots[i] }
+    if (first !== null && typeof fast === 'string' && isOwnState(fast, session)) return { kind: 'found', text: fast, root: first }
+    const memo = `${pin.key}|${session}`
+    const now = await nowOf($)
+    const seen = misses.get(memo)
+    if (!fresh && now !== null && seen !== undefined && now - seen < NO_STATE_MS) return NONE
+    const result = await scan($, pin.root, session)
+    if (result.kind === 'found') {
+      misses.delete(memo)
+      noteFound({ key: pin.key, root: result.root })
+      return result
+    }
+    if (result.kind === 'miss' && result.hadFailure) return { kind: 'failed' }
+    if (now !== null) misses.set(memo, now)
+    if (lastFound?.key === pin.key) noteFound(null)
+    return NONE
   } catch {
-    return null
+    return { kind: 'failed' }
   }
 }

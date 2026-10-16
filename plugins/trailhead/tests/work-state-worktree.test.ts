@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
-import { noteFound } from '../hooks/mod/work-state-locate'
+import { resetLocate } from '../hooks/mod/work-state-locate'
 
 const SESSION = 'sess-A'
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
@@ -18,13 +18,16 @@ const rig = (on: On) => {
   const r = {
     files: {} as Record<string, string>,
     cwd: '/repo',
+    remote: 'git@github.com:o/r.git',
+    now: 1_000_000,
     worktrees: porcelain('/repo', '/repo-t270') as string | Error,
     siblings: [] as string[],
     ls: [] as string[],
     runs: [] as string[],
     statuses: [] as (string | undefined)[],
   }
-  on('session.repo', () => ({ value: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } }))
+  on('session.repo', () => ({ value: { root: r.cwd.startsWith('/other') ? '/other' : '/repo', remote: r.remote, internal: false } }))
+  on('clock.now', () => ({ value: r.now }))
   on('session.cwd', () => ({ value: r.cwd }))
   on('session.id', () => ({ value: SESSION }))
   on('process.run', (_$, e) => {
@@ -51,6 +54,7 @@ const rig = (on: On) => {
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
+  on('tool.call', () => ({ result: '' }) as never)
   return r
 }
 const last = (r: ReturnType<typeof rig>) => r.statuses[r.statuses.length - 1]
@@ -59,7 +63,7 @@ let turns = 0
 const turn = ($: any) => $.turn.start({ text: 'go', turnId: `t${(turns += 1)}` })
 
 test('own-session state in a worktree shows while the session sits in the main checkout', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.files['/repo-t270'] = stateText(SESSION)
   await $.session.start(START)
@@ -67,7 +71,7 @@ test('own-session state in a worktree shows while the session sits in the main c
 })
 
 test('another session\'s state, or one with no session, in a worktree is not shown', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.files['/repo-t270'] = stateText('sess-other')
   await $.session.start(START)
@@ -78,7 +82,7 @@ test('another session\'s state, or one with no session, in a worktree is not sho
 })
 
 test('a state in the own checkout runs no lookup', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.files['/repo'] = stateText(SESSION)
   r.files['/repo-t270'] = stateText(SESSION, { ticket: 999 })
@@ -90,7 +94,7 @@ test('a state in the own checkout runs no lookup', async ($, on) => {
 })
 
 test('a sibling clone found by name is read', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.worktrees = porcelain('/repo')
   r.siblings = ['repo', 'repo-t5', 'repo-tmp']
@@ -101,7 +105,7 @@ test('a sibling clone found by name is read', async ($, on) => {
 })
 
 test('a failing worktree list falls back to no ticket without throwing', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.worktrees = new Error('git exploded')
   r.files['/repo-t270'] = stateText(SESSION)
@@ -112,7 +116,7 @@ test('a failing worktree list falls back to no ticket without throwing', async (
 })
 
 test('a cd into the worktree and back keeps the status steady, and the remembered checkout skips the scan', async ($, on) => {
-  noteFound(null)
+  resetLocate()
   const r = rig(on)
   r.files['/repo-t270'] = stateText(SESSION)
   await $.session.start(START)
@@ -126,4 +130,59 @@ test('a cd into the worktree and back keeps the status steady, and the remembere
   expect(r.statuses.filter(s => s === undefined)).toEqual([])
   expect(last(r)).toContain('#270')
   expect(wtRuns(r).length).toBe(scans)
+})
+
+test('a state found in one repo is not shown after moving to another repo', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  r.files['/repo-t270'] = stateText(SESSION)
+  await $.session.start(START)
+  expect(last(r)).toContain('#270')
+  r.cwd = '/other'
+  r.remote = 'git@github.com:o/other.git'
+  r.worktrees = porcelain('/other')
+  await turn($)
+  expect(last(r)).toBeUndefined()
+})
+
+test('a scan that found nothing is not repeated inside the window; a helper call scans anyway', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await $.session.start(START)
+  await turn($)
+  r.now += 5_000
+  await turn($)
+  expect(wtRuns(r).length).toBe(1)
+
+  r.files['/repo-t270'] = stateText(SESSION)
+  await $.tool.call({ tool: 'Bash', command: 'node trailhead-work-state.js set --repo . --step execute' } as never)
+  expect(wtRuns(r).length).toBe(2)
+  expect(last(r)).toContain('#270')
+})
+
+test('the no-state memory ends after its window', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await $.session.start(START)
+  r.now += 11_000
+  await turn($)
+  expect(wtRuns(r).length).toBe(2)
+})
+
+test('a broken lookup keeps the last state once the state was found elsewhere; a clean miss clears it', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  r.files['/repo-t270'] = stateText(SESSION)
+  await $.session.start(START)
+  expect(last(r)).toContain('#270')
+  r.worktrees = new Error('timeout')
+  r.files['/repo-t270'] = 'x'
+  await turn($)
+  expect(r.statuses.filter(s => s === undefined)).toEqual([])
+  expect(last(r)).toContain('#270')
+
+  r.worktrees = porcelain('/repo', '/repo-t270')
+  r.files = {}
+  await turn($)
+  expect(last(r)).toBeUndefined()
 })
