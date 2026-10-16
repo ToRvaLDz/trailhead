@@ -58,10 +58,22 @@ export const wasFoundElsewhere = (key: string, pinned: string): boolean =>
 // engine clock; without one nothing is kept.
 const NO_STATE_MS = 10_000
 const misses = new Map<string, number>()
+// A scan that failed is remembered for a shorter while, with how many failed in a row: past MAX_FAILURES
+// the caller stops keeping the last state and treats the file as missing.
+const FAILED_MS = 3_000
+const MAX_FAILURES = 3
+const failures = new Map<string, { at: number | null; count: number }>()
+
+// Writes `value`, dropping the entries whose window has ended.
+const remember = <T extends number | { at: number | null }>(map: Map<string, T>, key: string, value: T, now: number | null, windowMs: number): void => {
+  if (now !== null) for (const [k, v] of map) if (now - (typeof v === 'number' ? v : (v.at ?? now)) >= windowMs) map.delete(k)
+  map.set(key, value)
+}
 
 export const resetLocate = (): void => {
   lastFound = null
   misses.clear()
+  failures.clear()
 }
 
 async function nowOf($: EngineInterface): Promise<number | null> {
@@ -118,26 +130,45 @@ async function scan($: EngineInterface, pinned: string, session: string): Promis
 // lookup itself broke (git, the listing, a read), so the caller keeps what it had. `fresh` skips the
 // no-state memory (a helper call just wrote a state).
 export async function locateOwnState($: EngineInterface, pin: { key: string; root: string }, session: string, fresh = false): Promise<Lookup> {
+  const memo = `${pin.key}|${session}`
   try {
     // The remembered checkout of this repo is read first and alone, so a steady state costs no process.
     const first = lastFound !== null && lastFound.key === pin.key && trim(lastFound.root) !== trim(pin.root) ? lastFound.root : null
     const fast = first === null ? null : await readAt($, first)
-    if (first !== null && typeof fast === 'string' && isOwnState(fast, session)) return { kind: 'found', text: fast, root: first }
-    const memo = `${pin.key}|${session}`
+    if (first !== null && typeof fast === 'string' && isOwnState(fast, session)) {
+      failures.delete(memo)
+      return { kind: 'found', text: fast, root: first }
+    }
     const now = await nowOf($)
     const seen = misses.get(memo)
+    const failed = failures.get(memo)
     if (!fresh && now !== null && seen !== undefined && now - seen < NO_STATE_MS) return NONE
+    if (!fresh && now !== null && failed?.at != null && now - failed.at < FAILED_MS) return failedLookup(failed.count)
     const result = await scan($, pin.root, session)
+    if (result.kind === 'miss' && result.hadFailure) {
+      const count = (failed?.count ?? 0) + 1
+      remember(failures, memo, { at: now, count }, now, FAILED_MS)
+      return failedLookup(count)
+    }
+    failures.delete(memo)
     if (result.kind === 'found') {
       misses.delete(memo)
       noteFound({ key: pin.key, root: result.root })
       return result
     }
-    if (result.kind === 'miss' && result.hadFailure) return { kind: 'failed' }
-    if (now !== null) misses.set(memo, now)
+    if (now !== null) remember(misses, memo, now, now, NO_STATE_MS)
     if (lastFound?.key === pin.key) noteFound(null)
     return NONE
   } catch {
-    return { kind: 'failed' }
+    return failedLookup(bump(memo))
   }
+}
+
+// Failed lookups in a row count against the keep: the MAX_FAILURES-th reads as a missing file.
+const failedLookup = (count: number): Lookup => (count >= MAX_FAILURES ? NONE : { kind: 'failed' })
+
+function bump(memo: string): number {
+  const count = (failures.get(memo)?.count ?? 0) + 1
+  failures.set(memo, { at: null, count })
+  return count
 }

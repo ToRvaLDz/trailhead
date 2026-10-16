@@ -183,6 +183,63 @@ test('a broken lookup keeps the last state once the state was found elsewhere; a
 
   r.worktrees = porcelain('/repo', '/repo-t270')
   r.files = {}
+  r.now += 4_000
   await turn($)
   expect(last(r)).toBeUndefined()
+})
+
+// The state found in the worktree, then the lookup breaks for good (the file there no longer names this session).
+const breakLookup = async ($: any, r: ReturnType<typeof rig>) => {
+  r.files['/repo-t270'] = stateText(SESSION)
+  await $.session.start(START)
+  r.files['/repo-t270'] = stateText('sess-other')
+  r.worktrees = new Error('git exploded')
+}
+
+test('a persistent lookup failure scans at most once per window', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await breakLookup($, r)
+  const before = wtRuns(r).length
+  await turn($)
+  await turn($)
+  r.now += 2_000
+  await turn($)
+  expect(wtRuns(r).length).toBe(before + 1)
+  r.now += 2_000
+  await turn($)
+  expect(wtRuns(r).length).toBe(before + 2)
+})
+
+test('after three failed lookups in a row the band clears', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await breakLookup($, r)
+  for (const kept of [true, true, false]) {
+    r.now += 4_000
+    await turn($)
+    expect(last(r) !== undefined).toBe(kept)
+  }
+})
+
+test('a successful lookup resets the failure count', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await breakLookup($, r)
+  for (let i = 0; i < 2; i += 1) {
+    r.now += 4_000
+    await turn($)
+  }
+  r.worktrees = porcelain('/repo', '/repo-t270')
+  r.files['/repo-t270'] = stateText(SESSION)
+  r.now += 4_000
+  await turn($)
+  expect(last(r)).toContain('#270')
+  r.files['/repo-t270'] = stateText('sess-other')
+  r.worktrees = new Error('git exploded')
+  for (const kept of [true, true, false]) {
+    r.now += 4_000
+    await turn($)
+    expect(last(r) !== undefined).toBe(kept)
+  }
 })
