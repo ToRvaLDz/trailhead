@@ -243,3 +243,36 @@ test('a successful lookup resets the failure count', async ($, on) => {
     expect(last(r) !== undefined).toBe(kept)
   }
 })
+
+test('a hit on the own checkout ends the run of failures', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await breakLookup($, r)
+  for (let i = 0; i < 2; i += 1) {
+    r.now += 4_000
+    await turn($)
+  }
+  r.files['/repo-t270'] = stateText(SESSION)
+  r.cwd = '/repo-t270'
+  await turn($)
+  r.cwd = '/repo'
+  r.files['/repo-t270'] = stateText('sess-other')
+  for (const kept of [true, true, false]) {
+    r.now += 4_000
+    await turn($)
+    expect(last(r) !== undefined).toBe(kept)
+  }
+})
+
+test('a stale failure count expires', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  await breakLookup($, r)
+  for (let i = 0; i < 2; i += 1) {
+    r.now += 4_000
+    await turn($)
+  }
+  r.now += 20_000
+  await turn($)
+  expect(last(r)).toContain('#270')
+})

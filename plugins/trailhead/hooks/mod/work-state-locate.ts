@@ -47,8 +47,10 @@ export const pickOwn = (texts: readonly (string | null)[], session: string): num
 // `remembered` in repo-pin.ts. A checkout of another repo is never tried.
 let lastFound: { key: string; root: string } | null = null
 
+// A hit ends the run of failed lookups for the repo.
 export const noteFound = (found: { key: string; root: string } | null): void => {
   lastFound = found
+  if (found !== null) for (const memo of failures.keys()) if (memo.startsWith(`${found.key}|`)) failures.delete(memo)
 }
 // Whether the state was last found in this repo, in a checkout other than the pinned one.
 export const wasFoundElsewhere = (key: string, pinned: string): boolean =>
@@ -66,7 +68,7 @@ const failures = new Map<string, { at: number | null; count: number }>()
 
 // Writes `value`, dropping the entries whose window has ended.
 const remember = <T extends number | { at: number | null }>(map: Map<string, T>, key: string, value: T, now: number | null, windowMs: number): void => {
-  if (now !== null) for (const [k, v] of map) if (now - (typeof v === 'number' ? v : (v.at ?? now)) >= windowMs) map.delete(k)
+  if (now !== null) for (const [k, v] of map) if (now - (typeof v === 'number' ? v : (v.at ?? -Infinity)) >= windowMs) map.delete(k)
   map.set(key, value)
 }
 
@@ -141,13 +143,13 @@ export async function locateOwnState($: EngineInterface, pin: { key: string; roo
     }
     const now = await nowOf($)
     const seen = misses.get(memo)
-    const failed = failures.get(memo)
+    const failed = liveFailure(memo, now)
     if (!fresh && now !== null && seen !== undefined && now - seen < NO_STATE_MS) return NONE
     if (!fresh && now !== null && failed?.at != null && now - failed.at < FAILED_MS) return failedLookup(failed.count)
     const result = await scan($, pin.root, session)
     if (result.kind === 'miss' && result.hadFailure) {
       const count = (failed?.count ?? 0) + 1
-      remember(failures, memo, { at: now, count }, now, FAILED_MS)
+      remember(failures, memo, { at: now, count }, now, MAX_FAILURES * FAILED_MS)
       return failedLookup(count)
     }
     failures.delete(memo)
@@ -160,15 +162,21 @@ export async function locateOwnState($: EngineInterface, pin: { key: string; roo
     if (lastFound?.key === pin.key) noteFound(null)
     return NONE
   } catch {
-    return failedLookup(bump(memo))
+    return failedLookup(bump(memo, await nowOf($)))
   }
 }
 
 // Failed lookups in a row count against the keep: the MAX_FAILURES-th reads as a missing file.
 const failedLookup = (count: number): Lookup => (count >= MAX_FAILURES ? NONE : { kind: 'failed' })
 
-function bump(memo: string): number {
-  const count = (failures.get(memo)?.count ?? 0) + 1
-  failures.set(memo, { at: null, count })
+// The run of failures for the key; a count older than MAX_FAILURES windows is no longer "in a row".
+function liveFailure(memo: string, now: number | null): { at: number | null; count: number } | undefined {
+  const failed = failures.get(memo)
+  return failed !== undefined && now !== null && failed.at !== null && now - failed.at > MAX_FAILURES * FAILED_MS ? undefined : failed
+}
+
+function bump(memo: string, now: number | null): number {
+  const count = (liveFailure(memo, now)?.count ?? 0) + 1
+  remember(failures, memo, { at: now, count }, now, MAX_FAILURES * FAILED_MS)
   return count
 }
