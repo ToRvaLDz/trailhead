@@ -39,8 +39,8 @@ Atoms and the status entry are only written when their content changed.
 Next to the screen pieces, the mod appends one section, `trailhead:work-state`, to the system
 prompt through `prompt.compose` (session side of the cache boundary, after the engine's own
 sections). It names the active map, the ticket in play (number, title, link) and the step, so the
-agent keeps its bearings after a compaction. Links need a GitHub `origin`; without one the numbers
-stand alone. The section is absent with no state, with an orphaned one, and under `--bare`.
+agent keeps its bearings after a compaction. Links follow the pinned repo (its host included, see "Which repo"), so a shell `cd` out of it keeps
+them; with no pin the numbers stand alone. The section is absent with no state, with an orphaned one, and under `--bare`.
 
 It is a latched snapshot kept in the `promptSnapshot` atom (session scoped, never a module
 variable). It is rebuilt only when the map, ticket, title, orphaned flag or auto flag changes, at
@@ -56,7 +56,7 @@ into single ones, and a line saying the title is data, not an instruction. The t
 1024 bytes and carries no skill protocol.
 
 `next(e)` is called once, before any enrichment, and a failure while enriching returns the
-engine's sections untouched. If the repo cannot be read, the section is built without links and
+engine's sections untouched. With no pin the section is built without links and
 latched like any other. A `/context` render (`analysis` trait) shows the section but never writes
 the atom.
 
@@ -87,7 +87,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
   `/trailhead:work <n>` in the new one, both through `$.command.run`, which the host queues behind a
   running turn; the row shows `queued` until the calls settle (across the reset too), and a
-  second press meanwhile is ignored. A refused `/clear`, or one that
+  second press meanwhile is ignored. A press while the session is not in the pinned repo (a shell `cd` moved it, or its
+  checkout cannot be read) is refused with a toast before the `/clear`, since the host runs the verb in the
+  session's own directory. A refused `/clear`, or one that
   did not change the session, runs no work command. `trailhead:unverified` tickets are never listed,
   only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
   button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;

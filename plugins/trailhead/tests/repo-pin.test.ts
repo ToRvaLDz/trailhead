@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isSamePin, nextPin, pinOf, pinPath, remoteId } from '../hooks/mod/repo-pin'
+import { isPinCheckout, isSamePin, nextPin, pinOf, pinPath, remoteId } from '../hooks/mod/repo-pin'
 
 const repo = (remote: string | null, root = '/repo') => ({ root, remote })
 const GH = { host: 'github.com', slug: 'o/r' }
@@ -23,6 +23,12 @@ test('remoteId accepts a user, a port, any case of the host, and Enterprise host
   expect(remoteId('git@ghe.example.com:o/r.git')).toEqual({ host: 'ghe.example.com', slug: 'o/r' })
   expect(remoteId('https://ghe.example.com:8443/o/r')).toEqual({ host: 'ghe.example.com', slug: 'o/r' })
   expect(remoteId('github.com:o/r')).toEqual(GH)
+})
+
+test('remoteId is host-aware: any host gives its own, a local path none', () => {
+  expect(remoteId('https://gitlab.com/a/b.git')).toEqual({ host: 'gitlab.com', slug: 'a/b' })
+  expect(remoteId('ssh://git@github.com/ToRvaLDz/trailhead.git')).toEqual({ host: 'github.com', slug: 'ToRvaLDz/trailhead' })
+  expect(remoteId('/srv/git/trailhead.git')).toBeNull()
 })
 
 test('remoteId is null for no remote or one that is not host/owner/name', () => {
@@ -65,4 +71,16 @@ test('isSamePin compares root and repo identity', () => {
 test('pinPath joins a repo-relative path under the pinned root', () => {
   expect(pinPath({ root: '/repo', ...GH }, '.trailhead/active-map')).toBe('/repo/.trailhead/active-map')
   expect(pinPath({ root: '/repo/', ...GH }, '.trailhead/active-map')).toBe('/repo/.trailhead/active-map')
+})
+
+test('isPinCheckout holds only for the pinned repo, checked out at the pinned root', () => {
+  const pin = { root: '/repo', ...GH }
+  expect(isPinCheckout(pin, repo('git@github.com:o/r.git'), '/repo')).toBe(true)
+  expect(isPinCheckout(pin, repo('git@github.com:o/r.git', '/main'), '/repo')).toBe(true)
+  expect(isPinCheckout(pin, repo('git@github.com:o/r.git'), '/repo-t5')).toBe(false)
+  expect(isPinCheckout(pin, repo('git@github.com:o/other.git'), '/repo')).toBe(false)
+  expect(isPinCheckout(pin, repo(null), '/repo')).toBe(false)
+  expect(isPinCheckout(pin, null, null)).toBe(false)
+  expect(isPinCheckout(pin, repo('git@github.com:o/r.git'), null)).toBe(false)
+  expect(isPinCheckout(null, repo('git@github.com:o/r.git'), '/repo')).toBe(false)
 })

@@ -164,6 +164,9 @@ const rig = (on: On, engine?: any) => {
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
     isPlaced: true,
     logs: [] as string[],
+    toasts: [] as string[],
+    // `session.repo` answers a denial (the checkout cannot be read).
+    repoFails: false,
     opens: [] as { id: string; title?: string }[],
     // `command.run` beneath the plugin: every run is recorded; `gate` holds a work run, `refuse` rejects it.
     // Every file write beneath the plugin: the pane must never write the active-map marker.
@@ -260,7 +263,11 @@ const rig = (on: On, engine?: any) => {
     return { value: undefined }
   })
   on('ui.status', () => ({ value: undefined }))
-  on('session.repo', () => ({ value: r.repo }))
+  on('ui.toast', (_$, e) => {
+    r.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('session.repo', () => (r.repoFails ? { deny: 'repo read failed' } : { value: r.repo }))
   on('session.root', () => ({ value: r.sessionRoot }))
   on('session.cwd', () => ({ value: r.cwd }))
   on('process.run', async (_$, e) => {
@@ -1068,6 +1075,50 @@ for (const surface of SURFACES) {
     expect(r.runs).toHaveLength(2)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a work press with the session outside any repo is refused before the clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.cwd = '/tmp'
+    r.repo = null
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toContain('o/r')
+    expect(r.toasts[0]).toContain('#209')
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a work press with the session in another repo is refused before the clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toContain('o/r')
+  })
+
+  test(`a work press whose checkout cannot be read is refused, and the next one from the repo goes through [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.repoFails = true
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.toasts).toHaveLength(1)
+    r.repoFails = false
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
   })
 
   test(`a work press clears the conversation first, the row staying queued across the reset [${surface}]`, async ($, on) => {

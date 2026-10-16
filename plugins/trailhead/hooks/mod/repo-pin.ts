@@ -33,6 +33,10 @@ export const pinKey = (pin: RepoPin): string => `${pin.host}/${pin.slug}`
 export const isSamePin = (a: RepoPin | null, b: RepoPin | null): boolean =>
   a === null || b === null ? a === b : a.root === b.root && pinKey(a) === pinKey(b)
 
+// Whether the checkout the session is in (what `session.repo()` and its toplevel read) is the pinned one.
+export const isPinCheckout = (pin: RepoPin | null, repo: RepoRead | null, toplevel: string | null): boolean =>
+  pin !== null && toplevel !== null && isSamePin(pin, pinOf(repo, toplevel))
+
 // A check outside any repo, or in one with no usable remote, keeps the last pin; another repo moves it.
 export const nextPin = (current: RepoPin | null, repo: RepoRead | null, toplevel: string | null = null): RepoPin | null => {
   const found = pinOf(repo, toplevel)
@@ -52,7 +56,7 @@ let remembered: RepoPin | null = null
 // The checkout's own root: `git rev-parse --show-toplevel` in the session's directory, the same one
 // `$.session.repo()` reads, so root and remote always name one checkout. null when it cannot be read;
 // the caller falls back.
-async function toplevelOf($: EngineInterface): Promise<string | null> {
+export async function toplevelOf($: EngineInterface): Promise<string | null> {
   try {
     const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: await $.session.cwd(), timeoutMs: 5_000 })
     const top = out.stdout.trim()
