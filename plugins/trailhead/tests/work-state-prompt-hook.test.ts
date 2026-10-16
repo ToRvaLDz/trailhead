@@ -30,7 +30,7 @@ const rig = (on: On) => {
     // The hosts `gh auth status --hostname` accepts besides github.com.
     authHosts: [] as string[],
     skipCompact: false,
-    denyWrites: false,
+    denyLatch: false,
     composes: 0,
     repoReads: 0,
     writes: 0,
@@ -54,8 +54,12 @@ const rig = (on: On) => {
   on('ui.status', () => ({ value: undefined }))
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
     r.writes += 1
-    return r.denyWrites ? { deny: 'state is read-only' } : next(e)
+    return next(e)
   })
+  // Only the latch key: the other trailhead atoms keep writing.
+  on('state.set', { plugin: 'trailhead', key: 'promptSnapshot' }, (_$, e, next) =>
+    r.denyLatch ? { deny: 'state is read-only' } : next(e),
+  )
   on('prompt.compose', () => {
     r.composes += 1
     return { sections: ENGINE }
@@ -354,15 +358,53 @@ test('a prompt dropped beneath keeps the change for the next one', async ($, on)
   expect(await submit($)).toEqual([])
 })
 
-test('a failing latch write never drops the prompt', async ($, on) => {
+test('a failing latch write never drops the prompt and the next one delivers the change', async ($, on) => {
   const r = rig(on)
   on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
   await $.session.start(START)
   await compose($)
   r.file = stateText()
-  r.denyWrites = true
-  const result = (await $.prompt.submit({ text: 'next' })) as { text?: string }
+  r.denyLatch = true
+  const result = (await $.prompt.submit({ text: 'next' })) as { text?: string; context?: readonly string[] }
   expect(result.text).toBe('next')
+  expect(result.context ?? []).toEqual([])
+  r.denyLatch = false
+  const again = await submit($)
+  expect(again).toHaveLength(1)
+  expect(again[0]).toContain('#204')
+  expect(await submit($)).toEqual([])
+})
+
+test('a hook failing beneath after the note was attached re-delivers it on the next prompt', async ($, on) => {
+  const r = rig(on)
+  let fails = 1
+  on('prompt.submit', (_$, e) => {
+    if (fails-- > 0) throw new Error('boom')
+    return { text: e.text, context: e.context }
+  })
+  await $.session.start(START)
+  await compose($)
+  r.file = stateText()
+  const first = await $.prompt.submit({ text: 'next' }).catch(() => ({ context: [] as string[] }))
+  expect((first as { context?: readonly string[] }).context ?? []).toEqual([])
+  const again = await submit($)
+  expect(again).toHaveLength(1)
+  expect(again[0]).toContain('#204')
+  expect(await submit($)).toEqual([])
+})
+
+test('a pin moved to another repo with the same ticket attaches the section with the new links', async ($, on) => {
+  const r = rig(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.remote = 'https://github.com/o/other.git'
+  await turn($)
+  const moved = await submit($)
+  expect(moved).toHaveLength(1)
+  expect(moved[0]).toContain('#204 "Inject the work state" https://github.com/o/other/issues/204')
+  expect(moved[0]).not.toContain('ToRvaLDz')
 })
 
 test('two overlapping prompts attach the change once', async ($, on) => {

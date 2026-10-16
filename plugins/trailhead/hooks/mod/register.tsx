@@ -58,15 +58,22 @@ async function setOrphaned($: Dollar, value: boolean) {
   if (current !== value) await update($, isOrphaned, () => value)
 }
 
-// What the latch was last set to in this process. Overlapping calls may see the atom as it stood when
-// they began, so the compare-and-set in changeNote trusts this copy first; a hot reload falls back to the atom.
-let told: PromptSnapshot | null | typeof UNSET = UNSET
+// What the latch was last set to, per session, once the atom write succeeded. Overlapping calls may see the
+// atom as it stood when they began, so the compare-and-set in changeNote trusts this copy first; a hot
+// reload falls back to the atom.
+const told = new Map<string, PromptSnapshot | null>()
 
-// null means "rebuild on the next compose"; written only when it changes.
+async function latchedNow($: Dollar): Promise<PromptSnapshot | null> {
+  const session = await $.session.id()
+  return told.has(session) ? (told.get(session) as PromptSnapshot | null) : read($, promptSnapshot)
+}
+
+// null means "rebuild on the next compose"; written only when it changes. The mirror follows a
+// successful write only, so a denied write leaves the latch (and the mirror) as they were.
 async function setSnapshot($: Dollar, value: PromptSnapshot | null) {
-  told = value
   const current = await read($, promptSnapshot)
   if (!sameValue(current, value)) await update($, promptSnapshot, () => value)
+  told.set(await $.session.id(), value)
 }
 
 const debug = ($: Dollar, message: string) => {
@@ -111,18 +118,25 @@ function serial<T>(task: () => Promise<T>): Promise<T> {
 // yet means the compose will carry it. The latch moves to the live snapshot here; `previous` is what to
 // put back if the prompt does not enter.
 async function changeNote($: Dollar): Promise<{ note: string | null; previous: PromptSnapshot | null; live: PromptSnapshot | null }> {
-  const latched = told !== UNSET ? told : await read($, promptSnapshot)
-  if (latched === null) return { note: null, previous: null, live: null }
+  const none = { note: null, previous: null, live: null }
+  const latched = await latchedNow($)
+  if (latched === null) return none
   const live = await liveSnapshot($)
-  if (live.key === latched.key) return { note: null, previous: null, live: null }
-  await setSnapshot($, live)
+  if (live.key === latched.key) return none
+  try {
+    await setSnapshot($, live)
+  } catch (err) {
+    // The latch stays where it was: the next prompt retries, and this one goes on without the note.
+    debug($, `trailhead mod: latch write failed: ${String(err)}`)
+    return none
+  }
   const note = live.text !== null ? live.text : latched.text === null ? null : STALE_NOTE
   return { note, previous: latched, live }
 }
 
 // A dropped prompt told the model nothing: put the latch back, unless something else moved it since.
 async function restoreLatch($: Dollar, previous: PromptSnapshot, live: PromptSnapshot) {
-  const current = told !== UNSET ? told : await read($, promptSnapshot)
+  const current = await latchedNow($)
   if (current !== null && current.key === live.key) await setSnapshot($, previous)
 }
 
@@ -229,10 +243,16 @@ export const register: Register = on => {
     if (e.command !== undefined) return next(e)
     await safeRefresh($)
     const { note, previous, live } = await serial(() => changeNote($))
-    const result = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
-    if (result.drop !== undefined && previous !== null && live !== null) {
-      await serial(() => restoreLatch($, previous, live)).catch(err => debug($, `trailhead mod: latch restore failed: ${String(err)}`))
+    const put = () => (previous === null || live === null ? Promise.resolve() : serial(() => restoreLatch($, previous, live)).catch(err => debug($, `trailhead mod: latch restore failed: ${String(err)}`)))
+    let result
+    try {
+      result = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
+    } catch (err) {
+      // Delivery is not confirmed: put the latch back so the next prompt carries the change.
+      await put()
+      throw err
     }
+    if (result.drop !== undefined) await put()
     return result
   }).catch(($, e, next) => {
     debug($, 'trailhead mod: work state context failed')

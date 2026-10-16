@@ -59,7 +59,9 @@ start, a main-loop compaction and `/clear` compose again. So a change made mid-s
 `prompt.compose`. A `prompt.submit` hook treats the latched snapshot as what the model has been told:
 when the live key differs, it attaches the new section as `context` on that prompt, once per change
 (overlapping prompts attach it once), and latches it; a prompt dropped beneath puts the latch back, so
-the next one carries the change. If the state went away it attaches a one-line note that the earlier section is
+the next one carries the change, as does one whose hook failed beneath or whose latch write was denied
+(the latch stays where it was and the next prompt retries). A per-session in-memory mirror of the latch,
+set only after a successful atom write, lets overlapping prompts agree on it. If the state went away it attaches a one-line note that the earlier section is
 stale. With no compose yet it does nothing (the first compose carries the state), and it skips slash
 commands and fails open: the prompt is never dropped.
 
