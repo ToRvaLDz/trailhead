@@ -31,6 +31,14 @@ test('remoteId is host-aware: any host gives its own, a local path none', () => 
   expect(remoteId('/srv/git/trailhead.git')).toBeNull()
 })
 
+test('remoteId refuses a host or owner/name with characters a link must not carry', () => {
+  expect(remoteId('https://github.com/o​/r.git')).toBeNull()
+  expect(remoteId('git@github.com:o/r‮.git')).toBeNull()
+  expect(remoteId('git@gh⁦e.example.com:o/r.git')).toBeNull()
+  expect(remoteId('https://github.com/o/r<x>.git')).toBeNull()
+  expect(remoteId('git@github.com:my.org/r_1-x.git')).toEqual({ host: 'github.com', slug: 'my.org/r_1-x' })
+})
+
 test('remoteId is null for no remote or one that is not host/owner/name', () => {
   expect(remoteId(null)).toBeNull()
   expect(remoteId('')).toBeNull()

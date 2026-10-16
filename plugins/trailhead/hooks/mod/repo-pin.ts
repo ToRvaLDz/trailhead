@@ -9,8 +9,9 @@ import { sameValue } from './work-state-view'
 
 type RepoRead = { root: string; remote: string | null }
 
-const URL_REMOTE = /^(?:https?|ssh|git):\/\/(?:[^@/\s]+@)?([^/:@\s]+)(?::\d+)?\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i
-const SCP_REMOTE = /^(?:[^@/\s]+@)?([^/:@\s]+):([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/
+// Host and owner/name are kept to the characters a link may carry: they reach the system prompt.
+const URL_REMOTE = /^(?:https?|ssh|git):\/\/(?:[^@/\s]+@)?([A-Za-z0-9.-]+)(?::\d+)?\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/i
+const SCP_REMOTE = /^(?:[^@/\s]+@)?([A-Za-z0-9.-]+):([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/
 
 // Host and owner/name of a remote, any host (github.com or an Enterprise one; `gh` resolves the host
 // itself from the pinned root). The host is lower-cased: DNS names are case-insensitive.
