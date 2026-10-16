@@ -12,8 +12,8 @@ export type WorkState = {
 
 // The latched system-prompt section: the key it was built for and its text (null: no section).
 export type PromptSnapshot = { key: string; text: string | null }
-// The GitHub repo the session works in: its root and owner/name. Pinned so a shell cd never loses it.
-export type RepoPin = { root: string; slug: string }
+// The repo the session works in: its checkout root, remote host and owner/name. Pinned so a shell cd never loses it.
+export type RepoPin = { root: string; host: string; slug: string }
 
 // The map pane (#208): what the last `gh` read of the active map gave.
 export type TicketType = 'decision' | 'research' | 'prototype' | 'build' | 'bug' | 'task'

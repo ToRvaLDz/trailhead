@@ -13,6 +13,8 @@ const AMBER = '#e0af68'
 const URL = 'https://github.com/o/r/issues'
 const ROOT = '/repo'
 const ROOT_OTHER = '/other'
+// A linked worktree of ROOT: the repo's root is the main tree's, the checkout's own is this.
+const ROOT_TREE = '/repo-t5'
 
 const MAP = {
   title: 'trailhead mod',
@@ -66,7 +68,7 @@ const MAPS = [
 // The maps read: one GraphQL call that carries each map's sub-issue counts and the whiteboard's.
 const MAPS_QUERY =
   'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
-const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner=o', '-F', 'repo=r', '-f', `query=${MAPS_QUERY}`]
+const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
 // The pending-UAT read of one scope (a map label, or the whiteboard): the tickets with their bodies.
 const uatCall = (scope: string) => ['gh', 'issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', '200', '--json', 'number,body']
@@ -146,6 +148,13 @@ const rig = (on: On, engine?: any) => {
     repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
     // The active-map marker of the second checkout (ROOT_OTHER); null: it has none.
     otherActive: null as string | null,
+    // The worktree checkout's marker, what `git rev-parse --show-toplevel` answers (null: it fails), and the
+    // session's project root; every path read and every `git` run is recorded.
+    treeActive: null as string | null,
+    top: null as string | null,
+    sessionRoot: '/repo',
+    reads: [] as string[],
+    gitCalls: [] as { argv: readonly string[]; cwd: string | undefined }[],
     // The cwd every `gh` run carried (undefined: none given).
     cwds: [] as (string | undefined)[],
     calls: [] as (readonly string[])[],
@@ -192,10 +201,11 @@ const rig = (on: On, engine?: any) => {
     // A relative path reaches the hook already resolved against the host's directory, not the repo's: put
     // it under the session's working directory, which is what the engine resolves it against. A path under
     // one of the repos is absolute (a pinned read) and stays.
-    const isAbsolute = e.path.startsWith(`${ROOT}/`) || e.path.startsWith(`${ROOT_OTHER}/`)
+    const isAbsolute = [ROOT, ROOT_OTHER, ROOT_TREE].some(root => e.path.startsWith(`${root}/`))
     const path = isAbsolute ? e.path : `${r.cwd}${e.path.slice(e.path.indexOf('/.trailhead/'))}`
-    const root = path.startsWith(`${ROOT_OTHER}/`) ? ROOT_OTHER : path.startsWith(`${ROOT}/`) ? ROOT : null
-    const marker = root === ROOT_OTHER ? r.otherActive : r.active
+    r.reads.push(path)
+    const root = path.startsWith(`${ROOT_TREE}/`) ? ROOT_TREE : path.startsWith(`${ROOT_OTHER}/`) ? ROOT_OTHER : path.startsWith(`${ROOT}/`) ? ROOT : null
+    const marker = root === ROOT_TREE ? r.treeActive : root === ROOT_OTHER ? r.otherActive : r.active
     const file = path.endsWith('/.trailhead/active-map') ? (root === null ? null : marker) : path.endsWith('/.trailhead/work-state.json') ? (root === null ? null : r.work) : undefined
     if (file === undefined) return { deny: `unexpected read of ${e.path}` }
     if (file === null) return { deny: `ENOENT: no such file or directory, open '${e.path}'` }
@@ -248,12 +258,19 @@ const rig = (on: On, engine?: any) => {
   })
   on('ui.status', () => ({ value: undefined }))
   on('session.repo', () => ({ value: r.repo }))
+  on('session.root', () => ({ value: r.sessionRoot }))
   on('process.run', async (_$, e) => {
+    // The pin's own `git rev-parse --show-toplevel`: answered apart, never counted as a `gh` call.
+    if (e.argv[0] === 'git') {
+      r.gitCalls.push({ argv: [...e.argv], cwd: e.init?.cwd })
+      const out = r.top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${r.top}\n`, stderr: '' }
+      return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     r.calls.push([...e.argv])
     r.cwds.push(e.init?.cwd)
     // `gh` needs a repo around it: without its own cwd it uses the session's, wherever a `cd` left it.
     const where = e.init?.cwd ?? r.cwd
-    if (where !== ROOT && where !== ROOT_OTHER) {
+    if (where !== ROOT && where !== ROOT_OTHER && where !== ROOT_TREE) {
       return { value: { exitCode: 1, stdout: '', stderr: 'failed to run git: fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     if (r.deny !== null) return { deny: r.deny }
@@ -1980,7 +1997,7 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
-    expect(r.calls).toContainEqual(expect.arrayContaining(['owner=o', 'repo=other']))
+    expect(r.calls).toContainEqual(MAPS_CALL)
     expect(r.cwds.every(cwd => cwd === ROOT_OTHER)).toBe(true)
   })
 
@@ -1996,12 +2013,61 @@ for (const surface of SURFACES) {
     expect(r.calls).toEqual([])
   })
 
-  test(`a non-GitHub remote is no pin: the same message [${surface}]`, async ($, on) => {
+  test(`a remote that names no host and repo is no pin: the same message [${surface}]`, async ($, on) => {
     const r = rig(on, $)
-    r.repo = { root: ROOT, remote: 'git@gitlab.com:o/r.git', internal: false }
+    r.repo = { root: ROOT, remote: '/srv/git/r.git', internal: false }
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'no-repo')).toBe('Not in a GitHub repository: open the session in a trailhead repo')
     expect(r.calls).toEqual([])
+  })
+  test(`a worktree session reads both files and runs gh under its own toplevel [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    // The repo's root is the main tree's; the session works in the linked worktree.
+    r.top = ROOT_TREE
+    r.cwd = ROOT_TREE
+    r.sessionRoot = ROOT_TREE
+    r.active = '14\n'
+    r.treeActive = '198\n'
+    r.work = stateText()
+    await $.session.start({ ...START, cwd: ROOT_TREE })
+    const ui = await openAndMount($, r)
+    expect(r.gitCalls[0]).toEqual({ argv: ['git', 'rev-parse', '--show-toplevel'], cwd: ROOT_TREE })
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(r.reads).toContain(`${ROOT_TREE}/.trailhead/active-map`)
+    expect(r.reads).toContain(`${ROOT_TREE}/.trailhead/work-state.json`)
+    expect(r.reads.filter(path => path.startsWith(`${ROOT}/`))).toEqual([])
+    expect(r.cwds.length).toBeGreaterThan(0)
+    expect(r.cwds.every(cwd => cwd === ROOT_TREE)).toBe(true)
+  })
+
+  for (const remote of ['git@ghe.example.com:o/r.git', 'ssh://git@GitHub.com:22/o/r', 'https://user@github.com/o/r.git']) {
+    test(`the remote ${remote} still pins; gh finds the host itself [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      r.repo = { root: ROOT, remote, internal: false }
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+      expect(r.calls).toContainEqual(MAPS_CALL)
+      expect(r.cwds.every(cwd => cwd === ROOT)).toBe(true)
+    })
+  }
+
+  test(`the pin survives /clear after the session cwd moved out of the repo [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    r.cwd = '/tmp'
+    r.repo = null
+    r.calls.length = 0
+    r.cwds.length = 0
+    await $.command.run({ command: 'clear', args: '' } as never)
+    await settle(r)
+    expect(await hasKey(ui, 'no-repo')).toBe(false)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(r.calls.length).toBeGreaterThan(0)
+    expect(r.cwds.every(cwd => cwd === ROOT)).toBe(true)
   })
 }

@@ -38,7 +38,7 @@ import {
   whiteboardHeading,
   whiteboardRowLayout,
 } from './map-pane-view'
-import { pinPath, refreshPin } from './repo-pin'
+import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
@@ -113,7 +113,8 @@ const CLEAR_COMMAND = 'clear'
 const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
 const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
-// The repo pin refreshPin keeps (repo-pin.ts); the module scan wants the atom spelled in the file that reads it.
+// The repo pin refreshPin keeps (repo-pin.ts). The module scan wants the atom spelled in the file that reads it,
+// so this copy and the one in repo-pin.ts must keep the same { plugin, key }.
 const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, null as RepoPin | null)
 
 type Dollar = EngineInterface
@@ -197,8 +198,8 @@ const readUat = async ($: Dollar, pin: RepoPin, scope: string): Promise<Readonly
 // whiteboard's; if it fails or is unreadable the name-only `gh issue list` runs instead (counts null, and
 // the whiteboard null: the row is drawn name-only, never stale). Both bounded at MAPS_LIMIT open maps.
 const readMaps = async ($: Dollar, pin: RepoPin): Promise<{ maps: readonly MapSummary[] | null; whiteboard: MapCounts | null }> => {
-  const [owner, name] = pin.slug.split('/')
-  const counted = await gh($, pin, ['api', 'graphql', '-F', `owner=${owner}`, '-F', `repo=${name}`, '-f', `query=${MAPS_QUERY}`])
+  // The {owner}/{repo} placeholders come from the pinned root's remote, which gh resolves with its host too.
+  const counted = await gh($, pin, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
   const withCounts = counted.ok ? parseMapsRead(counted.stdout) : null
   if (withCounts !== null) return withCounts
   const out = await gh($, pin, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
@@ -309,9 +310,9 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
 // holds for the old one (and drops a read of it still in flight), so its tickets never show under the new.
 let paneRepo: string | null = null
 async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<RepoPin | null> {
-  const { pin } = await refreshPin($, init)
-  const slug = pin?.slug ?? null
-  if (paneRepo !== null && slug !== null && slug !== paneRepo) {
+  const pin = await refreshPin($, init)
+  const key = pin === null ? null : pinKey(pin)
+  if (paneRepo !== null && key !== null && key !== paneRepo) {
     generation += 1
     await update($, mapPane, () => EMPTY)
     await update($, dashboardPane, () => EMPTY_DASHBOARD)
@@ -319,7 +320,7 @@ async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<Rep
     await update($, viewedMap, () => null)
     await update($, isDashboard, () => false)
   }
-  paneRepo = slug ?? paneRepo
+  paneRepo = key ?? paneRepo
   return pin
 }
 
