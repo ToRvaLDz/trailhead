@@ -49,11 +49,12 @@ export const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, nu
 // Machinery, not drawn: survives a /clear, which empties the atom while the session stays in its repo.
 let remembered: RepoPin | null = null
 
-// The checkout's own root, from the session's project root (a shell `cd` does not move it, a worktree
-// does): `git rev-parse --show-toplevel` there. null when it cannot be read; the caller falls back.
+// The checkout's own root: `git rev-parse --show-toplevel` in the session's directory, the same one
+// `$.session.repo()` reads, so root and remote always name one checkout. null when it cannot be read;
+// the caller falls back.
 async function toplevelOf($: EngineInterface): Promise<string | null> {
   try {
-    const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: await $.session.root(), timeoutMs: 5_000 })
+    const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: await $.session.cwd(), timeoutMs: 5_000 })
     const top = out.stdout.trim()
     return out.exitCode === 0 && top.startsWith('/') ? top : null
   } catch {

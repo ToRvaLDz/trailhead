@@ -148,7 +148,7 @@ const rig = (on: On, engine?: any) => {
     repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
     // The active-map marker of the second checkout (ROOT_OTHER); null: it has none.
     otherActive: null as string | null,
-    // The worktree checkout's marker, what `git rev-parse --show-toplevel` answers (null: it fails), and the
+    // The worktree checkout's marker, what `git rev-parse --show-toplevel` answers there (null: it fails), and the
     // session's project root; every path read and every `git` run is recorded.
     treeActive: null as string | null,
     top: null as string | null,
@@ -259,11 +259,15 @@ const rig = (on: On, engine?: any) => {
   on('ui.status', () => ({ value: undefined }))
   on('session.repo', () => ({ value: r.repo }))
   on('session.root', () => ({ value: r.sessionRoot }))
+  on('session.cwd', () => ({ value: r.cwd }))
   on('process.run', async (_$, e) => {
     // The pin's own `git rev-parse --show-toplevel`: answered apart, never counted as a `gh` call.
     if (e.argv[0] === 'git') {
       r.gitCalls.push({ argv: [...e.argv], cwd: e.init?.cwd })
-      const out = r.top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${r.top}\n`, stderr: '' }
+      // Answered per directory, like git: the worktree gives `top`, the other checkouts their own root.
+      const where = e.init?.cwd
+      const top = where === ROOT_TREE ? r.top : where === ROOT || where === ROOT_OTHER ? where : null
+      const out = top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${top}\n`, stderr: '' }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
     r.calls.push([...e.argv])
@@ -1999,6 +2003,9 @@ for (const surface of SURFACES) {
     expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
     expect(r.calls).toContainEqual(MAPS_CALL)
     expect(r.cwds.every(cwd => cwd === ROOT_OTHER)).toBe(true)
+    // The toplevel is read where the session now is, not at its project root, which a shell `cd` leaves behind.
+    expect(r.gitCalls.at(-1)).toEqual({ argv: ['git', 'rev-parse', '--show-toplevel'], cwd: ROOT_OTHER })
+    expect(r.reads).toContain(`${ROOT_OTHER}/.trailhead/active-map`)
   })
 
   test(`a session started outside any repo says so and runs no gh [${surface}]`, async ($, on) => {
