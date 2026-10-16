@@ -11,6 +11,8 @@ const FLOOR = 15_000
 const TIMER = 180_000
 const AMBER = '#e0af68'
 const URL = 'https://github.com/o/r/issues'
+const ROOT = '/repo'
+const ROOT_OTHER = '/other'
 
 const MAP = {
   title: 'trailhead mod',
@@ -64,7 +66,7 @@ const MAPS = [
 // The maps read: one GraphQL call that carries each map's sub-issue counts and the whiteboard's.
 const MAPS_QUERY =
   'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
-const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
+const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner=o', '-F', 'repo=r', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
 // The pending-UAT read of one scope (a map label, or the whiteboard): the tickets with their bodies.
 const uatCall = (scope: string) => ['gh', 'issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', '200', '--json', 'number,body']
@@ -97,7 +99,7 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened', 'ownTicket']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened', 'ownTicket', 'repoPin']
 
 const PANE_PROPS = {
   title: 'Map',
@@ -138,6 +140,14 @@ const rig = (on: On, engine?: any) => {
     // What `gh` answers when no test replaced it; a test can wrap it.
     defaultGh: null as unknown as Gh,
     deny: null as string | null,
+    // The session's working directory, which a shell `cd` moves, and what `session.repo` finds there
+    // (null outside any repo). Relative reads and a `gh` without its own cwd resolve against `cwd`.
+    cwd: '/repo',
+    repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
+    // The active-map marker of the second checkout (ROOT_OTHER); null: it has none.
+    otherActive: null as string | null,
+    // The cwd every `gh` run carried (undefined: none given).
+    cwds: [] as (string | undefined)[],
     calls: [] as (readonly string[])[],
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
     isPlaced: true,
@@ -179,7 +189,14 @@ const rig = (on: On, engine?: any) => {
     return ok(JSON.stringify(argv.includes('all') ? (isOther ? r.otherHistory : r.history) : isOther ? r.otherTickets : r.tickets))
   }
   on('fs.read', (_$, e) => {
-    const file = e.path.endsWith('/.trailhead/active-map') ? r.active : e.path.endsWith('/.trailhead/work-state.json') ? r.work : undefined
+    // A relative path reaches the hook already resolved against the host's directory, not the repo's: put
+    // it under the session's working directory, which is what the engine resolves it against. A path under
+    // one of the repos is absolute (a pinned read) and stays.
+    const isAbsolute = e.path.startsWith(`${ROOT}/`) || e.path.startsWith(`${ROOT_OTHER}/`)
+    const path = isAbsolute ? e.path : `${r.cwd}${e.path.slice(e.path.indexOf('/.trailhead/'))}`
+    const root = path.startsWith(`${ROOT_OTHER}/`) ? ROOT_OTHER : path.startsWith(`${ROOT}/`) ? ROOT : null
+    const marker = root === ROOT_OTHER ? r.otherActive : r.active
+    const file = path.endsWith('/.trailhead/active-map') ? (root === null ? null : marker) : path.endsWith('/.trailhead/work-state.json') ? (root === null ? null : r.work) : undefined
     if (file === undefined) return { deny: `unexpected read of ${e.path}` }
     if (file === null) return { deny: `ENOENT: no such file or directory, open '${e.path}'` }
     if (file instanceof Error) return { deny: file.message }
@@ -230,8 +247,15 @@ const rig = (on: On, engine?: any) => {
     return { value: undefined }
   })
   on('ui.status', () => ({ value: undefined }))
+  on('session.repo', () => ({ value: r.repo }))
   on('process.run', async (_$, e) => {
     r.calls.push([...e.argv])
+    r.cwds.push(e.init?.cwd)
+    // `gh` needs a repo around it: without its own cwd it uses the session's, wherever a `cd` left it.
+    const where = e.init?.cwd ?? r.cwd
+    if (where !== ROOT && where !== ROOT_OTHER) {
+      return { value: { exitCode: 1, stdout: '', stderr: 'failed to run git: fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     if (r.deny !== null) return { deny: r.deny }
     const out = await (r.gh ?? defaultGh)(e.argv)
     return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
@@ -1917,5 +1941,67 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
     expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+  })
+  test(`the pane keeps its repo when the session cwd moves out of it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    // A shell `cd /tmp`: no repo there, relative reads miss, and a `gh` without its own cwd fails.
+    r.cwd = '/tmp'
+    r.repo = null
+    r.calls.length = 0
+    r.cwds.length = 0
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await hasKey(ui, 'footer')).toBe(true)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+    expect(r.calls.length).toBeGreaterThan(0)
+    expect(r.cwds.every(cwd => cwd === ROOT)).toBe(true)
+  })
+
+  test(`the pane follows a move to another GitHub repo and drops the old one's map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await keysOf(ui, 'row-')).toContain('row-209')
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    r.otherActive = '14\n'
+    r.map = OTHER_MAP
+    r.tickets = OTHER_TICKETS
+    r.history = OTHER_HISTORY
+    r.calls.length = 0
+    r.cwds.length = 0
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(r.calls).toContainEqual(expect.arrayContaining(['owner=o', 'repo=other']))
+    expect(r.cwds.every(cwd => cwd === ROOT_OTHER)).toBe(true)
+  })
+
+  test(`a session started outside any repo says so and runs no gh [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.cwd = '/tmp'
+    r.repo = null
+    await $.session.start({ ...START, cwd: '/tmp' })
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'no-repo')).toBe('Not in a GitHub repository: open the session in a trailhead repo')
+    await completeTurn($)
+    await settle(r)
+    expect(r.calls).toEqual([])
+  })
+
+  test(`a non-GitHub remote is no pin: the same message [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.repo = { root: ROOT, remote: 'git@gitlab.com:o/r.git', internal: false }
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'no-repo')).toBe('Not in a GitHub repository: open the session in a trailhead repo')
+    expect(r.calls).toEqual([])
   })
 }

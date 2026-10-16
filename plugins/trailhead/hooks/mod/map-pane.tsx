@@ -1,6 +1,6 @@
 // The map pane (#208): a docked Pane listing the active map's open tickets by state.
-// It reads the active map from `.trailhead/active-map` and the tickets through `gh`, only
-// while the pane is open, and never faster than MIN_REFRESH_MS. Claude Code 2.1.287+ only.
+// It reads the active map from `.trailhead/active-map` and the tickets through `gh`, both under the
+// pinned repo (repo-pin.ts), not the session's cwd, only while the pane is open, and never faster than MIN_REFRESH_MS. Claude Code 2.1.287+ only.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
@@ -38,6 +38,7 @@ import {
   whiteboardHeading,
   whiteboardRowLayout,
 } from './map-pane-view'
+import { type RepoPin, pinPath, refreshPin } from './repo-pin'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
@@ -48,6 +49,8 @@ export const TIMER_MS = 180_000
 export const GH_TIMEOUT_MS = 20_000
 // A list unchanged for this long is still written, so its age label moves on.
 const AGE_REFRESH_MS = 60_000
+// Shown when no GitHub repo was ever pinned; the pane then makes no `gh` call.
+const NO_REPO = 'Not in a GitHub repository: open the session in a trailhead repo'
 const ACTIVE_MAP_PATH = '.trailhead/active-map'
 const TICKET_FIELDS = 'number,title,labels,assignees,url'
 const UAT_FIELDS = 'number,body'
@@ -110,6 +113,8 @@ const CLEAR_COMMAND = 'clear'
 const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
 const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
 const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
+// The repo pin refreshPin keeps (repo-pin.ts); the module scan wants the atom spelled in the file that reads it.
+const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, null as RepoPin | null)
 
 type Dollar = EngineInterface
 type Timer = { cancel: () => void }
@@ -136,9 +141,12 @@ let carried: Carried | null = null
 let workInFlight: number | null = null
 
 async function readActiveMap($: Dollar): Promise<number | null> {
+  const pin = await read($, repoPin)
+  // No repo pinned: there is nothing to read the marker from.
+  if (pin === null) return read($, activeMap)
   let next: number | null
   try {
-    next = parseActiveMap((await $.fs.read(ACTIVE_MAP_PATH)) as string)
+    next = parseActiveMap((await $.fs.read(pinPath(pin, ACTIVE_MAP_PATH))) as string)
   } catch (err) {
     // A missing marker means no active map; any other failure is transient: keep the last one.
     if (!isMissing(err)) return read($, activeMap)
@@ -158,28 +166,29 @@ async function setPane($: Dollar, next: MapPaneData) {
 
 type GhResult = { ok: true; stdout: string } | { ok: false; reason: string }
 
-async function gh($: Dollar, args: readonly string[]): Promise<GhResult> {
+// Always run in the pinned repo, so the session's cwd moving out of it never changes what is read.
+async function gh($: Dollar, pin: RepoPin, args: readonly string[]): Promise<GhResult> {
   try {
-    const out = await $.process.run(['gh', ...args], { timeoutMs: GH_TIMEOUT_MS })
+    const out = await $.process.run(['gh', ...args], { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
     return out.exitCode === 0 ? { ok: true, stdout: out.stdout } : { ok: false, reason: failureReason(out) }
   } catch (error) {
     return { ok: false, reason: failureReason({ error }) }
   }
 }
 
-const readList = ($: Dollar, target: number) =>
+const readList = ($: Dollar, pin: RepoPin, target: number) =>
   Promise.all([
-    gh($, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
-    gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
-    gh($, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
-    readMaps($),
-    readUat($, `trailhead:map-${target}`),
+    gh($, pin, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
+    gh($, pin, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    gh($, pin, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
+    readMaps($, pin),
+    readUat($, pin, `trailhead:map-${target}`),
   ])
 
 // The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent
 // each one tests. A failed or unreadable read is null: the rows still group by label, only the parent line goes.
-const readUat = async ($: Dollar, scope: string): Promise<ReadonlyMap<number, UatParent> | null> => {
-  const out = await gh($, ['issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', UAT_FIELDS])
+const readUat = async ($: Dollar, pin: RepoPin, scope: string): Promise<ReadonlyMap<number, UatParent> | null> => {
+  const out = await gh($, pin, ['issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', UAT_FIELDS])
   return out.ok ? parseUatParents(out.stdout) : null
 }
 
@@ -187,11 +196,12 @@ const readUat = async ($: Dollar, scope: string): Promise<ReadonlyMap<number, Ua
 // caller keeps the last good list. One GraphQL call gives every map with its sub-issue counts and the
 // whiteboard's; if it fails or is unreadable the name-only `gh issue list` runs instead (counts null, and
 // the whiteboard null: the row is drawn name-only, never stale). Both bounded at MAPS_LIMIT open maps.
-const readMaps = async ($: Dollar): Promise<{ maps: readonly MapSummary[] | null; whiteboard: MapCounts | null }> => {
-  const counted = await gh($, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
+const readMaps = async ($: Dollar, pin: RepoPin): Promise<{ maps: readonly MapSummary[] | null; whiteboard: MapCounts | null }> => {
+  const [owner, name] = pin.slug.split('/')
+  const counted = await gh($, pin, ['api', 'graphql', '-F', `owner=${owner}`, '-F', `repo=${name}`, '-f', `query=${MAPS_QUERY}`])
   const withCounts = counted.ok ? parseMapsRead(counted.stdout) : null
   if (withCounts !== null) return withCounts
-  const out = await gh($, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
+  const out = await gh($, pin, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
   return { maps: out.ok ? parseMaps(out.stdout) : null, whiteboard: null }
 }
 
@@ -212,7 +222,7 @@ async function dropClosedView($: Dollar, maps: readonly MapSummary[] | null) {
 
 // One read of the viewed (else active) map. The result is dropped when the pane closed meanwhile
 // (generation) or the target moved on, checked before every write; a moved target is read again.
-async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
+async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
   const target = await readTarget($)
   if (token !== generation) return
   const isStale = async () => {
@@ -225,7 +235,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
 
   if (target === null) {
     // No map to show: the open maps alone, so one can be picked.
-    const mapsRead = await readMaps($)
+    const mapsRead = await readMaps($, pin)
     const maps = mapsRead.maps ?? before.maps
     if (await isStale()) return
     return setPane($, { ...EMPTY, maps, whiteboard: mapsRead.whiteboard })
@@ -236,7 +246,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
     await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, isLoading: true })
   }
 
-  const [view, list, historyRead, mapsRead, uatParents] = await readList($, target)
+  const [view, list, historyRead, mapsRead, uatParents] = await readList($, pin, target)
   const maps = mapsRead.maps ?? before.maps
   const { whiteboard } = mapsRead
   await dropClosedView($, mapsRead.maps)
@@ -261,7 +271,7 @@ async function fetchMap($: Dollar, token: number, wantsAnother: () => void) {
 
 // The whiteboard's open tickets (map-less) and the pinned index, plus the open maps. Same drop rule
 // as a map read: a result is not committed once the pane closed or the dashboard was left.
-async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void) {
+async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
   const isStale = async () => {
     if (token !== generation) return true
     if (await read($, isDashboard)) return false
@@ -273,10 +283,10 @@ async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void
     await update($, dashboardPane, () => ({ ...before, isLoading: true }))
   }
   const [list, index, mapsRead, uatParents] = await Promise.all([
-    gh($, ['issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
-    gh($, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
-    readMaps($),
-    readUat($, 'trailhead:whiteboard'),
+    gh($, pin, ['issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    gh($, pin, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
+    readMaps($, pin),
+    readUat($, pin, 'trailhead:whiteboard'),
   ])
   const now = await $.clock.now()
   if (await isStale()) return
@@ -294,6 +304,27 @@ async function fetchDashboard($: Dollar, token: number, wantsAnother: () => void
   const next: DashboardPaneData = { dashboard, ...tickets, tickets: withUatParents(tickets.tickets, uatParents), fetchedAt: now, error: null, isLoading: false }
   if (!sameValue(kept, next)) await update($, dashboardPane, () => next)
 }
+
+// Checks the repo the session is in and pins it. A move to another GitHub repo empties what the pane
+// holds for the old one (and drops a read of it still in flight), so its tickets never show under the new.
+let paneRepo: string | null = null
+async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<RepoPin | null> {
+  const { pin } = await refreshPin($, init)
+  const slug = pin?.slug ?? null
+  if (paneRepo !== null && slug !== null && slug !== paneRepo) {
+    generation += 1
+    await update($, mapPane, () => EMPTY)
+    await update($, dashboardPane, () => EMPTY_DASHBOARD)
+    await update($, activeMap, () => null)
+    await update($, viewedMap, () => null)
+    await update($, isDashboard, () => false)
+  }
+  paneRepo = slug ?? paneRepo
+  return pin
+}
+
+const safeSyncPin = ($: Dollar, init: { isStart?: boolean } = {}) =>
+  syncPin($, init).catch(err => debug($, `trailhead mod: repo pin failed: ${String(err)}`))
 
 async function isPaneUp($: Dollar): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced)
@@ -316,6 +347,9 @@ type Request = { bypassFloor?: boolean }
 // just after a refresh still shows.
 async function decide($: Dollar, request: Request) {
   if (!(await isPaneUp($))) return
+  // Nothing pinned: no repo to read, so no call.
+  const pin = await syncPin($)
+  if (pin === null) return
   ticker ??= $.clock.every(TIMER_MS, () => void requestRefresh($))
   const now = await $.clock.now()
   const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
@@ -332,8 +366,8 @@ async function decide($: Dollar, request: Request) {
   trailing?.cancel()
   trailing = null
   const again = () => void requestRefresh($, { bypassFloor: true })
-  if (await read($, isDashboard)) await fetchDashboard($, generation, again)
-  else await fetchMap($, generation, again)
+  if (await read($, isDashboard)) await fetchDashboard($, pin, generation, again)
+  else await fetchMap($, pin, generation, again)
 }
 
 // Does nothing while the pane is closed: the data exists only for the pane.
@@ -362,6 +396,7 @@ async function restoreAfterClear($: Dollar) {
   const kept = carried
   carried = null
   try {
+    await syncPin($)
     if (kept?.isAutoOpened === true) await update($, paneAutoOpened, () => true)
     if (kept?.isDashboard === true) await update($, isDashboard, () => true)
     const active = await readActiveMap($)
@@ -482,6 +517,7 @@ export function registerMapPane(on: On) {
   // when neither has one, and register.tsx already hooks these events bare.
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     const result = await next(e)
+    await safeSyncPin($, { isStart: true })
     await safeReadActiveMap($)
     void requestRefresh($)
     return result
@@ -489,6 +525,7 @@ export function registerMapPane(on: On) {
 
   on('turn.complete', { reason: ['answer', 'aborted', 'refusal', 'error'] }, async ($, e, next) => {
     const result = await next(e)
+    await safeSyncPin($)
     await safeReadActiveMap($)
     void requestRefresh($)
     return result
@@ -546,6 +583,7 @@ export function registerMapPane(on: On) {
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
     const own = await read($, ownTicket)
+    const pin = await read($, repoPin)
     const pending = await read($, pendingWork)
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
@@ -726,6 +764,15 @@ export function registerMapPane(on: On) {
         isFilling = false
         void requestRefresh($)
       })
+    }
+
+    // No GitHub repo was ever pinned: say so rather than a `gh` failure; nothing is read.
+    if (pin === null) {
+      return (
+        <Box flexDirection="column" width={cols}>
+          {text('no-repo', dim, NO_REPO)}
+        </Box>
+      )
     }
 
     if (isBoard) {
