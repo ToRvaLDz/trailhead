@@ -2161,6 +2161,25 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect(r.authCalls).toEqual([`once-${surface}.example.com`])
   })
+  test(`a failed host check is retried after a while, so a later login pins [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    const host = `late-${surface}.example.com`
+    r.repo = { root: ROOT, remote: `git@${host}:o/r.git`, internal: false }
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'no-repo')).toBe('Not in a GitHub repository: open the session in a trailhead repo')
+    // A turn soon after does not ask again; one after the retry window does, and the login now holds.
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(r.authCalls).toEqual([host])
+    r.authHosts = [host]
+    await r.clock.advance(60_000)
+    await completeTurn($)
+    await settle(r)
+    expect(r.authCalls).toEqual([host, host])
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+  })
   test(`a pin moved by the band alone never leaves the old repo's rows drawn [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)

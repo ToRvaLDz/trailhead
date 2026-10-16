@@ -63,19 +63,24 @@ async function toplevelOf($: EngineInterface): Promise<string | null> {
 }
 
 // github.com is served by gh as it is; any other host only once `gh auth status --hostname <host>` succeeds
-// (an Enterprise host the person logged in to). One answer per host for the life of the module (the
-// session's start hooks of the pane and the band both refresh, so it is not reset there); a check that
-// could not run at all is not kept, so it is tried again.
+// (an Enterprise host the person logged in to). A success is kept for the life of the module (the
+// session's start hooks of the pane and the band both refresh, so it is not reset there). A failure is
+// kept only HOST_RETRY_MS: it may be a network blip or a login still to come, so it is asked again
+// later. A check that could not run at all is not kept, so it is tried again.
 const GITHUB_HOST = 'github.com'
-const servedHosts = new Map<string, boolean>()
+const HOST_RETRY_MS = 60_000
+// true: served; a number: the time the last check failed.
+const servedHosts = new Map<string, true | number>()
 
 async function isServed($: EngineInterface, host: string, cwd: string): Promise<boolean> {
   if (host === GITHUB_HOST) return true
   const known = servedHosts.get(host)
-  if (known !== undefined) return known
+  if (known === true) return true
+  const now = await $.clock.now()
+  if (known !== undefined && now - known < HOST_RETRY_MS) return false
   try {
     const out = await $.process.run(['gh', 'auth', 'status', '--hostname', host], { cwd, timeoutMs: 10_000 })
-    servedHosts.set(host, out.exitCode === 0)
+    servedHosts.set(host, out.exitCode === 0 ? true : now)
     return out.exitCode === 0
   } catch {
     return false
