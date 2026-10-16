@@ -26,5 +26,6 @@
   "tdd": "seams",
   "acceptance": { "browser": "auto" },
   "plan_review": "codex",
-  "plan_review.rounds": 2
+  "plan_review.rounds": 2,
+  "uat": { "setup": [] }
 }
