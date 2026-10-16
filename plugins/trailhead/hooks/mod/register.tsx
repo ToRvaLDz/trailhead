@@ -8,6 +8,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { PromptSnapshot, WorkState } from '../../types'
 import { registerMapPane } from './map-pane'
+import { pinPath, refreshPin } from './repo-pin'
 import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
@@ -104,10 +105,13 @@ async function setOwnTicket($: Dollar, next: WorkState | null) {
   if (value !== prev) await update($, ownTicket, () => value)
 }
 
-async function refresh($: Dollar) {
+async function refresh($: Dollar, init: { isStart?: boolean } = {}) {
   let text: string
   try {
-    text = (await $.fs.read(STATE_PATH)) as string
+    // The file under the pinned repo, whatever the session cwd is now; without a pin (no GitHub
+    // repo ever seen) it stays relative to the cwd, as before.
+    const { pin } = await refreshPin($, init).catch(() => ({ pin: null }))
+    text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
   } catch (err) {
     // A missing file means no ticket in play; any other failure is transient: keep the last state.
     if (isMissing(err)) {
@@ -123,8 +127,8 @@ async function refresh($: Dollar) {
   return apply($, state, state.session !== null && state.session !== session)
 }
 
-function safeRefresh($: Dollar): Promise<void> {
-  queue = queue.then(() => refresh($)).catch(err => {
+function safeRefresh($: Dollar, init: { isStart?: boolean } = {}): Promise<void> {
+  queue = queue.then(() => refresh($, init)).catch(err => {
     try {
       $.ui.log(`trailhead mod: work state refresh failed: ${String(err)}`, { to: 'debug' })
     } catch {
@@ -166,7 +170,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await safeRefresh($)
+    await safeRefresh($, { isStart: true })
     await setSnapshot($, null).catch(err => debug($, `trailhead mod: snapshot reset failed: ${String(err)}`))
     return result
   })

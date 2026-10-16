@@ -44,10 +44,17 @@ const rig = (on: On, engine: any) => {
     statuses: [] as (string | undefined)[],
     writes: 0,
     reads: 0,
+    // The session's working directory (a shell `cd` moves it) and what `session.repo` finds there.
+    cwd: '/repo',
+    repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
   }
+  on('session.repo', () => ({ value: r.repo }))
   on('fs.read', (_$, e) => {
     r.reads += 1
     if (!e.path.endsWith('/.trailhead/work-state.json')) return { deny: `unexpected read of ${e.path}` }
+    // A relative path reaches the hook resolved against the host's directory; the engine resolves it
+    // against the session's, so outside the repo it misses. A pinned read is absolute and stays.
+    if (!e.path.startsWith('/repo/') && r.cwd !== '/repo') return { deny: `ENOENT: no such file or directory, open '${e.path}'` }
     if (r.file === null) return { deny: "ENOENT: no such file or directory, open '.trailhead/work-state.json'" }
     if (r.file instanceof Error) return { deny: r.file.message }
     return { value: r.file }
@@ -361,5 +368,21 @@ for (const surface of SURFACES) {
     await $.session.end({ reason: 'clear', sessionId: SESSION, resume: {} } as never)
     expect(lastStatus(r)).toBe(STATUS_PLAN)
     expect(await ui.find({ key: 'tag' })).toBeUndefined()
+  })
+  test(`the band keeps its state when the session cwd moves out of the repo [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.file = stateText()
+    await $.session.start(START)
+    const ui = await mountBand($)
+    expect((await leaf(ui, 'ticket'))?.text).toBe('#203')
+    r.cwd = '/tmp'
+    r.repo = null
+    await turn($)
+    expect(lastStatus(r)).toBe(STATUS_PLAN)
+    expect((await leaf(ui, 'ticket'))?.text).toBe('#203')
+    // The file really going away still clears it.
+    r.file = null
+    await turn($)
+    expect(lastStatus(r)).toBeUndefined()
   })
 }
