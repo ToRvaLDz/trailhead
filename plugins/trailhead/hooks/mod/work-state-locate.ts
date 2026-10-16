@@ -40,6 +40,12 @@ export const candidates = (pinned: string, worktrees: readonly string[], sibling
 // A state is this session's only when it names the session: a state with no session, or another's, is not adopted.
 export const isOwnState = (text: string, session: string): boolean => parseWorkState(text)?.session === session
 
+// A state that names another session (a state with no session is nobody's, shown as is).
+export const isForeignState = (text: string, session: string): boolean => {
+  const owner = parseWorkState(text)?.session
+  return owner !== undefined && owner !== null && owner !== session
+}
+
 // The first candidate's text that is this session's state.
 export const pickOwn = (texts: readonly (string | null)[], session: string): number => texts.findIndex(text => text !== null && isOwnState(text, session))
 

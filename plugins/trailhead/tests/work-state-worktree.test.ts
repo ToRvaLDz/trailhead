@@ -274,3 +274,37 @@ test('three failures spaced well apart still clear the band', async ($, on) => {
     expect(last(r) !== undefined).toBe(kept)
   }
 })
+
+test('another session\'s state in the own checkout does not hide this session\'s state in a worktree', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  r.files['/repo'] = stateText('sess-other')
+  r.files['/repo-t270'] = stateText(SESSION, { ticket: 999 })
+  await $.session.start(START)
+  expect(last(r)).toContain('#999')
+  expect(last(r)).not.toContain('orphaned')
+  await turn($)
+  expect(last(r)).toContain('#999')
+})
+
+test('another session\'s state in the own checkout and nothing elsewhere stays orphaned', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  r.files['/repo'] = stateText('sess-other')
+  await $.session.start(START)
+  expect(last(r)).toContain('#270')
+  r.worktrees = new Error('git exploded')
+  r.now += 20_000
+  await turn($)
+  expect(last(r)).toContain('#270')
+})
+
+test('a state with no session in the own checkout runs no lookup', async ($, on) => {
+  resetLocate()
+  const r = rig(on)
+  r.files['/repo'] = stateText(null)
+  r.files['/repo-t270'] = stateText(SESSION, { ticket: 999 })
+  await $.session.start(START)
+  expect(last(r)).toContain('#270')
+  expect(wtRuns(r)).toEqual([])
+})

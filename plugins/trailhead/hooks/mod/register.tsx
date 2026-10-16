@@ -9,7 +9,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { PromptSnapshot, RepoPin, WorkState } from '../../types'
 import { onPinMove, registerMapPane } from './map-pane'
 import { pinKey, pinPath, refreshPin } from './repo-pin'
-import { isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
+import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
@@ -160,13 +160,20 @@ async function setOwnTicket($: Dollar, next: WorkState | null) {
 // repo ever seen) it stays relative to the cwd, as before. A missing file there sends the lookup to the
 // repo's other checkouts (#270): the engine writes the state in the ticket's own workspace. A clean miss
 // rethrows the own one, so the caller sees what it saw before; a broken lookup, when the state was found
-// elsewhere before, is a transient error that keeps the last state. `fresh` (a helper call just wrote
+// elsewhere before, is a transient error that keeps the last state. Another session's state there gets
+// the same lookup, but a miss or a failure leaves it shown (orphaned). `fresh` (a helper call just wrote
 // the state) skips the lookup's no-state memory.
 async function readStateText($: Dollar, init: RefreshInit): Promise<string> {
   const pin = await refreshPin($, { isStart: init.isStart, onMove: moved => onPinMove($, moved) }).catch(() => null)
   try {
     const text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
-    if (pin !== null && isOwnState(text, await $.session.id())) noteFound({ key: pinKey(pin), root: pin.root })
+    if (pin === null) return text
+    const session = await $.session.id()
+    if (isOwnState(text, session)) noteFound({ key: pinKey(pin), root: pin.root })
+    else if (isForeignState(text, session)) {
+      const found = await locateOwnState($, { key: pinKey(pin), root: pin.root }, session, init.fresh === true)
+      if (found.kind === 'found') return found.text
+    }
     return text
   } catch (err) {
     if (pin === null || !isMissing(err)) throw err
