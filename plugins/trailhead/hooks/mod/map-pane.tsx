@@ -439,12 +439,10 @@ async function whereIsSession($: Dollar, pin: RepoPin): Promise<'in' | 'out' | '
 
 async function refusalOf($: Dollar): Promise<string | null> {
   const pin = await read($, repoPin)
-  if (pin === null) return 'no repo is pinned yet'
+  if (pin === null) return 'no repo pinned'
   const where = await whereIsSession($, pin)
   if (where === 'in') return null
-  return where === 'out'
-    ? `the session is not in ${pin.slug}; cd back into it first`
-    : `cannot tell whether the session is in ${pin.slug}; try again from inside it`
+  return where === 'out' ? `cd into ${pin.slug}` : 'checkout unreadable'
 }
 
 // Clears the conversation, then runs `/trailhead:work <n>` in the new one; the host queues both
@@ -454,7 +452,8 @@ async function refusalOf($: Dollar): Promise<string | null> {
 async function startWork($: Dollar, number: number) {
   if (workInFlight !== null) return
   const refusal = await refusalOf($)
-  if (refusal !== null) return $.ui.toast(`trailhead: not starting work on #${number}: ${refusal}`)
+  // The toast box is narrow and already names the plugin: the text stays a few words.
+  if (refusal !== null) return $.ui.toast(`#${number} not started: ${refusal}`)
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
