@@ -154,6 +154,9 @@ const rig = (on: On, engine?: any) => {
     top: null as string | null,
     sessionRoot: '/repo',
     reads: [] as string[],
+    // The hosts `gh auth status --hostname` accepts besides github.com, and every host it was asked about.
+    authHosts: [] as string[],
+    authCalls: [] as string[],
     gitCalls: [] as { argv: readonly string[]; cwd: string | undefined }[],
     // The cwd every `gh` run carried (undefined: none given).
     cwds: [] as (string | undefined)[],
@@ -268,6 +271,13 @@ const rig = (on: On, engine?: any) => {
       const where = e.init?.cwd
       const top = where === ROOT_TREE ? r.top : where === ROOT || where === ROOT_OTHER ? where : null
       const out = top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${top}\n`, stderr: '' }
+      return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
+    }
+    // The pin's host check: answered apart, never counted as a read of the pane.
+    if (e.argv[1] === 'auth') {
+      const host = e.argv[4] ?? ''
+      r.authCalls.push(host)
+      const out = r.authHosts.includes(host) ? { exitCode: 0, stdout: '', stderr: '' } : { exitCode: 1, stdout: '', stderr: `You are not logged into any accounts on ${host}` }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
     r.calls.push([...e.argv])
@@ -2052,6 +2062,7 @@ for (const surface of SURFACES) {
     test(`the remote ${remote} still pins; gh finds the host itself [${surface}]`, async ($, on) => {
       const r = rig(on, $)
       r.repo = { root: ROOT, remote, internal: false }
+      r.authHosts = ['ghe.example.com']
       await $.session.start(START)
       const ui = await openAndMount($, r)
       expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
@@ -2105,5 +2116,49 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect(r.calls.length).toBeGreaterThan(0)
     expect(r.cwds.every(cwd => cwd === ROOT)).toBe(true)
+  })
+  test(`a session started in a host gh does not serve says so and runs no gh read [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.repo = { root: ROOT, remote: `git@gitlab-${surface}.example.com:o/r.git`, internal: false }
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'no-repo')).toBe('Not in a GitHub repository: open the session in a trailhead repo')
+    expect(r.calls).toEqual([])
+    expect(r.authCalls).toEqual([`gitlab-${surface}.example.com`])
+  })
+
+  test(`a cd into a GitLab repo keeps the pin and the map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://lab.example.com/o/lab.git', internal: false }
+    r.calls.length = 0
+    r.cwds.length = 0
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(r.authCalls).toEqual(['lab.example.com'])
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(await hasKey(ui, 'no-repo')).toBe(false)
+    expect(r.calls.length).toBeGreaterThan(0)
+    expect(r.cwds.every(cwd => cwd === ROOT)).toBe(true)
+  })
+
+  test(`the host check runs once per host for the session [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.repo = { root: ROOT, remote: `git@once-${surface}.example.com:o/r.git`, internal: false }
+    r.authHosts = [`once-${surface}.example.com`]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    for (let i = 0; i < 3; i += 1) {
+      await r.clock.advance(FLOOR)
+      await completeTurn($)
+      await settle(r)
+    }
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    expect(r.authCalls).toEqual([`once-${surface}.example.com`])
   })
 }

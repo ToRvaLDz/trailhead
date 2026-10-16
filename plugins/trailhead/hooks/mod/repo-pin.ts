@@ -62,6 +62,26 @@ async function toplevelOf($: EngineInterface): Promise<string | null> {
   }
 }
 
+// github.com is served by gh as it is; any other host only once `gh auth status --hostname <host>` succeeds
+// (an Enterprise host the person logged in to). One answer per host for the life of the module (the
+// session's start hooks of the pane and the band both refresh, so it is not reset there); a check that
+// could not run at all is not kept, so it is tried again.
+const GITHUB_HOST = 'github.com'
+const servedHosts = new Map<string, boolean>()
+
+async function isServed($: EngineInterface, host: string, cwd: string): Promise<boolean> {
+  if (host === GITHUB_HOST) return true
+  const known = servedHosts.get(host)
+  if (known !== undefined) return known
+  try {
+    const out = await $.process.run(['gh', 'auth', 'status', '--hostname', host], { cwd, timeoutMs: 10_000 })
+    servedHosts.set(host, out.exitCode === 0)
+    return out.exitCode === 0
+  } catch {
+    return false
+  }
+}
+
 // Checks the working copy now and pins what it finds; a failed read keeps the last pin. A session
 // start begins from nothing: the pin of an earlier session is not this one's.
 export async function refreshPin($: EngineInterface, init: { isStart?: boolean; onMove?: () => void } = {}): Promise<RepoPin | null> {
@@ -71,7 +91,12 @@ export async function refreshPin($: EngineInterface, init: { isStart?: boolean; 
   let toplevel: string | null = null
   try {
     repo = await $.session.repo()
-    if (repo !== null && remoteId(repo.remote) !== null) toplevel = await toplevelOf($)
+    const id = remoteId(repo?.remote ?? null)
+    if (repo !== null && id !== null) {
+      toplevel = await toplevelOf($)
+      // A host gh cannot serve is no usable remote: the last pin stays.
+      if (!(await isServed($, id.host, toplevel ?? repo.root))) repo = null
+    }
   } catch {
     // Unreadable repo: keep the last pin.
   }
