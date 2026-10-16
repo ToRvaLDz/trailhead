@@ -301,6 +301,8 @@ export const register: Register = on => {
         // Never block the session ending.
       }
     }
+    // The ended session's mirror is never read again.
+    told.delete(e.sessionId)
     return next(e)
   })
 
