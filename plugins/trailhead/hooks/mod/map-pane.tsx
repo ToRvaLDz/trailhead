@@ -38,7 +38,7 @@ import {
   whiteboardHeading,
   whiteboardRowLayout,
 } from './map-pane-view'
-import { pinKey, pinPath, refreshPin } from './repo-pin'
+import { isSamePin, pinKey, pinPath, refreshPin } from './repo-pin'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
@@ -226,9 +226,14 @@ async function dropClosedView($: Dollar, maps: readonly MapSummary[] | null) {
 async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
   const target = await readTarget($)
   if (token !== generation) return
+  // Checked before every write: the last test is the token, with no await after it. A pin that moved to
+  // another repo (even with the same map number there) makes the read stale; the target is not read
+  // under the new pin for it.
   const isStale = async () => {
     if (token !== generation) return true
-    if (!(await read($, isDashboard)) && (await readTarget($)) === target) return false
+    const isMoved = !isSamePin(await read($, repoPin), pin) || (await read($, isDashboard)) || (await readTarget($)) !== target
+    if (token !== generation) return true
+    if (!isMoved) return false
     wantsAnother()
     return true
   }
@@ -275,7 +280,10 @@ async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: ()
 async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
   const isStale = async () => {
     if (token !== generation) return true
-    if (await read($, isDashboard)) return false
+    const isOther = !isSamePin(await read($, repoPin), pin)
+    const isLeft = !(await read($, isDashboard))
+    if (token !== generation) return true
+    if (!isOther && !isLeft) return false
     wantsAnother()
     return true
   }
@@ -310,7 +318,9 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
 // holds for the old one (and drops a read of it still in flight), so its tickets never show under the new.
 let paneRepo: string | null = null
 async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<RepoPin | null> {
-  const pin = await refreshPin($, init)
+  // A pin change drops the reads in flight, bumped no later than the atom changes. When the band's refresh
+  // moves it first, the pin comparison in each read's stale check drops them instead.
+  const pin = await refreshPin($, { ...init, onMove: () => void (generation += 1) })
   const key = pin === null ? null : pinKey(pin)
   if (paneRepo !== null && key !== null && key !== paneRepo) {
     generation += 1

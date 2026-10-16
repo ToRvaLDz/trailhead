@@ -2053,6 +2053,35 @@ for (const surface of SURFACES) {
     })
   }
 
+  test(`a refresh in flight when only the band's refresh moves the pin never commits the old repo's tickets [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    // The answer is fixed when the call starts, so the reads begun in /repo keep /repo's tickets.
+    r.gh = async argv => {
+      const answer = r.defaultGh(argv)
+      await gate
+      return answer
+    }
+    r.open()
+    const ui = await mountPane($)
+    await settle(r)
+    // The same map number in the other repo; a turn start refreshes the band, which moves the pin
+    // while the pane has no hook on it.
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    r.otherActive = '198\n'
+    r.tickets = OTHER_TICKETS
+    r.history = OTHER_HISTORY
+    await $.turn.start({ text: 'go', turnId: 'race-1' })
+    release()
+    await settle(r)
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
   test(`the pin survives /clear after the session cwd moved out of the repo [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.work = stateText()
