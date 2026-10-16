@@ -6,10 +6,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { PromptSnapshot, WorkState } from '../../types'
+import type { PromptSnapshot, RepoPin, WorkState } from '../../types'
 import { onPinMove, registerMapPane } from './map-pane'
 import { pinPath, refreshPin } from './repo-pin'
-import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
+import { promptSection, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
@@ -18,6 +18,9 @@ export const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as con
 // The ticket this session works, kept across a work-state file other sessions share.
 export const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
 export const promptSnapshot = atom({ plugin: 'trailhead', key: 'promptSnapshot' } as const, null as PromptSnapshot | null)
+// The repo pin refreshPin keeps (repo-pin.ts); the module scan wants the atom spelled in the file that reads it,
+// so this copy and the one in repo-pin.ts must keep the same { plugin, key }.
+const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, null as RepoPin | null)
 
 const STATE_PATH = '.trailhead/work-state.json'
 const HELPER = 'trailhead-work-state.js'
@@ -68,25 +71,17 @@ const debug = ($: Dollar, message: string) => {
 }
 
 // The latched text: rebuilt only when its key changed or the snapshot was reset.
-// A repo that cannot be read only costs the links, never the section.
-async function readSlug($: Dollar): Promise<string | null> {
-  try {
-    return repoSlug((await $.session.repo())?.remote ?? null)
-  } catch (err) {
-    debug($, `trailhead mod: repo read failed: ${String(err)}`)
-    return null
-  }
-}
-
+// The links follow the pin, so a shell `cd` out of the repo never loses them; no pin only costs the links.
 // With `persist` false (a /context render) the snapshot is computed but never stored.
 async function currentSnapshot($: Dollar, persist: boolean): Promise<PromptSnapshot> {
   const state = await read($, workState)
   const orphaned = await read($, isOrphaned)
-  const key = snapshotKey(state, orphaned)
+  const pinned = await read($, repoPin)
+  const repo = pinned === null ? null : { host: pinned.host, slug: pinned.slug }
+  const key = snapshotKey(state, orphaned, repo)
   const latched = await read($, promptSnapshot)
   if (latched !== null && latched.key === key) return latched
-  const slug = state === null || orphaned ? null : await readSlug($)
-  const built = { key, text: promptSection(state, orphaned, slug) }
+  const built = { key, text: promptSection(state, orphaned, repo) }
   if (persist) await setSnapshot($, built)
   return built
 }

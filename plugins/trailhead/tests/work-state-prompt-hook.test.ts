@@ -27,6 +27,8 @@ const rig = (on: On) => {
     file: null as string | null,
     remote: REMOTE as string | null,
     repoFails: false,
+    // The hosts `gh auth status --hostname` accepts besides github.com.
+    authHosts: [] as string[],
     skipCompact: false,
     composes: 0,
     repoReads: 0,
@@ -41,6 +43,12 @@ const rig = (on: On) => {
     r.repoReads += 1
     if (r.repoFails) return { deny: 'repo read failed' }
     return { value: { root: '/repo', remote: r.remote, internal: false } }
+  })
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', (_$, e) => {
+    const out = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (e.argv[0] === 'git') return out(0, '/repo\n')
+    return out(r.authHosts.includes(e.argv[4] ?? '') ? 0 : 1)
   })
   on('ui.status', () => ({ value: undefined }))
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
@@ -161,7 +169,43 @@ test('no repo remote: numbers without links', async ($, on) => {
   expect(s.text).not.toContain('http')
 })
 
-test('the repo is read at a rebuild only, and the atom is written once per change', async ($, on) => {
+test('the links follow the pin: they survive a cd out of the repo', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  await compose($)
+  r.remote = null
+  r.file = stateText({ ticket: 205, title: 'Next ticket' })
+  await turn($)
+  const s = mine(await compose($)) as Section
+  expect(s.text).toContain('#205 "Next ticket" https://github.com/ToRvaLDz/trailhead/issues/205')
+  expect(s.text).toContain('#198 https://github.com/ToRvaLDz/trailhead/issues/198')
+})
+
+test('an Enterprise pin links to its own host', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  r.remote = 'git@ghe.example.com:acme/app.git'
+  r.authHosts = ['ghe.example.com']
+  await $.session.start(START)
+  const s = mine(await compose($)) as Section
+  expect(s.text).toContain('#204 "Inject the work state" https://ghe.example.com/acme/app/issues/204')
+  expect(s.text).toContain('#198 https://ghe.example.com/acme/app/issues/198')
+})
+
+test('a move of the pin to another repo rebuilds the links, whatever the ticket', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  expect((mine(await compose($)) as Section).text).toContain('https://github.com/ToRvaLDz/trailhead/issues/204')
+  r.remote = 'https://github.com/o/other.git'
+  await turn($)
+  const s = mine(await compose($)) as Section
+  expect(s.text).toContain('#204 "Inject the work state" https://github.com/o/other/issues/204')
+  expect(s.text).not.toContain('ToRvaLDz')
+})
+
+test('the repo is not read by a compose, and the atom is written once per change', async ($, on) => {
   const r = rig(on)
   r.file = stateText()
   await $.session.start(START)
