@@ -7,7 +7,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { PromptSnapshot, WorkState } from '../../types'
-import { registerMapPane } from './map-pane'
+import { onPinMove, registerMapPane } from './map-pane'
 import { pinPath, refreshPin } from './repo-pin'
 import { promptSection, repoSlug, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
@@ -110,7 +110,7 @@ async function refresh($: Dollar, init: { isStart?: boolean } = {}) {
   try {
     // The file under the pinned repo, whatever the session cwd is now; without a pin (no GitHub
     // repo ever seen) it stays relative to the cwd, as before.
-    const pin = await refreshPin($, init).catch(() => null)
+    const pin = await refreshPin($, { ...init, onMove: moved => onPinMove($, moved) }).catch(() => null)
     text = (await $.fs.read(pin === null ? STATE_PATH : pinPath(pin, STATE_PATH))) as string
   } catch (err) {
     // A missing file means no ticket in play; any other failure is transient: keep the last state.

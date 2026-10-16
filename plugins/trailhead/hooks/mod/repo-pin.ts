@@ -84,7 +84,7 @@ async function isServed($: EngineInterface, host: string, cwd: string): Promise<
 
 // Checks the working copy now and pins what it finds; a failed read keeps the last pin. A session
 // start begins from nothing: the pin of an earlier session is not this one's.
-export async function refreshPin($: EngineInterface, init: { isStart?: boolean; onMove?: () => void } = {}): Promise<RepoPin | null> {
+export async function refreshPin($: EngineInterface, init: { isStart?: boolean; onMove?: (pin: RepoPin | null) => Promise<void> } = {}): Promise<RepoPin | null> {
   const stored = await read($, repoPin)
   const current = init.isStart === true ? null : (stored ?? remembered)
   let repo: RepoRead | null = null
@@ -103,8 +103,8 @@ export async function refreshPin($: EngineInterface, init: { isStart?: boolean; 
   const pin = nextPin(current, repo, toplevel)
   remembered = pin
   if (!sameValue(stored, pin)) {
-    // Right before the atom changes, so a read in flight can be dropped no later than the change.
-    init.onMove?.()
+    // Right before the atom changes, whoever moves it, so what was read for the old pin goes no later than the change.
+    await init.onMove?.(pin)
     await update($, repoPin, () => pin)
   }
   return pin

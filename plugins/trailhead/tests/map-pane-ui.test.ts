@@ -2161,4 +2161,22 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect(r.authCalls).toEqual([`once-${surface}.example.com`])
   })
+  test(`a pin moved by the band alone never leaves the old repo's rows drawn [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await keysOf(ui, 'row-')).toContain('row-209')
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    r.otherActive = '14\n'
+    r.map = OTHER_MAP
+    r.tickets = OTHER_TICKETS
+    r.history = OTHER_HISTORY
+    // Only the band hooks a turn start: it moves the pin, no read of the pane is in flight.
+    await $.turn.start({ text: 'go', turnId: 'band-1' })
+    expect(await keysOf(ui, 'row-')).not.toContain('row-209')
+    await settle(r)
+    expect(await textOf(ui, 'map')).toBe('#14 older map')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
 }

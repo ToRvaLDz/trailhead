@@ -317,21 +317,25 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
 // Checks the repo the session is in and pins it. A move to another GitHub repo empties what the pane
 // holds for the old one (and drops a read of it still in flight), so its tickets never show under the new.
 let paneRepo: string | null = null
-async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<RepoPin | null> {
-  // A pin change drops the reads in flight, bumped no later than the atom changes. When the band's refresh
-  // moves it first, the pin comparison in each read's stale check drops them instead.
-  const pin = await refreshPin($, { ...init, onMove: () => void (generation += 1) })
+// Called by refreshPin right before the pin atom changes, from the pane's refresh and the band's alike. A move
+// to another repo drops the reads in flight and empties what the pane holds for the old one, then asks for a
+// fresh read (a closed pane makes that a no-op), so its tickets never show under the new repo.
+export async function onPinMove($: Dollar, pin: RepoPin | null): Promise<void> {
+  generation += 1
   const key = pin === null ? null : pinKey(pin)
-  if (paneRepo !== null && key !== null && key !== paneRepo) {
-    generation += 1
-    await update($, mapPane, () => EMPTY)
-    await update($, dashboardPane, () => EMPTY_DASHBOARD)
-    await update($, activeMap, () => null)
-    await update($, viewedMap, () => null)
-    await update($, isDashboard, () => false)
-  }
+  const isOtherRepo = paneRepo !== null && key !== null && key !== paneRepo
   paneRepo = key ?? paneRepo
-  return pin
+  if (!isOtherRepo) return
+  await update($, mapPane, () => EMPTY)
+  await update($, dashboardPane, () => EMPTY_DASHBOARD)
+  await update($, activeMap, () => null)
+  await update($, viewedMap, () => null)
+  await update($, isDashboard, () => false)
+  void requestRefresh($, { bypassFloor: true })
+}
+
+async function syncPin($: Dollar, init: { isStart?: boolean } = {}): Promise<RepoPin | null> {
+  return refreshPin($, { ...init, onMove: pin => onPinMove($, pin) })
 }
 
 const safeSyncPin = ($: Dollar, init: { isStart?: boolean } = {}) =>
