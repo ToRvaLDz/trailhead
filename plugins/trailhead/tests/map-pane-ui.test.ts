@@ -1089,6 +1089,7 @@ for (const surface of SURFACES) {
     expect(r.toasts).toHaveLength(1)
     expect(r.toasts[0]).toContain('o/r')
     expect(r.toasts[0]).toContain('#209')
+    expect(r.toasts[0]).toContain('is not in o/r')
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
@@ -1115,6 +1116,8 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(r.runs).toEqual([])
     expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toContain('cannot tell')
+    expect(r.toasts[0]).not.toContain('is not in')
     r.repoFails = false
     await ui.press({ key: 'work-209' })
     await settle(r)

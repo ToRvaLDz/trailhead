@@ -427,14 +427,24 @@ async function restoreAfterClear($: Dollar) {
 const GH_ISSUE_WRITE = /\bgh\b[^\n;&|]*\bissue\s+(edit|close|create|comment|reopen)\b/
 
 // The host runs the verb in the session's own directory, which a shell `cd` may have moved, so a work press
-// goes through only while the session is in the pinned repo. Unreadable counts as not in it.
-async function isInPinnedRepo($: Dollar): Promise<boolean> {
+// goes through only while the session is in the pinned repo. A checkout that cannot be read is `unknown`,
+// refused too, but not told it is elsewhere.
+async function whereIsSession($: Dollar, pin: RepoPin): Promise<'in' | 'out' | 'unknown'> {
   try {
-    const pin = await read($, repoPin)
-    return pin !== null && isPinCheckout(pin, await $.session.repo(), await toplevelOf($))
+    return isPinCheckout(pin, await $.session.repo(), await toplevelOf($)) ? 'in' : 'out'
   } catch {
-    return false
+    return 'unknown'
   }
+}
+
+async function refusalOf($: Dollar): Promise<string | null> {
+  const pin = await read($, repoPin)
+  if (pin === null) return 'no repo is pinned yet'
+  const where = await whereIsSession($, pin)
+  if (where === 'in') return null
+  return where === 'out'
+    ? `the session is not in ${pin.slug}; cd back into it first`
+    : `cannot tell whether the session is in ${pin.slug}; try again from inside it`
 }
 
 // Clears the conversation, then runs `/trailhead:work <n>` in the new one; the host queues both
@@ -443,11 +453,8 @@ async function isInPinnedRepo($: Dollar): Promise<boolean> {
 // holds the next ones off while the clear has emptied the atom. Cleared once the calls settle.
 async function startWork($: Dollar, number: number) {
   if (workInFlight !== null) return
-  if (!(await isInPinnedRepo($))) {
-    const pin = await read($, repoPin)
-    const where = pin === null ? 'no repo is pinned yet' : `the session is not in ${pin.slug}; cd back into it first`
-    return $.ui.toast(`trailhead: not starting work on #${number}: ${where}`)
-  }
+  const refusal = await refusalOf($)
+  if (refusal !== null) return $.ui.toast(`trailhead: not starting work on #${number}: ${refusal}`)
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
