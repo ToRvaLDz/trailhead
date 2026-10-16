@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, UatParent, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, RepoPin, UatParent, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
@@ -38,7 +38,7 @@ import {
   whiteboardHeading,
   whiteboardRowLayout,
 } from './map-pane-view'
-import { type RepoPin, pinPath, refreshPin } from './repo-pin'
+import { pinPath, refreshPin } from './repo-pin'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'

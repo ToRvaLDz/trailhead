@@ -12,6 +12,8 @@ export type WorkState = {
 
 // The latched system-prompt section: the key it was built for and its text (null: no section).
 export type PromptSnapshot = { key: string; text: string | null }
+// The GitHub repo the session works in: its root and owner/name. Pinned so a shell cd never loses it.
+export type RepoPin = { root: string; slug: string }
 
 // The map pane (#208): what the last `gh` read of the active map gave.
 export type TicketType = 'decision' | 'research' | 'prototype' | 'build' | 'bug' | 'task'
@@ -98,6 +100,8 @@ declare module 'claude-code' {
       dashboardPane: DashboardPaneData
       pendingWork: number | null
       paneAutoOpened: boolean
+      // The repo the pane and band read from; null until a GitHub working copy was seen.
+      repoPin: RepoPin | null
     }
   }
 }

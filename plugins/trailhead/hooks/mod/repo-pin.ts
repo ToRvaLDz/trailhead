@@ -4,10 +4,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import type { RepoPin } from '../../types'
 import { repoSlug } from './work-state-prompt'
 import { sameValue } from './work-state-view'
 
-export type RepoPin = { root: string; slug: string }
 type RepoRead = { root: string; remote: string | null }
 
 // The repo as a pin: only a working copy whose origin is a GitHub remote.
