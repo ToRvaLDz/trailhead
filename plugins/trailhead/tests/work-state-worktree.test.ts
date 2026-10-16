@@ -264,15 +264,13 @@ test('a hit on the own checkout ends the run of failures', async ($, on) => {
   }
 })
 
-test('a stale failure count expires', async ($, on) => {
+test('three failures spaced well apart still clear the band', async ($, on) => {
   resetLocate()
   const r = rig(on)
   await breakLookup($, r)
-  for (let i = 0; i < 2; i += 1) {
-    r.now += 4_000
+  for (const kept of [true, true, false]) {
+    r.now += 20_000
     await turn($)
+    expect(last(r) !== undefined).toBe(kept)
   }
-  r.now += 20_000
-  await turn($)
-  expect(last(r)).toContain('#270')
 })
