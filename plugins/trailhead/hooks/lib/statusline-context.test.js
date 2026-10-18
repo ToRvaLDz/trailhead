@@ -108,6 +108,16 @@ eq('DISABLE_COMPACT true', pct(400000, { env: { DISABLE_COMPACT: 'TRUE' } }), 40
 eq('disabled ignores settings and pct', pct(400000, { env: { DISABLE_AUTO_COMPACT: 'yes', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '10' },
   settings: { user: win650 } }), 40);
 eq('falsy DISABLE ignored', pct(900000, { env: { DISABLE_AUTO_COMPACT: '0' } }), 93);
+eq('DISABLE_COMPACT on', pct(400000, { env: { DISABLE_COMPACT: 'on' } }), 40);
+eq('DISABLE false ignored', pct(900000, { env: { DISABLE_COMPACT: 'false' } }), 93);
+
+// --- per-modello in un file meno specifico batte top-level in uno piu' specifico ---
+eq('per-model user beats top-level local', pct(617000, {
+  settings: { user: perModel, local: { autoCompactWindow: 1000000 } } }), 100);
+
+// --- fallback tabella modello (niente context_window_size): 200k, soglia 167k ---
+eq('model table fallback', pct(100000, { size: 0 }), 60);
+eq('model table fallback display', ctx(100000, { size: 0 }).shown, '100k/200k');
 
 // --- tetto modello ---
 eq('CONTEXT_LIMIT caps display', ctx(100000, { env: { CONTEXT_LIMIT: '200000' } }).shown, '100k/200k');
