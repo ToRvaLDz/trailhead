@@ -95,8 +95,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   over the shared file (a state stamped with another session leaves it; a missing file clears it only
   when the last state read was this session's, i.e. its own Resolve); with no own ticket the work
   state decides, as before. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a
-  `work`/`quick` claim) shows once, under `Paused`, between In progress and Blocked, with its holder
-  and a `resume` button in place of a holder (it runs like `work`, with `/trailhead:resume <n>`, which checks the
+  `work`/`quick` claim) shows once, under `Paused`, between In progress and Blocked, with a `resume`
+  button in place of its holder (it runs like `work`, with `/trailhead:resume <n>`, which checks the
   claim); the label wins over `trailhead:blocked` and an assignee. A
   ticket carrying `trailhead:uat` (a pending UAT follow-up, a marker never a state) shows once, under `UAT`,
   between In progress and Paused, whatever its state (`paused` wins), keeping its `work` button or holder, with a
