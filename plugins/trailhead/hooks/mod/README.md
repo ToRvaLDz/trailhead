@@ -96,7 +96,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   when the last state read was this session's, i.e. its own Resolve); with no own ticket the work
   state decides, as before. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a
   `work`/`quick` claim) shows once, under `Paused`, between In progress and Blocked, with its holder
-  when assigned and never a `work` button; the label wins over `trailhead:blocked` and an assignee. A
+  and a `resume` button in place of a holder (it runs like `work`, with `/trailhead:resume <n>`, which checks the
+  claim); the label wins over `trailhead:blocked` and an assignee. A
   ticket carrying `trailhead:uat` (a pending UAT follow-up, a marker never a state) shows once, under `UAT`,
   between In progress and Paused, whatever its state (`paused` wins), keeping its `work` button or holder, with a
   dim `tests <parent title> #<n>` line under it. The parent comes from the `UAT of:` line of its body, read once
@@ -104,7 +105,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   on the whiteboard view) `--json number,body`, capped like the ticket list at 200: beyond that, or when the read
   fails, a UAT row is drawn without its parent line (the rows still group by label). A
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
-  `/trailhead:work <n>` in the new one, both through `$.command.run`, which the host queues behind a
+  `/trailhead:work <n>` in the new one (a paused row's `resume` does the same with `/trailhead:resume <n>`), both through `$.command.run`, which the host queues behind a
   running turn; the row shows `queued` until the calls settle (across the reset too), and a
   second press meanwhile is ignored. A press while the session is not in the pinned repo (a shell `cd` moved it, or its
   checkout cannot be read) is refused with a toast before the `/clear`, since the host runs the verb in the

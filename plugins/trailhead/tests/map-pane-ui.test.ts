@@ -492,7 +492,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'uat-of-306')).toBe('tests Loose parent #290')
   })
 
-  test(`a paused ticket sits under Paused between In progress and Blocked, with no work button [${surface}]`, async ($, on) => {
+  test(`a paused ticket sits under Paused between In progress and Blocked, with a resume button [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.work = stateText()
     r.tickets = [
@@ -511,11 +511,11 @@ for (const surface of SURFACES) {
     // a paused ticket appears in one group only: Frontier, In progress, Paused, Blocked in order
     expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-230', 'row-231', 'row-232', 'row-211', 'row-213'])
     expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-frontier', 'group-in-progress', 'group-paused', 'group-blocked'])
-    expect(await textOf(ui, 'holder-230')).toBe('@ToRvaLDz')
-    expect((await ui.find({ key: 'holder-230' }))?.children[0].props).not.toHaveProperty('dimColor')
-    expect(await textOf(ui, 'holder-232')).toBe('@bob')
-    expect(await ui.find({ key: 'holder-231' })).toBeUndefined()
-    for (const n of [230, 231, 232]) expect(await hasKey(ui, `work-${n}`)).toBe(false)
+    for (const n of [230, 231, 232]) {
+      expect(await hasKey(ui, `resume-${n}`)).toBe(true)
+      expect(await hasKey(ui, `work-${n}`)).toBe(false)
+      expect(await hasKey(ui, `holder-${n}`)).toBe(false)
+    }
     expect((await ui.find({ key: 'ticket-231' }))?.children[0].props).not.toHaveProperty('dimColor')
   })
 
@@ -528,7 +528,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-paused')).toBe('Paused · 1')
     expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-305', 'row-303'])
     expect(await hasKey(ui, 'work-305')).toBe(false)
-    expect(await textOf(ui, 'holder-305')).toBe('@alice')
+    expect(await hasKey(ui, 'resume-305')).toBe(true)
   })
 
   test(`ticket rows are spaced apart on the desktop only [${surface}]`, async ($, on) => {
@@ -1063,6 +1063,42 @@ for (const surface of SURFACES) {
       { command: 'clear', args: '' },
       { command: 'trailhead:work', args: '210' },
     ])
+  })
+
+  test(`a resume button on a paused row runs /trailhead:resume, shares the one-at-a-time guard and the refusal [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let release: () => void = () => undefined
+    r.gate = new Promise<void>(resolve => (release = resolve))
+    r.tickets = [...TICKETS, issue(230, 'Paused one', ['trailhead:build', 'trailhead:paused'], ['alice'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect((await ui.find({ key: 'resume-230' }))?.props).toMatchObject({ label: 'resume', variant: 'primary' })
+
+    const first = ui.press({ key: 'resume-230' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:resume', args: '230' }])
+    expect(await textOf(ui, 'queued-230')).toBe('queued')
+    expect(await ui.find({ key: 'resume-230' })).toBeUndefined()
+
+    // a work press meanwhile is ignored: one in flight at a time
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toHaveLength(2)
+
+    release()
+    await first
+    await settle(r)
+    expect(await ui.find({ key: 'queued-230' })).toBeUndefined()
+    expect(await ui.find({ key: 'resume-230' })).toBeDefined()
+
+    // outside the pinned repo it is refused before the clear
+    const runs = r.runs.length
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    await ui.press({ key: 'resume-230' })
+    await settle(r)
+    expect(r.runs).toHaveLength(runs)
+    expect(r.toasts).toHaveLength(1)
   })
 
   test(`a work command that is refused clears the queued mark [${surface}]`, async ($, on) => {
@@ -1935,7 +1971,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-whiteboard')).toBe('Whiteboard · 4 open · 2 assigned')
     expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
     expect(await textOf(ui, 'holder-302')).toBe('@alice')
-    expect(await textOf(ui, 'holder-306')).toBe('@erin')
+    expect(await hasKey(ui, 'resume-306')).toBe(true)
     expect(await hasKey(ui, 'row-305')).toBe(false)
     expect(await textOf(ui, 'unverified')).toBe('2 unverified tickets hidden (quarantined)')
   })

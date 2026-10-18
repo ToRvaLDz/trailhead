@@ -365,7 +365,7 @@ export const ageLabel = (ms: number): string => {
   return `${Math.floor(ms / 3_600_000)}h ago`
 }
 
-export type RowAside = { kind: 'work' | 'queued' | 'holder' | 'self'; text: string }
+export type RowAside = { kind: 'work' | 'resume' | 'queued' | 'holder' | 'self'; text: string }
 export type RowLayout = {
   mark: string | null
   label: string
@@ -408,15 +408,19 @@ export const footerStatus = (status: string, columns: number): FooterStatus => {
 
 const SELF_ASIDE: RowAside = { kind: 'self', text: 'this session' }
 
-// The ticket in play says `this session`; otherwise a frontier row has its button and the rest their holder.
+// The ticket in play says `this session`; otherwise a frontier row has a `work` button, a paused one a
+// `resume` button (the verb checks the claim), and the rest their holder.
 const asideOf = (t: PaneTicket, pendingWork: number | null, isInPlay: boolean): RowAside | null => {
   if (isInPlay) return SELF_ASIDE
-  if (t.state === 'frontier') return pendingWork === t.number ? { kind: 'queued', text: 'queued' } : { kind: 'work', text: 'work' }
+  if (t.state === 'frontier' || t.state === 'paused') {
+    if (pendingWork === t.number) return { kind: 'queued', text: 'queued' }
+    return t.state === 'frontier' ? { kind: 'work', text: 'work' } : { kind: 'resume', text: 'resume' }
+  }
   return t.assignees.length === 0 ? null : { kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') }
 }
 
 const asideWidth = (a: RowAside | null): number =>
-  a === null ? 0 : a.text.length + (a.kind === 'work' ? BUTTON_CHROME : 0) + 1
+  a === null ? 0 : a.text.length + (a.kind === 'work' || a.kind === 'resume' ? BUTTON_CHROME : 0) + 1
 
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {

@@ -321,11 +321,28 @@ test('rowLayout: holders are drawn as @login on in-progress and blocked rows', (
   expect(loose.isDim).toBe(true)
 })
 
-test('rowLayout: a paused row shows its holder when assigned, never a work button', () => {
-  expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'holder', text: '@alice' })
-  expect(layout(ticket({ state: 'paused' })).aside).toBeNull()
-  expect(layout(ticket({ state: 'paused' }), { pendingWork: 209 }).aside).toBeNull()
+test('rowLayout: a paused row has a resume button, whoever holds it', () => {
+  expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'resume', text: 'resume' })
+  expect(layout(ticket({ state: 'paused' })).aside).toEqual({ kind: 'resume', text: 'resume' })
   expect(layout(ticket({ state: 'paused' })).isDim).toBe(false)
+})
+
+test('rowLayout: a paused row reads queued while its press is pending', () => {
+  expect(layout(ticket({ number: 209, state: 'paused' }), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(ticket({ number: 209, state: 'paused' }), { pendingWork: 7 }).aside).toEqual({ kind: 'resume', text: 'resume' })
+})
+
+test('rowLayout: a paused ticket in play keeps this session', () => {
+  expect(layout(ticket({ state: 'paused', assignees: ['me'] }), { isInPlay: true, hasMarkColumn: true }).aside).toEqual({ kind: 'self', text: 'this session' })
+})
+
+test('rowLayout: the resume button chrome is counted in the row width', () => {
+  const t = ticket({ title: 'x'.repeat(200), state: 'paused' })
+  for (const columns of [30, 40, 60]) {
+    const r = layout(t, { columns })
+    const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside?.text.length ?? 0) + 4 + 1
+    expect(used).toBeLessThanOrEqual(columns)
+  }
 })
 
 test('rowLayout: the ticket in play says this session instead of its holder', () => {

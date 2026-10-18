@@ -101,12 +101,13 @@ export const viewedMap = atom({ plugin: 'trailhead', key: 'viewedMap' } as const
 // The dashboard view (maps index + whiteboard tickets) in place of a map; a map press leaves it.
 export const isDashboard = atom({ plugin: 'trailhead', key: 'isDashboard' } as const, false)
 export const dashboardPane = atom({ plugin: 'trailhead', key: 'dashboardPane' } as const, EMPTY_DASHBOARD)
-// The ticket whose `work` press is queued; one at a time.
+// The ticket whose `work` or `resume` press is queued; one at a time.
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
 const WORK_COMMAND = 'trailhead:work'
+const RESUME_COMMAND = 'trailhead:resume'
 // The built-in that empties the conversation; the work verb starts in a clean one.
 const CLEAR_COMMAND = 'clear'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
@@ -138,7 +139,7 @@ let ticker: Timer | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
 let carried: Carried | null = null
-// The ticket whose `work` press is running: /clear empties the pendingWork atom meanwhile.
+// The ticket whose `work` or `resume` press is running: /clear empties the pendingWork atom meanwhile.
 let workInFlight: number | null = null
 
 async function readActiveMap($: Dollar): Promise<number | null> {
@@ -445,11 +446,11 @@ async function refusalOf($: Dollar): Promise<string | null> {
   return where === 'out' ? `cd into ${pin.slug}` : 'checkout unreadable'
 }
 
-// Clears the conversation, then runs `/trailhead:work <n>` in the new one; the host queues both
+// Clears the conversation, then runs `/trailhead:<verb> <n>` (work or resume) in the new one; the host queues both
 // behind a running turn. Outside the pinned repo it refuses before the clear, which is destructive.
 // The claim is taken with the version it read, so two presses never both pass, and `workInFlight`
 // holds the next ones off while the clear has emptied the atom. Cleared once the calls settle.
-async function startWork($: Dollar, number: number) {
+async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   if (workInFlight !== null) return
   const refusal = await refusalOf($)
   // The toast box is narrow and already names the plugin: the text stays a few words.
@@ -462,12 +463,12 @@ async function startWork($: Dollar, number: number) {
     const before = await $.session.id()
     await $.command.run({ command: CLEAR_COMMAND, args: '' })
     // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
-    if ((await $.session.id()) === before) return debug($, `trailhead mod: work ${number} skipped, the conversation was not cleared`)
+    if ((await $.session.id()) === before) return debug($, `trailhead mod: ${verb} ${number} skipped, the conversation was not cleared`)
     // The clear emptied the atom: the row is still queued in the new session.
     await update($, pendingWork, () => number)
-    await $.command.run({ command: WORK_COMMAND, args: String(number) })
+    await $.command.run({ command: verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args: String(number) })
   } catch (err) {
-    debug($, `trailhead mod: work ${number} did not start: ${String(err)}`)
+    debug($, `trailhead mod: ${verb} ${number} did not start: ${String(err)}`)
   } finally {
     workInFlight = null
     await update($, pendingWork, () => null)
@@ -708,12 +709,15 @@ export function registerMapPane(on: On) {
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
           {r.aside?.kind === 'self' ? text(`self-${t.number}`, { color: ACCENT }, r.aside.text) : null}
           {r.aside?.kind === 'queued' ? text(`queued-${t.number}`, { color: AMBER }, r.aside.text) : null}
-          {r.aside?.kind === 'work' ? (
+          {r.aside?.kind === 'work' || r.aside?.kind === 'resume' ? (
             <Button
-              key={`work-${t.number}`}
-              label="work"
+              key={`${r.aside.kind}-${t.number}`}
+              label={r.aside.kind}
               variant="primary"
-              onPress={() => void startWork($, t.number).catch(err => debug($, `trailhead mod: work press failed: ${String(err)}`))}
+              onPress={() => {
+                const verb = r.aside?.kind === 'resume' ? 'resume' : 'work'
+                void startVerb($, verb, t.number).catch(err => debug($, `trailhead mod: ${verb} press failed: ${String(err)}`))
+              }}
             />
           ) : null}
         </Box>
