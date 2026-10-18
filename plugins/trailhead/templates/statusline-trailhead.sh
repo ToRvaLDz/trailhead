@@ -11,8 +11,12 @@
 # trailhead al work-start, porta anche il titolo) -> numero dal branch
 # `trailhead/t<N>` -> titolo via `gh` in cache/background (solo se origin GitHub).
 #
-# Contesto: barra `[BARRA] Nk/Mk (P%)`, dall'ultimo usage del transcript. Tetto:
-# $CONTEXT_LIMIT -> .model.context_window -> tabella modello -> auto-bump 1M.
+# Contesto: barra `[BARRA] Nk/Mk (P%)`, dall'ultimo usage del transcript. Tetto
+# (finestra del modello): $CONTEXT_LIMIT -> .context_window.context_window_size ->
+# tabella modello -> auto-bump 1M. La % e' contro la soglia di auto-compact di
+# Claude Code (finestra di compattazione - 20000 - 13000), non contro un 80% fisso:
+# vedi il commento sopra il blocco CTX per le regole. CONTEXT_USABLE_RATIO resta
+# solo come override manuale (0 < ratio <= 1: denominatore = tetto * ratio).
 #
 # Usage: % REALE del piano via l'API OAuth di Anthropic (come ccstatusline):
 # GET https://api.anthropic.com/api/oauth/usage con il Bearer preso da
@@ -139,12 +143,24 @@ fi
 # Fonte primaria (come ccstatusline): .context_window del JSON di Claude Code
 # (context_window_size = tetto reale, current_usage = token). Fallback: ultimo
 # usage del transcript + tabella modello. $CONTEXT_LIMIT forza il tetto.
-# Denominatore = finestra * 0.8 (soglia auto-compact, come ccstatusline); il
-# rapporto e' regolabile con CONTEXT_USABLE_RATIO (1 = tetto pieno).
+# Denominatore = soglia di auto-compact di Claude Code:
+#   finestra di compattazione = min(tetto modello, primo valido tra
+#     $CLAUDE_CODE_AUTO_COMPACT_WINDOW, autoCompactWindow dei settings, tetto);
+#   nei settings (utente < progetto < progetto.local, vince il piu' specifico)
+#   modelSettings.<model id senza [..]>.autoCompactWindow batte autoCompactWindow;
+#   soglia = finestra - 20000 (output riservato, massimo) - 13000 (buffer), min 1;
+#   $CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (0 < pct <= 100) puo' solo abbassarla:
+#   min(soglia, floor(finestra * pct / 100)).
+# Con DISABLE_AUTO_COMPACT / DISABLE_COMPACT truthy il denominatore e' il tetto pieno.
+# CONTEXT_USABLE_RATIO (0 < r <= 1), se impostato, e' un override manuale:
+# denominatore = tetto * r, senza calcolo di compattazione.
 CTX="$(
   { [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && tail -n 300 "$TRANSCRIPT" 2>/dev/null | tac | grep -m1 'cache_read_input_tokens'; } | \
   CTX_MODEL_ID="$(j '.model.id')" \
   CTX_CW_SIZE="$(j '.context_window.context_window_size')" \
+  CTX_PROJECT_DIR="$(j '.workspace.project_dir')" \
+  CTX_CURRENT_DIR="$(j '.workspace.current_dir')" \
+  CTX_CWD="$(j '.cwd')" \
   CTX_USAGE="$(printf '%s' "$input" | jq -c '.context_window.current_usage // empty' 2>/dev/null)" \
   python3 -c '
 import sys, os, json, re
@@ -192,16 +208,65 @@ if not limit:
     if tok > limit and limit <= 200000:   # auto-bump 1M solo nel fallback
         limit = 1000000
 
-# soglia usabile (auto-compact): denominatore = finestra * ratio (0.8 come ccstatusline)
-try:
-    ratio = float(os.environ.get("CONTEXT_USABLE_RATIO") or 0.8)
-except Exception:
-    ratio = 0.8
-denom = round(limit * ratio) if limit else 0
-pct = min(100, round(tok*100/denom)) if denom else 0   # % contro la soglia 0.8
+def pos_num(x):
+    # numero finito > 0, altrimenti None (bool e stringhe non numeriche scartati)
+    if isinstance(x, bool) or x is None: return None
+    try: v = float(x)
+    except Exception: return None
+    return v if v == v and v not in (float("inf"),) and v > 0 else None
+
+def truthy(name):
+    return (os.environ.get(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+def load_settings():
+    # utente < progetto < progetto.local; file illeggibili/invalidi saltati
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    proj = os.environ.get("CTX_PROJECT_DIR") or os.environ.get("CTX_CURRENT_DIR") or os.environ.get("CTX_CWD")
+    paths = [os.path.join(cfg, "settings.json")]
+    if proj:
+        paths += [os.path.join(proj, ".claude", "settings.json"),
+                  os.path.join(proj, ".claude", "settings.local.json")]
+    out = []
+    for p in paths:
+        try:
+            d = json.load(open(p))
+            if isinstance(d, dict): out.append(d)
+        except Exception:
+            pass
+    return out  # dal meno al piu prioritario
+
+def setting_window(model):
+    files = load_settings()[::-1]  # piu prioritario per primo
+    for d in files:   # per-modello batte top-level: prima cerco il per-modello
+        ms = d.get("modelSettings")
+        v = pos_num((ms.get(model) or {}).get("autoCompactWindow")) if isinstance(ms, dict) and isinstance(ms.get(model), dict) else None
+        if v: return v
+    for d in files:
+        v = pos_num(d.get("autoCompactWindow"))
+        if v: return v
+    return None
+
+def threshold_for(limit):
+    model = re.sub(r"\[[^\]]*\]\s*$", "", os.environ.get("CTX_MODEL_ID") or "")
+    w = pos_num(os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")) or setting_window(model) or limit
+    w = int(min(w, limit))
+    thr = max(1, w - 20000 - 13000)
+    p = pos_num(os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"))
+    if p is not None and p <= 100:
+        thr = max(1, min(thr, int(w * p // 100)))
+    return thr
+
+ratio = pos_num(os.environ.get("CONTEXT_USABLE_RATIO"))
+if ratio is not None and ratio <= 1:
+    denom = round(limit * ratio)                 # override manuale
+elif truthy("DISABLE_AUTO_COMPACT") or truthy("DISABLE_COMPACT"):
+    denom = limit                                # niente compattazione: tetto pieno
+else:
+    denom = threshold_for(limit)
+pct = min(100, round(tok*100/denom)) if denom else 0
 n = 10; filled = round(pct*n/100)
 bar = "█"*filled + "░"*(n-filled)
-# numeri REALI: token effettivi / tetto pieno; la percentuale riflette auto-compact 0.8
+# numeri REALI: token effettivi / tetto pieno; la percentuale e contro la soglia di compattazione
 print(f"[{bar}] {round(tok/1000)}k/{round(limit/1000)}k ({pct}%)")
 ' 2>/dev/null
 )"
