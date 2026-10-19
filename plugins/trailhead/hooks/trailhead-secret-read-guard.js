@@ -91,6 +91,15 @@
 // statement) is scanned as a nested command, like `bash -c`; `--config-env` on a
 // command key whose variable is not assigned there denies as unmodelled.
 //
+// The same scan covers the statement's own leading env assignments that inject config or
+// commands: GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n> pairs (read whatever GIT_CONFIG_COUNT
+// says), GIT_CONFIG_PARAMETERS (an unparsable one on a command key denies as unmodelled), and
+// the command-valued variables GIT_PAGER, PAGER, GIT_SSH_COMMAND, GIT_SSH, GIT_EXTERNAL_DIFF,
+// GIT_EDITOR, GIT_SEQUENCE_EDITOR, EDITOR, VISUAL, GIT_ASKPASS, SSH_ASKPASS. Only for a git
+// statement; variables exported in an earlier statement are not visible. Backslash escapes in a
+// quoted value follow the shell (shellUnquote). Global options git does not list before -c are
+// walked as flags (walkGitGlobals), never a reason to stop scanning.
+//
 // #227: a construct the guard cannot interpret with certainty (eval, source / `.`, a
 // bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted gh api body
 // key, a backslash-newline inside a word) is not emulated. As a FINAL gate, after the
@@ -501,6 +510,24 @@ function gitConfigCommand(key, value) {
   return value ? value : null;
 }
 
+// #273: environment variables whose value git (or ssh under it) runs as a command.
+const GIT_COMMAND_ENV_VARS = [
+  'GIT_PAGER', 'PAGER', 'GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_EXTERNAL_DIFF', 'GIT_EDITOR',
+  'GIT_SEQUENCE_EDITOR', 'EDITOR', 'VISUAL', 'GIT_ASKPASS', 'SSH_ASKPASS',
+];
+
+// Entries of a GIT_CONFIG_PARAMETERS value (space-separated `'key=value'` or
+// `'key'='value'`) as [key, value] pairs, or null when the quoting is unbalanced.
+function parseGitConfigParameters(text) {
+  const entries = [];
+  for (const word of tokenize(text)) {
+    const kv = splitAssignment(shellUnquote(word));
+    if (kv) entries.push(kv);
+  }
+  const quotes = (text.match(/'/g) || []).length;
+  return quotes % 2 === 0 ? entries : null;
+}
+
 // Splits `NAME=value` at the first `=` (null when there is none or the name is empty).
 function splitAssignment(kv) {
   const eq = kv.indexOf('=');
@@ -513,7 +540,7 @@ function splitAssignment(kv) {
 // assign (`unresolved`: the guard cannot see the value, so it fails closed).
 // ENV is resolved from the statement's own leading NAME=value assignments.
 function extractGitConfigCommands(tokens) {
-  const found = { commands: [], unresolved: [] };
+  const found = { commands: [], unresolved: [], unparsed: [] };
   const first = skipEnvPrefix(tokens);
   if (first >= tokens.length || basename(shellUnquote(tokens[first])) !== 'git') return found;
   const env = new Map();
@@ -525,6 +552,19 @@ function extractGitConfigCommands(tokens) {
     const cmd = gitConfigCommand(key, value);
     if (cmd) found.commands.push(cmd);
   };
+  // #273: config injected through the statement's own leading assignments. Pairs
+  // are read regardless of GIT_CONFIG_COUNT (fail toward scanning).
+  for (const [name, value] of env) {
+    const m = /^GIT_CONFIG_KEY_(\d+)$/.exec(name);
+    if (m && env.has(`GIT_CONFIG_VALUE_${m[1]}`)) add(value, env.get(`GIT_CONFIG_VALUE_${m[1]}`));
+    if (GIT_COMMAND_ENV_VARS.includes(name) && value) found.commands.push(value);
+  }
+  if (env.has('GIT_CONFIG_PARAMETERS')) {
+    const text = env.get('GIT_CONFIG_PARAMETERS');
+    const entries = parseGitConfigParameters(text);
+    if (entries) entries.forEach(([k, v]) => add(k, v));
+    else if ((text.match(/[A-Za-z0-9._-]+(?==)/g) || []).some(isGitCommandKey)) found.unparsed.push(`GIT_CONFIG_PARAMETERS=${text}`);
+  }
   const operands = tokens.slice(first + 1).map(shellUnquote);
   for (const cfg of walkGitGlobals(operands).configs) {
     const kv = splitAssignment(cfg.value);
@@ -542,6 +582,14 @@ const GIT_CONFIG_ENV_UNMODELLED = (sample) => ({
   id: 'git-config-env',
   label: 'a git --config-env on a command-valued key whose variable is not assigned in the same statement',
   hint: 'assign it in the same statement (`VAR="cmd" git --config-env=key=VAR ...`) or pass the command with `git -c key=cmd`',
+  sample,
+});
+
+// The unmodelled-hit shape for a GIT_CONFIG_PARAMETERS value the guard cannot parse.
+const GIT_CONFIG_PARAMETERS_UNMODELLED = (sample) => ({
+  id: 'git-config-parameters',
+  label: 'a GIT_CONFIG_PARAMETERS value with unbalanced quoting that names a command-valued key',
+  hint: 'pass the command with `git -c key=cmd` or a well-quoted GIT_CONFIG_PARAMETERS',
   sample,
 });
 
@@ -570,6 +618,9 @@ function scanStatementForSecretPath(stmt) {
   }
   if (git.unresolved.length) {
     return { path: git.unresolved[0], unmodelled: GIT_CONFIG_ENV_UNMODELLED(git.unresolved[0]) };
+  }
+  if (git.unparsed.length) {
+    return { path: git.unparsed[0], unmodelled: GIT_CONFIG_PARAMETERS_UNMODELLED(git.unparsed[0]) };
   }
 
   const bin = basename(tokens[0]);

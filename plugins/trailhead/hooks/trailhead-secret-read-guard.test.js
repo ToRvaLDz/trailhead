@@ -451,6 +451,42 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
   ok('an escaped dollar stays literal text, not a path', !blocked('git -c core.pager="less \\$x" log'));
 }
 
+// --- #273 review W1: config and commands injected through leading env assignments ---
+{
+  const blocked = (c) => !!detectSecretRead('Bash', { command: c });
+  const unmodelled = (c) => { const h = detectSecretRead('Bash', { command: c }); return !!h && !!h.unmodelled; };
+  for (const c of [
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0="cat .env" git log',
+    'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=a GIT_CONFIG_KEY_1=alias.x GIT_CONFIG_VALUE_1="!cat .env" git x',
+    'GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0="cat .env" git log',
+    "GIT_CONFIG_PARAMETERS=\"'core.pager=cat .env'\" git log",
+    "GIT_CONFIG_PARAMETERS=\"'user.name'='a' 'core.pager'='cat .env'\" git log",
+    "GIT_CONFIG_PARAMETERS=\"'alias.x=!cat .env'\" git x",
+    'GIT_PAGER="cat .env" git log',
+    'PAGER="cat .env" git log',
+    'GIT_SSH_COMMAND="cat .env" git fetch',
+    'GIT_SSH="cat .env" git fetch',
+    'GIT_EXTERNAL_DIFF="cat .env" git diff',
+    'GIT_EDITOR="cat .env" git commit',
+    'GIT_SEQUENCE_EDITOR="cat .env" git rebase -i HEAD~2',
+    'EDITOR="cat .env" git commit',
+    'VISUAL="cat .env" git commit',
+    'GIT_ASKPASS="cat .env" git fetch',
+    'SSH_ASKPASS="cat .env" git fetch',
+  ]) ok(`denies an env-injected git command: ${c}`, blocked(c));
+  for (const c of [
+    'GIT_PAGER=less git log',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=.env git commit',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.x GIT_CONFIG_VALUE_0="cat .env" git x',
+    "GIT_CONFIG_PARAMETERS=\"'user.name=.env'\" git commit",
+    'GIT_SSH_COMMAND="ssh -i ~/.ssh/id" git fetch',
+    'PAGER="cat .env" echo hi',
+    'GIT_PAGER="cat .env"',
+  ]) ok(`allows a harmless env-injected value: ${c}`, !blocked(c));
+  ok('an unparsable GIT_CONFIG_PARAMETERS on a command key is unmodelled',
+    unmodelled("GIT_CONFIG_PARAMETERS=\"'core.pager=less\" git log"));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
