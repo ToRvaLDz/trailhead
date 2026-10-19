@@ -587,6 +587,29 @@ for (const command of [
 ]) {
   ok(`#276 allow: ${command}`, !detectSecretRead('Bash', { command }));
 }
+// #276 review C1: dentro apici doppi `\\` fa da escape, la shell interna riceve `\.env`.
+for (const command of [
+  'bash -c "cat \\\\.env"',
+  'sh -c "echo; cat \\\\.env"',
+  'bash -c "cat .e\\\\nv"',
+  'eval "cat \\\\.env"',
+]) {
+  ok(`#276 deny (nested escaped backslash): ${command}`, !!detectSecretRead('Bash', { command }));
+}
+// già verdi prima del fix C1
+for (const command of [
+  'git show HEAD:\\.env',
+  'cat < \\.env',
+  'cat \\.env.local',
+  "cat '.'\\env",
+]) {
+  ok(`#276 deny: ${command}`, !!detectSecretRead('Bash', { command }));
+}
+ok('#276 allow: cat \\\\.env (literal backslash)', !detectSecretRead('Bash', { command: 'cat \\\\.env' }));
+ok("#276 allow: bash -c 'cat \\\\.env' (single quotes keep both)", !detectSecretRead('Bash', { command: "bash -c 'cat \\\\.env'" }));
+ok('#276 hook exits 2 on bash -c "cat \\.env"', runHook('Bash', { command: 'bash -c "cat \\.env"' }).code === 2);
+ok('#276 hook exits 2 on bash -c "cat \\\\.env"', runHook('Bash', { command: 'bash -c "cat \\\\.env"' }).code === 2);
+
 ok('#276 hook exits 2 on cat \\.env', runHook('Bash', { command: 'cat \\.env' }).code === 2);
 
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);
