@@ -571,6 +571,8 @@ function gitConfigWritePairs(args) {
   let unknown = false;
   for (let k = 0; k < args.length; k++) {
     const t = args[k];
+    // #275: `--` ends the options, every later word is a positional (`-n; cat .env` too).
+    if (t === '--') { positional.push(...args.slice(k + 1)); break; }
     if (GIT_CONFIG_READ_OPTIONS.has(t)) return [];
     if (!t.startsWith('-') || t === '-') {
       if (positional.length === 0 && GIT_CONFIG_READ_WORDS.has(t)) return [];

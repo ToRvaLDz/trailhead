@@ -507,7 +507,6 @@ ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
   fs.rmSync(dir, { recursive: true });
 }
 
-console.log(`✓ secret-read-guard: ${passed} assertions passed`);
 
 // --- #275: more command-valued git config keys, and `git config` writing one ---
 {
@@ -559,3 +558,14 @@ console.log(`✓ secret-read-guard: ${passed} assertions passed`);
     'git config -f cfg core.pager less',
   ]) ok(`allows a harmless git config: ${c}`, !blocked(c));
 }
+
+// #275: `--` ends git config options, so a dash-leading value is still the value.
+for (const command of [
+  `git config core.pager -- '-n; cat .env'`,
+  `git config -- core.pager '-n; cat .env'`,
+]) {
+  ok(`#275 deny: ${command}`, !!detectSecretRead('Bash', { command }));
+}
+ok('#275 allow: git config -- core.pager less', !detectSecretRead('Bash', { command: 'git config -- core.pager less' }));
+
+console.log(`✓ secret-read-guard: ${passed} assertions passed`);
