@@ -444,18 +444,20 @@ function nameOnlyTokenIndices(bin, tokens) {
 // yet re-tokenized) so the caller can recurse into it as a nested command.
 // Best-effort: only the common single-quoted-argument idiom, not every way a
 // shell can be told to execute a string.
+// #276: ogni token si legge come la shell esterna (`\\` dentro apici doppi diventa `\`)
+// prima del join, così la shell interna vede lo stesso testo.
 function extractNestedCommand(stmtTokens) {
   if (!stmtTokens.length) return null;
   const bin = basename(stmtTokens[0]);
   if (bin === 'eval') {
     const rest = stmtTokens.slice(1);
     if (!rest.length) return null;
-    return stripQuotes(rest.join(' '));
+    return rest.map(unquoteWord).join(' ');
   }
   if (SHELL_DASH_C_VERBS.has(bin)) {
     const cIdx = stmtTokens.indexOf('-c');
     if (cIdx === -1 || cIdx + 1 >= stmtTokens.length) return null;
-    return stripQuotes(stmtTokens.slice(cIdx + 1).join(' '));
+    return stmtTokens.slice(cIdx + 1).map(unquoteWord).join(' ');
   }
   return null;
 }
