@@ -142,10 +142,11 @@ gh label create trailhead:uat --color BFD4F2 --description "Pending UAT: an acce
 ```
 Tickets opened before the label existed are tagged by the idempotent backfill helper, `node <templates>/trailhead-uat-backfill.js [--repo <owner/name>] [--marker <path>]`: it ensures the label, tags every open ticket with a line starting `UAT of:`, and prints one JSON line `{"status","tagged":[...],"failed":[...]}` (a failed edit is reported, never fatal to the rest). With `--marker` it runs once per clone and exits `skipped` afterwards.
 
-**Find the dashboard issue:**
+**Find a singleton issue** (the dashboard, the codebase anchor, the conventions anchor). Fetch several results, never just the first:
 ```bash
-gh issue list --label trailhead:dashboard --state open --json number --jq '.[0].number'
+gh issue list --label trailhead:dashboard --state open --json number,title --limit 10
 ```
+Swap the label for `trailhead:codebase` or `trailhead:conventions`. Fail-closed rule for all three singleton labels: exactly one result, use it; none, take the create or self-heal path; more than one, do not pick one: surface the duplicates by title and number, and ask the user which to keep (the other is closed as a duplicate) before reading the conventions, patching the codebase issue or rewriting the dashboard. `trailhead-dashboard.js` applies the rule itself and aborts naming every duplicate.
 
 **Read the repo's pinned issues**, to know whether the dashboard is currently among them:
 ```bash
