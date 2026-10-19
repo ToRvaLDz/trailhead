@@ -156,10 +156,17 @@ function isSecretBasename(name) {
   return !NON_SECRET_ENV_SUFFIXES.has(lower.slice(lower.lastIndexOf('.') + 1));
 }
 
+// #276: il token grezzo tiene `\`+char verbatim. Con un backslash la parola si legge come
+// la shell (`\.env` è `.env`); senza, resta il solo strip della coppia di apici esterna
+// (le forme con apici nel mezzo, `.e""nv`, restano al gate dei costrutti non modellati).
+function unquoteWord(t) {
+  return String(t).includes('\\') ? shellUnquote(t) : stripQuotes(t);
+}
+
 // Anche la forma `<rev>:<path>` (`git show HEAD:.env`, `scp host:.env .`):
 // il path dopo il primo `:` è letto quanto un operando nudo.
 function isSecretPathArg(t) {
-  const bare = stripQuotes(t);
+  const bare = unquoteWord(t);
   if (!bare) return false;
   if (isSecretBasename(basename(bare))) return true;
   const colon = bare.indexOf(':');
@@ -425,7 +432,7 @@ function copyDestinationIndices(operands) {
 // controllo; ogni altro token resta controllato, quindi l'esenzione non può
 // riciclare una lettura altrove nello statement.
 function nameOnlyTokenIndices(bin, tokens) {
-  const operands = tokens.slice(1).map((t) => stripQuotes(stripTrailingPunct(t)));
+  const operands = tokens.slice(1).map((t) => unquoteWord(stripTrailingPunct(t)));
   let indices = NO_SKIP;
   if (bin === 'git') indices = gitPathspecIndices(operands);
   else if (bin === 'cp' || bin === 'mv') indices = copyDestinationIndices(operands);
@@ -727,13 +734,13 @@ function invokesInterpreter(stmt) {
   let i = 0;
   while (i < tokens.length && LEADING_KEYWORDS.has(tokens[i])) i++;
   i += skipEnvPrefix(tokens.slice(i));
-  if (i < tokens.length && basename(stripQuotes(tokens[i])) === 'env') {
+  if (i < tokens.length && basename(unquoteWord(tokens[i])) === 'env') {
     i++;
     while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || tokens[i].startsWith('-'))) {
       i += ENV_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
     }
   }
-  return i < tokens.length && STDIN_SCRIPT_INTERPRETERS.has(basename(stripQuotes(tokens[i])));
+  return i < tokens.length && STDIN_SCRIPT_INTERPRETERS.has(basename(unquoteWord(tokens[i])));
 }
 
 // Walk the command's top-level statements (quote-aware; `|`, `;`, `&&`,
