@@ -19,6 +19,8 @@ Conventions:
 | Claim | assign the ticket to yourself: `gh issue edit <n> --add-assignee @me`: the assignee *is* the claim; the claimer owns it end to end and closes it (no approver). Re-check before starting; on a collision, stop and ask the user. See [Working as a team](teamwork.md#working-as-a-team). |
 | Resolution | comment with the answer → `gh issue close` → update `Decisions so far` on the map |
 
+**Singletons.** Dashboard, Codebase and Conventions are each one issue per repo. Look them up with the fail-closed rule in `substrate-commands.md` (**Find a singleton issue**): more than one open issue means do not pick one, surface the duplicates by title and number, and ask which to keep.
+
 **State labels** (orthogonal to the type label, on top of `trailhead:ticket`):
 - **`trailhead:blocked`**: has an open blocker; excluded from the frontier. Removed when unblocked.
 - **`trailhead:seed`**: a forward-looking capture parked until a trigger fires (kept blocked); makes seeds auditable.
