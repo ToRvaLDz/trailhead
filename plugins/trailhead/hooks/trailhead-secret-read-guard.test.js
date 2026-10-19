@@ -339,6 +339,83 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
   ok('the message never echoes a token', !leak.includes(T) && !leak.includes('ghp_'));
 }
 
+// --- #273: a git config value that names a command (git -c / --config-env) ---
+{
+  const blocked = (c) => !!detectSecretRead('Bash', { command: c });
+  const unmodelled = (c) => { const h = detectSecretRead('Bash', { command: c }); return !!h && !!h.unmodelled; };
+  const exit2 = (c) => { const r = runHook('Bash', { command: c }); return r.code === 2 && JSON.parse(r.out).code === 'SECRET_READ_BLOCKED'; };
+  for (const c of [
+    'git -c alias.x="!cat .env" x',
+    'git -c core.pager="cat .env" log',
+    'git -c core.sshCommand="cat .env" fetch',
+  ]) ok(`end to end: ${c} exits 2 SECRET_READ_BLOCKED`, exit2(c));
+  for (const c of [
+    'git -c alias.x="!cat .env" x',
+    "git -c alias.x='!cat .env' x",
+    'git -c pager.log="cat .env" log',
+    'git -c core.editor="cat .env" commit',
+    'git -c sequence.editor="cat .env" rebase -i HEAD~2',
+    'git -c core.fsmonitor="cat .env" status',
+    'git -c diff.external="cat .env" diff',
+    'git -c diff.foo.textconv="cat .env" diff',
+    'git -c filter.foo.clean="cat .env" add x',
+    'git -c filter.foo.smudge="cat .env" checkout x',
+    'git -c filter.foo.process="cat .env" checkout x',
+    'git -c credential.helper="!cat .env" fetch',
+    'git -c gpg.program="cat .env" commit -S',
+    'git -c CORE.PAGER="cat .env" log',
+    'git -c Core.SshCommand="cat .env" fetch',
+    'git -ccore.pager="cat .env" log',
+    "git -calias.x='!cat .env' x",
+    'git -C /tmp -c core.pager="cat .env" log',
+    'git --no-pager -c core.pager="cat .env" -c user.name=a log',
+    '/usr/bin/git -c core.pager="cat .env" log',
+    'FOO=1 git -c core.pager="cat .env" log',
+    'echo hi && git -c core.pager="cat .env" log',
+    'git -c core.pager="head $(cat .env)" log',
+    'git -c alias.x="!f() { cat .env; }; f" x',
+    'git -c core.pager=".env" log',
+    'P="cat .env" git --config-env=core.pager=P log',
+    'P="cat .env" git --config-env core.pager=P log',
+    'P="!cat .env" git --config-env=alias.x=P x',
+    "P='cat .env' /usr/bin/git -C /tmp --config-env=core.sshCommand=P fetch",
+  ]) ok(`denies a command-valued git config: ${c}`, blocked(c));
+  for (const c of [
+    'git -c core.pager=less log',
+    'git -c user.name=.env commit',
+    'git -c credential.helper=store fetch',
+    'git -c alias.x="cat .env" x',
+    'git -c alias.x=".env" x',
+    'git -c credential.helper="cat .env" fetch',
+    'git -c user.name=.env -c core.pager=less log',
+    'git -c core.pager="less" -C /tmp log',
+    'git -C /tmp log',
+    'git -c core.autocrlf log',
+    'git -c alias.x log',
+    'git --config-env=user.name=NAME log',
+    'git --config-env user.name=NAME log',
+    'git --config-env=core.autocrlf=UNSET_VAR log',
+    'P=less git --config-env=core.pager=P log',
+    'P=less git --config-env core.pager=P log',
+    'P="!less" git --config-env=alias.x=P x',
+    'P=store git --config-env=credential.helper=P fetch',
+    'git log -c core.pager="cat .env"',
+    'echo -c core.pager="cat .env"',
+  ]) ok(`allows a harmless git config: ${c}`, !blocked(c));
+  for (const c of [
+    'git --config-env=core.pager=P log',
+    'git --config-env core.pager=P log',
+    'Q=less git --config-env=core.pager=P log',
+    'git --config-env=alias.x=P x',
+    'git -C /tmp --config-env=core.sshCommand=P fetch',
+  ]) {
+    ok(`blocks an unresolved --config-env on a command key as unmodelled: ${c}`, unmodelled(c));
+    const r = runHook('Bash', { command: c });
+    ok(`end to end: ${c} exits 2 SECRET_READ_UNMODELLED_CONSTRUCT`, r.code === 2 && JSON.parse(r.out).code === 'SECRET_READ_UNMODELLED_CONSTRUCT');
+  }
+  ok('a resolved secret --config-env stays SECRET_READ_BLOCKED, not unmodelled', !unmodelled('P="cat .env" git --config-env=core.pager=P log'));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);

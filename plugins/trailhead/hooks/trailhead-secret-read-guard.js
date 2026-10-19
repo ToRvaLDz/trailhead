@@ -86,6 +86,11 @@
 // a link prepared under a non-secret name onto `.env`
 // (`ln -s .env.example l && mv l .env`).
 //
+// #273: a command carried in a git config value (`git -c alias.x="!cat .env" x`,
+// `-c core.pager=...`, `--config-env=core.pager=VAR` with VAR assigned in the same
+// statement) is scanned as a nested command, like `bash -c`; `--config-env` on a
+// command key whose variable is not assigned there denies as unmodelled.
+//
 // #227: a construct the guard cannot interpret with certainty (eval, source / `.`, a
 // bash 5.3 `${ cmd; }`, printf -v, a function definition, an alias, a quoted gh api body
 // key, a backslash-newline inside a word) is not emulated. As a FINAL gate, after the
@@ -326,6 +331,7 @@ function gitSubcommandIndex(operands) {
     if (!t.startsWith('-')) return k;
     if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) { k++; continue; }
     if (GIT_GLOBAL_FLAGS.has(t)) continue;
+    if (isGluedGitConfig(t)) continue; // #273: `-ckey=value`, the value is glued on
     const eq = t.indexOf('=');
     const isLongValueForm = t.startsWith('--') && eq !== -1 && GIT_GLOBAL_VALUE_OPTIONS.has(t.slice(0, eq));
     if (!isLongValueForm) return -1;
@@ -402,6 +408,112 @@ function extractNestedCommand(stmtTokens) {
   return null;
 }
 
+// #273: `git -c key=value` / `--config-env=key=ENV` can name a COMMAND git runs
+// (an alias with `!`, a pager, an editor, an ssh command, ...), which the plain
+// token walk only tests as a file name. The key families git runs as a command,
+// matched on the lowercased key (section and variable are case-insensitive; a
+// lowercased middle segment only widens a wildcard). `bang` = the value is a
+// command only when it starts with `!` (the `!` is not part of the command).
+const GIT_COMMAND_KEYS = [
+  { re: /^alias\..+$/, bang: true },
+  { re: /^core\.(pager|editor|sshcommand|fsmonitor)$/ },
+  { re: /^pager\..+$/ },
+  { re: /^sequence\.editor$/ },
+  { re: /^diff\.external$/ },
+  { re: /^diff\..+\.textconv$/ },
+  { re: /^filter\..+\.(clean|smudge|process)$/ },
+  { re: /^credential\.(.+\.)?helper$/, bang: true },
+  { re: /^gpg\.(.+\.)?program$/ },
+];
+
+// `-ckey=value` (value glued on, no space).
+function isGluedGitConfig(t) {
+  return t.length > 2 && t.startsWith('-c') && !t.startsWith('--');
+}
+
+// The word as the shell hands it over: quote pairs removed, their content kept
+// (`alias.x="!cat .env"` -> `alias.x=!cat .env`); the other quote kind inside a
+// pair stays literal. No escapes or expansions: best-effort like the rest.
+function shellUnquote(word) {
+  let out = '';
+  let q = null;
+  for (const ch of String(word)) {
+    if (q) { if (ch === q) q = null; else out += ch; }
+    else if (ch === '"' || ch === "'") q = ch;
+    else out += ch;
+  }
+  return out;
+}
+
+// The command text a git config value carries for `key`, or null when the key
+// is not command-valued (or `!`-less where the `!` is required).
+function gitConfigCommand(key, value) {
+  const spec = GIT_COMMAND_KEYS.find((k) => k.re.test(key.toLowerCase()));
+  if (!spec) return null;
+  if (spec.bang) return value.startsWith('!') && value.length > 1 ? value.slice(1) : null;
+  return value ? value : null;
+}
+
+// Every command text carried in the git global options of a statement, from
+// `-c key=value`, `-ckey=value` and `--config-env[=| ]key=ENV`, plus the
+// `--config-env` forms on a command-valued key whose ENV the statement does not
+// assign (`unresolved`: the guard cannot see the value, so it fails closed).
+// ENV is resolved from the statement's own leading NAME=value assignments.
+function extractGitConfigCommands(tokens) {
+  const found = { commands: [], unresolved: [] };
+  const first = skipEnvPrefix(tokens);
+  if (first >= tokens.length || basename(shellUnquote(tokens[first])) !== 'git') return found;
+  const env = new Map();
+  for (const a of tokens.slice(0, first)) {
+    const u = shellUnquote(a);
+    env.set(u.slice(0, u.indexOf('=')), u.slice(u.indexOf('=') + 1));
+  }
+  const fromKeyValue = (kv) => {
+    const eq = kv.indexOf('=');
+    if (eq <= 0) return;
+    const cmd = gitConfigCommand(kv.slice(0, eq), kv.slice(eq + 1));
+    if (cmd) found.commands.push(cmd);
+  };
+  const fromConfigEnv = (kv, sample) => {
+    const eq = kv.indexOf('=');
+    if (eq <= 0) return;
+    const key = kv.slice(0, eq);
+    const name = kv.slice(eq + 1);
+    if (!GIT_COMMAND_KEYS.some((k) => k.re.test(key.toLowerCase()))) return;
+    if (!env.has(name)) { found.unresolved.push(sample); return; }
+    const cmd = gitConfigCommand(key, env.get(name));
+    if (cmd) found.commands.push(cmd);
+  };
+  const operands = tokens.slice(first + 1).map(shellUnquote);
+  for (let k = 0; k < operands.length; k++) {
+    const t = operands[k];
+    if (!t.startsWith('-') || t === '-') break; // the subcommand: options after it are its own
+    if (t === '-c' || t === '--config-env') {
+      if (k + 1 >= operands.length) break;
+      const kv = operands[++k];
+      if (t === '-c') fromKeyValue(kv); else fromConfigEnv(kv, `--config-env ${kv}`);
+    } else if (t.startsWith('--config-env=')) {
+      fromConfigEnv(t.slice('--config-env='.length), t);
+    } else if (isGluedGitConfig(t)) {
+      fromKeyValue(t.slice(2));
+    } else if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) {
+      k++; // `-C <path>` and friends: the value is not a config
+    } else if (!GIT_GLOBAL_FLAGS.has(t) && !(t.startsWith('--') && GIT_GLOBAL_VALUE_OPTIONS.has(t.slice(0, Math.max(t.indexOf('='), 0))))) {
+      break; // unknown option: the walk cannot tell where the subcommand starts
+    }
+  }
+  return found;
+}
+
+// The unmodelled-hit shape (lib/unmodelled.js) for a `--config-env` on a command key whose
+// variable the statement does not assign.
+const GIT_CONFIG_ENV_UNMODELLED = (sample) => ({
+  id: 'git-config-env',
+  label: 'a git --config-env on a command-valued key whose variable is not assigned in the same statement',
+  hint: 'assign it in the same statement (`VAR="cmd" git --config-env=key=VAR ...`) or pass the command with `git -c key=cmd`',
+  sample,
+});
+
 // Scan a single top-level statement for a secret path. Recurses into a
 // bash -c/eval quoted sub-command first (finding #1), routes grep/rg/ag/sed/
 // awk through the shared pattern-skipping walk (finding #4), and falls back
@@ -417,6 +529,16 @@ function scanStatementForSecretPath(stmt) {
     if (hit) return hit;
     // fall through: also scan the wrapper statement's own tokens (e.g. a
     // stray `-f .env` on the wrapper itself) for defence in depth.
+  }
+
+  // #273: a command carried in a git config value (`-c core.pager="cat .env"`).
+  const git = extractGitConfigCommands(tokens);
+  for (const text of git.commands) {
+    const hit = scanBashForSecretPath(text);
+    if (hit) return hit;
+  }
+  if (git.unresolved.length) {
+    return { path: git.unresolved[0], unmodelled: GIT_CONFIG_ENV_UNMODELLED(git.unresolved[0]) };
   }
 
   const bin = basename(tokens[0]);
@@ -570,7 +692,7 @@ function detectSecretRead(toolName, toolInput) {
   if (toolName === 'Bash') {
     const cmd = input.command || '';
     const hit = scanBashForSecretPath(cmd);
-    if (hit) return { path: hit };
+    if (hit) return typeof hit === 'object' ? hit : { path: hit }; // object: an unmodelled hit (#273)
     const um = unmodelledSecretPiece(cmd); // a final gate: the precise scan keeps priority
     return um ? { path: um.piece, unmodelled: um.hit } : null;
   }
