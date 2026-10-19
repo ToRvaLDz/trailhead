@@ -378,6 +378,12 @@ function gitSubcommandIndex(operands) {
   return w.known ? w.sub : -1;
 }
 
+// #275: come gitSubcommandIndex ma anche dopo un'opzione globale sconosciuta
+// (fail toward scanning: l'esenzione no, la scansione sì).
+function gitSubcommandIndexLoose(operands) {
+  return walkGitGlobals(operands).sub;
+}
+
 // Indici dei pathspec di un sottocomando in GIT_PATHSPEC_SUBCOMMANDS. git
 // permuta le opzioni (una può seguire un pathspec); dopo `--` ogni parola è
 // un pathspec. Sottocomando confrontato case-sensitive, come fa git.
@@ -463,6 +469,12 @@ const GIT_COMMAND_KEYS = [
   { re: /^filter\..+\.(clean|smudge|process)$/ },
   { re: /^credential\.(.+\.)?helper$/, bang: true },
   { re: /^gpg\.(.+\.)?program$/ },
+  // #275: more keys git runs as a command.
+  { re: /^core\.(askpass|gitproxy)$/ },
+  { re: /^(mergetool|difftool|browser|man)\..+\.cmd$/ },
+  { re: /^merge\..+\.driver$/ },
+  { re: /^uploadpack\.packobjectshook$/ },
+  { re: /^diff\..+\.command$/ },
 ];
 
 // `-ckey=value` (value glued on, no space).
@@ -534,6 +546,48 @@ function splitAssignment(kv) {
   return eq <= 0 ? null : [kv.slice(0, eq), kv.slice(eq + 1)];
 }
 
+// #275: `git config` options that take a separate value, and the ones that only read.
+const GIT_CONFIG_VALUE_OPTIONS = new Set(['-f', '--file', '--blob', '-t', '--type', '--default', '--comment', '--value']);
+const GIT_CONFIG_FLAGS = new Set([
+  '--global', '--system', '--local', '--worktree', '--add', '--replace-all', '--append', '--all',
+  '--bool', '--int', '--bool-or-int', '--path', '--expiry-date', '--includes', '--no-includes',
+  '--null', '-z', '--fixed-value', '--show-origin', '--show-scope', '--name-only', '--no-type',
+]);
+const GIT_CONFIG_READ_OPTIONS = new Set([
+  '--get', '--get-all', '--get-regexp', '--get-urlmatch', '--get-color', '--get-colorbool', '-l',
+  '--list', '--unset', '--unset-all', '-e', '--edit', '--rename-section', '--remove-section',
+]);
+const GIT_CONFIG_READ_WORDS = new Set([
+  'get', 'list', 'unset', 'edit', 'rename-section', 'remove-section',
+]);
+
+// #275: the [key, value] pairs a `git config` invocation writes. `args` = the words after
+// `config`. The first positional is the key and the second the value (a leading `set`
+// is the mode word); read verbs write nothing. An option the walk does not know could
+// hide which word is the value, so each positional after a command-valued key is also
+// taken as its value (fail toward scanning). A single `key=value` token is not a write.
+function gitConfigWritePairs(args) {
+  const positional = [];
+  let unknown = false;
+  for (let k = 0; k < args.length; k++) {
+    const t = args[k];
+    if (GIT_CONFIG_READ_OPTIONS.has(t)) return [];
+    if (!t.startsWith('-') || t === '-') {
+      if (positional.length === 0 && GIT_CONFIG_READ_WORDS.has(t)) return [];
+      if (positional.length === 0 && t === 'set') continue;
+      positional.push(t);
+    } else if (GIT_CONFIG_VALUE_OPTIONS.has(t)) k++;
+    else if (!GIT_CONFIG_FLAGS.has(t) && !/^--(file|blob|type|default|comment|value)=/.test(t)) unknown = true;
+  }
+  const pairs = positional.length >= 2 ? [[positional[0], positional[1]]] : [];
+  if (unknown) {
+    positional.forEach((key, i) => {
+      if (i + 1 < positional.length && isGitCommandKey(key)) pairs.push([key, positional[i + 1]]);
+    });
+  }
+  return pairs;
+}
+
 // Every command text carried in the git global options of a statement, from
 // `-c key=value`, `-ckey=value` and `--config-env[=| ]key=ENV`, plus the
 // `--config-env` forms on a command-valued key whose ENV the statement does not
@@ -572,6 +626,11 @@ function extractGitConfigCommands(tokens) {
     if (cfg.kind === 'c') { add(kv[0], kv[1]); continue; }
     if (!isGitCommandKey(kv[0])) continue;
     if (env.has(kv[1])) add(kv[0], env.get(kv[1])); else found.unresolved.push(cfg.sample);
+  }
+  // #275: `git config <key> <value>` writes a command into the config.
+  const sub = gitSubcommandIndexLoose(operands);
+  if (sub !== -1 && operands[sub] === 'config') {
+    gitConfigWritePairs(operands.slice(sub + 1)).forEach(([k, v]) => add(k, v));
   }
   return found;
 }

@@ -508,3 +508,54 @@ ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
 }
 
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);
+
+// --- #275: more command-valued git config keys, and `git config` writing one ---
+{
+  const blocked = (c) => !!detectSecretRead('Bash', { command: c });
+  const keys = [
+    'core.askPass', 'core.gitProxy', 'mergetool.x.cmd', 'difftool.x.cmd', 'merge.x.driver',
+    'browser.x.cmd', 'man.x.cmd', 'uploadpack.packObjectsHook', 'diff.x.command',
+    'core.askpass', 'uploadpack.packobjectshook', 'MERGETOOL.X.CMD',
+  ];
+  for (const k of keys) {
+    ok(`denies git -c ${k}="cat .env"`, blocked(`git -c ${k}="cat .env" status`));
+    ok(`denies git -c${k}="cat .env" (glued)`, blocked(`git -c${k}="cat .env" status`));
+    ok(`allows git -c ${k}=less`, !blocked(`git -c ${k}=less status`));
+    ok(`allows git -c ${k}=true`, !blocked(`git -c ${k}=true status`));
+  }
+  ok('denies --config-env on a new key with an assigned var', blocked('P="cat .env" git --config-env=core.askPass=P status'));
+  ok('allows --config-env on a new key with a harmless var', !blocked('P=less git --config-env=core.askPass=P status'));
+  ok('denies GIT_CONFIG_KEY_0/VALUE_0 on a new key',
+    blocked('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=uploadpack.packObjectsHook GIT_CONFIG_VALUE_0="cat .env" git status'));
+  ok('denies GIT_CONFIG_PARAMETERS on a new key', blocked(`GIT_CONFIG_PARAMETERS="'merge.x.driver=cat .env'" git status`));
+  ok('allows GIT_CONFIG_PARAMETERS with a harmless value', !blocked(`GIT_CONFIG_PARAMETERS="'merge.x.driver=true'" git status`));
+
+  for (const c of [
+    'git config core.pager "cat .env"',
+    'git config alias.x "!cat .env"',
+    'git config --global core.pager "cat .env"',
+    'git config set core.pager "cat .env"',
+    'git config -f cfg core.askPass "cat .env"',
+    'git config --file=cfg core.pager "cat .env"',
+    'git config --file cfg core.pager "cat .env"',
+    'git config --add alias.y "!cat .env"',
+    'git -C /tmp config core.pager "cat .env"',
+    'git config --local --type=path core.editor "cat .env"',
+    'git config mergetool.x.cmd "cat .env"',
+    'git config --some-future-flag core.pager "cat .env"',
+  ]) ok(`denies a git config write of a command: ${c}`, blocked(c));
+  for (const c of [
+    'git config core.pager less',
+    'git config alias.x "!echo hi"',
+    'git config alias.x "cat .env"',
+    'git config user.name "cat .env"',
+    'git config --get core.pager',
+    'git config core.pager=less',
+    'git config --global core.pager less',
+    'git config set core.pager less',
+    'git config --list',
+    'git config get core.pager',
+    'git config --unset core.pager',
+    'git config -f cfg core.pager less',
+  ]) ok(`allows a harmless git config: ${c}`, !blocked(c));
+}
