@@ -13,6 +13,9 @@
 // existing body. --dry-run gathers and reads through gh, computes and scans, but
 // writes, creates, pins and labels nothing; it prints the old and new byte sizes.
 //
+// Singleton labels (dashboard, codebase, conventions): more than one open issue
+// aborts before any write, naming every duplicate by title and number.
+//
 // Self-heal: ensures the `trailhead:dashboard` label; creates the issue directly
 // with the final scanned body when it is missing (never an empty or placeholder
 // body) and pins it; re-pins it when unpinned. Never closes or prunes a map: the
@@ -165,12 +168,30 @@ function gatherMap(gh, repo, m, truncated) {
   return out;
 }
 
-function firstNumber(gh, repo, label) {
-  const list = issueList(gh, repo, ['--label', label, '--state', 'open', '--json', 'number', '--limit', '1']);
-  return list.length ? list[0].number : null;
+// Singleton labels: exactly one open issue each. More than one is ambiguous and
+// never resolved by picking one (#274).
+const SINGLETON_LIMIT = 10;
+const SINGLETON_LABELS = [LABEL, 'trailhead:codebase', 'trailhead:conventions'];
+
+// Looks up every singleton label first and aborts (GatherError) naming all the
+// duplicated ones at once, before anything is written. Returns the single
+// number per label, or null when there is none.
+function lookupSingletons(gh, repo) {
+  const found = SINGLETON_LABELS.map((label) => ({
+    label,
+    list: issueList(gh, repo, ['--label', label, '--state', 'open', '--json', 'number,title', '--limit', String(SINGLETON_LIMIT)]),
+  }));
+  const dupes = found.filter((f) => f.list.length > 1);
+  if (dupes.length) {
+    const named = dupes.map((f) => `${f.label}: ${f.list.map((i) => `${linkText(i.title)} (#${i.number})`).join(', ')}`).join('; ');
+    throw new GatherError(`ambiguous singleton issues, close the duplicates and keep one: ${named}`);
+  }
+  const num = (label) => { const f = found.find((x) => x.label === label); return f.list.length ? f.list[0].number : null; };
+  return { dashboard: num(LABEL), codebase: num('trailhead:codebase'), conventions: num('trailhead:conventions') };
 }
 
-function gatherSnapshot(gh, repo) {
+function gatherSnapshot(gh, repo, singles) {
+  const one = singles || lookupSingletons(gh, repo);
   const truncated = [];
   const capped = (list, limit, name) => { if (list.length >= limit) truncated.push(name); return list; };
   const maps = capped(issueList(gh, repo, ['--label', 'trailhead:map', '--state', 'open', '--json', 'number,title', '--limit', String(LIMITS.maps)]), LIMITS.maps, 'maps')
@@ -190,7 +211,7 @@ function gatherSnapshot(gh, repo) {
   if (closed.length >= LIMITS.resolved && resolved.length < RESOLVED_SHOWN) truncated.push('resolved');
   const openIssues = capped(issueList(gh, repo, ['--state', 'open', '--json', 'number,labels', '--limit', String(LIMITS.inbox)]), LIMITS.inbox, 'inbox');
   const inbox = openIssues.filter((i) => !names(i.labels).some((n) => n.startsWith('trailhead:'))).length;
-  const anchors = { codebase: firstNumber(gh, repo, 'trailhead:codebase'), conventions: firstNumber(gh, repo, 'trailhead:conventions') };
+  const anchors = { codebase: one.codebase, conventions: one.conventions };
   return { repo, maps, whiteboard, resolved, inbox, anchors, lastAudit: null, truncated };
 }
 
@@ -207,11 +228,6 @@ function flagSummary(maps) {
 function summaryLine(number, snap) {
   const cut = snap.truncated && snap.truncated.length ? `, truncated: ${snap.truncated.join(', ')}` : '';
   return `dashboard${number === null ? '' : ' #' + number}: ${snap.maps.length} maps, whiteboard ${snap.whiteboard.length}, flags: ${flagSummary(snap.maps)}${cut}`;
-}
-
-function findDashboard(gh, repo) {
-  const list = issueList(gh, repo, ['--label', LABEL, '--state', 'open', '--json', 'number', '--limit', '1']);
-  return list.length ? list[0].number : null;
 }
 
 function isPinned(gh, repo, number) {
@@ -284,10 +300,11 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
   try {
     const repo = o.repo || defaultRepo(run);
     if (!repo) return abort('cannot resolve the repository (pass --repo owner/name)');
+    const singles = lookupSingletons(run, repo); // fail closed on duplicates, before any write
     if (!o.dryRun) run(['label', 'create', LABEL, '--color', '5319E7', '--description', 'Pinned index of the trailhead surface', '-R', repo]); // idempotent, failure = already there
-    const snap = gatherSnapshot(run, repo);
+    const snap = gatherSnapshot(run, repo, singles);
     const marker = o.setLastAudit ? `<!-- trailhead:last-audit ${o.setLastAudit} -->` : null;
-    const number = findDashboard(run, repo);
+    const number = singles.dashboard;
 
     if (number === null) {
       const body = renderDashboard({ ...snap, lastAudit: marker });

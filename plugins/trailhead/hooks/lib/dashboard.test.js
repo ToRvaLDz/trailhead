@@ -131,6 +131,8 @@ function makeTracker(init = {}) {
     created: [],
     pins: [],
     failOn: init.failOn || null,
+    // extra open issues per singleton label (duplicates): { label: [{ number, title }] }
+    dups: init.dups || {},
   };
   const ok_ = (stdout) => ({ status: 0, stdout, stderr: '' });
   t.gh = (args) => {
@@ -150,9 +152,11 @@ function makeTracker(init = {}) {
       }
       if (label === 'trailhead:whiteboard' && state === 'open') return ok_(JSON.stringify(t.whiteboardOpen));
       if (label === 'trailhead:whiteboard' && state === 'closed') return ok_(JSON.stringify(t.closed));
-      if (label === 'trailhead:codebase') return ok_(JSON.stringify(t.codebase ? [{ number: t.codebase }] : []));
-      if (label === 'trailhead:conventions') return ok_(JSON.stringify(t.conventions ? [{ number: t.conventions }] : []));
-      if (label === 'trailhead:dashboard') return ok_(JSON.stringify(t.dash ? [{ number: t.dash.number }] : []));
+      const lim = Number(args[args.indexOf('--limit') + 1]);
+      const extra = (t.dups[label] || []);
+      if (label === 'trailhead:codebase') return ok_(JSON.stringify((t.codebase ? [{ number: t.codebase, title: 'Codebase' }] : []).concat(extra).slice(0, lim)));
+      if (label === 'trailhead:conventions') return ok_(JSON.stringify((t.conventions ? [{ number: t.conventions, title: 'Conventions' }] : []).concat(extra).slice(0, lim)));
+      if (label === 'trailhead:dashboard') return ok_(JSON.stringify((t.dash ? [{ number: t.dash.number, title: '📊 trailhead dashboard' }] : []).concat(extra).slice(0, lim)));
       if (label === undefined) return ok_(JSON.stringify(t.openIssues));
     }
     if (args[0] === 'issue' && args[1] === 'view') {
@@ -230,6 +234,50 @@ function runMain(argv, t, extra = {}) {
   ok('regen: inbox counts only issues without a trailhead label', /- Untriaged inbox: 2/.test(t.writes[0]));
   ok('regen: label ensured first', t.labels.includes('trailhead:dashboard'));
   ok('regen: already pinned, no pin call', t.pins.length === 0);
+}
+
+// --- singleton lookups fail closed on duplicates (#274) -----------------------
+{
+  const noWrites = (t) => t.writes.length === 0 && t.created.length === 0 && t.pins.length === 0 && !t.calls.some((c) => c.startsWith('issue edit') || c.startsWith('issue create') || c.startsWith('label create'));
+  // many dashboards
+  for (const flags of [[], ['--dry-run']]) {
+    const t = makeTracker({ dups: { 'trailhead:dashboard': [{ number: 41, title: 'Dashboard twin\nsecond line' }] } });
+    const r = runMain(['--repo', 'o/r', ...flags], t);
+    ok(`dups dashboard${flags[0] || ''}: exit 1 and aborted`, r.code === 1 && /^aborted: /.test(r.out));
+    ok(`dups dashboard${flags[0] || ''}: names both numbers and titles`, /trailhead:dashboard: .*\(#33\).*\(#41\)/.test(r.out) && r.out.includes('Dashboard twin second line'));
+    ok(`dups dashboard${flags[0] || ''}: one line, nothing written`, r.out.split('\n').filter(Boolean).length === 1 && noWrites(t));
+  }
+  // many codebase / conventions, named together in one abort
+  {
+    const t = makeTracker({ dups: { 'trailhead:codebase': [{ number: 8, title: 'Codebase 2' }], 'trailhead:conventions': [{ number: 9, title: 'Conv 2' }] } });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('dups anchors: exit 1', r.code === 1 && /^aborted: /.test(r.out));
+    ok('dups anchors: codebase and conventions both named', /trailhead:codebase: Codebase \(#2\), Codebase 2 \(#8\)/.test(r.out) && /trailhead:conventions: Conv/.test(r.out) && r.out.includes('(#3)') && r.out.includes('(#9)'));
+    ok('dups anchors: nothing written', noWrites(t));
+  }
+  {
+    const t = makeTracker({ dups: { 'trailhead:codebase': [{ number: 8, title: 'Codebase 2' }] } });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('dups codebase only: aborts, conventions not named', r.code === 1 && /\(#8\)/.test(r.out) && !/trailhead:conventions/.test(r.out) && noWrites(t));
+  }
+  // many dashboards and no existing dashboard path is untouched: zero dashboard + dup anchors still aborts before create
+  {
+    const t = makeTracker({ dash: null, dups: { 'trailhead:conventions': [{ number: 9, title: 'Conv 2' }] } });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('dups with no dashboard: aborts before create', r.code === 1 && noWrites(t));
+  }
+  // zero and one: unchanged
+  {
+    const t = makeTracker();
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('one each: writes as before', r.code === 0 && t.writes.length === 1 && /^dashboard #33:/.test(r.out));
+    ok('lookups fetch more than one result', t.calls.filter((c) => /--label trailhead:(dashboard|codebase|conventions) /.test(c)).every((c) => !/--limit 1$/.test(c)));
+  }
+  {
+    const t = makeTracker({ dash: null, codebase: 0, conventions: 0 });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('zero each: create and pin path unchanged, anchors absent', r.code === 0 && t.created.length === 1 && t.pins.length === 1 && !/Anchors:/.test(t.created[0].text));
+  }
 }
 
 // --- what is (not) gathered --------------------------------------------------
