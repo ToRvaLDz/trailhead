@@ -568,4 +568,25 @@ for (const command of [
 }
 ok('#275 allow: git config -- core.pager less', !detectSecretRead('Bash', { command: 'git config -- core.pager less' }));
 
+// #276: a backslash outside quotes escapes the next char, so `\.env` is `.env` to the shell.
+for (const command of [
+  'cat \\.env',
+  'cat .\\env',
+  'bash -c "cat \\.env"',
+  'git -c core.pager="cat \\.env" log',
+  '\\bash <<EOF\ncat .env\nEOF',
+  'e\\nv bash <<EOF\ncat .env\nEOF',
+]) {
+  ok(`#276 deny: ${command}`, !!detectSecretRead('Bash', { command }));
+}
+for (const command of [
+  "cat '\\.env'",
+  'cat "\\.env"',
+  'cat README\\.md',
+  'echo "a\\.env b"',
+]) {
+  ok(`#276 allow: ${command}`, !detectSecretRead('Bash', { command }));
+}
+ok('#276 hook exits 2 on cat \\.env', runHook('Bash', { command: 'cat \\.env' }).code === 2);
+
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);
