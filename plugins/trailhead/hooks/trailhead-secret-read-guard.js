@@ -462,13 +462,26 @@ function isGluedGitConfig(t) {
 }
 
 // The word as the shell hands it over: quote pairs removed, their content kept
-// (`alias.x="!cat .env"` -> `alias.x=!cat .env`); the other quote kind inside a
-// pair stays literal. No escapes or expansions: best-effort like the rest.
+// (`alias.x="!cat .env"` -> `alias.x=!cat .env`). Backslashes follow the shell:
+// outside quotes one escapes the next char (backslash-newline vanishes), inside
+// double quotes only before `"`, `\`, `$`, a backtick or a newline, and inside
+// single quotes nothing is special. No expansions: best-effort like the rest.
 function shellUnquote(word) {
+  const chars = [...String(word)];
   let out = '';
   let q = null;
-  for (const ch of String(word)) {
-    if (q) { if (ch === q) q = null; else out += ch; }
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (q === "'") { if (ch === "'") q = null; else out += ch; continue; }
+    if (ch === '\\' && i + 1 < chars.length) {
+      const nx = chars[i + 1];
+      if (q === null || '"\\$`\n'.includes(nx)) {
+        i++;
+        if (nx !== '\n') out += nx;
+        continue;
+      }
+    }
+    if (q === '"') { if (ch === '"') q = null; else out += ch; }
     else if (ch === '"' || ch === "'") q = ch;
     else out += ch;
   }

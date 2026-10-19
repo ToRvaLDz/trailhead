@@ -438,6 +438,19 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
   ok('git --attr-source x ls-files .env stays name-only', !blocked('git --attr-source x ls-files .env'));
 }
 
+// --- #273 review W2: backslash escapes in a quoted config value ---
+{
+  const blocked = (c) => !!detectSecretRead('Bash', { command: c });
+  for (const c of [
+    'git -c core.pager="sh -c \\"cat .env\\"" log',
+    'git -c core.pager="bash -c \'bash -c \\"cat .env\\"\'" log',
+    'git -c core.pager="git -c core.pager=\\"cat .env\\" log" log',
+    'git -c core.pager=cat\\ .env log',
+  ]) ok(`denies an escaped config command: ${c}`, blocked(c));
+  ok('single quotes keep a backslash literal', !blocked("git -c core.pager='less \\' log"));
+  ok('an escaped dollar stays literal text, not a path', !blocked('git -c core.pager="less \\$x" log'));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
