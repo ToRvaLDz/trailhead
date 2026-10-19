@@ -266,6 +266,21 @@ function runMain(argv, t, extra = {}) {
     const r = runMain(['--repo', 'o/r'], t);
     ok('dups with no dashboard: aborts before create', r.code === 1 && noWrites(t));
   }
+  // a window hit by the fetch limit says more may exist (I1)
+  {
+    const many = Array.from({ length: 11 }, (_, i) => ({ number: 100 + i, title: 'Twin ' + i }));
+    const t = makeTracker({ dups: { 'trailhead:dashboard': many } });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('dups at the limit: aborts and says possibly more', r.code === 1 && /\(#108\), and possibly more/.test(r.out) && !r.out.includes("(#109)") && noWrites(t));
+    const t2 = makeTracker({ dups: { 'trailhead:dashboard': [{ number: 41, title: 'Twin' }] } });
+    ok('dups under the limit: no "possibly more"', !/possibly more/.test(runMain(['--repo', 'o/r'], t2).out));
+  }
+  // control characters in a title never reach the abort line (I2)
+  {
+    const t = makeTracker({ dups: { 'trailhead:dashboard': [{ number: 41, title: 'Evil\x1b[31m twin\x07\x7f' }] } });
+    const r = runMain(['--repo', 'o/r'], t);
+    ok('dups: control characters stripped from titles', r.code === 1 && /Evil\\\[31m twin/.test(r.out) && !/[\x00-\x08\x0b-\x1f\x7f]/.test(r.out));
+  }
   // zero and one: unchanged
   {
     const t = makeTracker();

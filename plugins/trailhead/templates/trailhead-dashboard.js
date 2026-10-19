@@ -183,7 +183,10 @@ function lookupSingletons(gh, repo) {
   }));
   const dupes = found.filter((f) => f.list.length > 1);
   if (dupes.length) {
-    const named = dupes.map((f) => `${f.label}: ${f.list.map((i) => `${linkText(i.title)} (#${i.number})`).join(', ')}`).join('; ');
+    // Control characters are stripped so the one-line stdout stays safe; a list
+    // that filled the fetch limit may be cut, so say more may exist.
+    const safe = (title) => linkText(title).replace(/[\x00-\x1f\x7f]/g, '');
+    const named = dupes.map((f) => `${f.label}: ${f.list.map((i) => `${safe(i.title)} (#${i.number})`).join(', ')}${f.list.length >= SINGLETON_LIMIT ? ', and possibly more' : ''}`).join('; ');
     throw new GatherError(`ambiguous singleton issues, close the duplicates and keep one: ${named}`);
   }
   const num = (label) => { const f = found.find((x) => x.label === label); return f.list.length ? f.list[0].number : null; };
