@@ -206,14 +206,18 @@ const GIT_PATHSPEC_SUBCOMMANDS = new Map([
 
 // Opzioni globali di git (usage line, git 2.49), per trovare il sottocomando.
 // Un'opzione con valore consuma la parola successiva salvo forma
-// `--opt=value`; un'opzione in nessuno dei due set fa fail closed, così un
-// valore non è mai letto come sottocomando (`git -C ls-files show HEAD:.env`
-// esegue `show`).
-const GIT_GLOBAL_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env']);
+// `--opt=value`. Un'opzione in nessuno dei due set NON ferma la camminata
+// (vedi walkGitGlobals): per il sottocomando esenta nulla (fail closed, un
+// valore non è mai letto come sottocomando: `git -C ls-files show HEAD:.env`
+// esegue `show`), per gli `-c` successivi li lascia comunque controllati.
+const GIT_GLOBAL_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--attr-source', '--super-prefix']);
 const GIT_GLOBAL_FLAGS = new Set([
   '-p', '--paginate', '-P', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
-  '--no-optional-locks', '--no-advice', '--bare',
+  '--no-optional-locks', '--no-advice', '--bare', '--literal-pathspecs', '--glob-pathspecs',
+  '--noglob-pathspecs', '--icase-pathspecs', '--exec-path', '--html-path', '--man-path', '--info-path',
 ]);
+// Flag che accetta anche la forma `--opt=value` ma mai un valore separato.
+const GIT_GLOBAL_EQ_FLAGS = new Set(['--exec-path', '--list-cmds']);
 
 // `cp`/`mv` scrivono la destinazione e non la stampano: un nome segreto che è
 // SOLO la destinazione di una copia/spostamento a sorgente singola è un nome
@@ -323,20 +327,46 @@ function isListedFlag(text, flags) {
   return /^-[A-Za-z]+$/.test(text) && [...text.slice(1)].every((ch) => flags.has(`-${ch}`));
 }
 
-// Indice del sottocomando git oltre le opzioni globali, o -1 se lo precede
-// un'opzione fuori da GIT_GLOBAL_VALUE_OPTIONS / GIT_GLOBAL_FLAGS.
-function gitSubcommandIndex(operands) {
+// UNICA camminata sulle opzioni globali di git, condivisa da gitSubcommandIndex
+// e da extractGitConfigCommands così le due non divergono. Restituisce
+// { sub, known, configs }: `sub` = indice del primo operando non-opzione (-1 se
+// assente), `known` = false se la camminata ha incontrato un'opzione fuori dai
+// set (allora nessuna esenzione per il sottocomando), `configs` = i valori
+// `-c` / `-ckey=value` / `--config-env` visti prima del sottocomando.
+// Un'opzione sconosciuta non interrompe la camminata: si tratta come flag fino al
+// primo operando non-opzione (fail toward scanning).
+function walkGitGlobals(operands) {
+  const out = { sub: -1, known: true, configs: [] };
   for (let k = 0; k < operands.length; k++) {
     const t = operands[k];
-    if (!t.startsWith('-')) return k;
-    if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) { k++; continue; }
-    if (GIT_GLOBAL_FLAGS.has(t)) continue;
-    if (isGluedGitConfig(t)) continue; // #273: `-ckey=value`, the value is glued on
-    const eq = t.indexOf('=');
-    const isLongValueForm = t.startsWith('--') && eq !== -1 && GIT_GLOBAL_VALUE_OPTIONS.has(t.slice(0, eq));
-    if (!isLongValueForm) return -1;
+    if (!t.startsWith('-') || t === '-') { out.sub = k; return out; }
+    if (t === '-c' || t === '--config-env') {
+      if (k + 1 >= operands.length) { out.known = false; return out; }
+      out.configs.push({ kind: t === '-c' ? 'c' : 'env', value: operands[++k], sample: `${t} ${operands[k]}` });
+    } else if (t.startsWith('--config-env=')) {
+      out.configs.push({ kind: 'env', value: t.slice('--config-env='.length), sample: t });
+    } else if (isGluedGitConfig(t)) {
+      out.configs.push({ kind: 'c', value: t.slice(2), sample: t }); // #273: `-ckey=value`
+    } else if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) {
+      if (k + 1 >= operands.length) { out.known = false; return out; }
+      k++; // `-C <path>` and friends: the value is not a config
+    } else if (GIT_GLOBAL_FLAGS.has(t)) {
+      // known flag
+    } else {
+      const eq = t.indexOf('=');
+      const name = eq === -1 ? t : t.slice(0, eq);
+      const longForm = t.startsWith('--') && eq !== -1 && (GIT_GLOBAL_VALUE_OPTIONS.has(name) || GIT_GLOBAL_EQ_FLAGS.has(name));
+      if (!longForm) out.known = false; // unknown option: treated as a flag, no exemption
+    }
   }
-  return -1;
+  return out;
+}
+
+// Indice del sottocomando git oltre le opzioni globali, o -1 se lo precede
+// un'opzione sconosciuta o manca.
+function gitSubcommandIndex(operands) {
+  const w = walkGitGlobals(operands);
+  return w.known ? w.sub : -1;
 }
 
 // Indici dei pathspec di un sottocomando in GIT_PATHSPEC_SUBCOMMANDS. git
@@ -447,11 +477,21 @@ function shellUnquote(word) {
 
 // The command text a git config value carries for `key`, or null when the key
 // is not command-valued (or `!`-less where the `!` is required).
+function isGitCommandKey(key) {
+  return GIT_COMMAND_KEYS.some((k) => k.re.test(key.toLowerCase()));
+}
+
 function gitConfigCommand(key, value) {
   const spec = GIT_COMMAND_KEYS.find((k) => k.re.test(key.toLowerCase()));
   if (!spec) return null;
   if (spec.bang) return value.startsWith('!') && value.length > 1 ? value.slice(1) : null;
   return value ? value : null;
+}
+
+// Splits `NAME=value` at the first `=` (null when there is none or the name is empty).
+function splitAssignment(kv) {
+  const eq = kv.indexOf('=');
+  return eq <= 0 ? null : [kv.slice(0, eq), kv.slice(eq + 1)];
 }
 
 // Every command text carried in the git global options of a statement, from
@@ -465,42 +505,20 @@ function extractGitConfigCommands(tokens) {
   if (first >= tokens.length || basename(shellUnquote(tokens[first])) !== 'git') return found;
   const env = new Map();
   for (const a of tokens.slice(0, first)) {
-    const u = shellUnquote(a);
-    env.set(u.slice(0, u.indexOf('=')), u.slice(u.indexOf('=') + 1));
+    const kv = splitAssignment(shellUnquote(a));
+    if (kv) env.set(kv[0], kv[1]);
   }
-  const fromKeyValue = (kv) => {
-    const eq = kv.indexOf('=');
-    if (eq <= 0) return;
-    const cmd = gitConfigCommand(kv.slice(0, eq), kv.slice(eq + 1));
-    if (cmd) found.commands.push(cmd);
-  };
-  const fromConfigEnv = (kv, sample) => {
-    const eq = kv.indexOf('=');
-    if (eq <= 0) return;
-    const key = kv.slice(0, eq);
-    const name = kv.slice(eq + 1);
-    if (!GIT_COMMAND_KEYS.some((k) => k.re.test(key.toLowerCase()))) return;
-    if (!env.has(name)) { found.unresolved.push(sample); return; }
-    const cmd = gitConfigCommand(key, env.get(name));
+  const add = (key, value) => {
+    const cmd = gitConfigCommand(key, value);
     if (cmd) found.commands.push(cmd);
   };
   const operands = tokens.slice(first + 1).map(shellUnquote);
-  for (let k = 0; k < operands.length; k++) {
-    const t = operands[k];
-    if (!t.startsWith('-') || t === '-') break; // the subcommand: options after it are its own
-    if (t === '-c' || t === '--config-env') {
-      if (k + 1 >= operands.length) break;
-      const kv = operands[++k];
-      if (t === '-c') fromKeyValue(kv); else fromConfigEnv(kv, `--config-env ${kv}`);
-    } else if (t.startsWith('--config-env=')) {
-      fromConfigEnv(t.slice('--config-env='.length), t);
-    } else if (isGluedGitConfig(t)) {
-      fromKeyValue(t.slice(2));
-    } else if (GIT_GLOBAL_VALUE_OPTIONS.has(t)) {
-      k++; // `-C <path>` and friends: the value is not a config
-    } else if (!GIT_GLOBAL_FLAGS.has(t) && !(t.startsWith('--') && GIT_GLOBAL_VALUE_OPTIONS.has(t.slice(0, Math.max(t.indexOf('='), 0))))) {
-      break; // unknown option: the walk cannot tell where the subcommand starts
-    }
+  for (const cfg of walkGitGlobals(operands).configs) {
+    const kv = splitAssignment(cfg.value);
+    if (!kv) continue;
+    if (cfg.kind === 'c') { add(kv[0], kv[1]); continue; }
+    if (!isGitCommandKey(kv[0])) continue;
+    if (env.has(kv[1])) add(kv[0], env.get(kv[1])); else found.unresolved.push(cfg.sample);
   }
   return found;
 }

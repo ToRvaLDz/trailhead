@@ -416,6 +416,28 @@ ok('hook allows Bash(cp .env.example .env) end-to-end (exit 0, no output)', a7.c
   ok('a resolved secret --config-env stays SECRET_READ_BLOCKED, not unmodelled', !unmodelled('P="cat .env" git --config-env=core.pager=P log'));
 }
 
+// --- #273 review C1/I3: a git global option the walk does not list must not hide a later -c ---
+{
+  const blocked = (c) => !!detectSecretRead('Bash', { command: c });
+  const unmodelled = (c) => { const h = detectSecretRead('Bash', { command: c }); return !!h && !!h.unmodelled; };
+  for (const c of [
+    'git --literal-pathspecs -c core.pager="cat .env" log',
+    'git --glob-pathspecs -c core.pager="cat .env" log',
+    'git --noglob-pathspecs -c core.pager="cat .env" log',
+    'git --icase-pathspecs -c core.pager="cat .env" log',
+    'git --exec-path=/x -c core.pager="cat .env" log',
+    'git --exec-path -c core.pager="cat .env" log',
+    'git --attr-source=x -c core.pager="cat .env" log',
+    'git --list-cmds=main -c core.pager="cat .env" log',
+    'git --some-future-flag -c core.pager="cat .env" log',
+  ]) ok(`denies a config command behind a global option: ${c}`, blocked(c));
+  ok('an unresolved --config-env behind a global option is unmodelled',
+    unmodelled('git --exec-path=/x --config-env=core.pager=P log'));
+  ok('a harmless -c behind a global option is allowed', !blocked('git --literal-pathspecs -c core.pager=less log'));
+  ok('git show behind --attr-source stays a subcommand walk', blocked('git --attr-source=x show HEAD:.env'));
+  ok('git --attr-source x ls-files .env stays name-only', !blocked('git --attr-source x ls-files .env'));
+}
+
 // --- crash safety ---
 const crash1 = runHook('Read', undefined);
 ok('missing tool_input never crashes (exit 0)', crash1.code === 0);
