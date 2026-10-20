@@ -68,17 +68,10 @@ const stateOf = (names: readonly string[], assignees: readonly string[]): Ticket
 // Only an https link is kept; anything else would be drawn as plain text.
 const safeUrl = (raw: unknown): string => (typeof raw === 'string' && /^https:\/\//.test(raw) ? raw : '')
 
-// `gh issue list --json number,title,labels,assignees,url`. Unverified rows are
-// quarantined (counted, never listed); whiteboard rows do not belong to a map, and on the
-// whiteboard (`isWhiteboard`) only they are kept.
-export const parseTickets = (stdout: string, opts: { isWhiteboard?: boolean } = {}): ParsedTickets | null => {
-  let raw: unknown
-  try {
-    raw = JSON.parse(stdout)
-  } catch {
-    return null
-  }
-  if (!Array.isArray(raw)) return null
+// The rows of an open-ticket list (the `gh issue list --json number,title,labels,assignees,url` shape).
+// Unverified rows are quarantined (counted, never listed); whiteboard rows do not belong to a map, and on the
+// whiteboard (`isWhiteboard`) only they are kept. A list that reached LIST_LIMIT rows is capped.
+export const ticketsFromRows = (raw: readonly unknown[], opts: { isWhiteboard?: boolean } = {}): ParsedTickets => {
   const rows = raw.filter(isRecord).filter(r => isPosInt(r.number))
   const named = rows.map(r => ({ r, names: labelNames(r.labels) }))
   const unverifiedCount = named.filter(({ names }) => names.includes(`${LABEL_PREFIX}unverified`)).length
@@ -99,6 +92,50 @@ export const parseTickets = (stdout: string, opts: { isWhiteboard?: boolean } = 
       }
     })
   return { tickets, unverifiedCount, isCapped: raw.length >= LIST_LIMIT }
+}
+
+// `gh issue list --json ...` output as a ticket list; not a list is unreadable (null).
+export const parseTickets = (stdout: string, opts: { isWhiteboard?: boolean } = {}): ParsedTickets | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  return Array.isArray(raw) ? ticketsFromRows(raw, opts) : null
+}
+
+// The rows that carry `name`: a GraphQL `labels:` filter is any-of, so an AND of two labels is done here.
+export const withLabel = (rows: readonly unknown[], name: string): unknown[] =>
+  rows.filter(r => isRecord(r) && labelNames(r.labels).includes(name))
+
+export type IssuesPage = { rows: unknown[]; hasNextPage: boolean; endCursor: string | null }
+
+// One page of the GraphQL open-ticket read (`repository.issues(...){nodes{...}pageInfo{...}}`), its nodes
+// flattened to the rows `gh issue list --json` prints so one parser serves both. Any `errors` (even beside
+// partial `data`), a missing page info or a next page without a cursor is unreadable: the caller falls back.
+export const parseIssuesPage = (stdout: string): IssuesPage | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || 'errors' in raw || !isRecord(raw.data) || !isRecord(raw.data.repository)) return null
+  const issues = raw.data.repository.issues
+  if (!isRecord(issues) || !Array.isArray(issues.nodes) || !isRecord(issues.pageInfo)) return null
+  const { hasNextPage, endCursor } = issues.pageInfo
+  if (typeof hasNextPage !== 'boolean') return null
+  if (hasNextPage && (typeof endCursor !== 'string' || endCursor === '')) return null
+  const inner = (v: unknown) => (isRecord(v) && Array.isArray(v.nodes) ? v.nodes : [])
+  const rows = issues.nodes.filter(isRecord).map(n => ({
+    number: n.number,
+    title: n.title,
+    url: n.url,
+    labels: inner(n.labels),
+    assignees: inner(n.assignees),
+  }))
+  return { rows, hasNextPage, endCursor: hasNextPage ? (endCursor as string) : null }
 }
 
 // `gh issue list --label trailhead:uat ... --json number,body`: ticket number -> the parent its first

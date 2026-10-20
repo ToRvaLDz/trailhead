@@ -16,6 +16,7 @@ import {
   parseActiveMap,
   parseDashboard,
   parseHistory,
+  parseIssuesPage,
   parseMap,
   parseMaps,
   parseMapsRead,
@@ -25,11 +26,13 @@ import {
   refreshDecision,
   rowLayout,
   sparkline,
+  ticketsFromRows,
   uatParentLine,
   viewTarget,
   withUatParents,
   whiteboardHeading,
   whiteboardRowLayout,
+  withLabel,
 } from '../hooks/mod/map-pane-view'
 
 const issue = (over: Record<string, unknown> = {}) => ({
@@ -867,4 +870,70 @@ test('headingRoom leaves the switch button its cells, never below zero', () => {
   expect(headingRoom(60, 'dashboard')).toBe(46)
   expect(headingRoom(60, 'map')).toBe(52)
   expect(headingRoom(5, 'dashboard')).toBe(0)
+})
+
+// One page of the GraphQL open-ticket read, as `gh api graphql` prints it.
+const node = (number: number, names: string[], logins: string[] = []) => ({
+  number,
+  title: `t${number}`,
+  url: `https://github.com/o/r/issues/${number}`,
+  labels: { nodes: labels(...names) },
+  assignees: { nodes: logins.map(login => ({ login })) },
+})
+const page = (nodes: unknown[], pageInfo: unknown = { hasNextPage: false, endCursor: null }) =>
+  JSON.stringify({ data: { repository: { issues: { nodes, pageInfo } } } })
+
+test('parseIssuesPage flattens the nodes to the rows gh issue list prints, with the page info', () => {
+  const out = parseIssuesPage(page([node(7, ['trailhead:build', 'trailhead:map-1'], ['alice'])], { hasNextPage: true, endCursor: 'abc' }))
+  expect(out).toEqual({
+    rows: [
+      {
+        number: 7,
+        title: 't7',
+        url: 'https://github.com/o/r/issues/7',
+        labels: [{ name: 'trailhead:build' }, { name: 'trailhead:map-1' }],
+        assignees: [{ login: 'alice' }],
+      },
+    ],
+    hasNextPage: true,
+    endCursor: 'abc',
+  })
+  // the flattened rows go through the same parser as a gh list
+  expect(parseTickets(JSON.stringify(out?.rows))?.tickets.map(t => [t.number, t.state])).toEqual([[7, 'in-progress']])
+})
+
+test('parseIssuesPage is null on anything but a clean page', () => {
+  expect(parseIssuesPage('nope')).toBeNull()
+  expect(parseIssuesPage('[]')).toBeNull()
+  expect(parseIssuesPage(JSON.stringify({ data: { repository: null } }))).toBeNull()
+  expect(parseIssuesPage(JSON.stringify({ data: { repository: { issues: { nodes: {} } } } }))).toBeNull()
+  // errors beside partial data, a missing or malformed pageInfo, a next page with no cursor
+  expect(parseIssuesPage(JSON.stringify({ data: { repository: { issues: { nodes: [], pageInfo: { hasNextPage: false } } } }, errors: [{ message: 'x' }] }))).toBeNull()
+  expect(parseIssuesPage(JSON.stringify({ data: { repository: { issues: { nodes: [] } } } }))).toBeNull()
+  expect(parseIssuesPage(page([], { hasNextPage: 'yes', endCursor: null }))).toBeNull()
+  expect(parseIssuesPage(page([], { hasNextPage: true, endCursor: null }))).toBeNull()
+})
+
+test('parseIssuesPage skips a malformed node and keeps an empty page', () => {
+  expect(parseIssuesPage(page([node(1, []), null, 'x']))?.rows).toHaveLength(1)
+  expect(parseIssuesPage(page([]))).toEqual({ rows: [], hasNextPage: false, endCursor: null })
+})
+
+test('the whiteboard read keeps the rows that carry both labels (GraphQL labels is any-of)', () => {
+  const rows = parseIssuesPage(
+    page([
+      node(1, ['trailhead:whiteboard', 'trailhead:ticket', 'trailhead:bug']),
+      node(2, ['trailhead:whiteboard']),
+      node(3, ['trailhead:whiteboard', 'trailhead:ticket', 'trailhead:unverified']),
+    ]),
+  )?.rows as unknown[]
+  const parsed = ticketsFromRows(withLabel(rows, 'trailhead:ticket'), { isWhiteboard: true })
+  expect(parsed?.tickets.map(t => t.number)).toEqual([1])
+  expect(parsed?.unverifiedCount).toBe(1)
+})
+
+test('ticketsFromRows says capped at the limit, as parseTickets does', () => {
+  const rows = Array.from({ length: 200 }, (_, i) => issue({ number: i + 1 }))
+  expect(ticketsFromRows(rows)?.isCapped).toBe(true)
+  expect(ticketsFromRows(rows.slice(1))?.isCapped).toBe(false)
 })
