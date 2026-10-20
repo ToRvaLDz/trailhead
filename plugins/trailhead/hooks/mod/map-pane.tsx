@@ -386,7 +386,9 @@ function stopTimers() {
 }
 
 // `bypassFloor`: the caller's last result was dropped unseen, so reading again is not a repeat.
-type Request = { bypassFloor?: boolean }
+// `isWrite`: a tracker write just ran; a read that starts at once is followed by one more at the floor's end,
+// by when the search index (history, UAT parents, the list fallback) has caught up.
+type Request = { bypassFloor?: boolean; isWrite?: boolean }
 
 // Throttled: inside the floor it keeps ONE trailing refresh for the rest of it, so an event
 // just after a refresh still shows.
@@ -410,6 +412,13 @@ async function decide($: Dollar, request: Request) {
   lastStartedAt = now
   trailing?.cancel()
   trailing = null
+  // Never bypassFloor: a burst of writes still costs one read per floor plus this one trailing.
+  if (request.isWrite === true) {
+    trailing = $.clock.after(MIN_REFRESH_MS, () => {
+      trailing = null
+      void requestRefresh($)
+    })
+  }
   const again = () => void requestRefresh($, { bypassFloor: true })
   if (await read($, isDashboard)) await fetchDashboard($, pin, generation, again)
   else await fetchMap($, pin, generation, again)
@@ -613,7 +622,7 @@ export function registerMapPane(on: On) {
   // After the call ran: a Bash `gh issue` write changed the tracker.
   on('tool.call', { tool: 'Bash', command: GH_ISSUE_WRITE }, async ($, e, next) => {
     const result = await next(e)
-    void requestRefresh($)
+    void requestRefresh($, { isWrite: true })
     return result
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))

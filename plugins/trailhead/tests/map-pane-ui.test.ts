@@ -1043,6 +1043,47 @@ for (const surface of SURFACES) {
     expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
   })
 
+  test(`a write that reads at once is followed by one more read at the floor's end [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    await r.clock.advance(FLOOR)
+    const before = fetches(r)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 5' } as never)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 1)
+    await r.clock.advance(FLOOR - 1)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 1)
+    await r.clock.advance(1)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 2)
+    // the follow-up is spent
+    await r.clock.advance(FLOOR)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 2)
+  })
+
+  test(`a burst of writes costs one read per floor plus one trailing [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    await r.clock.advance(FLOOR)
+    const before = fetches(r)
+    for (const command of ['gh issue close 5', 'gh issue create -t a', 'gh issue comment 5 -b x', 'gh issue edit 5 --add-label y', 'gh issue close 6']) {
+      await $.tool.call({ tool: 'Bash', command } as never)
+      await r.clock.advance(1_000)
+    }
+    await settle(r)
+    expect(fetches(r)).toBe(before + 1)
+    await r.clock.advance(FLOOR)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 2)
+    await r.clock.advance(FLOOR)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 2)
+  })
+
   test(`session start, turn complete and the slow timer refresh an open pane [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
@@ -1077,7 +1118,13 @@ for (const surface of SURFACES) {
     expect(fetches(r)).toBe(base)
 
     for (const command of ['gh issue close 5', 'gh --repo o/r issue close 5', 'gh issue comment 5 -b hi', 'gh issue edit 5 --add-label x', 'gh issue create -t t', 'gh issue reopen 5']) {
-      await r.clock.advance(FLOOR)
+      // until a whole floor passes with no read (the previous write's follow-up, the slow timer), so this write starts outside one
+      let seen = -1
+      while (seen !== fetches(r)) {
+        seen = fetches(r)
+        await r.clock.advance(FLOOR)
+        await settle(r)
+      }
       const before = fetches(r)
       await $.tool.call({ tool: 'Bash', command } as never)
       await settle(r)
