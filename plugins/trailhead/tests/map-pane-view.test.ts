@@ -347,6 +347,38 @@ test('rowLayout: holders are drawn as @login on in-progress and blocked rows', (
   expect(loose.isDim).toBe(true)
 })
 
+const needsYou = (over: Record<string, unknown> = {}) => ticket({ isNeedsYou: true, ...over })
+
+test('rowLayout: a needs-you row without a holder has a work button, a paused one too, never resume', () => {
+  expect(layout(needsYou()).aside).toEqual({ kind: 'work', text: 'work' })
+  expect(layout(needsYou({ state: 'paused' })).aside).toEqual({ kind: 'work', text: 'work' })
+})
+
+test('rowLayout: a needs-you row with any holder shows the holder, never a button', () => {
+  const holder = { kind: 'holder', text: '@alice' }
+  expect(layout(needsYou({ state: 'paused', assignees: ['alice'] })).aside).toEqual(holder)
+  expect(layout(needsYou({ state: 'blocked', assignees: ['alice'] })).aside).toEqual(holder)
+  expect(layout(needsYou({ state: 'in-progress', assignees: ['alice'] })).aside).toEqual(holder)
+  // a press pending does not turn a held row into a button either
+  expect(layout(needsYou({ state: 'paused', assignees: ['alice'] }), { pendingWork: 209 }).aside).toEqual(holder)
+})
+
+test('rowLayout: a needs-you row blocked with no holder shows nothing and is dim', () => {
+  const row = layout(needsYou({ state: 'blocked' }))
+  expect(row.aside).toBeNull()
+  expect(row.isDim).toBe(true)
+})
+
+test('rowLayout: a needs-you row shows queued while its press is pending and this session in play', () => {
+  expect(layout(needsYou(), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(needsYou({ state: 'paused' }), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(needsYou({ state: 'in-progress', assignees: ['alice'] }), { isInPlay: true }).aside).toEqual({ kind: 'self', text: 'this session' })
+})
+
+test('rowLayout: a paused row without the needs-you marker keeps resume, even with a holder', () => {
+  expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'resume', text: 'resume' })
+})
+
 test('rowLayout: a paused row has a resume button, whoever holds it', () => {
   expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'resume', text: 'resume' })
   expect(layout(ticket({ state: 'paused' })).aside).toEqual({ kind: 'resume', text: 'resume' })

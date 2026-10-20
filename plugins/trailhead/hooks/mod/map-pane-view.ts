@@ -447,15 +447,26 @@ export const footerStatus = (status: string, columns: number): FooterStatus => {
 
 const SELF_ASIDE: RowAside = { kind: 'self', text: 'this session' }
 
-// The ticket in play says `this session`; otherwise a frontier row has a `work` button, a paused one a
-// `resume` button (the verb checks the claim), and the rest their holder.
+const holderOf = (t: PaneTicket): RowAside => ({ kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') })
+
+// A needs-you row: any holder first (a `work` press would steal the claim), then nothing when blocked,
+// else `work` (never `resume`: the claim clears the mark, resume would not).
+const needsYouAside = (t: PaneTicket, pendingWork: number | null): RowAside | null => {
+  if (t.assignees.length > 0) return holderOf(t)
+  if (t.state === 'blocked') return null
+  return pendingWork === t.number ? { kind: 'queued', text: 'queued' } : { kind: 'work', text: 'work' }
+}
+
+// The ticket in play says `this session`; a needs-you row follows its own rule; otherwise a frontier row has
+// a `work` button, a paused one a `resume` button (the verb checks the claim), and the rest their holder.
 const asideOf = (t: PaneTicket, pendingWork: number | null, isInPlay: boolean): RowAside | null => {
   if (isInPlay) return SELF_ASIDE
+  if (t.isNeedsYou) return needsYouAside(t, pendingWork)
   if (t.state === 'frontier' || t.state === 'paused') {
     if (pendingWork === t.number) return { kind: 'queued', text: 'queued' }
     return t.state === 'frontier' ? { kind: 'work', text: 'work' } : { kind: 'resume', text: 'resume' }
   }
-  return t.assignees.length === 0 ? null : { kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') }
+  return t.assignees.length === 0 ? null : holderOf(t)
 }
 
 const asideWidth = (a: RowAside | null): number =>
