@@ -757,12 +757,12 @@ ok('source: both Pending-UAT guard lines reference the drive-mode ask', pendingU
 // auto.md mentions the ask, AND (plan-review addition) a single localized span
 // states its outcomes TOGETHER: takes it without the confirm gate, picks
 // AI-driven when any step is agent-performable, never fakes a human-only step,
-// and sets the ticket aside listing them in the run-end summary.
+// and routes the human-only steps to a follow-up opened before the parent closes (#281).
 const autoSourcePath = path.join(sourceSkillsDir, 'trailhead-work', 'references', 'auto.md');
 const autoSource = fs.readFileSync(autoSourcePath, 'utf8');
 ok('source: auto.md mentions the drive-mode ask', autoSource.includes('drive-mode ask'));
 ok('source: auto.md states the drive-mode-ask outcomes together (grouped, not scattered)',
-  /drive-mode ask[\s\S]{0,120}without the confirm gate[\s\S]{0,300}AI-driven[\s\S]{0,200}agent-performable[\s\S]{0,300}never fake[\s\S]{0,300}run-end summary/.test(autoSource));
+  /drive-mode ask[\s\S]{0,120}without the confirm gate[\s\S]{0,300}AI-driven[\s\S]{0,200}agent-performable[\s\S]{0,300}never fakes[\s\S]{0,1500}follow-up/.test(autoSource));
 
 // choices.md carries the call-site row for the drive-mode ask.
 const choicesSourcePath = path.join(sourceSkillsDir, '_shared', 'choices.md');
@@ -816,13 +816,12 @@ ok('source: configuration-reference.md acceptance.browser clause does NOT make t
 ok('source: configuration-reference.md acceptance.browser clause states the drive-mode ask always comes first',
   /\*\*acceptance\.browser\.\*\*[\s\S]{0,200}drive-mode ask[\s\S]{0,120}always comes first/.test(configReferenceSource));
 
-// The run-end summary's enumerated set-aside category list is missing the new
-// human-only-UAT-steps class (added by #178); it must be listed there too,
-// matching the wording already used for it at line 29 ("human-only steps").
+// Human-only UAT steps are no longer a set-aside reason (#281): the run-end summary
+// lists the UAT follow-ups opened this run instead.
 const runEndSummarySection = extractSection(autoSource, '## Run-end summary');
 ok('source: auto.md Run-end summary section exists', runEndSummarySection.length > 0);
-ok('source: auto.md Run-end summary "what remains" list includes human-only UAT steps',
-  /what remains[\s\S]{0,400}human-only UAT steps/.test(runEndSummarySection));
+ok('source: auto.md Run-end summary "what remains" lists the UAT follow-ups opened this run',
+  /what remains[\s\S]{0,900}UAT follow-ups opened this run/.test(runEndSummarySection));
 
 // --- #254: skip option at the drive-mode ask (a waiver, not a deferral) -----
 // The waiver's operational contract is single-sourced in the Drive-mode bullet
