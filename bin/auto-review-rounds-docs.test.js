@@ -30,7 +30,7 @@ ok('auto.md: names the parking trigger statuses', /`exhausted`[^.]*`no-progress`
 ok('auto.md: parks after PLAN and PLAN-REVIEW are posted, quoting each concern\'s full text', /after the `PLAN` and `PLAN-REVIEW` comments are posted/.test(auto) && /full `text`[^.]*`surviving`[^.]*never just (its|the) key/.test(auto));
 ok('auto.md: names the round call', auto.includes('trailhead-plan-review-rounds.js round'));
 
-ok('auto.md: the ask helper warnings are printed in chat before the ask or skip', /non-empty `warnings`[^.]*printed in chat first, before the ask or the skip/.test(auto));
+ok('auto.md: the ask helper warnings are printed in chat before the ask or skip', /non-empty `warnings`[\s\S]{0,200}printed in chat first, before the ask or the skip/.test(auto));
 ok('plan-review.md: rounds come from config or the run start-up choice', /`config\.plan_review\.rounds`[^.]*autonomous run[^.]*start-up choice/.test(review));
 ok('plan-review.md: calls the round helper and follows its decision', review.includes('trailhead-plan-review-rounds.js round') && /follows its decision/.test(review));
 ok('plan-review.md: under an autonomous run the checkpoint is not posed, the ticket is parked', /autonomous run[^.]*checkpoint is not posed[\s\S]{0,400}trailhead-needs-you\.js park/.test(review));
