@@ -149,7 +149,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   over the listed tickets; `200+ open` when the list is capped): the open
   `trailhead:ticket` + `trailhead:whiteboard` tickets as Frontier / In progress / UAT / Paused / Blocked, with the same rows,
   holders and `work` buttons (the work verb takes a whiteboard ticket as is). Unverified ones are counted only.
-  Its reads replace the map's in a refresh: the whiteboard list, `gh issue list --label trailhead:dashboard
+  Its reads replace the map's in a refresh: the whiteboard list (the GraphQL open read above), `gh issue list --label trailhead:dashboard
   --json number,url` and the maps list; a failed list keeps the last one with the footer reason, a failed index
   read alone keeps the last link. Data in the `dashboardPane` atom; the mode survives `/clear` like the view.
 - **Burn-down**: below the groups, a `Burn-down` section shows the shown map's open-ticket count
@@ -183,8 +183,14 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   click. Start Claude Code with `FORCE_HYPERLINK=1` there to get real links.
 - **Where the data comes from**: `.trailhead/active-map` (read locally on `session.start` and
   `turn.complete`, whether or not the pane is open), then `gh issue view <map>` and
-  `gh issue list --label trailhead:map-<map> --state open` (plus the history read under "Burn-down" and the maps list read) through `$.process.run`,
-  where `<map>` is the viewed map, else the active one. A result is dropped if the pane closed or the shown map changed while `gh` ran.
+  the open list of `trailhead:map-<map>` (plus the history read under "Burn-down", the UAT parents and the maps list read)
+  through `$.process.run`, where `<map>` is the viewed map, else the active one. A result is dropped if the pane closed or the shown map changed while `gh` ran.
+  The open list (a map's, and the whiteboard's) is a `gh api graphql` read of `repository.issues(states: OPEN, labels: [...])`,
+  paged 100 a page up to 200 rows, because `gh issue list --label` goes through the search API, which lags a write by seconds:
+  a ticket just created or closed would show stale. GraphQL `labels` is any-of, so the whiteboard read filters
+  `trailhead:ticket` itself. A page that fails or is unreadable discards the whole GraphQL read (never a partial list)
+  and `gh issue list --label <label> --state open` runs once instead. The history (`--state all`) and the UAT-parent
+  reads stay on `gh issue list` (search-backed): they can trail a write by seconds, which the follow-up read below covers.
 - **Which repo**: the one the session started in, pinned (`repo-pin.ts`) when `$.session.repo()` has a
   remote of the form host/owner/name (github.com or an Enterprise host, any ssh/https form). The pinned root
   is the checkout's own toplevel (`git rev-parse --show-toplevel` in the session's project root), so a
@@ -196,9 +202,14 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   pane held for the old one. With nothing ever pinned the pane says
   `Not in a GitHub repository: open the session in a trailhead repo` and makes no `gh` call.
 - **When it refreshes**: only while the pane is open (a closed pane costs no `gh` call). Opening it,
-  `session.start`, `turn.complete`, a Bash call that runs `gh issue edit|close|create|comment|reopen`,
-  the `refresh` button, and a slow timer started on open. Never two fetches inside `MIN_REFRESH_MS`:
-  a request inside the floor keeps one trailing refresh for the rest of it.
+  `session.start`, `turn.complete`, a Bash call that writes to the tracker, the `refresh` button, and a slow
+  timer started on open. A write is `gh issue edit|close|create|comment|reopen|delete|transfer`, a `gh api` call on a
+  `repos/.../issues` path with a write method (`-X`/`--method` POST, PATCH, PUT, DELETE) or an implicit POST
+  (`-f`, `-F`, `--field`, `--raw-field`, `--input`) and no `-X GET`, or the `trailhead-issue-body.js` helper
+  (`GH_ISSUE_WRITE`); reads never refresh. Never two fetches inside `MIN_REFRESH_MS`: a request inside the floor
+  keeps one trailing refresh for the rest of it. A write that reads at once also arms that trailing refresh, so one
+  more read follows when the floor ends, after the search index caught up; a burst of writes still costs one
+  read per floor plus one trailing.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed
   by the person (a press on the `close` button counts as closing it). The open runs from a zero-delay timer because a render may not write state.
@@ -210,7 +221,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   because `/clear` empties the atoms while they are needed.
 - **Validator note**: `claude plugin validate` follows `$` only inside one file and refuses two
   hooks on one event with no matcher. So `map-pane.tsx` registers `session.start`, `turn.complete`
-  and `tool.call` with matchers that always hold (or narrow: the `gh issue` write), next to the
+  and `tool.call` with matchers that always hold (or narrow: the tracker write), next to the
   bare hooks of `register.tsx`.
 
 ## Requirements
