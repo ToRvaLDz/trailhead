@@ -3,6 +3,7 @@ node_modules/
 *.log
 .trailhead/session-ticket
 .trailhead/work-state.json
+.trailhead/auto-run.json
 .trailhead/isolation-answer.json
 .trailhead/active-map
 .trailhead/models-collapse-notice
