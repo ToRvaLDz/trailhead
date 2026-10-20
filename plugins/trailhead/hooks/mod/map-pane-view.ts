@@ -8,6 +8,7 @@ export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'pro
 // `isCapped`: gh returned as many rows as it was asked for, so the list may be cut.
 export type ParsedTickets = { tickets: readonly PaneTicket[]; unverifiedCount: number; isCapped: boolean }
 export type TicketGroups = {
+  needsYou: readonly PaneTicket[]
   frontier: readonly PaneTicket[]
   inProgress: readonly PaneTicket[]
   uat: readonly PaneTicket[]
@@ -360,13 +361,13 @@ export const whiteboardHeading = (tickets: readonly PaneTicket[] | null, isCappe
 
 const byNumber = (a: PaneTicket, b: PaneTicket) => a.number - b.number
 
-// Paused wins, then a UAT ticket (whatever its state), then the state: each ticket shows once.
-type Place = TicketState | 'uat'
-const placeOf = (t: PaneTicket): Place => (t.state === 'paused' ? 'paused' : t.isUat ? 'uat' : t.state)
+// Needs-you wins, then paused, then a UAT ticket (whatever its state), then the state: each ticket shows once.
+type Place = TicketState | 'uat' | 'needs-you'
+const placeOf = (t: PaneTicket): Place => (t.isNeedsYou ? 'needs-you' : t.state === 'paused' ? 'paused' : t.isUat ? 'uat' : t.state)
 
 export const groupTickets = (tickets: readonly PaneTicket[]): TicketGroups => {
   const of = (place: Place) => tickets.filter(t => placeOf(t) === place).sort(byNumber)
-  return { frontier: of('frontier'), inProgress: of('in-progress'), uat: of('uat'), paused: of('paused'), blocked: of('blocked') }
+  return { needsYou: of('needs-you'), frontier: of('frontier'), inProgress: of('in-progress'), uat: of('uat'), paused: of('paused'), blocked: of('blocked') }
 }
 
 const errorText = (err: unknown): string => {

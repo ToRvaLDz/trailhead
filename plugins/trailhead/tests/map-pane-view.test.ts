@@ -259,6 +259,19 @@ test('groupTickets lists a UAT ticket once, under UAT, ascending; a paused one s
   expect([g.frontier, g.inProgress, g.blocked].map(x => x.map(y => y.number))).toEqual([[2], [], [3]])
 })
 
+test('groupTickets lists a needs-you ticket once, under Needs you, ascending, whatever its state', () => {
+  const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked' | 'paused', over: Record<string, unknown> = {}) => ({
+    number, title: '', type: null, state, assignees: [], url: '', isUat: false, isNeedsYou: true, uatOf: null, ...over,
+  })
+  const g = groupTickets([
+    t(9, 'frontier'), t(4, 'blocked'), t(6, 'in-progress', { assignees: ['alice'] }), t(7, 'paused'), t(8, 'frontier', { isUat: true }),
+    t(2, 'frontier', { isNeedsYou: false }), t(3, 'blocked', { isNeedsYou: false }),
+  ])
+  expect(g.needsYou.map(x => x.number)).toEqual([4, 6, 7, 8, 9])
+  expect([g.frontier, g.inProgress, g.uat, g.paused, g.blocked].map(x => x.map(y => y.number))).toEqual([[2], [], [], [], [3]])
+  expect(groupTickets([t(1, 'frontier', { isNeedsYou: false })]).needsYou).toEqual([])
+})
+
 test('failureReason names one short cause', () => {
   expect(failureReason({ error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) })).toBe('gh not installed')
   expect(failureReason({ error: new Error('spawn gh ENOENT') })).toBe('gh not installed')
