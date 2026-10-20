@@ -2067,8 +2067,8 @@ ok('source: hooks.json keeps its command hooks next to the module (#202)',
 
 // --- #259: `trailhead:paused` label marks a paused ticket (pause adds, resume/claim drop) ---
 const firstUseLine = (substrateCommandsSource.match(/^1\. Create any missing labels.*$/m) || [''])[0];
-ok('source: first-use setup lists twenty labels including trailhead:paused and trailhead:uat',
-  /all twenty:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`') && firstUseLine.includes('`trailhead:uat`'));
+ok('source: first-use setup lists twenty-one labels including trailhead:paused, trailhead:uat and trailhead:needs-you',
+  /all twenty-one:/.test(firstUseLine) && firstUseLine.includes('`trailhead:paused`') && firstUseLine.includes('`trailhead:uat`') && firstUseLine.includes('`trailhead:needs-you`'));
 ok('source: no stale "eighteen" or "nineteen" label count remains in the shared skills',
   !/eighteen|nineteen/.test(substrateCommandsSource) && !/eighteen|nineteen/.test(substrateSource));
 ok('source: substrate-commands.md ensures trailhead:paused idempotently',
