@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+// Docs test for #295: the autonomous run persists its start-up choices and lists in
+// .trailhead/auto-run.json so it survives a compaction. Plain asserts, no framework.
+// Run: node bin/auto-run-docs.test.js
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const plugin = path.resolve(__dirname, '..', 'plugins', 'trailhead');
+const auto = fs.readFileSync(path.join(plugin, 'skills/trailhead-work/references/auto.md'), 'utf8');
+const gitignore = fs.readFileSync(path.resolve(__dirname, '..', '.gitignore'), 'utf8');
+let passed = 0;
+const ok = (name, cond) => { assert.ok(cond, name); passed++; };
+
+ok('auto.md: read runs at engagement, before the asks', /trailhead-auto-run\.js read --repo <main-checkout>[^\n]*before (any|the) ask/i.test(auto));
+ok('auto.md: found with sameSession true is reused without asking and announced', /`sameSession: true`[^\n]*reuse it without asking/.test(auto) && /announced in one chat line naming the reused scope, slots and review/.test(auto));
+ok('auto.md: another session\'s record asks once to resume or start fresh', /`sameSession: false`[^\n]*run still active elsewhere[^\n]*ask once/.test(auto) && /no delegate option/.test(auto) && /replaces the three asks/.test(auto));
+ok('auto.md: resume reloads the skip and unmerged lists', /reload the record's skip and unmerged lists/.test(auto));
+ok('auto.md: an explicit <n> that differs starts fresh with start --replace', /explicit `\/trailhead:auto <n>`[^\n]*differs[^\n]*starts a fresh run[^\n]*start --replace/.test(auto));
+ok('auto.md: corrupt is reported then start --replace', /`corrupt`[^\n]*start --replace[^\n]*plain `start` would answer `exists`/.test(auto));
+ok('auto.md: start runs after the last ask and before anything is claimed', /trailhead-auto-run\.js start --repo <main-checkout>[^\n]*--scope[^\n]*--slots[^\n]*--review/.test(auto) && /right after the last start-up ask and before anything is claimed/.test(auto));
+ok('auto.md: the record is gitignored', auto.includes('.trailhead/auto-run.json') && /\.gitignore/.test(auto) && /^\.trailhead\/auto-run\.json$/m.test(gitignore));
+ok('auto.md: every skipped outcome is reported and never blocks', /Any `skipped` result[^\n]*one chat line[^\n]*the run continues/.test(auto) && /skipped `read` is treated as `absent`/.test(auto) && /safety net, not a gate/.test(auto));
+ok('auto.md: skip runs on each skip-list add', /trailhead-auto-run\.js skip --repo <main-checkout> --ticket <n>/.test(auto) && /every time a ticket joins the run's skip list/i.test(auto));
+ok('auto.md: unmerged is recorded right after the abort, before the tracker call', /trailhead-auto-run\.js unmerged --repo <main-checkout> --ticket <n> --branch trailhead\/t<n>[^\n]*--file/.test(auto) && /before any tracker call/.test(auto));
+ok('auto.md: unmerged again with --merge-ticket after the add succeeds', /--merge-ticket <n>/.test(auto) && /after the merge-ticket `add` succeeds/.test(auto));
+ok('auto.md: a crash or failed add still leaves the branch on the persisted list', /still leaves the branch on the persisted unmerged list/.test(auto));
+ok('auto.md: after a compaction the slot table and the choices are rebuilt without re-asking', /slot table from `trailhead-auto-slot\.js list`[^\n]*trailhead-auto-run\.js read[^\n]*without re-asking/.test(auto));
+ok('auto.md: run end unites the in-memory lists with the record', /in-memory skip and unmerged lists[^\n]*united with the record's/.test(auto));
+ok('auto.md: run end clears the record, then resets the work states', /trailhead-auto-run\.js clear --repo <main-checkout>[^\n]*then[^\n]*--auto false/.test(auto) && /Clearing first means a crash between the two/.test(auto));
+ok('auto.md: a graceful interrupt clears it, a leftover record is the crash signature', /graceful interrupt clears it too/.test(auto) && /signature of a crash mid-run/.test(auto));
+ok('auto.md: no em-dash', !auto.includes(String.fromCharCode(0x2014)));
+console.log(`auto-run-docs.test.js: ${passed} checks passed`);
