@@ -229,7 +229,7 @@ for (const argv of [
 {
   // The merge ticket sits on page two: it is found, not duplicated.
   const issues = [];
-  const e = [{ ticket: 9, title: 'T9', url: 'u', branch: 'trailhead/t9', workspace: '/w', files: ['f'] }];
+  const e = [{ ticket: 9, title: 'T9', url: 'https://github.com/o/r/issues/1', branch: 'trailhead/t9', workspace: '/w', files: ['f'] }];
   for (let i = 1; i <= 3; i++) issues.push({ number: i, title: 'x', body: 'plain body without a marker', labels: [MAPLABEL] });
   issues.push({ number: 4, title: 'merge', body: `intro\n${encodeMarker(e)}\n`, labels: [MAPLABEL] });
   const t = makeTracker({ pageSize: 2, issues: issues.map((i) => ({ updatedAt: 'T1', edits: 3, url: 'u', ...i })) });
@@ -377,6 +377,18 @@ esac
   const use = spawnSync('node', [scriptPath, '--bogus'], { encoding: 'utf8' });
   ok('e2e: usage error exits 2', use.status === 2);
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// --- untrusted text in the rendered body (review I1) --------------------------
+{
+  const { renderBody } = require(scriptPath);
+  const e = { ticket: 7, title: 'Ping @someone here', url: 'https://github.com/o/r/issues/7', branch: 'trailhead/t7', workspace: '/w/r-t7', files: ['a.js'] };
+  const body = renderBody([e], '');
+  ok('a title @mention is neutralised (no notification)', !/@someone/.test(body) && body.includes('@​someone'));
+  const enc = (list) => encodeMarker(list);
+  ok('a marker entry whose url is not https is rejected', !!decodeMarker(enc([{ ...e, url: 'javascript:alert(1)' }])).error);
+  ok('a marker entry whose url carries a ) or space is rejected', !!decodeMarker(enc([{ ...e, url: 'https://x/y) [z' }])).error);
+  ok('a well-formed https url still decodes', !decodeMarker(enc([e])).error);
 }
 
 console.log(`merge-ticket.test.js: ${passed} checks passed`);

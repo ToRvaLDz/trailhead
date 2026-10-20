@@ -101,9 +101,13 @@ const branchOf = (ticket) => `trailhead/t${ticket}`;
 
 // --- marker -------------------------------------------------------------------
 
+// A link target that cannot break out of `](...)`: https, no whitespace, no parens or angle brackets.
+const SAFE_URL = /^https:\/\/[^\s()<>]+$/;
+
 const isEntry = (e) => e && typeof e === 'object'
   && Number.isInteger(e.ticket) && e.ticket > 0
   && ['title', 'url', 'branch', 'workspace'].every((k) => typeof e[k] === 'string')
+  && SAFE_URL.test(e.url)
   && Array.isArray(e.files) && e.files.length > 0 && e.files.every((f) => typeof f === 'string' && f !== '');
 
 function encodeMarker(entries) {
@@ -130,8 +134,9 @@ const hasMarker = (body) => String(body || '').replace(/\r/g, '').split('\n').so
 
 const oneLine = (s) => String(s).replace(/[\r\n]+/g, ' ');
 
-// Link text: no newline, no backtick, no brackets, no raw `<` (a `<!--` would hide the body).
-const linkText = (s) => oneLine(s).replace(/`/g, "'").replace(/</g, '&lt;').replace(/\[/g, '(').replace(/\]/g, ')');
+// Link text: no newline, no backtick, no brackets, no raw `<` (a `<!--` would hide the body),
+// and a zero-width space after `@` so a title never notifies the handle it names.
+const linkText = (s) => oneLine(s).replace(/`/g, "'").replace(/</g, '&lt;').replace(/\[/g, '(').replace(/\]/g, ')').replace(/@/g, '@\u200B');
 
 // Inline code that survives backticks in the text: a fence longer than any run inside.
 function code(s) {
