@@ -19,19 +19,25 @@
 //   - neither: "created" (git worktree add -b <branch> <path> <base>), the branch pointing
 //     exactly at --base (the trunk SHA captured at claim, so a moved main checkout never
 //     changes it);
-//   - the slot path already exists and is not that branch's worktree: "error";
-//   - the main checkout declares a submodule (.gitmodules): "clone-required", nothing
-//     created. The caller sets the clone up at the same path, then checks out the branch
+//   - the branch's worktree is registered in git but its directory is gone (deleted by
+//     hand): "error" naming it and telling to run `git worktree prune` (never pruned here);
+//   - the slot path already exists: an independent git checkout on the branch (a clone
+//     slot) is "reentered" with kind "clone"; anything else is "error", never overwritten.
+//     This check comes before the submodule rule, so an existing path is never cloned over;
+//   - only a missing path, with the main checkout declaring a submodule (.gitmodules):
+//     "clone-required", nothing created. The caller sets the clone up at the same path, then checks out the branch
 //     at the same base, so a clone slot carries the same path, branch and base.
 // list: every slot workspace, sorted by ticket: each worktree on a trailhead/t<n> branch,
 //   plus each sibling <basename>-t<n> that is an independent git checkout on the branch
 //   trailhead/t<n> and not already a worktree. Each entry:
 //   {ticket, kind: "worktree"|"clone", branch, path, dirty, workState}
+//   A worktree git lists but whose directory is gone (stale) is kept out of slots and
+//   reported in warnings, with a `git worktree prune` suggestion.
 //   dirty is true when `git status --porcelain` is non-empty; workState is the parsed
 //   <path>/.trailhead/work-state.json, or null (missing, or unreadable plus a warning).
 //
 // Prints exactly one JSON line on stdout:
-//   open:  {"status":"created|reentered|reattached|clone-required","ticket":n,"branch":"...","path":"..."}
+//   open:  {"status":"created|reentered|reattached|clone-required","ticket":n,"branch":"...","path":"...","kind":"worktree|clone"}
 //   list:  {"status":"ok","slots":[...],"warnings":[...]}
 //   error: {"status":"error","reason":"..."}
 // Exit 0 on ok, 1 on an error, 2 on a usage error (stderr).
@@ -110,29 +116,36 @@ function openSlot(ctx, o) {
   const { git, fs, main, fail, emit } = ctx;
   const branch = branchOf(o.ticket);
   const target = path.join(path.dirname(main), `${path.basename(main)}-t${o.ticket}`);
-  const result = (status, p) => { emit({ status, ticket: o.ticket, branch, path: p }); return 0; };
+  const result = (status, p, kind) => { emit({ status, ticket: o.ticket, branch, path: p, kind }); return 0; };
 
   const wl = git(['-C', o.repo, 'worktree', 'list', '--porcelain']);
   if (wl.status !== 0) return fail(`git worktree list failed: ${firstLine(wl.stderr) || 'exit ' + wl.status}`);
   const held = parseWorktrees(wl.stdout).find((w) => w.branch === `refs/heads/${branch}`);
-  if (held) return result('reentered', held.path);
+  if (held) {
+    if (!fs.existsSync(held.path)) return fail(`stale worktree of ${branch}: ${held.path} is gone from disk but git still lists it; run git worktree prune and retry`);
+    return result('reentered', held.path, 'worktree');
+  }
 
-  if (hasSubmodule(fs, main)) return result('clone-required', target);
+  // The slot path is checked before the submodule rule, so an existing path is never cloned over.
+  if (fs.existsSync(target)) {
+    if (cloneOnBranch(git, fs, target, branch)) return result('reentered', target, 'clone');
+    return fail(`slot path already exists and is not a checkout of ${branch}: ${target}`);
+  }
 
-  if (fs.existsSync(target)) return fail(`slot path already exists and is not the worktree of ${branch}: ${target}`);
+  if (hasSubmodule(fs, main)) return result('clone-required', target, 'clone');
 
   const exists = git(['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
   if (exists.status === 0) {
     const add = git(['-C', o.repo, 'worktree', 'add', target, branch]);
     if (add.status !== 0) return fail(`git worktree add failed: ${firstLine(add.stderr) || 'exit ' + add.status}`);
-    return result('reattached', target);
+    return result('reattached', target, 'worktree');
   }
 
   const base = git(['-C', o.repo, 'rev-parse', '--verify', '--quiet', `${o.base}^{commit}`]);
   if (base.status !== 0) return fail(`base does not resolve to a commit: ${o.base}`);
   const add = git(['-C', o.repo, 'worktree', 'add', '-b', branch, target, base.stdout.trim()]);
   if (add.status !== 0) return fail(`git worktree add failed: ${firstLine(add.stderr) || 'exit ' + add.status}`);
-  return result('created', target);
+  return result('created', target, 'worktree');
 }
 
 // --- list ---------------------------------------------------------------------
@@ -171,11 +184,16 @@ function listSlots(ctx, o) {
   const wl = git(['-C', o.repo, 'worktree', 'list', '--porcelain']);
   if (wl.status !== 0) return fail(`git worktree list failed: ${firstLine(wl.stderr) || 'exit ' + wl.status}`);
   const entries = [];
+  const warnings = [];
   const seen = new Set();
   for (const w of parseWorktrees(wl.stdout)) {
     const m = w.branch && BRANCH_RE.exec(w.branch);
     if (!m || realOr(fs, w.path) === main) continue;
     seen.add(realOr(fs, w.path));
+    if (!fs.existsSync(w.path)) {
+      warnings.push(`stale worktree of ${branchOf(m[1])}: ${w.path} is gone from disk but git still lists it; run git worktree prune`);
+      continue;
+    }
     entries.push({ ticket: Number(m[1]), kind: 'worktree', branch: branchOf(m[1]), path: w.path });
   }
 
@@ -192,7 +210,6 @@ function listSlots(ctx, o) {
     entries.push({ ticket: Number(m[1]), kind: 'clone', branch: branchOf(m[1]), path: dir });
   }
 
-  const warnings = [];
   const slots = entries.sort((a, b) => a.ticket - b.ticket).map((e) => {
     const d = isDirty(git, e.path);
     const s = readWorkState(fs, e.path);

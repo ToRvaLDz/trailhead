@@ -182,6 +182,56 @@ const list = (repo, deps) => run(['list', '--repo', repo], deps);
   fs.rmSync(parent, { recursive: true, force: true });
 }
 
+// --- W1: stale worktree (directory deleted by hand) --------------------------
+{
+  const { parent, repo, first } = makeRepo();
+  open(repo, 6, first);
+  open(repo, 7, first);
+  const wt = path.join(parent, 'repo-t6');
+  fs.rmSync(wt, { recursive: true, force: true });
+  const r = open(repo, 6, first);
+  ok('open: a stale worktree is an error naming it and git worktree prune', r.code === 1 && r.json.status === 'error' && r.json.reason.includes(wt) && /stale/.test(r.json.reason) && r.json.reason.includes('git worktree prune'));
+  ok('open: a stale worktree is not pruned automatically', git(repo, 'worktree', 'list', '--porcelain').includes(wt));
+  const l = list(repo);
+  ok('list: a stale worktree is kept out of slots', l.code === 0 && JSON.stringify(l.json.slots.map((x) => x.ticket)) === JSON.stringify([7]));
+  ok('list: a stale worktree is a warning naming it and suggesting prune', l.json.warnings.length === 1 && l.json.warnings[0].includes(wt) && /stale/.test(l.json.warnings[0]) && l.json.warnings[0].includes('git worktree prune'));
+  fs.rmSync(parent, { recursive: true, force: true });
+}
+
+// --- W2: superrepo with an existing slot path --------------------------------
+{
+  const { parent, repo, first } = makeRepo();
+  fs.writeFileSync(path.join(repo, '.gitmodules'), '[submodule "lib"]\n\tpath = lib\n\turl = https://example.com/lib.git\n');
+  const target = path.join(parent, 'repo-t8');
+  const missing = open(repo, 8, first);
+  ok('open: missing path on a superrepo is clone-required with kind clone', missing.json.status === 'clone-required' && missing.json.kind === 'clone');
+
+  fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, 'keep.txt'), 'mine\n');
+  const plain = open(repo, 8, first);
+  ok('open: a plain existing dir on a superrepo is an error, never clone-required', plain.code === 1 && plain.json.status === 'error');
+  ok('open: the existing dir is untouched', fs.readFileSync(path.join(target, 'keep.txt'), 'utf8') === 'mine\n');
+  fs.rmSync(target, { recursive: true, force: true });
+
+  git(parent, 'clone', '-q', repo, target);
+  git(target, 'checkout', '-q', '-b', 'trailhead/t8', first);
+  const clone = open(repo, 8, first);
+  ok('open: an existing clone on the slot branch is reentered with kind clone', clone.code === 0 && clone.json.status === 'reentered' && clone.json.kind === 'clone' && clone.json.path === target && clone.json.branch === 'trailhead/t8');
+
+  git(target, 'checkout', '-q', '-b', 'other');
+  const wrong = open(repo, 8, first);
+  ok('open: an existing clone on another branch is an error', wrong.code === 1 && wrong.json.status === 'error');
+  fs.rmSync(parent, { recursive: true, force: true });
+}
+{
+  const { parent, repo, first } = makeRepo();
+  ok('open: worktree statuses carry kind worktree', open(repo, 1, first).json.kind === 'worktree' && open(repo, 1, first).json.kind === 'worktree');
+  git(repo, 'worktree', 'remove', '--force', path.join(parent, 'repo-t1'));
+  const rea = open(repo, 1, first);
+  ok('open: reattached carries kind worktree', rea.json.status === 'reattached' && rea.json.kind === 'worktree');
+  fs.rmSync(parent, { recursive: true, force: true });
+}
+
 // --- list: a git failure on the main repo ------------------------------------
 {
   const notRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'auto-slot-nr-')));
