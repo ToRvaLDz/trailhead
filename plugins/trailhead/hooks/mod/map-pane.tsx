@@ -23,6 +23,7 @@ import {
   parseActiveMap,
   parseDashboard,
   parseHistory,
+  parseIssuesPage,
   parseMap,
   parseMaps,
   parseMapsRead,
@@ -37,6 +38,7 @@ import {
   withUatParents,
   whiteboardHeading,
   whiteboardRowLayout,
+  withLabel,
 } from './map-pane-view'
 import { isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { fit, isMissing, sameValue } from './work-state-view'
@@ -58,7 +60,10 @@ const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
 const MAPS_LIMIT = 100
+const PAGE_SIZE = 100
 const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}`
+// The open tickets of one label, newest first like `gh issue list`; paged by the module (PAGE_SIZE a page).
+const TICKETS_QUERY = `query($owner:String!,$repo:String!,$label:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:[$label],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}`
 const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
@@ -181,11 +186,35 @@ async function gh($: Dollar, pin: RepoPin, args: readonly string[]): Promise<GhR
 const readList = ($: Dollar, pin: RepoPin, target: number) =>
   Promise.all([
     gh($, pin, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
-    gh($, pin, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    readOpen($, pin, `trailhead:map-${target}`),
     gh($, pin, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
     readMaps($, pin),
     readUat($, pin, `trailhead:map-${target}`),
   ])
+
+// The open tickets of one label as the JSON array `gh issue list --json` prints, so one parser reads both.
+// `gh issue list --label` goes through the search API, which lags a write by seconds; the GraphQL
+// `repository.issues` read does not, so a ticket just created or closed shows at once. Paged up to LIST_LIMIT
+// rows (`also`: a second label the rows must carry, GraphQL's `labels` being any-of). A page that fails or is
+// unreadable discards the whole GraphQL read (never a partial list) and the `gh issue list` runs once instead.
+const readOpen = async ($: Dollar, pin: RepoPin, label: string, also?: string): Promise<GhResult> => {
+  const rows: unknown[] = []
+  let cursor: string | null = null
+  while (rows.length < LIST_LIMIT) {
+    // The {owner}/{repo} placeholders come from the pinned root's remote, as in readMaps.
+    const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${TICKETS_QUERY}`, '-f', `label=${label}`]
+    const out = await gh($, pin, cursor === null ? args : [...args, '-f', `after=${cursor}`])
+    const page = out.ok ? parseIssuesPage(out.stdout) : null
+    if (page === null) return readOpenFallback($, pin, label, also)
+    rows.push(...page.rows)
+    if (!page.hasNextPage) break
+    cursor = page.endCursor
+  }
+  return { ok: true, stdout: JSON.stringify(also === undefined ? rows : withLabel(rows, also)) }
+}
+
+const readOpenFallback = ($: Dollar, pin: RepoPin, label: string, also?: string) =>
+  gh($, pin, ['issue', 'list', ...(also === undefined ? [] : ['--label', also]), '--label', label, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS])
 
 // The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent
 // each one tests. A failed or unreadable read is null: the rows still group by label, only the parent line goes.
@@ -293,7 +322,7 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
     await update($, dashboardPane, () => ({ ...before, isLoading: true }))
   }
   const [list, index, mapsRead, uatParents] = await Promise.all([
-    gh($, pin, ['issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS]),
+    readOpen($, pin, 'trailhead:whiteboard', 'trailhead:ticket'),
     gh($, pin, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
     readMaps($, pin),
     readUat($, pin, 'trailhead:whiteboard'),

@@ -72,7 +72,19 @@ const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={r
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
 // The pending-UAT read of one scope (a map label, or the whiteboard): the tickets with their bodies.
 const uatCall = (scope: string) => ['gh', 'issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', '200', '--json', 'number,body']
-const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql'
+// The open-ticket read: one GraphQL page per call (`after=` carries the cursor of the next one).
+const TICKETS_QUERY =
+  'query($owner:String!,$repo:String!,$label:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:100,after:$after,states:OPEN,labels:[$label],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}'
+const ticketsCall = (label: string, after?: string) => [
+  'gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${TICKETS_QUERY}`, '-f', `label=${label}`,
+  ...(after === undefined ? [] : ['-f', `after=${after}`]),
+]
+const ticketsListCall = (label: string) => ['gh', 'issue', 'list', '--label', label, '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url']
+const isTicketsRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes(`query=${TICKETS_QUERY}`)
+// The maps read only: the ticket reads are GraphQL too, but answered and failed on their own.
+const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv)
+const flatNode = (t: any) => ({ ...t, labels: { nodes: t.labels }, assignees: { nodes: t.assignees } })
+const PAGE = 100
 const isMapsList = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:map')
 const OTHER_TICKETS = [issue(140, 'Old frontier ticket', ['trailhead:build']), issue(141, 'Old held ticket', ['trailhead:task'], ['carol'])]
 const OTHER_HISTORY = OTHER_TICKETS.map(t => hrow(t.number, t.labels.map(l => l.name), null))
@@ -189,6 +201,15 @@ const rig = (on: On, engine?: any) => {
     },
   }
   const defaultGh: Gh = argv => {
+    if (isTicketsRead(argv)) {
+      const label = (argv.find(a => a.startsWith('label=')) ?? '').slice('label='.length)
+      const cursor = argv.find(a => a.startsWith('after='))
+      const all = (label === 'trailhead:whiteboard' ? r.whiteboard : label === 'trailhead:map-14' ? r.otherTickets : r.tickets) as unknown[]
+      const from = cursor === undefined ? 0 : Number(cursor.slice('after=c'.length))
+      const to = from + PAGE
+      const pageInfo = { hasNextPage: to < all.length, endCursor: `c${to}` }
+      return ok(JSON.stringify({ data: { repository: { issues: { nodes: all.slice(from, to).map(flatNode), pageInfo } } } }))
+    }
     if (argv.includes('trailhead:uat')) return r.uat === null ? { exitCode: 1, stdout: '', stderr: 'boom' } : ok(JSON.stringify(r.uat))
     if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
@@ -341,7 +362,7 @@ const settle = async (r: Rig) => {
   for (let i = 0; i < 10; i += 1) await r.clock.settle()
 }
 // The open-list reads; the history read rides along with each and is not counted.
-const fetches = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('open') && !argv.includes('trailhead:map') && !argv.includes('trailhead:uat')).length
+const fetches = (r: Rig) => r.calls.filter(argv => isTicketsRead(argv) && !argv.some(a => a.startsWith('after='))).length
 // A gh that answers as the default does, except for the history read.
 const withHistory = (r: Rig, answer: GhOut): Gh => argv => {
   if (argv.includes('all')) return answer
@@ -371,7 +392,7 @@ for (const surface of SURFACES) {
 
     expect(r.calls).toEqual([
       ['gh', 'issue', 'view', '198', '--json', 'title,body,url'],
-      ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
+      ticketsCall('trailhead:map-198'),
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
       MAPS_CALL,
       uatCall('trailhead:map-198'),
@@ -921,6 +942,105 @@ for (const surface of SURFACES) {
     await r.clock.advance(FLOOR)
     await settle(r)
     expect(fetches(r)).toBe(2)
+  })
+
+  // The open list is a GraphQL read, never the search-backed `gh issue list --label`, which lags a write.
+  const listReads = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('--label') && argv.includes('trailhead:map-198') && argv.includes('open') && !argv.includes('trailhead:uat'))
+
+  test(`a gh issue create shows the new ticket's row without a manual refresh [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, 'row-240')).toBe(false)
+
+    r.tickets = [...TICKETS, issue(240, 'Just created', ['trailhead:build'])]
+    await r.clock.advance(FLOOR)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue create -t t' } as never)
+    await settle(r)
+    expect(await hasKey(ui, 'row-240')).toBe(true)
+    expect(listReads(r)).toEqual([])
+  })
+
+  test(`a gh issue close drops the closed ticket's row without a manual refresh [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, 'row-209')).toBe(true)
+
+    r.tickets = TICKETS.filter(t => t.number !== 209)
+    await r.clock.advance(FLOOR)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
+    await settle(r)
+    expect(await hasKey(ui, 'row-209')).toBe(false)
+    expect(listReads(r)).toEqual([])
+  })
+
+  test(`a create inside the floor shows at the floor's end [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await r.clock.advance(2_000)
+    r.tickets = [...TICKETS, issue(240, 'Just created', ['trailhead:build'])]
+    await $.tool.call({ tool: 'Bash', command: 'gh issue create -t t' } as never)
+    await settle(r)
+    expect(await hasKey(ui, 'row-240')).toBe(false)
+    await r.clock.advance(FLOOR - 2_000)
+    await settle(r)
+    expect(await hasKey(ui, 'row-240')).toBe(true)
+  })
+
+  test(`a close inside the floor drops the row at the floor's end [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await r.clock.advance(2_000)
+    r.tickets = TICKETS.filter(t => t.number !== 209)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
+    await settle(r)
+    expect(await hasKey(ui, 'row-209')).toBe(true)
+    await r.clock.advance(FLOOR - 2_000)
+    await settle(r)
+    expect(await hasKey(ui, 'row-209')).toBe(false)
+  })
+
+  test(`a list of 150 tickets is read in two pages [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = Array.from({ length: 150 }, (_, i) => issue(i + 1, `t${i + 1}`, ['trailhead:build']))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(isTicketsRead)).toEqual([ticketsCall('trailhead:map-198'), ticketsCall('trailhead:map-198', 'c100')])
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 150')
+    expect(await hasKey(ui, 'capped')).toBe(false)
+    expect(listReads(r)).toEqual([])
+  })
+
+  test(`a failure on the second page discards the read and falls back to gh issue list once [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = Array.from({ length: 150 }, (_, i) => issue(i + 1, `t${i + 1}`, ['trailhead:build']))
+    r.gh = argv => (isTicketsRead(argv) && argv.some(a => a.startsWith('after=')) ? { exitCode: 1, stdout: '', stderr: 'boom' } : r.defaultGh(argv))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(listReads(r)).toEqual([ticketsListCall('trailhead:map-198')])
+    // the fallback list is whole (the rig's list answer), never the 100 rows of page one
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 150')
+    expect(r.calls.filter(isTicketsRead)).toHaveLength(2)
+  })
+
+  test(`an unreadable first page falls back the same way [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.gh = argv => (isTicketsRead(argv) ? ok('not json') : argv[2] === 'list' && argv.includes('trailhead:map-198') && argv.includes('open') ? ok(JSON.stringify([issue(300, 'from the list', ['trailhead:build'])])) : r.defaultGh(argv))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await keysOf(ui, 'row-')).toEqual(['row-300'])
+  })
+
+  test(`the whiteboard read keeps only the rows that are also tickets [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = [...WHITEBOARD, issue(310, 'Whiteboard label only', ['trailhead:whiteboard', 'trailhead:task'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
   })
 
   test(`session start, turn complete and the slow timer refresh an open pane [${surface}]`, async ($, on) => {
@@ -1543,7 +1663,7 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'mark-208')).toBe(false)
     expect(r.calls.slice(-5).map(argv => argv.slice(0, 4))).toEqual([
       ['gh', 'issue', 'view', '14'],
-      ['gh', 'issue', 'list', '--label'],
+      ['gh', 'api', 'graphql', '-F'],
       ['gh', 'issue', 'list', '--label'],
       ['gh', 'api', 'graphql', '-F'],
       ['gh', 'issue', 'list', '--label'],
@@ -1749,7 +1869,7 @@ for (const surface of SURFACES) {
     await pressDashboard(ui, r)
 
     expect(r.calls.slice(before)).toEqual([
-      ['gh', 'issue', 'list', '--label', 'trailhead:ticket', '--label', 'trailhead:whiteboard', '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url'],
+      ticketsCall('trailhead:whiteboard'),
       ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
       MAPS_CALL,
       uatCall('trailhead:whiteboard'),
@@ -2034,7 +2154,7 @@ for (const surface of SURFACES) {
     expect((await ui.findAll({ type: 'Link' })).map((l: any) => l.props.href)).not.toContain(`${URL}/5`)
 
     r.whiteboard = WHITEBOARD
-    r.gh = argv => (argv.includes('trailhead:whiteboard') ? { exitCode: 1, stdout: '', stderr: 'boom' } : r.defaultGh(argv))
+    r.gh = argv => (argv.includes('trailhead:whiteboard') || argv.includes('label=trailhead:whiteboard') ? { exitCode: 1, stdout: '', stderr: 'boom' } : r.defaultGh(argv))
     await r.clock.advance(FLOOR)
     await ui.press({ key: 'refresh' })
     await settle(r)
