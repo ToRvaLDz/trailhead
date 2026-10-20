@@ -152,7 +152,9 @@ for (const argv of [[], ['bogus'], ['park'], ['park', '--issue', '7', '--repo', 
   const script = `#!/bin/sh
 echo "$*" >> "${log}"
 case "$*" in
-  "issue view"*) echo '{"labels":[{"name":"trailhead:needs-you"}],"assignees":[{"login":"me"}],"comments":[]}' ;;
+  "issue view"*)
+    if grep -q -- '--add-label' "${log}"; then L='{"name":"trailhead:needs-you"}'; else L=''; fi
+    echo "{\\"labels\\":[$L],\\"assignees\\":[{\\"login\\":\\"me\\"}],\\"comments\\":[]}" ;;
   *) exit 0 ;;
 esac
 `;
