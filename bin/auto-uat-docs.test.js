@@ -22,7 +22,7 @@ const auto = read(AUTO);
 for (const needle of [
   'trailhead-uat-followup.js find', '## Records as it goes', 'never the only record', 'UAT of:', 'trailhead:uat',
   'A helper error is not a "none found"', 'Only an open follow-up is reused', 'closed ones never count',
-  'a crash in the instant between the claim and the work-state write', 'leftover work state', 'trailhead-work-state.js',
+  'a crash in the instant between the claim and the work-state write', 'leftover work state', 'whose work state has `auto: true`', 'already names the same action', 'its own checklist is already the record', 'trailhead-work-state.js',
   'loses nothing that has arisen', 'UAT follow-ups opened this run',
   'each touched map gets a comment with **only its own part**', 'the whiteboard part stays in chat only', 'a map the run never touched gets no comment',
 ]) ok(`auto.md names: ${needle}`, auto.includes(needle));
