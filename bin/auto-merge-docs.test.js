@@ -19,10 +19,10 @@ ok('auto.md: merged / already-merged resolves, unblocks, removes, frees the slot
 ok('auto.md: unblocks dependents with the helper', auto.includes('trailhead-unblock.js --issue <n> --repo <owner/name>'));
 ok('auto.md: dependents open their slot at the new trunk SHA', /open their slot at the new trunk SHA/.test(auto));
 ok('auto.md: a conflict stays separate, is parked and recorded, dependents stay blocked', /`conflict`[^\n]*stays \*\*separate\*\*/.test(auto) && /conflicting files/.test(auto) && /unmerged list/.test(auto) && /dependents stay blocked/.test(auto));
-ok('auto.md: the other statuses park needs-you naming the status', /`dirty`, `not-on-trunk`, `slot-dirty`, `in-progress`, `merge-failed`, `marker-mismatch` and `not-merged`: park the ticket needs-you/.test(auto));
+ok('auto.md: the other statuses park needs-you naming the status', /`dirty`, `not-on-trunk`, `slot-dirty`, `in-progress`, `merge-failed` and `marker-mismatch`: park the ticket needs-you/.test(auto) && !/`not-merged`: park/.test(auto));
 ok('auto.md: error hands back at once with no further merge', /`error`: hand back at once, with no further merge/.test(auto));
 ok('auto.md: other slots are never rebased mid-step', /Other in-flight slots are never rebased mid-step/.test(auto) && /strictly ahead of `origin`/.test(auto));
-ok('auto.md: a remove failure is a cleanup error, not a park', /`remove` failure after the close is a cleanup error, not a park/.test(auto) && /free the slot, list the workspace and the branch in the run-end summary/.test(auto));
+ok('auto.md: a remove failure is a cleanup error, not a park', /`remove` failure after the close is a cleanup error, not a park/.test(auto) && /other than `removed` \(`error`, `not-merged`, `kept`\)[^.]*never park or reopen it/.test(auto) && /free the slot, list the workspace and the branch in the run-end summary/.test(auto));
 ok('auto.md: git: pr and clone slots stay held', /Integration stays held under `git: pr`, and for a clone slot/.test(auto) && /gitlink is a rail action|publishing a gitlink is a rail action/.test(auto));
 ok('auto.md: a local merge is not rail-tripping, the push stays the human\'s', /local merge of a verified slot branch into the trunk is not rail-tripping/.test(auto) && /the push stays the human's/.test(auto));
 ok('auto.md: resume runs recover first, aborted retried, foreign handed back', /trailhead-auto-merge\.js recover --repo <main-checkout>/.test(auto) && /`aborted`[^.]*merge is retried/.test(auto) && /`foreign`[^.]*hands the run back without touching it/.test(auto));
