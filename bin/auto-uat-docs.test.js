@@ -37,7 +37,7 @@ const engines = read(ENGINES);
 ok('ticket-engines.md names the autonomous exception in build and bug Resolve', engines.split('Under an autonomous run the guard takes option (b) itself').length - 1 >= 2);
 
 const substrate = read(SUBSTRATE);
-for (const needle of ['trailhead-uat-followup.js find --parent <n> --repo <owner/name>', '"reuse"'])
+for (const needle of ['trailhead-uat-followup.js find --parent <n> --repo <owner/name>', '"reuse"', 'paginated GraphQL `repository.issues` query', 'lagging search index'])
   ok(`substrate-commands.md names: ${needle}`, substrate.includes(needle));
 
 for (const rel of [AUTO, ACCEPT, ENGINES, SUBSTRATE, 'templates/trailhead-uat-followup.js', 'hooks/lib/uat-followup.test.js'])

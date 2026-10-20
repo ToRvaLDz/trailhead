@@ -7,14 +7,17 @@
 // CLI:
 //   node trailhead-uat-followup.js find --parent <n> --repo <owner/name>
 //
-// Reads every `trailhead:uat` issue (open and closed) with the GraphQL list (not the
-// search index, so a follow-up opened seconds earlier is seen) and keeps those whose
-// body has a line starting `UAT of:` that points at the parent: a markdown link
-// target https://github.com/<owner>/<name>/issues/<n> (same repo, exact number) or a
-// bare `#<n>`. A mid-line mention is not a pointer. Only an OPEN follow-up is
-// reusable: `reuse` is the lowest-numbered open one, null when none is open; closed
-// ones are reported but never count. A read that fails, is unparseable, or hits the
-// 1000 limit fails closed (the caller must not open a follow-up blind).
+// Reads every `trailhead:uat` issue (open and closed) with a direct GraphQL query
+// (`gh api graphql`, `repository.issues`), paginated here 100 at a time. It does not
+// use `gh issue list --label`: gh turns a label filter into a search query, and the
+// search index lags, so a follow-up opened seconds earlier would be missed. It keeps
+// the issues whose body has a line starting `UAT of:` that points at the parent: a
+// markdown link target https://github.com/<owner>/<name>/issues/<n> (same repo, exact
+// number) or a bare `#<n>`. A mid-line mention is not a pointer. Only an OPEN
+// follow-up is reusable: `reuse` is the lowest-numbered open one, null when none is
+// open; closed ones are reported but never count. A read that fails, is unparseable,
+// carries GraphQL errors, has an unexpected shape, or exceeds the page cap fails
+// closed (the caller must not open a follow-up blind).
 //
 // Prints exactly one JSON line on stdout:
 //   ok:    {"status":"ok","parent":n,"open":[{"number","title"}],"closed":[{"number","title"}],"reuse":<n>|null}
@@ -23,7 +26,8 @@
 
 const { spawnSync } = require('child_process');
 
-const LIMIT = 1000;
+const MAX_PAGES = 100; // 100 pages x 100 issues
+const QUERY = 'query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(first:100,after:$after,labels:["trailhead:uat"],states:[OPEN,CLOSED],orderBy:{field:CREATED_AT,direction:ASC}){nodes{number title state body} pageInfo{hasNextPage endCursor}}}}';
 const URL_RE = /https:\/\/github\.com\/([^/\s)]+)\/([^/\s)]+)\/issues\/(\d+)(?![\w])/gi;
 
 function defaultGh(args) {
@@ -85,12 +89,30 @@ function main(argv, { gh, stdout, stderr } = {}) {
   const emit = (obj) => out.write(JSON.stringify(obj) + '\n');
   const fail = (reason) => { emit({ status: 'error', reason }); return 1; };
 
-  const r = run(['issue', 'list', '--label', 'trailhead:uat', '--state', 'all', '--limit', String(LIMIT), '--json', 'number,title,state,body', '-R', o.repo]);
-  if (r.status !== 0) return fail(`gh issue list failed: ${firstLine(r.stderr) || 'exit ' + r.status}`);
-  let rows;
-  try { rows = JSON.parse(r.stdout); } catch { return fail('gh issue list returned unparseable JSON'); }
-  if (!Array.isArray(rows)) return fail('gh issue list returned unexpected JSON');
-  if (rows.length >= LIMIT) return fail(`incomplete list: the trailhead:uat read hit the ${LIMIT} limit`);
+  const [owner, name] = o.repo.split('/');
+  const rows = [];
+  let after = null;
+  for (let page = 1; ; page++) {
+    if (page > MAX_PAGES) return fail(`incomplete read: more than ${MAX_PAGES} pages of trailhead:uat issues`);
+    const args = ['api', 'graphql', '-f', `query=${QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`];
+    if (after !== null) args.push('-f', `after=${after}`);
+    const r = run(args);
+    if (r.status !== 0) return fail(`gh api graphql failed: ${firstLine(r.stderr) || 'exit ' + r.status}`);
+    let body;
+    try { body = JSON.parse(r.stdout); } catch { return fail('gh api graphql returned unparseable JSON'); }
+    if (!body || typeof body !== 'object') return fail('gh api graphql returned unexpected JSON');
+    if (Array.isArray(body.errors) && body.errors.length) return fail(`graphql errors: ${firstLine(body.errors[0] && body.errors[0].message) || 'unknown'}`);
+    const repo = body.data && body.data.repository;
+    if (!repo) return fail('repository not found in the graphql response');
+    const issues = repo.issues;
+    if (!issues || !Array.isArray(issues.nodes)) return fail('graphql response has no issues.nodes');
+    const info = issues.pageInfo;
+    if (!info || typeof info.hasNextPage !== 'boolean') return fail('graphql response has no pageInfo');
+    rows.push(...issues.nodes.filter((n) => n && typeof n === 'object'));
+    if (!info.hasNextPage) break;
+    if (typeof info.endCursor !== 'string' || !info.endCursor) return fail('graphql pageInfo has hasNextPage without an endCursor');
+    after = info.endCursor;
+  }
 
   const mine = rows.filter((i) => pointsAt(i.body, o.parent, o.repo)).map((i) => ({ number: i.number, title: i.title, state: String(i.state || '').toUpperCase() }));
   const pick = (open) => mine.filter((i) => (i.state === 'OPEN') === open).sort(byNumber).map(({ number, title }) => ({ number, title }));
