@@ -36,6 +36,6 @@ ok('substrate-commands.md documents park and clear', commands.includes('trailhea
 ok('substrate-commands.md first-use list has twenty-one labels', /all twenty-one:[^\n]*`trailhead:needs-you`/.test(commands));
 
 for (const [name, text] of [['auto.md', auto], ['SKILL.md', work], ['substrate.md', substrate], ['substrate-commands.md', commands]]) {
-  ok(`${name}: no em-dash`, !text.includes('—'));
+  ok(`${name}: no em-dash`, !text.includes(String.fromCharCode(0x2014)));
 }
 console.log(`needs-you-docs.test.js: ${passed} checks passed`);
