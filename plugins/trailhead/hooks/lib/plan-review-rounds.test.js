@@ -301,18 +301,18 @@ ok('round: output is one status ok JSON line with the round count', round([[c('a
   const s = setup({ plan_review: 'on' }, null);
   const bin = tmp();
   fs.writeFileSync(path.join(bin, 'gemini'), '#!/bin/sh\n', { mode: 0o755 });
-  const res = spawnSync('node', [scriptPath, 'ask', '--repo', s.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: s.gdir, PATH: bin } });
+  const res = spawnSync(process.execPath, [scriptPath, 'ask', '--repo', s.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: s.gdir, PATH: bin } });
   const j = JSON.parse(res.stdout.trim());
   ok('e2e: ask prints one JSON line and exits 0', res.status === 0 && j.status === 'ask' && JSON.stringify(j.reviewers) === '["gemini"]' && j.options.length === 4);
   const dir = tmp();
   const file = path.join(dir, 'h.json');
   fs.writeFileSync(file, JSON.stringify([[c('a')]]));
-  const rr = spawnSync('node', [scriptPath, 'round', '--choice', '1', '--configured', '2', '--history', file], { encoding: 'utf8' });
+  const rr = spawnSync(process.execPath, [scriptPath, 'round', '--choice', '1', '--configured', '2', '--history', file], { encoding: 'utf8' });
   const rj = JSON.parse(rr.stdout.trim());
   ok('e2e: round prints the decision and exits 0', rr.status === 0 && rj.decision === 'exhausted' && rj.surviving[0].key === 'a');
-  ok('e2e: usage error exits 2', spawnSync('node', [scriptPath, '--bogus'], { encoding: 'utf8' }).status === 2);
+  ok('e2e: usage error exits 2', spawnSync(process.execPath, [scriptPath, '--bogus'], { encoding: 'utf8' }).status === 2);
   const bad = setup('{nope', null);
-  ok('e2e: an invalid config exits 1', spawnSync('node', [scriptPath, 'ask', '--repo', bad.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: bad.gdir } }).status === 1);
+  ok('e2e: an invalid config exits 1', spawnSync(process.execPath, [scriptPath, 'ask', '--repo', bad.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: bad.gdir } }).status === 1);
   bad.done(); s.done(); rm(bin); rm(dir);
 }
 
