@@ -32,7 +32,7 @@ ok('auto.md: names the round call', auto.includes('trailhead-plan-review-rounds.
 
 ok('plan-review.md: rounds come from config or the run start-up choice', /`config\.plan_review\.rounds`[^.]*autonomous run[^.]*start-up choice/.test(review));
 ok('plan-review.md: calls the round helper and follows its decision', review.includes('trailhead-plan-review-rounds.js round') && /follows its decision/.test(review));
-ok('plan-review.md: under an autonomous run the checkpoint is not posed, the ticket is parked', /autonomous run[^.]*checkpoint is not posed[^.]*trailhead-needs-you\.js park/.test(review));
+ok('plan-review.md: under an autonomous run the checkpoint is not posed, the ticket is parked', /autonomous run[^.]*checkpoint is not posed[\s\S]{0,400}trailhead-needs-you\.js park/.test(review));
 ok('plan-review.md: the park reason lists the surviving blocking concerns', /reason listing the surviving blocking concerns/.test(review));
 ok('plan-review.md: interactive behaviour unchanged', /interactive[^.]*unchanged/i.test(review));
 

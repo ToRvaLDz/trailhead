@@ -15,7 +15,7 @@ Effective config = built-in defaults ← global `~/.claude/trailhead/config.json
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | how **Acceptance testing** runs |
 | `testing.webapp` / `testing.url` | bool / url | is it browser-drivable, and where |
 | `plan_review` | **`off`** \| `on` \| CLI list (`gemini,codex`) | send `build` PLANs to external AI CLIs for review (**Cross-AI plan review**) |
-| `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
+| `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds; an autonomous run asks at start and its answer overrides the key for that run |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in **Code review** before the boundary HITL checkpoint |
 | `effort` | **`standard`** \| `lean` | how hard the `build`/`bug` engine works a change: `standard` runs every step; `lean` size-triages and offers to skip heavy steps (plan pass, TDD, cross-AI review, full code review, goal-backward verify) on small changes. **Governs `build`/`bug` only; `quick` always size-triages regardless of this key** (see effort below) |
 | `isolation.copy` | array of repo-relative paths (**unset**) | gitignored files and directories copied from the main checkout into a new `worktree`/`clone` workspace, see **Isolation copy** |
