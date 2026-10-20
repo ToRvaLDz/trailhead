@@ -13,8 +13,9 @@
 // `trailhead:ticket`, unassigned, not blocked / unverified / paused. The
 // `trailhead:blocked` label is the source of truth for blockers; this helper adds
 // no dependency logic. The run's own read also skips `trailhead:needs-you` (a ticket
-// a run parked for the human); the human frontier does not. Groups are ordered by map number ascending, the whiteboard
-// last; tickets inside a group ascending by number. `--skip` names the tickets the
+// a run parked for the human); the human frontier does not. Groups are ordered by
+// map number ascending, the whiteboard last; tickets inside a group ascending by
+// number. `--skip` names the tickets the
 // run already marked needs-you or stopped on; `next` is the lowest ticket of the first
 // group that still has one (null when the scope is drained). A read that hits the
 // 1000 limit fails closed (never a partial queue).
