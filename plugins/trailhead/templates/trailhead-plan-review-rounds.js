@@ -180,7 +180,7 @@ function runAsk(parsed, cwd, env, fs_, deps) {
   const names = explicit ? [...new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))] : ROSTER;
   if (names.length === 0) return { code: 1, result: { status: 'error', reason: `plan_review in ${cfg.planReview.file} names no CLI` } };
 
-  const which = deps.which || pathLookup(env, fs);
+  const which = deps.which || pathLookup(env, fs_);
   const kimiHelp = deps.kimiHelp || runKimiHelp;
   const host = parsed.host || 'claude';
   const reviewers = [];
