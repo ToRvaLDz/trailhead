@@ -54,9 +54,9 @@ The run drives the agent-performable acceptance steps itself. It never picks ski
 
 A ticket whose next step needs you is parked at once and the run continues:
 
-- a `decision` convergence, a destination or scope change, an out-of-scope ruling, or fog to dissolve;
+- a `decision` convergence, a destination or scope change, an out-of-scope ruling, routing a deferred line, closing an exhausted map, a claim collision, or fog to dissolve;
 - a HITL `task` whose checklist only you can do;
-- a safety-rail action, a stale-base stop, or a failing UAT setup;
+- a safety-rail action, a stale-base stop, a failing UAT setup, or an error while looking up the UAT follow-up;
 - a plan review whose blocking concerns survive the rounds (quoted in full).
 
 Parking leaves a `NEEDS YOU` comment saying what you must do, unassigns the run and adds the `trailhead:needs-you` label. The ticket stays on your frontier and map, and `/trailhead:work` still offers it, but runs skip it until you clear it (a `work` or `quick` claim clears it, or remove the label by hand). The map panel shows these tickets in a `Needs you` group at the top.
