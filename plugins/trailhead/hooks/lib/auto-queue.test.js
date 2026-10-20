@@ -13,7 +13,7 @@ const fs = require('fs');
 const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-auto-queue.js');
-const { main, buildQueue } = require(scriptPath);
+const { main, buildQueue, RUN_SEARCH, NEEDS_YOU } = require(scriptPath);
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -147,6 +147,30 @@ const base = () => [
   ok('paused tickets are not in the work queue', JSON.stringify(nums(r.json.groups[1].tickets)) === '[30]');
   r = run(t, ['queue', '--scope', 'map:5']);
   ok('resume is scoped', r.json.groups.length === 1 && JSON.stringify(nums(r.json.groups[0].resume)) === '[12,14]');
+}
+
+// --- needs-you tickets are skipped by the run ---------------------------------
+{
+  const issues = [
+    map(2),
+    tk(11, 'build', ['trailhead:map-2']),
+    tk(12, 'build', ['trailhead:map-2', 'trailhead:needs-you']),
+    tk(13, 'build', ['trailhead:map-2', 'trailhead:paused', 'trailhead:needs-you'], { assignee: 'me' }),
+    tk(14, 'build', ['trailhead:map-2', 'trailhead:paused'], { assignee: 'me' }),
+  ];
+  const t = makeTracker({ issues });
+  let r = run(t, ['queue', '--scope', 'everything']);
+  ok('needs-you ticket is not queued nor next', JSON.stringify(nums(r.json.groups[0].tickets)) === '[11]' && r.json.next.number === 11);
+  ok('needs-you ticket is never auto-resumed', JSON.stringify(nums(r.json.groups[0].resume)) === '[14]');
+  ok('frontier read sends the needs-you exclusion', t.calls.some((c) => c.includes('--label trailhead:ticket') && c.includes('-label:trailhead:paused -label:trailhead:needs-you')));
+  r = run(t, ['scopes']);
+  ok('scopes does not count a needs-you ticket', r.json.maps[0].frontier === 1);
+  ok('RUN_SEARCH extends the canonical frontier', RUN_SEARCH.endsWith(' -label:trailhead:needs-you') && NEEDS_YOU === 'trailhead:needs-you');
+  // defence against a lagging search index: the pure builder drops it too
+  const q = buildQueue([{ number: 2, title: 'm' }],
+    [{ number: 5, title: 'a', labels: ['trailhead:map-2', 'trailhead:needs-you'] }, { number: 6, title: 'b', labels: ['trailhead:map-2'] }],
+    [{ number: 7, title: 'c', labels: ['trailhead:map-2', 'trailhead:needs-you'] }], 'everything', []);
+  ok('buildQueue drops needs-you from frontier and resume', nums(q.groups[0].tickets).join() === '6' && q.groups[0].resume.length === 0 && q.next.number === 6);
 }
 
 // --- fail closed -------------------------------------------------------------

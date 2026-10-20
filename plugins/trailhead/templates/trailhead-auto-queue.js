@@ -12,7 +12,8 @@
 // The frontier is the canonical frontier query (substrate-commands.md): open,
 // `trailhead:ticket`, unassigned, not blocked / unverified / paused. The
 // `trailhead:blocked` label is the source of truth for blockers; this helper adds
-// no dependency logic. Groups are ordered by map number ascending, the whiteboard
+// no dependency logic. The run's own read also skips `trailhead:needs-you` (a ticket
+// a run parked for the human); the human frontier does not. Groups are ordered by map number ascending, the whiteboard
 // last; tickets inside a group ascending by number. `--skip` names the tickets the
 // run already set aside or stopped on; `next` is the lowest ticket of the first
 // group that still has one (null when the scope is drained). A read that hits the
@@ -28,6 +29,10 @@ const { spawnSync } = require('child_process');
 
 const LIMIT = 1000;
 const FRONTIER_SEARCH = 'no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused';
+const NEEDS_YOU = 'trailhead:needs-you';
+// The run's own frontier read: the canonical frontier minus the tickets a run parked
+// for the human. Humans still see those on the frontier (FRONTIER_SEARCH is unchanged).
+const RUN_SEARCH = FRONTIER_SEARCH + ' -label:' + NEEDS_YOU;
 const WHITEBOARD = 'trailhead:whiteboard';
 const MAP_LABEL_RE = /^trailhead:map-(\d+)$/;
 const TYPES = ['decision', 'research', 'prototype', 'build', 'bug', 'task'];
@@ -100,7 +105,8 @@ function place(openMaps, issues) {
 // scope, skip [n]. Returns { groups, drift, next } or { error }.
 function buildQueue(openMaps, frontier, paused, scope, skip) {
   const skipSet = new Set(skip || []);
-  const live = (list) => list.filter((i) => !skipSet.has(i.number));
+  // A needs-you ticket is dropped even when the search index lagged and returned it.
+  const live = (list) => list.filter((i) => !skipSet.has(i.number) && !names(i.labels).includes(NEEDS_YOU));
   const maps = [...openMaps].sort(byNumber);
   let wantMaps = maps;
   let wantWhiteboard = scope === 'whiteboard' || scope === 'everything';
@@ -150,7 +156,7 @@ function main(argv, { gh, stdout, stderr } = {}) {
 
   const maps = readList(run, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', ...lim, '--json', 'number,title', ...R], 'open maps');
   if (maps.error) return fail(maps.error);
-  const frontier = readList(run, ['issue', 'list', '--label', 'trailhead:ticket', '--state', 'open', '--search', FRONTIER_SEARCH, ...lim, '--json', 'number,title,labels', ...R], 'frontier');
+  const frontier = readList(run, ['issue', 'list', '--label', 'trailhead:ticket', '--state', 'open', '--search', RUN_SEARCH, ...lim, '--json', 'number,title,labels', ...R], 'frontier');
   if (frontier.error) return fail(frontier.error);
 
   if (o.cmd === 'scopes') {
@@ -172,7 +178,7 @@ function main(argv, { gh, stdout, stderr } = {}) {
   return 0;
 }
 
-module.exports = { main, parseArgs, buildQueue, FRONTIER_SEARCH };
+module.exports = { main, parseArgs, buildQueue, FRONTIER_SEARCH, RUN_SEARCH, NEEDS_YOU };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), {}));
