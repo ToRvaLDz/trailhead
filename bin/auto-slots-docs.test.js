@@ -29,6 +29,10 @@ ok('auto.md: in-flight tickets join --skip when filling a slot', /in-flight tick
 ok('auto.md: integration held as needs-you, branch and workspace kept', /parked needs-you for integration/.test(auto) && /\*\*kept\*\*/.test(auto));
 ok('auto.md: interruption and run end per workspace', /every in-flight slot ticket\*\* gets its `PAUSED` checkpoint/.test(auto) && auto.includes('each remaining workspace'));
 
+ok('auto.md: every set on a slot workspace is sessionless', /every `set` on a slot workspace[^.]*`env -u CLAUDE_CODE_SESSION_ID`/.test(auto));
+ok('auto.md: the run-end reset on a workspace is sessionless too', /env -u CLAUDE_CODE_SESSION_ID node <templates>\/trailhead-work-state\.js set --repo <workspace> --auto false/.test(auto));
+ok('auto.md: open statuses explained (reentered clone as is, stale worktree parks needs-you)', /`reentered` clone is used as is/.test(auto) && /stale worktree[\s\S]{0,400}park it needs-you/.test(auto) && auto.includes('git worktree prune'));
+
 for (const [name, text] of [['teamwork.md', team], ['SKILL.md', work]]) {
   ok(`${name}: no longer says the run is always the current checkout`, !/sequential work, no concurrency|works tickets sequentially/.test(text));
   ok(`${name}: names the worktree per ticket above one slot`, /current checkout with one parallel slot and to a worktree per ticket above one/.test(text));
