@@ -69,10 +69,10 @@ test('parseTickets maps a gh list to rows with type, state and holders', () => {
   )
   expect(out?.unverifiedCount).toBe(0)
   expect(out?.tickets).toEqual([
-    { number: 209, title: 'Burn-down view', type: 'build', state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
-    { number: 212, title: 'Held', type: 'research', state: 'in-progress', assignees: ['alice'], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
-    { number: 211, title: 'Gated', type: 'bug', state: 'blocked', assignees: ['bob'], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
-    { number: 214, title: 'No type', type: null, state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, uatOf: null },
+    { number: 209, title: 'Burn-down view', type: 'build', state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, isNeedsYou: false, uatOf: null },
+    { number: 212, title: 'Held', type: 'research', state: 'in-progress', assignees: ['alice'], url: 'https://github.com/o/r/issues/209', isUat: false, isNeedsYou: false, uatOf: null },
+    { number: 211, title: 'Gated', type: 'bug', state: 'blocked', assignees: ['bob'], url: 'https://github.com/o/r/issues/209', isUat: false, isNeedsYou: false, uatOf: null },
+    { number: 214, title: 'No type', type: null, state: 'frontier', assignees: [], url: 'https://github.com/o/r/issues/209', isUat: false, isNeedsYou: false, uatOf: null },
   ])
 })
 
@@ -188,6 +188,15 @@ test('parseTickets sets isUat from the trailhead:uat label, with no parent yet',
   expect(t('trailhead:seed', 'trailhead:blocked', 'trailhead:uat')).toMatchObject({ isUat: true, state: 'blocked' })
 })
 
+test('parseTickets sets isNeedsYou from the trailhead:needs-you label and keeps the state', () => {
+  const t = (names: string[], assignees: { login: string }[] = []) => parseTickets(list(issue({ labels: labels(...names), assignees })))?.tickets[0]
+  expect(t(['trailhead:task', 'trailhead:needs-you'])).toMatchObject({ isNeedsYou: true, state: 'frontier' })
+  expect(t(['trailhead:task', 'trailhead:needs-you', 'trailhead:paused'])).toMatchObject({ isNeedsYou: true, state: 'paused' })
+  expect(t(['trailhead:task', 'trailhead:needs-you', 'trailhead:blocked'])).toMatchObject({ isNeedsYou: true, state: 'blocked' })
+  expect(t(['trailhead:task', 'trailhead:needs-you'], [{ login: 'alice' }])).toMatchObject({ isNeedsYou: true, state: 'in-progress' })
+  expect(t(['trailhead:task'])).toMatchObject({ isNeedsYou: false })
+})
+
 const body = (text: string, number = 5) => ({ number, body: text })
 const uatList = (...rows: unknown[]) => JSON.stringify(rows)
 
@@ -222,7 +231,7 @@ test('parseUatParents is null on non-JSON or a non-list', () => {
 })
 
 test('withUatParents sets the parent on a UAT ticket only, and leaves the tickets alone without a read', () => {
-  const t = (number: number, isUat: boolean) => ({ number, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat, uatOf: null })
+  const t = (number: number, isUat: boolean) => ({ number, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat, isNeedsYou: false, uatOf: null })
   const tickets = [t(1, true), t(2, false), t(3, true)]
   const out = withUatParents(tickets, new Map([[1, { number: 9, title: 'P' }], [2, { number: 8, title: 'Q' }]]))
   expect(out.map(x => x.uatOf)).toEqual([{ number: 9, title: 'P' }, null, null])
@@ -231,7 +240,7 @@ test('withUatParents sets the parent on a UAT ticket only, and leaves the ticket
 })
 
 test('uatParentLine draws tests <title> #<n>, fitted to the width, and nothing without a parent', () => {
-  const t = (uatOf: { number: number; title: string } | null) => ({ number: 1, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat: true, uatOf })
+  const t = (uatOf: { number: number; title: string } | null) => ({ number: 1, title: '', type: null, state: 'frontier' as const, assignees: [], url: '', isUat: true, isNeedsYou: false, uatOf })
   expect(uatParentLine(t(null), 60)).toBeNull()
   expect(uatParentLine(t({ number: 209, title: 'Burn-down view' }), 60)).toBe('tests Burn-down view #209')
   expect(uatParentLine(t({ number: 210, title: '' }), 60)).toBe('tests #210')
@@ -242,7 +251,7 @@ test('uatParentLine draws tests <title> #<n>, fitted to the width, and nothing w
 
 test('groupTickets lists a UAT ticket once, under UAT, ascending; a paused one stays under Paused', () => {
   const t = (number: number, state: 'frontier' | 'in-progress' | 'blocked' | 'paused', isUat: boolean) => ({
-    number, title: '', type: null, state, assignees: [], url: '', isUat, uatOf: null,
+    number, title: '', type: null, state, assignees: [], url: '', isUat, isNeedsYou: false, uatOf: null,
   })
   const g = groupTickets([t(9, 'frontier', true), t(4, 'blocked', true), t(6, 'in-progress', true), t(7, 'paused', true), t(2, 'frontier', false), t(3, 'blocked', false)])
   expect(g.uat.map(x => x.number)).toEqual([4, 6, 9])
@@ -292,6 +301,7 @@ const ticket = (over: Record<string, unknown> = {}) => ({
   state: 'frontier' as const,
   assignees: [] as string[],
   url: 'https://github.com/o/r/issues/209',
+  isNeedsYou: false,
   ...over,
 })
 const layout = (t: ReturnType<typeof ticket>, over: Record<string, unknown> = {}) =>

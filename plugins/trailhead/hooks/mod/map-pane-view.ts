@@ -88,6 +88,7 @@ export const ticketsFromRows = (raw: readonly unknown[], opts: { isWhiteboard?: 
         assignees,
         url: safeUrl(r.url),
         isUat: names.includes(`${LABEL_PREFIX}uat`),
+        isNeedsYou: names.includes(`${LABEL_PREFIX}needs-you`),
         uatOf: null,
       }
     })

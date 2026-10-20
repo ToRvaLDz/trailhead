@@ -31,6 +31,8 @@ export type PaneTicket = {
   url: string
   // Carries `trailhead:uat`: a marker beside `state`, only the grouping moves it (paused still wins).
   isUat: boolean
+  // Carries `trailhead:needs-you`: a marker beside `state`, it wins the grouping over every other group.
+  isNeedsYou: boolean
   // The parent it tests, once read; null when unknown (no body read, or no usable `UAT of:` line).
   uatOf: UatParent | null
 }
