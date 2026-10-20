@@ -16,21 +16,73 @@ Along the way: capture ideas mid-work without derailing (see [Captures & the whi
 
 ## Autonomous run: `auto`
 
-`/trailhead:auto [map]` chains the frontier unattended: it takes one ticket after another (suspending the one-ticket-per-session rule) and resolves each with its normal type engine, instead of handing back to you between tickets.
+`/trailhead:auto [map]` runs a chosen scope unattended: it takes one ticket after another (suspending the one-ticket-per-session rule) and resolves each with its normal type engine, instead of handing back to you between tickets. It never re-engages on its own: you start every run.
 
-It stops only at:
-- the **safety rail** (always on, hardcoded): cutting a release, `git push`, opening a PR, a delete/force, or any other outward-facing action. Atomic local commits to `main` are not rail-tripping and continue automatically.
-- **fog** that needs a human to dissolve it into tickets.
-- a **human-necessary decision**: a `decision`-ticket convergence, a destination or scope change, an out-of-scope ruling, routing a deferred line, closing an exhausted map, a claim collision.
-- a **human-only step**: a HITL `task` (manual plumbing only you can do, like signing up for a service); auto hands you the checklist rather than fabricating it.
+### What it asks first
 
-Under a **`git: pr`** convention (or worktree/clone isolation) a ticket finishes with a branch push and a PR, both rail actions, so auto does each ticket's whole local cycle and then sets the push/PR/integration aside for you: it is most productive under `git: main`, where a resolved ticket closes and unblocks its dependents immediately.
+Before anything is claimed, a run asks you, with no delegate option:
 
-A ticket a run cannot verify is not left hanging: it gets a bounded **failure budget** (a no-progress rule plus a hardcoded ceiling of 3 extra rounds), and at exhaustion the run **pauses that ticket, keeping its claim, and skips to the next** rather than stopping the whole run.
+- **The run scope**: one map, the whiteboard, or everything, each with its frontier count. When you pick one map, it then asks which (skipped when only one map is open; the active map is recommended). `/trailhead:auto <n>` runs map `n` and skips only this ask.
+- **Parallel slots**: 1, 2, 3 or 4 tickets in flight at once, with 2 proposed. Asked under `<n>` too.
+- **External review rounds**: as configured, 1, 2, 3 or until convergence (it stops on a round with no progress, hard ceiling 5). The structured menu shows at most four options; a host without one gets the full five as a numbered list. The ask is skipped when plan review is off or no independent reviewer CLI is installed (the host's own CLI does not count). Config warnings are printed first, and a helper error before any claim hands the run back. Your choice holds for every `build` ticket of the run and overrides `plan_review.rounds` for that run.
 
-**Interruption** is just the host interrupt (Stop/Esc): the in-flight ticket keeps its claim and gets a `PAUSED` checkpoint. **Resume** is you re-invoking `/trailhead:auto`; it never re-engages on its own.
+### Order
 
-`auto` is **orthogonal to `effort` and `models.*`**: it changes neither, and it has **no config surface of its own** (there is nothing to configure).
+Under everything the run works one map at a time by ascending map number, the whiteboard last. Inside a scope it takes the oldest workable ticket first (lowest number). Blocked tickets are never queued, and tickets marked needs-you are skipped. Interrupted (paused) tickets you own in the scope are resumed first.
+
+### Parallel slots
+
+With 1 slot, `isolation: auto` and `none` work in the current checkout; an explicit `worktree` or `clone` still applies, and its push or PR is held for you. Above 1 slot, each ticket gets its own `trailhead/t<n>` workspace next to the checkout (`<repo>-t<n>`): a worktree whatever `isolation:` says, an explicit `clone` stays a clone, and a superrepo (submodules) escalates to a clone.
+
+The run stays one orchestrating session, and every engine step runs as a background agent for its slot. When a slot frees, it takes the next oldest ticket, so tickets of different maps can run together.
+
+### Merging locally
+
+Under `git: main`, a verified worktree slot branch is merged into the local trunk (fast-forward, else a merge commit), never pushed, one at a time after the stale-base check. Then the ticket is resolved and its dependents unblocked.
+
+A sequential run under an explicit `worktree` or `clone`, a run under `git: pr`, and clone slots hold the branch instead: the ticket is marked needs-you for integration, with its branch and workspace kept and listed.
+
+### Merge tickets
+
+When a slot branch conflicts, the merge is aborted and the trunk stays untouched. The branch stays separate with its workspace, and the run opens or updates one **merge ticket** per map (or for the whiteboard), the moment the conflict arises. It is a needs-you task listing each unmerged branch with its ticket, workspace and conflicting files, plus a suggested merge order (oldest first). You close it once every branch is merged or dropped. A scope with no unmerged branch gets none, and held branches open none. The conflicting ticket stays open, so its dependents stay blocked.
+
+### Acceptance and UAT follow-ups
+
+The run drives the agent-performable acceptance steps itself. It never picks skip and never fakes a human-only step. Human-only steps go to a **UAT follow-up** carrying the numbered checklist: an open one is reused, otherwise it opens a task on the same map or the whiteboard (or a seed when the steps wait on an external trigger). Then the parent ticket resolves and its dependents unblock. Only the configured `uat.setup` runs; a failing setup marks the ticket needs-you.
+
+### What it parks for you
+
+A ticket whose next step needs you is parked at once and the run continues:
+
+- a `decision` convergence, a destination or scope change, an out-of-scope ruling, or fog to dissolve;
+- a HITL `task` whose checklist only you can do;
+- a safety-rail action, a stale-base stop, or a failing UAT setup;
+- a plan review whose blocking concerns survive the rounds (quoted in full).
+
+Parking leaves a `NEEDS YOU` comment saying what you must do, unassigns the run and adds the `trailhead:needs-you` label. The ticket stays on your frontier and map, and `/trailhead:work` still offers it, but runs skip it until you clear it (a `work` or `quick` claim clears it, or remove the label by hand). The map panel shows these tickets in a `Needs you` group at the top.
+
+The **safety rail** (always on, hardcoded) covers a release, `git push`, opening a PR, a delete or force, and any other outward-facing action: the ticket is marked needs-you and the run continues. Local commits and the local slot merge are not rail actions.
+
+A ticket that will not verify gets a bounded **failure budget** (a no-progress rule plus a hardcoded ceiling of 3 extra rounds); at exhaustion the run pauses that ticket, keeping its claim, and skips it. One stuck ticket never ends the run.
+
+### Records, interruption and resume
+
+Every record is written on the tracker when it arises (engine comments, commits, UAT follow-ups, `NEEDS YOU` comments, merge tickets, `PAUSED` checkpoints), so a crash loses nothing. The chat progress line, which names the tickets in the slots, is only a mirror.
+
+**Interruption** is just the host interrupt (Stop/Esc), the only mid-run halt: every in-flight ticket (each slot's) keeps its claim and gets a `PAUSED` checkpoint naming its workspace and branch. **Resume** is you running `/trailhead:auto` again: it first recovers an interrupted merge, resumes paused or crashed tickets in their own workspaces, then continues. Needs-you tickets are not reconsidered.
+
+### The run report
+
+Every run ends with one summary, in full in chat, linking the records it summarises:
+
+- why it stopped;
+- what resolved;
+- what merged: merged tickets, branches left unmerged with their conflicting files, the merge tickets, and how many commits the local trunk is ahead of `origin` (pushing is yours);
+- what remains: needs-you tickets and why, paused or stuck tickets, blocked dependents, and UAT follow-ups opened.
+
+It is also posted as a comment on each touched map, with only that map's part. The whiteboard part stays in chat only, and untouched maps get nothing.
+
+`auto` is **orthogonal to `effort` and `models.*`**: it changes neither, and it has no config surface of its own (the asks above replace it).
 
 ## A worked example: "add social login"
 

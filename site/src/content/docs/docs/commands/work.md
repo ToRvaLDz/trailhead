@@ -186,7 +186,7 @@ trailhead proposes three children (schema, API, UI) with the blocking between th
 
 ### /trailhead:auto
 
-Run the frontier autonomously until a stop condition or exhaustion.
+Run a chosen scope autonomously until a stop condition or exhaustion, in up to 4 parallel slots.
 
 **Syntax**
 
@@ -196,22 +196,30 @@ Run the frontier autonomously until a stop condition or exhaustion.
 
 **Arguments**
 
-- `map` (optional): the map to run. Without it, the active map; if there is none and several are open, trailhead asks.
+- `map` (optional): the map to run, without the scope ask. A closed or non-map number is reported, not run. Without it, trailhead asks once for the run scope: one map, the whiteboard, or everything, each with its frontier count (then which map, when you pick one map and several are open). The slot count and the external review rounds are still asked.
 
 **What it does**
 
-1. Resumes first any of your tickets left in a `PAUSED` state by an interrupted run.
-2. Loops over the frontier: claims an auto-workable ticket (`build`, `bug`, an AFK `task`, an AFK `research`), resolves it with its normal configured cycle, unblocks dependents, and rescans until nothing auto-workable is left. Paused tickets are off the frontier: a fresh run picks back up each paused ticket you own first (the resume step), never through the frontier scan. This suspends the one-ticket-per-session rule; there is no cap on tickets, time or tokens.
-3. Takes advisory choices as the delegate option without the confirm gate. Human-necessary items are set aside, not decided: decision convergences, scope or destination changes, out-of-scope rulings, fog that needs dissolving, HITL tasks with human-only steps, and a claim collision.
-4. Never performs a release, `git push`, PR, delete or force, or any outward-facing action. It sets that step aside for you. Under `git: pr` this means each ticket is finished locally and its push and PR are left for you, so a run drains less per invocation than under `git: main`.
-5. On a ticket that will not verify it extends past the normal fix rounds (no-progress rule, plus up to 3 extra rounds), then pauses the stuck ticket with its claim and moves on.
-6. Prints a live progress line per ticket. Esc or Stop interrupts safely: the in-flight ticket keeps its claim with a `PAUSED` checkpoint.
+1. Asks, before claiming anything and with no delegate option: the run scope (unless `map` is given), the parallel slots (1, 2, 3 or 4, with 2 proposed), and the external review rounds (as configured, 1, 2, 3 or until convergence; skipped when plan review is off or no independent reviewer CLI is installed). The review choice holds for every `build` ticket of the run and overrides `plan_review.rounds` for it.
+2. Recovers an interrupted merge, then resumes first any of your paused or crashed tickets in the scope, each in its own workspace.
+3. Loops over the scope: claims the oldest workable ticket (`build`, `bug`, an AFK `task`, an AFK `research`), resolves it with its normal configured cycle, unblocks dependents, and takes the next one into any free slot, until nothing auto-workable is left. Under everything it works one map at a time by ascending map number, the whiteboard last. Blocked tickets are never queued. This suspends the one-ticket-per-session rule; there is no cap on tickets, time or tokens.
+4. With 1 slot, `isolation: auto` and `none` work in the current checkout. Above 1 slot each ticket gets its own `trailhead/t<n>` workspace next to the checkout: a worktree whatever `isolation:` says, an explicit `clone` stays a clone, and a superrepo escalates to a clone.
+5. Under `git: main`, merges each verified worktree slot branch into the local trunk (fast-forward, else a merge commit), never pushed, one at a time after the stale-base check, then resolves the ticket and unblocks its dependents. Under `git: pr`, for clone slots, and for an explicit `worktree` or `clone` in a sequential run, the branch is held: the ticket is marked needs-you for integration, with its branch and workspace kept and listed.
+6. When a slot branch conflicts, aborts the merge (the trunk is untouched), keeps the branch and its workspace, and opens or updates one merge ticket per map (or for the whiteboard) listing each unmerged branch with its ticket, workspace, conflicting files and a suggested merge order. The conflicting ticket stays open, so its dependents stay blocked.
+7. Drives the agent-performable acceptance steps itself and never picks skip. Human-only steps go to a UAT follow-up (reused if one is open, else opened) carrying the numbered checklist, then the parent resolves. Only the configured `uat.setup` runs.
+8. Takes advisory choices as the delegate option without the confirm gate. Anything that needs you is parked at once and the run continues: decision convergences, scope or destination changes, out-of-scope rulings, fog, HITL tasks with human-only steps, a stale-base stop, a failing UAT setup, and a plan review whose blocking concerns survive the rounds.
+9. Never performs a release, `git push`, PR, delete or force, or any outward-facing action: that ticket is marked needs-you. Local commits and the local slot merge are not rail actions.
+10. On a ticket that will not verify it extends past the normal fix rounds (no-progress rule, plus up to 3 extra rounds), then pauses the stuck ticket with its claim and moves on.
+11. Prints a live progress line naming the tickets in the slots. Esc or Stop interrupts safely: every in-flight ticket keeps its claim with a `PAUSED` checkpoint naming its workspace and branch. Run `/trailhead:auto` again to resume.
+
+A parked ticket gets a `NEEDS YOU` comment saying what you must do, is unassigned, and carries the `trailhead:needs-you` label. It stays on your frontier and map and `/trailhead:work` still offers it, but runs skip it until you clear it (a `work` or `quick` claim clears it, or remove the label by hand).
 
 **What it writes**
 
-- Everything the per-ticket engine writes (comments, `Refs: #<n>` commits, closes, unblocks).
-- A run-end summary, both in chat and as a comment on the map: why it stopped, what resolved, and what remains (set-aside tickets and why, paused or stuck tickets, ready-to-integrate branches, still-blocked dependents).
-- Under `isolation: auto` it resolves to the current checkout without asking.
+- Everything the per-ticket engine writes (comments, `Refs: #<n>` commits, closes, unblocks), on the tracker as each record arises.
+- UAT follow-ups, `NEEDS YOU` comments with the `trailhead:needs-you` label, and merge tickets.
+- Local merge commits on the trunk (`chore(auto): merge trailhead/t<n>`), never pushed.
+- A run report, in full in chat and as a comment on each touched map with only its own part: why it stopped, what resolved, what merged (branches left unmerged with their conflicting files, merge tickets, how far the local trunk is ahead of `origin`), and what remains (needs-you tickets and why, paused or stuck tickets, still-blocked dependents, UAT follow-ups opened). The whiteboard part stays in chat only.
 
 **Example**
 
@@ -219,6 +227,6 @@ Run the frontier autonomously until a stop condition or exhaustion.
 /trailhead:auto
 ```
 
-trailhead works frontier tickets one after another, printing a line per resolved ticket, and ends with a summary of what it set aside for you. Run it again to drain more.
+trailhead asks for the scope, the slots and the review rounds, then works tickets in the slots, printing a line as they advance, and ends with a report of what it resolved, what merged, and what it parked for you. Run it again to drain more.
 
 Next: [view commands](/docs/commands/view) to see where the map stands.

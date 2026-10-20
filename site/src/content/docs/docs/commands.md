@@ -44,7 +44,7 @@ Resolve tickets and manage a ticket's lifecycle. [Full guide](/docs/commands/wor
 | [`/trailhead:pause [note]`](/docs/commands/work#pause) | checkpoint the ticket in play so anyone can resume it |
 | [`/trailhead:resume [ticket]`](/docs/commands/work#resume) | resume a paused ticket from its `PAUSED` checkpoint |
 | [`/trailhead:split [ticket]`](/docs/commands/work#split) | split an oversized ticket into children, supersede the original |
-| [`/trailhead:auto [map]`](/docs/commands/work#auto) | run the frontier autonomously, one ticket after another, until a stop condition (safety rail / fog / a human-necessary decision) or exhaustion; suspends one-ticket-per-session |
+| [`/trailhead:auto [map]`](/docs/commands/work#auto) | run a chosen scope (one map, the whiteboard or everything) in up to 4 parallel slots, until exhaustion or a stop; parks what needs you |
 
 ## View
 
