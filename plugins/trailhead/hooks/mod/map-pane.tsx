@@ -462,8 +462,12 @@ async function restoreAfterClear($: Dollar) {
   void requestRefresh($, { bypassFloor: true })
 }
 
-// Edits of the tracker through the gh CLI: the narrow set worth a refresh right away.
-const GH_ISSUE_WRITE = /\bgh\b[^\n;&|]*\bissue\s+(edit|close|create|comment|reopen)\b/
+// Edits of the tracker from a Bash call, one regex over one shell segment (`[^\n;&|]*`) so a read elsewhere
+// in the line never counts. Three kinds: `gh issue <verb>`; a `gh api` call on a `repos/.../issues` path that
+// writes (an explicit POST/PATCH/PUT/DELETE, or a -f/-F/--field/--raw-field/--input, which makes gh default to
+// POST) and does not say `-X GET`; and the body helper, which rewrites a map's body through the API.
+export const GH_ISSUE_WRITE =
+  /\bgh\b[^\n;&|]*\bissue\s+(?:edit|close|create|comment|reopen|delete|transfer)\b|\bgh\b(?=[^\n;&|]*\sapi\s)(?=[^\n;&|]*\brepos\/[^\s;&|]*\/issues\b)(?=[^\n;&|]*(?:\s(?:-X|--method)[\s=]*["']?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-[fF]|--field\b|--raw-field\b|--input\b)))(?![^\n;&|]*\s(?:-X|--method)[\s=]*["']?GET\b)|\btrailhead-issue-body\.js\b/
 
 // The host runs the verb in the session's own directory, which a shell `cd` may have moved, so a work press
 // goes through only while the session is in the pinned repo. A checkout that cannot be read is `unknown`,

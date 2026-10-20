@@ -1110,14 +1110,14 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     await openAndMount($, r)
     const base = fetches(r)
-    for (const command of ['gh issue list --state open', 'ls -la', 'gh pr close 4', 'gh issue view 5']) {
+    for (const command of ['gh issue list --state open', 'ls -la', 'gh pr close 4', 'gh issue view 5', 'gh api repos/o/r/issues/5', 'gh api graphql -f query=x']) {
       await r.clock.advance(FLOOR)
       await $.tool.call({ tool: 'Bash', command } as never)
       await settle(r)
     }
     expect(fetches(r)).toBe(base)
 
-    for (const command of ['gh issue close 5', 'gh --repo o/r issue close 5', 'gh issue comment 5 -b hi', 'gh issue edit 5 --add-label x', 'gh issue create -t t', 'gh issue reopen 5']) {
+    for (const command of ['gh issue close 5', 'gh --repo o/r issue close 5', 'gh issue comment 5 -b hi', 'gh issue edit 5 --add-label x', 'gh issue create -t t', 'gh issue reopen 5', 'gh issue delete 5', 'gh api repos/o/r/issues/198/sub_issues -F sub_issue_id=1', 'node /t/trailhead-issue-body.js append --issue 198 --section x --line y']) {
       // until a whole floor passes with no read (the previous write's follow-up, the slow timer), so this write starts outside one
       let seen = -1
       while (seen !== fetches(r)) {
