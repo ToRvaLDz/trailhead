@@ -27,7 +27,7 @@ for (const needle of [
   'each touched map gets a comment with **only its own part**', 'the whiteboard part stays in chat only', 'a map the run never touched gets no comment',
 ]) ok(`auto.md names: ${needle}`, auto.includes(needle));
 ok('auto.md no longer sets a ticket aside for a human-only UAT step', !auto.includes('leaves that step incomplete and sets the ticket aside'));
-ok('auto.md does not add the needs-you label (#282)', !auto.includes('trailhead:needs-you'));
+ok('auto.md names the needs-you label (#282)', auto.includes('trailhead:needs-you'));
 
 const accept = read(ACCEPT);
 for (const needle of ['trailhead-uat-followup.js find', 'autonomous run', 'auto.md', 'opens no duplicate'])
