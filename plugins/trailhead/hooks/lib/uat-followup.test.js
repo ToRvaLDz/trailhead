@@ -40,6 +40,12 @@ const base = ['find', '--parent', '281', '--repo', 'o/r'];
 
 // --- matching ----------------------------------------------------------------
 {
+  // A URL whose number runs into letters is not a pointer to that issue.
+  const t = makeTracker({ issues: [fu(310, 'OPEN', 'UAT of: [P](https://github.com/o/r/issues/281abc)')] });
+  const r = run(t, base);
+  ok('URL with trailing letters after the number does not match', r.code === 0 && r.json.open.length === 0 && r.json.reuse === null);
+}
+{
   const t = makeTracker({ issues: [
     fu(300, 'OPEN', `Intro\n\nUAT of: [Parent](${URL_(281)})\n\n- [ ] step`),
     fu(301, 'OPEN', 'UAT of: #281\n- [ ] step'),

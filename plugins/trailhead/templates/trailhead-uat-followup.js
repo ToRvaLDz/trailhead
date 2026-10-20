@@ -24,7 +24,7 @@
 const { spawnSync } = require('child_process');
 
 const LIMIT = 1000;
-const URL_RE = /https:\/\/github\.com\/([^/\s)]+)\/([^/\s)]+)\/issues\/(\d+)(?!\d)/gi;
+const URL_RE = /https:\/\/github\.com\/([^/\s)]+)\/([^/\s)]+)\/issues\/(\d+)(?![\w])/gi;
 
 function defaultGh(args) {
   const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
