@@ -25,7 +25,13 @@ ok('auto.md: skip runs on each skip-list add', /trailhead-auto-run\.js skip --re
 ok('auto.md: unmerged is recorded right after the abort, before the tracker call', /trailhead-auto-run\.js unmerged --repo <main-checkout> --ticket <n> --branch trailhead\/t<n>[^\n]*--file/.test(auto) && /before any tracker call/.test(auto));
 ok('auto.md: unmerged again with --merge-ticket after the add succeeds', /--merge-ticket <n>/.test(auto) && /after the merge-ticket `add` succeeds/.test(auto));
 ok('auto.md: a crash or failed add still leaves the branch on the persisted list', /still leaves the branch on the persisted unmerged list/.test(auto));
-ok('auto.md: after a compaction the slot table and the choices are rebuilt without re-asking', /slot table from `trailhead-auto-slot\.js list`[^\n]*trailhead-auto-run\.js read[^\n]*without re-asking/.test(auto));
+const parallel = auto.slice(auto.indexOf('## Parallel slots'), auto.indexOf('## Parking a ticket'));
+const outside = auto.replace(parallel, '');
+ok('auto.md: a general compaction rule sits outside Parallel slots and holds whatever the slot count and sameSession', /After a context compaction mid-run[^\n]*whatever the slot count[^\n]*trailhead-auto-run\.js read --repo <main-checkout>[^\n]*whatever `sameSession` says[^\n]*without asking/.test(outside) && /scope, slots, review choice, skip and unmerged lists/.test(outside));
+ok('auto.md: the orchestrator knows it is mid-run from its own context', /mid-run from its own context/.test(outside));
+ok('auto.md: the sameSession ask applies only at engagement', /`sameSession` ask applies only at engagement/.test(auto) && /fresh `\/trailhead:auto` invocation/.test(auto));
+ok('auto.md: no session id host note (Codex)', /`sameSession` is always false on a host with no session id \(Codex\)/.test(auto) && /re-invocation after a crash always gets the resume-or-fresh ask/.test(auto) && /mid-run compaction never does/.test(auto));
+ok('auto.md: the slot table bullet points at the general rule', /slot table from `trailhead-auto-slot\.js list`[^\n]*general compaction rule/.test(parallel) && !/trailhead-auto-run\.js read/.test(parallel));
 ok('auto.md: run end unites the in-memory lists with the record', /in-memory skip and unmerged lists[^\n]*united with the record's/.test(auto));
 ok('auto.md: run end clears the record, then resets the work states', /trailhead-auto-run\.js clear --repo <main-checkout>[^\n]*then[^\n]*--auto false/.test(auto) && /Clearing first means a crash between the two/.test(auto));
 ok('auto.md: a graceful interrupt clears it, a leftover record is the crash signature', /graceful interrupt clears it too/.test(auto) && /signature of a crash mid-run/.test(auto));
