@@ -16,7 +16,7 @@
 // number) or a bare `#<n>`. A mid-line mention is not a pointer. Only an OPEN
 // follow-up is reusable: `reuse` is the lowest-numbered open one, null when none is
 // open; closed ones are reported but never count. A read that fails, is unparseable,
-// carries GraphQL errors, has an unexpected shape, or exceeds the page cap fails
+// carries GraphQL errors, has an unexpected shape, or exceeds the page cap (100 pages of 100, so 10,000 issues) fails
 // closed (the caller must not open a follow-up blind).
 //
 // Prints exactly one JSON line on stdout:
