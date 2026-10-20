@@ -792,6 +792,7 @@ export function registerMapPane(on: On) {
     const ticketGroups = (tickets: readonly PaneTicket[]) => {
       const groups = groupTickets(tickets)
       return [
+        group('needs-you', 'Needs you', groups.needsYou),
         group('frontier', 'Frontier', groups.frontier),
         group('in-progress', 'In progress', groups.inProgress),
         group('uat', 'UAT', groups.uat),

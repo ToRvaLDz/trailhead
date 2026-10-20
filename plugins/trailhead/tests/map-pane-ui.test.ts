@@ -552,6 +552,62 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'resume-305')).toBe(true)
   })
 
+  test(`needs-you tickets sit in their own group first, once each, with a work button unless held [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [
+      ...TICKETS,
+      issue(250, 'Needs you plain', ['trailhead:build', 'trailhead:needs-you']),
+      issue(251, 'Needs you paused', ['trailhead:build', 'trailhead:needs-you', 'trailhead:paused']),
+      issue(252, 'Needs you paused and held', ['trailhead:build', 'trailhead:needs-you', 'trailhead:paused'], ['bob']),
+      issue(253, 'Needs you UAT', ['trailhead:task', 'trailhead:needs-you', 'trailhead:uat']),
+      issue(254, 'Needs you held', ['trailhead:build', 'trailhead:needs-you'], ['alice']),
+      issue(255, 'Needs you blocked', ['trailhead:build', 'trailhead:needs-you', 'trailhead:blocked']),
+    ]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    expect(await textOf(ui, 'head-needs-you')).toBe('Needs you · 6')
+    expect((await ui.find({ key: 'head-needs-you' }))?.children[0]).toMatchObject({ props: { bold: true } })
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-needs-you', 'group-frontier', 'group-in-progress', 'group-blocked'])
+    // each ticket once, ahead of the frontier rows; the other counts leave them out
+    expect(await keysOf(ui, 'row-')).toEqual(['row-250', 'row-251', 'row-252', 'row-253', 'row-254', 'row-255', 'row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-211', 'row-213'])
+    expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
+    expect(await hasKey(ui, 'head-paused')).toBe(false)
+    expect(await hasKey(ui, 'head-uat')).toBe(false)
+    for (const n of [250, 251, 253]) {
+      expect(await hasKey(ui, `work-${n}`)).toBe(true)
+      expect(await hasKey(ui, `resume-${n}`)).toBe(false)
+    }
+    for (const n of [252, 254]) {
+      expect(await textOf(ui, `holder-${n}`)).toBe(n === 252 ? '@bob' : '@alice')
+      expect(await hasKey(ui, `work-${n}`)).toBe(false)
+      expect(await hasKey(ui, `resume-${n}`)).toBe(false)
+    }
+    expect(await hasKey(ui, 'work-255')).toBe(false)
+    expect(await hasKey(ui, 'resume-255')).toBe(false)
+    expect(await hasKey(ui, 'holder-255')).toBe(false)
+    expect((await ui.find({ key: 'ticket-255' }))?.children[0].props).toMatchObject({ dimColor: true })
+
+    await ui.press({ key: 'work-251' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '251' }])
+  })
+
+  test(`the dashboard view puts a needs-you whiteboard ticket first in its own group [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.whiteboard = [...WHITEBOARD, issue(307, 'Loose needs you', [...WB, 'trailhead:task', 'trailhead:needs-you', 'trailhead:paused'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'head-needs-you')).toBe('Needs you · 1')
+    // first ticket group, right after the maps group
+    expect((await keysOf(ui, 'group-')).slice(0, 2)).toEqual(['group-maps', 'group-needs-you'])
+    expect((await keysOf(ui, 'row-'))[0]).toBe('row-307')
+    expect(await hasKey(ui, 'head-paused')).toBe(false)
+    expect(await hasKey(ui, 'work-307')).toBe(true)
+    expect(await hasKey(ui, 'resume-307')).toBe(false)
+  })
+
   test(`ticket rows are spaced apart on the desktop only [${surface}]`, async ($, on) => {
     const r = rig(on)
     await $.session.start(START)
