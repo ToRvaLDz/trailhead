@@ -375,10 +375,6 @@ test('rowLayout: a needs-you row shows queued while its press is pending and thi
   expect(layout(needsYou({ state: 'in-progress', assignees: ['alice'] }), { isInPlay: true }).aside).toEqual({ kind: 'self', text: 'this session' })
 })
 
-test('rowLayout: a paused row without the needs-you marker keeps resume, even with a holder', () => {
-  expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'resume', text: 'resume' })
-})
-
 test('rowLayout: a paused row has a resume button, whoever holds it', () => {
   expect(layout(ticket({ state: 'paused', assignees: ['alice'] })).aside).toEqual({ kind: 'resume', text: 'resume' })
   expect(layout(ticket({ state: 'paused' })).aside).toEqual({ kind: 'resume', text: 'resume' })

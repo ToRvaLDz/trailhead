@@ -104,7 +104,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   row with no assignee is dim with no button. Any other row gets a `work` button, never `resume`, even when
   paused: the claim clears the mark and resume would not. A
   ticket carrying `trailhead:uat` (a pending UAT follow-up, a marker never a state) shows once, under `UAT`,
-  between In progress and Paused, whatever its state (`paused` wins), keeping its `work` button or holder, with a
+  between In progress and Paused, whatever its state (`paused` and `needs-you` win), keeping its `work` button or holder, with a
   dim `tests <parent title> #<n>` line under it. The parent comes from the `UAT of:` line of its body, read once
   per refresh by `gh issue list --label trailhead:uat --label trailhead:map-<n>` (`--label trailhead:whiteboard`
   on the whiteboard view) `--json number,body`, capped like the ticket list at 200: beyond that, or when the read
