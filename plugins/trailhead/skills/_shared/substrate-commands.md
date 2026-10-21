@@ -8,6 +8,10 @@ The single command reference for every `gh` mechanic the GitHub Issues substrate
 gh issue create --label "trailhead:map" --title "<destination>" --body-file <body>
 # create a child ticket (add trailhead:blocked too if it has an open blocker; add trailhead:map-<map> to scope it to its map)
 gh issue create --label "trailhead:ticket,trailhead:build,trailhead:map-<map>" --title "<question/goal>" --body-file <body>
+# create a whiteboard ticket (no map): the destination label is trailhead:whiteboard
+gh issue create --label "trailhead:ticket,trailhead:bug,trailhead:whiteboard" --title "<question/goal>" --body-file <body>
+# the full label set (trailhead:ticket + exactly one type + exactly one destination, a map OR the whiteboard) rides in the create call itself, never a later --add-label; the labels-guard hook blocks an incomplete set. On a host without a hook bus (Codex) read the labels back right after creating and fix in place with --add-label / --remove-label if anything is missing or doubled:
+gh issue view <n> --json labels
 # link the ticket to its map: native sub-issue (structure/UI) + the map label above (the query)
 gh api --method POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/<ticket> --jq .id)"
 # wire a blocker: native dependency (visual frontier in the UI) + the trailhead:blocked label (the query)
