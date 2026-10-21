@@ -163,6 +163,10 @@ let carried: Carried | null = null
 let held: HeldPress | null = null
 // The id of the press whose /clear and verb are being sent: /clear empties the pendingWork atom meanwhile.
 let inFlight: number | null = null
+// The press being sent, until its /clear is called: a cancel marks it and the dispatch drops it at that line.
+let dispatching: { id: number; number: number; isCancelled: boolean; isSent: boolean } | null = null
+// The number of a press between its claim and the choice to hold it or send it.
+let claiming: number | null = null
 let pressCount = 0
 
 async function readActiveMap($: Dollar): Promise<number | null> {
@@ -545,16 +549,22 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   if (held !== null || inFlight !== null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
   const press: HeldPress = { id: (pressCount += 1), verb, number }
+  claiming = number
   try {
-    await update($, pendingPhase, () => 'queued')
-    // The turn mark is synchronous with the turn start, so this read is the latest word on it.
+    // A press that needs no hold is never shown queued: no turn running, no cancel button.
     if (isMainTurnRunning()) {
-      held = press
-      return
+      await update($, pendingPhase, () => 'queued')
+      // The turn mark is synchronous with the turn start, so this read is the latest word on it.
+      if (isMainTurnRunning()) {
+        held = press
+        return
+      }
     }
   } catch (err) {
     debug($, `trailhead mod: ${verb} ${number} did not start: ${String(err)}`)
     return dropPending($)
+  } finally {
+    claiming = null
   }
   await dispatch($, press)
 }
@@ -574,6 +584,7 @@ async function dropPending($: Dollar) {
 // and the press is held again instead of queued behind it in the host, where it could not be cancelled.
 async function dispatch($: Dollar, press: HeldPress) {
   inFlight = press.id
+  dispatching = { id: press.id, number: press.number, isCancelled: false, isSent: false }
   let isReheld = false
   try {
     let clearing: Promise<unknown> | null = null
@@ -581,8 +592,11 @@ async function dispatch($: Dollar, press: HeldPress) {
     while (clearing === null) {
       await update($, pendingPhase, () => 'starting')
       before = await $.session.id()
+      // A cancel pressed while the row still read queued: dropped here, the last line before the clear.
+      if (dispatching?.isCancelled === true) return debug($, `trailhead mod: ${press.verb} ${press.number} cancelled before the clear`)
       if (!isMainTurnRunning()) {
         clearing = $.command.run({ command: CLEAR_COMMAND, args: '' })
+        dispatching = { ...dispatching!, isSent: true }
         break
       }
       // A turn began meanwhile: back to queued. Ownership returns to `held` only while the turn still runs, else go round.
@@ -603,6 +617,7 @@ async function dispatch($: Dollar, press: HeldPress) {
   } catch (err) {
     debug($, `trailhead mod: ${press.verb} ${press.number} did not start: ${String(err)}`)
   } finally {
+    if (dispatching?.id === press.id) dispatching = null
     // A press held again keeps its marks and its place in `held`; only the in-flight guard goes.
     if (isReheld) inFlight = null
     else {
@@ -622,14 +637,25 @@ function releaseHeld($: Dollar) {
   const press = held
   if (press === null) return
   held = null
-  void dispatch($, press)
+  void dispatch($, press).catch(err => debug($, `trailhead mod: held press failed: ${String(err)}`))
 }
 
-// The cancel button of a queued row: the press never leaves the panel, so nothing is sent and the conversation
-// stays. A cancel for a ticket not held does nothing.
+// The cancel button of a queued row: a held press never leaves the panel, so nothing is sent and the conversation
+// stays. A press released but not yet at its /clear is marked and dropped by the dispatch at that line. A queued
+// row with no press behind it (a hot reload reset the module, the atoms stayed) is cleared. Else nothing to cancel.
 async function cancelQueued($: Dollar, number: number) {
-  if (held?.number !== number) return
-  held = null
+  if (held?.number === number) {
+    held = null
+    return dropPending($)
+  }
+  if (dispatching?.number === number) {
+    if (!dispatching.isSent) dispatching = { ...dispatching, isCancelled: true }
+    return
+  }
+  if (claiming === number || dispatching !== null || inFlight !== null || held !== null) return
+  if ((await read($, pendingPhase)) !== 'queued' || (await read($, pendingWork)) !== number) return
+  // The reads above awaited: a press made meanwhile owns the atoms.
+  if (claiming !== null || dispatching !== null || inFlight !== null || held !== null) return
   await dropPending($)
 }
 

@@ -210,6 +210,12 @@ const rig = (on: On, engine?: any) => {
     duringClear: null as (() => void | Promise<void>) | null,
     // Runs once, in the next `session.id` read (a dispatch's own read before its clear).
     beforeSessionId: null as (() => void | Promise<void>) | null,
+    // Every value written to the pendingPhase atom, in order.
+    phases: [] as unknown[],
+    // Atom values the engine reports whatever was written (a state a hot reload left); a write clears the key.
+    forced: {} as Record<string, unknown>,
+    // Runs once, before the next pendingPhase write lands (the row still reads what it read before).
+    beforePhaseWrite: null as (() => void | Promise<void>) | null,
     session: SESSION,
     clock: mock.clock(on, { now: T0 }),
     // The person opening the pane: the engine's own record, the plugin is not told.
@@ -277,10 +283,18 @@ const rig = (on: On, engine?: any) => {
   const emptied = new Set<string>()
   let clears = 0
   on('state.get', { plugin: 'trailhead' }, async (_$, e, next) => {
+    if (e.key in r.forced) return { value: { value: r.forced[e.key], version: 1 } }
     const read = await next(e)
     return emptied.has(e.key) ? { value: { value: undefined, version: read.value?.version ?? 0 } } : read
   })
-  on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {
+  on('state.set', { plugin: 'trailhead' }, async (_$, e, next) => {
+    if (e.key === 'pendingPhase') {
+      const hold = r.beforePhaseWrite
+      r.beforePhaseWrite = null
+      await hold?.()
+      r.phases.push(e.value)
+    }
+    delete r.forced[e.key]
     emptied.delete(e.key)
     return next(e)
   })
@@ -1767,6 +1781,95 @@ for (const surface of SURFACES) {
       expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
     })
   }
+
+  test(`a cancel pressed between the release and the clear sends nothing and puts the work button back [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    await completeTurn($)
+    // The row on screen still reads queued with its cancel button when the press lands, before the clear.
+    let isPressed = false
+    r.beforePhaseWrite = async () => {
+      try {
+        await ui.press({ key: 'cancel-209' })
+        isPressed = true
+      } catch (err) {
+        r.logs.push(`seam press failed: ${String(err)}`)
+      }
+    }
+    await settle(r)
+    expect(r.logs.filter(l => l.startsWith('seam'))).toEqual([])
+    expect(isPressed).toBe(true)
+    expect(r.runs).toEqual([])
+    expect(r.session).toBe(SESSION)
+    await ui.redraw()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+    // The slot is free again.
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
+  })
+
+  test(`a press with no turn running never shows queued or a cancel button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let release: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (release = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    // The phase went straight to starting: queued was never written, so no cancel was ever offered.
+    expect(r.phases[0]).toBe('starting')
+    expect(r.phases).not.toContain('queued')
+    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
+    release()
+    await first
+    await settle(r)
+  })
+
+  for (const reason of ['clear', 'resume'] as const) {
+    test(`a session that ends (${reason}) while a press is held drops it [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      await startMainTurn($)
+      await ui.press({ key: 'work-209' })
+      await settle(r)
+      expect(await textOf(ui, 'queued-209')).toBe('queued')
+
+      await $.session.end({ reason, sessionId: r.session, resume: {} })
+      await settle(r)
+      expect(r.runs).toEqual([])
+      await ui.redraw()
+      expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+      expect(await ui.find({ key: 'work-209' })).toBeDefined()
+      // The turn flag was reset too: a press goes straight through.
+      await ui.press({ key: 'work-210' })
+      await settle(r)
+      expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
+    })
+  }
+
+  test(`a cancel on a stuck queued row (nothing held, nothing sending) clears it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    // What a hot reload leaves: the atoms say queued, the module state is empty.
+    r.forced = { pendingWork: 209, pendingPhase: 'queued' }
+    await ui.redraw()
+    expect(await ui.find({ key: 'cancel-209' })).toBeDefined()
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+    await ui.redraw()
+    expect(r.runs).toEqual([])
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
 
   test(`the mod's own clear leaves the row starting across the reset until the verb settles [${surface}]`, async ($, on) => {
     const r = rig(on, $)

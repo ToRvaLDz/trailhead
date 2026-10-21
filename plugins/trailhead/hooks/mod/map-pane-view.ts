@@ -457,9 +457,9 @@ export const footerStatus = (status: string, columns: number): FooterStatus => {
 const SELF_ASIDE: RowAside = { kind: 'self', text: 'this session' }
 
 type Pending = { number: number | null; phase: 'queued' | 'starting' | null }
-// A press waiting for the turn to end can be cancelled; one already sent cannot.
+// Only a press known to wait for the turn to end is offered a cancel; one sent, or not yet classed, is not.
 const pendingAside = (phase: Pending['phase']): RowAside =>
-  phase === 'starting' ? { kind: 'starting', text: 'starting' } : { kind: 'queued', text: 'queued' }
+  phase === 'queued' ? { kind: 'queued', text: 'queued' } : { kind: 'starting', text: 'starting' }
 
 const holderOf = (t: PaneTicket): RowAside => ({ kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') })
 

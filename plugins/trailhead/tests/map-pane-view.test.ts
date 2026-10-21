@@ -344,14 +344,14 @@ test('rowLayout: a frontier row carries the work button, the number, the title a
 })
 
 test('rowLayout: the pending ticket shows queued in place of the button', () => {
-  expect(layout(ticket(), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(ticket(), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
   expect(layout(ticket(), { pendingWork: 210 }).aside).toEqual({ kind: 'work', text: 'work' })
 })
 
 test('rowLayout: the queued aside counts the cancel button in the row width', () => {
   const t = ticket({ title: 'x'.repeat(200) })
   for (const columns of [30, 40, 60]) {
-    const r = layout(t, { columns, pendingWork: 209 })
+    const r = layout(t, { columns, pendingWork: 209, pendingPhase: 'queued' })
     const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside?.text.length ?? 0) + 1 + CANCEL_LABEL.length + 4 + 1
     expect(used).toBeLessThanOrEqual(columns)
     // Less title room than the work button leaves.
@@ -362,6 +362,8 @@ test('rowLayout: the queued aside counts the cancel button in the row width', ()
 test('rowLayout: a starting row reads starting with no button room', () => {
   expect(layout(ticket(), { pendingWork: 209, pendingPhase: 'starting' }).aside).toEqual({ kind: 'starting', text: 'starting' })
   expect(layout(ticket(), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  // a pending press with no phase yet is never offered a cancel
+  expect(layout(ticket(), { pendingWork: 209, pendingPhase: null }).aside).toEqual({ kind: 'starting', text: 'starting' })
   // another ticket's phase never touches this row
   expect(layout(ticket(), { pendingWork: 210, pendingPhase: 'starting' }).aside).toEqual({ kind: 'work', text: 'work' })
   const t = ticket({ title: 'x'.repeat(200) })
@@ -408,8 +410,8 @@ test('rowLayout: a needs-you row blocked with no holder shows nothing and is dim
 })
 
 test('rowLayout: a needs-you row shows queued while its press is pending and this session in play', () => {
-  expect(layout(needsYou(), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
-  expect(layout(needsYou({ state: 'paused' }), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(needsYou(), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(needsYou({ state: 'paused' }), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
   expect(layout(needsYou({ state: 'in-progress', assignees: ['alice'] }), { isInPlay: true }).aside).toEqual({ kind: 'self', text: 'this session' })
 })
 
@@ -420,7 +422,7 @@ test('rowLayout: a paused row has a resume button, whoever holds it', () => {
 })
 
 test('rowLayout: a paused row reads queued while its press is pending', () => {
-  expect(layout(ticket({ number: 209, state: 'paused' }), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  expect(layout(ticket({ number: 209, state: 'paused' }), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
   expect(layout(ticket({ number: 209, state: 'paused' }), { pendingWork: 7 }).aside).toEqual({ kind: 'resume', text: 'resume' })
 })
 
