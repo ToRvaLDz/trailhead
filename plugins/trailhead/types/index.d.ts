@@ -106,6 +106,8 @@ declare module 'claude-code' {
       isDashboard: boolean
       dashboardPane: DashboardPaneData
       pendingWork: number | null
+      // Whether the pending press waits for the turn to end or has been sent.
+      pendingPhase: 'queued' | 'starting' | null
       paneAutoOpened: boolean
       // The repo the pane and band read from; null until a GitHub working copy was seen.
       repoPin: RepoPin | null

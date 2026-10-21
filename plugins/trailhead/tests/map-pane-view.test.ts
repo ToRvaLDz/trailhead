@@ -12,7 +12,6 @@ import {
   groupTickets,
   headingRoom,
   HISTORY_LIMIT,
-  isOwnQueuedCommand,
   isTimerLate,
   mapRowLayout,
   nextViewed,
@@ -331,7 +330,7 @@ const ticket = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 const layout = (t: ReturnType<typeof ticket>, over: Record<string, unknown> = {}) =>
-  rowLayout(t, { isInPlay: false, hasMarkColumn: false, pendingWork: null, columns: 60, ...over })
+  rowLayout(t, { isInPlay: false, hasMarkColumn: false, pendingWork: null, pendingPhase: null, columns: 60, ...over })
 
 test('rowLayout: a frontier row carries the work button, the number, the title and the type', () => {
   expect(layout(ticket())).toEqual({
@@ -360,14 +359,19 @@ test('rowLayout: the queued aside counts the cancel button in the row width', ()
   }
 })
 
-test('isOwnQueuedCommand: only this plugin\'s origin while a cancelled flight exists', () => {
-  const cancelled = { id: 1, verb: 'work' as const, number: 209, isCancelled: true, isStarted: false }
-  const own = { kind: 'plugin', name: 'trailhead' } as never
-  expect(isOwnQueuedCommand(own, cancelled)).toBe(true)
-  expect(isOwnQueuedCommand({ kind: 'person' } as never, cancelled)).toBe(false)
-  expect(isOwnQueuedCommand({ kind: 'plugin', name: 'other' } as never, cancelled)).toBe(false)
-  expect(isOwnQueuedCommand(own, null)).toBe(false)
-  expect(isOwnQueuedCommand(own, { ...cancelled, isCancelled: false })).toBe(false)
+test('rowLayout: a starting row reads starting with no button room', () => {
+  expect(layout(ticket(), { pendingWork: 209, pendingPhase: 'starting' }).aside).toEqual({ kind: 'starting', text: 'starting' })
+  expect(layout(ticket(), { pendingWork: 209, pendingPhase: 'queued' }).aside).toEqual({ kind: 'queued', text: 'queued' })
+  // another ticket's phase never touches this row
+  expect(layout(ticket(), { pendingWork: 210, pendingPhase: 'starting' }).aside).toEqual({ kind: 'work', text: 'work' })
+  const t = ticket({ title: 'x'.repeat(200) })
+  for (const columns of [30, 40, 60]) {
+    const r = layout(t, { columns, pendingWork: 209, pendingPhase: 'starting' })
+    const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside?.text.length ?? 0) + 1
+    expect(used).toBeLessThanOrEqual(columns)
+    // No cancel button to make room for: more title than the queued row keeps.
+    expect(r.label.length).toBeGreaterThan(layout(t, { columns, pendingWork: 209, pendingPhase: 'queued' }).label.length)
+  }
 })
 
 test('rowLayout: holders are drawn as @login on in-progress and blocked rows', () => {

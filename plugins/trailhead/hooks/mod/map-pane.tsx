@@ -830,7 +830,7 @@ export function registerMapPane(on: On) {
     // This session's own ticket survives a work-state file another session took over; without one, the file decides.
     const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
-      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, columns: cols })
+      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: null, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isDim ? dim : {}
       const line = (

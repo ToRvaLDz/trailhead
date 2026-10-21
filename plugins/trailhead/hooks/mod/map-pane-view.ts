@@ -411,7 +411,7 @@ export const ageLabel = (ms: number): string => {
   return `${Math.floor(ms / 3_600_000)}h ago`
 }
 
-export type RowAside = { kind: 'work' | 'resume' | 'queued' | 'holder' | 'self'; text: string }
+export type RowAside = { kind: 'work' | 'resume' | 'queued' | 'starting' | 'holder' | 'self'; text: string }
 export type RowLayout = {
   mark: string | null
   label: string
@@ -425,6 +425,8 @@ export type RowContext = {
   // True when the group holds the ticket in play: its rows share a two-cell mark column.
   hasMarkColumn: boolean
   pendingWork: number | null
+  // Whether the pending press waits for the turn to end (`queued`) or has been sent (`starting`).
+  pendingPhase: 'queued' | 'starting' | null
   columns: number
 }
 
@@ -454,23 +456,28 @@ export const footerStatus = (status: string, columns: number): FooterStatus => {
 
 const SELF_ASIDE: RowAside = { kind: 'self', text: 'this session' }
 
+type Pending = { number: number | null; phase: 'queued' | 'starting' | null }
+// A press waiting for the turn to end can be cancelled; one already sent cannot.
+const pendingAside = (phase: Pending['phase']): RowAside =>
+  phase === 'starting' ? { kind: 'starting', text: 'starting' } : { kind: 'queued', text: 'queued' }
+
 const holderOf = (t: PaneTicket): RowAside => ({ kind: 'holder', text: t.assignees.map(a => `@${a}`).join(' ') })
 
 // A needs-you row: any holder first (a `work` press would steal the claim), then nothing when blocked,
 // else `work` (never `resume`: the claim clears the mark, resume would not).
-const needsYouAside = (t: PaneTicket, pendingWork: number | null): RowAside | null => {
+const needsYouAside = (t: PaneTicket, pending: Pending): RowAside | null => {
   if (t.assignees.length > 0) return holderOf(t)
   if (t.state === 'blocked') return null
-  return pendingWork === t.number ? { kind: 'queued', text: 'queued' } : { kind: 'work', text: 'work' }
+  return pending.number === t.number ? pendingAside(pending.phase) : { kind: 'work', text: 'work' }
 }
 
 // The ticket in play says `this session`; a needs-you row follows its own rule; otherwise a frontier row has
 // a `work` button, a paused one a `resume` button (the verb checks the claim), and the rest their holder.
-const asideOf = (t: PaneTicket, pendingWork: number | null, isInPlay: boolean): RowAside | null => {
+const asideOf = (t: PaneTicket, pending: Pending, isInPlay: boolean): RowAside | null => {
   if (isInPlay) return SELF_ASIDE
-  if (t.isNeedsYou) return needsYouAside(t, pendingWork)
+  if (t.isNeedsYou) return needsYouAside(t, pending)
   if (t.state === 'frontier' || t.state === 'paused') {
-    if (pendingWork === t.number) return { kind: 'queued', text: 'queued' }
+    if (pending.number === t.number) return pendingAside(pending.phase)
     return t.state === 'frontier' ? { kind: 'work', text: 'work' } : { kind: 'resume', text: 'resume' }
   }
   return t.assignees.length === 0 ? null : holderOf(t)
@@ -485,6 +492,9 @@ const asideWidth = (a: RowAside | null): number =>
     ? 0
     : a.text.length + (a.kind === 'work' || a.kind === 'resume' ? BUTTON_CHROME : 0) + 1 + (a.kind === 'queued' ? CANCEL_WIDTH : 0)
 
+// The press the panel holds back while a turn runs, and releases when it ends.
+export type HeldPress = { id: number; verb: 'work' | 'resume'; number: number }
+
 // The press the panel is carrying from its click to the verb command (one at a time).
 export type Flight = { id: number; verb: 'work' | 'resume'; number: number; isCancelled: boolean; isStarted: boolean }
 
@@ -496,7 +506,7 @@ export const isOwnQueuedCommand = (origin: { kind: string; name?: string }, flig
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
   const mark = ctx.isInPlay ? MARK : ctx.hasMarkColumn ? MARK_PAD : null
-  const aside = asideOf(t, ctx.pendingWork, ctx.isInPlay)
+  const aside = asideOf(t, { number: ctx.pendingWork, phase: ctx.pendingPhase }, ctx.isInPlay)
   const type = t.type === null ? null : ` ${t.type}`
   const prefix = `#${t.number}`
   const room = ctx.columns - (mark?.length ?? 0) - asideWidth(aside) - (type?.length ?? 0) - prefix.length - 1
