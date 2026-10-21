@@ -224,7 +224,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
-  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `auto-run-view.ts`: `MAX_FAILURES = 3`, `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
+  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `work-state-locate.ts`: `MAX_FAILURES = 3` (shared with the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
   because `/clear` empties the atoms while they are needed.
@@ -260,9 +260,12 @@ that drives, no write to a work state or to the tracker.
   `everything` or an unreadable record to the whole repo). They are scope counts, not run-only counts:
   `paused` is not narrowed to the run's own tickets, and an earlier needs-you mark stays until the
   person clears it. The read runs under the pinned root, only while a run is detected, never
-  faster than `MIN_REFRESH_MS`; a failed read keeps the last counts; no pin means no call.
+  faster than `MIN_REFRESH_MS`, and on the pin's own host (`--hostname`, so an Enterprise pin is searched there);
+  a failed read keeps the last counts; no pin, or no engine clock, means no call.
 - **Bounded failures.** A scan that fails (the git listing, a read other than a missing file) keeps
   the last run for at most `MAX_FAILURES = 3` failures in a row, then clears it; a success resets the count.
+  Failures are counted at most once per `MIN_REFRESH_MS` (a turn refreshes several times), so a brief git
+  hiccup never clears a live run; without a clock every failure counts.
   A clean scan with no member clears the run at once.
 - **Resume hint.** `auto interrupted · /trailhead:auto to resume` (in the status
   `auto interrupted, /trailhead:auto to resume`) shows while a flag is set and a run member remains. The

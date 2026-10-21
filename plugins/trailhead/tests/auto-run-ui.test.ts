@@ -31,7 +31,7 @@ const rig = (on: On) => {
     now: 1_000_000,
     worktrees: porcelain(wt('/repo', 'refs/heads/main')) as string | Error,
     siblings: [] as string[],
-    // Per cartella fratello: git dir e HEAD che risponde git.
+    // Per cartella fratello: git dir e HEAD con cui risponde git.
     clones: {} as Record<string, { gitDir: string; head: string }>,
     counts: { needsYou: 0, paused: 0 },
     ghFails: false,
@@ -40,9 +40,10 @@ const rig = (on: On) => {
     reads: [] as string[],
     statuses: [] as (string | undefined)[],
     dropAuto: false,
+    clockDown: false,
   }
   on('session.repo', () => ({ value: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } }))
-  on('clock.now', () => ({ value: r.now }))
+  on('clock.now', () => (r.clockDown ? { deny: 'no clock' } : { value: r.now }))
   on('session.cwd', () => ({ value: r.cwd }))
   on('session.id', () => ({ value: SESSION }))
   on('process.run', (_$, e) => {
@@ -193,7 +194,7 @@ test('only real slots count: wrong branch, auto false, ticket mismatch, a siblin
   r.files['/repo-t6'] = slot(6, { autoDone: 50 })
   r.files['/repo-t7'] = slot(7, { auto: false, autoDone: 60 })
   r.files['/repo-t8'] = slot(99, { autoDone: 70 })
-  // t9 e un worktree collegato (git dir fuori dalla cartella); t10 e un clone vero sul branch giusto.
+  // t9 è un worktree collegato (git dir fuori dalla cartella); t10 è un clone vero sul branch giusto.
   r.files['/repo-t9'] = slot(9, { autoDone: 80 })
   r.files['/repo-t10'] = slot(10, { autoDone: 3 })
   r.clones['/repo-t9'] = { gitDir: '/repo/.git/worktrees/repo-t9', head: slotBranch(9) }
@@ -271,6 +272,35 @@ test('a failed scan keeps the last run for two failures, the third clears it; a 
   expect(await band($)).toBeUndefined()
 })
 
+test('failures inside one window count once: three refreshes in a row keep the run', async ($, on) => {
+  fresh()
+  const r = rig(on)
+  threeSlots(r)
+  await $.session.start(START)
+  r.worktrees = new Error('git exploded')
+  for (let i = 0; i < 6; i += 1) {
+    await refresh($)
+    expect(last(r)).toBe('auto · 4 done · 2 in flight')
+  }
+  r.now += 14_000
+  await refresh($)
+  expect(last(r)).toBe('auto · 4 done · 2 in flight')
+})
+
+test('failures spaced past the window clear the run on the third', async ($, on) => {
+  fresh()
+  const r = rig(on)
+  threeSlots(r)
+  await $.session.start(START)
+  r.worktrees = new Error('git exploded')
+  for (const kept of [true, true, false]) {
+    r.now += 15_000
+    await refresh($)
+    await refresh($)
+    expect(last(r) !== undefined).toBe(kept)
+  }
+})
+
 test('a success resets the failure count', async ($, on) => {
   fresh()
   const r = rig(on)
@@ -279,15 +309,37 @@ test('a success resets the failure count', async ($, on) => {
   const good = r.worktrees
   for (let i = 0; i < 2; i += 1) {
     r.worktrees = new Error('git exploded')
+    r.now += 15_000
     await refresh($)
   }
   r.worktrees = good
+  r.now += 15_000
   await refresh($)
   r.worktrees = new Error('git exploded')
   for (const kept of [true, true, false]) {
+    r.now += 15_000
     await refresh($)
     expect(last(r) !== undefined).toBe(kept)
   }
+})
+
+test('the counts read goes to the pin\'s own host', async ($, on) => {
+  fresh()
+  const r = rig(on)
+  threeSlots(r)
+  await $.session.start(START)
+  expect(ghRuns(r)[0]).toContain('gh api graphql --hostname github.com')
+})
+
+test('with no clock the counts are never read unthrottled', async ($, on) => {
+  fresh()
+  const r = rig(on)
+  threeSlots(r)
+  r.clockDown = true
+  await $.session.start(START)
+  await refresh($)
+  expect(ghRuns(r)).toEqual([])
+  expect(last(r)).toBe('auto · 4 done · 2 in flight')
 })
 
 test('Esc shows the resume hint in the status and the band; a subagent abort does not', async ($, on) => {

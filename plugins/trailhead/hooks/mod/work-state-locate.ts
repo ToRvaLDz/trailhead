@@ -3,21 +3,18 @@
 // may sit in the main checkout. Pure parts first, then the engine part that looks the state up.
 import type { EngineInterface } from 'claude-code'
 
+import { parseWorktreeBranches } from './auto-run-view'
 import { isMissing, parseWorkState } from './work-state-view'
 
 const STATE_PATH = '.trailhead/work-state.json'
 const LOOKUP_TIMEOUT_MS = 5_000
 
-const dirname = (path: string): string => path.replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/'
+export const dirname = (path: string): string => path.replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/'
 const basename = (path: string): string => path.replace(/\/+$/, '').replace(/^.*\//, '')
-const trim = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path)
+export const trim = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path)
 
 // The checkout paths of `git worktree list --porcelain`, in the order git prints them (main first).
-export const parseWorktrees = (porcelain: string): string[] =>
-  porcelain
-    .split('\n')
-    .filter(line => line.startsWith('worktree /'))
-    .map(line => trim(line.slice('worktree '.length)))
+export const parseWorktrees = (porcelain: string): string[] => parseWorktreeBranches(porcelain).map(w => w.path)
 
 // The per-ticket clones beside the main working tree: `<basename>-t<digits>`, sorted.
 export const siblingClones = (mainRoot: string, names: readonly string[]): string[] => {
@@ -69,7 +66,7 @@ const misses = new Map<string, number>()
 // A scan that failed is remembered for a shorter while, with how many failed in a row: past MAX_FAILURES
 // the caller stops keeping the last state and treats the file as missing.
 const FAILED_MS = 3_000
-const MAX_FAILURES = 3
+export const MAX_FAILURES = 3
 const failures = new Map<string, { at: number | null; count: number }>()
 
 // Writes a miss time, dropping the misses whose window has ended.
@@ -92,17 +89,21 @@ async function nowOf($: EngineInterface): Promise<number | null> {
   }
 }
 
-// null: the listing itself failed (not the same as an empty one).
-async function listWorktrees($: EngineInterface, root: string): Promise<string[] | null> {
+// null: the listing itself failed (not the same as an empty one). Path and branch of each checkout.
+export async function listWorktreeBranches($: EngineInterface, root: string): Promise<{ path: string; branch: string | null }[] | null> {
   try {
     const out = await $.process.run(['git', 'worktree', 'list', '--porcelain'], { cwd: root, timeoutMs: LOOKUP_TIMEOUT_MS })
-    return out.exitCode === 0 ? parseWorktrees(out.stdout) : null
+    return out.exitCode === 0 ? parseWorktreeBranches(out.stdout) : null
   } catch {
     return null
   }
 }
 
-async function listSiblings($: EngineInterface, mainRoot: string): Promise<string[] | null> {
+async function listWorktrees($: EngineInterface, root: string): Promise<string[] | null> {
+  return (await listWorktreeBranches($, root))?.map(w => w.path) ?? null
+}
+
+export async function listSiblings($: EngineInterface, mainRoot: string): Promise<string[] | null> {
   try {
     const entries = await $.fs.list(dirname(mainRoot))
     return siblingClones(mainRoot, entries.filter(entry => entry.kind === 'dir').map(entry => entry.name))

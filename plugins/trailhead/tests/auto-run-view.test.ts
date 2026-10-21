@@ -1,7 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
-  MAX_FAILURES,
   RESUME_HINT,
   aggregateRun,
   isRunMember,
@@ -14,6 +13,7 @@ import {
   showsResumeHint,
   slotTicket,
 } from '../hooks/mod/auto-run-view'
+import { MAX_FAILURES } from '../hooks/mod/work-state-locate'
 
 const state = (over: Record<string, unknown> = {}) => ({
   map: 1,
@@ -72,12 +72,14 @@ test('parseRunScope maps the record scope to a label; repo-wide is null', () => 
 })
 
 test('runCountsArgs carries two searches, narrowed by the scope label', () => {
-  const wide = runCountsArgs('o/r', null).join(' ')
-  expect(wide).toContain('api graphql')
+  const wide = runCountsArgs('github.com', 'o/r', null).join(' ')
+  expect(wide).toContain('api graphql --hostname github.com')
   expect(wide).toContain('needs=repo:o/r is:open label:"trailhead:ticket" label:"trailhead:needs-you"')
   expect(wide).toContain('paused=repo:o/r is:open label:"trailhead:ticket" label:"trailhead:paused"')
   expect(wide).not.toContain('map-')
-  expect(runCountsArgs('o/r', 'trailhead:map-7').join(' ')).toContain('label:"trailhead:map-7"')
+  const scoped = runCountsArgs('ghe.example.com', 'o/r', 'trailhead:map-7').join(' ')
+  expect(scoped).toContain('label:"trailhead:map-7"')
+  expect(scoped).toContain('--hostname ghe.example.com')
 })
 
 test('parseRunCounts reads both counts or nothing', () => {

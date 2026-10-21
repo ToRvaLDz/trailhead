@@ -1,11 +1,10 @@
 // Pure view logic of the autonomous run in the mod: which checkouts belong to the run, the counts,
 // the label and the resume hint. No engine calls here, so it is easy to test.
 import type { AutoRun, RunCounts, WorkState } from '../../types'
+import { MAX_FAILURES } from './work-state-locate'
 
-// Quanti fallimenti di fila tengono l'ultimo run noto prima di azzerarlo (come in work-state-locate).
-export const MAX_FAILURES = 3
 export const RESUME_HINT = 'auto interrupted · /trailhead:auto to resume'
-// Nello status il separatore e la virgola, perche il punto mediano separa gia le parti.
+// Nello status il separatore è la virgola, perché il punto mediano separa gia le parti.
 export const RESUME_HINT_STATUS = 'auto interrupted, /trailhead:auto to resume'
 
 const SLOT_BRANCH = /^refs\/heads\/trailhead\/t(\d+)$/
@@ -62,12 +61,12 @@ export const parseRunScope = (recordText: string): string | null => {
 const COUNTS_QUERY =
   'query($needs: String!, $paused: String!) { needsYou: search(query: $needs, type: ISSUE, first: 1) { issueCount } paused: search(query: $paused, type: ISSUE, first: 1) { issueCount } }'
 
-// One GraphQL read, two searches. The slug is owner/name (repo-pin keeps it to safe characters).
-export const runCountsArgs = (slug: string, scopeLabel: string | null): string[] => {
+// One GraphQL read, two searches, on the pin's own host (an Enterprise pin is searched there). The slug is owner/name (repo-pin keeps it to safe characters).
+export const runCountsArgs = (host: string, slug: string, scopeLabel: string | null): string[] => {
   const base = `repo:${slug} is:open label:"trailhead:ticket"`
   const scope = scopeLabel === null ? '' : ` label:"${scopeLabel}"`
   return [
-    'api', 'graphql',
+    'api', 'graphql', '--hostname', host,
     '-f', `query=${COUNTS_QUERY}`,
     '-f', `needs=${base} label:"trailhead:needs-you"${scope}`,
     '-f', `paused=${base} label:"trailhead:paused"${scope}`,
@@ -102,5 +101,6 @@ export const runLabel = (run: { done: number; inFlight?: number }, counts: RunCo
 export const showsResumeHint = (flag: boolean, run: AutoRun | null): boolean => flag && run !== null
 
 // A failed scan keeps the last run, until MAX_FAILURES in a row.
+// Un fallimento di troppo (MAX_FAILURES, come in work-state-locate) azzera il run.
 export const nextRunAfterFailure = (prev: AutoRun | null, failures: number): AutoRun | null =>
   failures >= MAX_FAILURES ? null : prev

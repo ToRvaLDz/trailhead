@@ -5,26 +5,25 @@ import type { EngineInterface } from 'claude-code'
 
 import type { AutoRun, RepoPin, RunCounts, WorkState } from '../../types'
 import { GH_TIMEOUT_MS, MIN_REFRESH_MS } from './map-pane'
-import { aggregateRun, isRunMember, nextRunAfterFailure, parseRunCounts, parseRunScope, parseWorktreeBranches, runCountsArgs, slotTicket } from './auto-run-view'
+import { aggregateRun, isRunMember, nextRunAfterFailure, parseRunCounts, parseRunScope, runCountsArgs, slotTicket } from './auto-run-view'
 import type { Where } from './auto-run-view'
 import { pinKey } from './repo-pin'
-import { readAt, siblingClones } from './work-state-locate'
+import { listSiblings, listWorktreeBranches, readAt, trim } from './work-state-locate'
 import { isMissing, parseWorkState } from './work-state-view'
 
 const RECORD_PATH = '.trailhead/auto-run.json'
 const GIT_TIMEOUT_MS = 5_000
 
-const trim = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path)
-const dirname = (path: string): string => trim(path).replace(/\/[^/]*$/, '') || '/'
-
-// L'ultimo run noto e i fallimenti di fila: sono macchinario del modulo, non stato disegnato.
+// L'ultimo run noto e i fallimenti di fila (con l'istante dell'ultimo contato): sono macchinario del modulo, non stato disegnato.
 let lastRun: AutoRun | null = null
 let failures = 0
+let lastFailureAt: number | null = null
 let counts: { key: string; at: number; value: RunCounts | null } | null = null
 
 export const resetAutoRun = (): void => {
   lastRun = null
   failures = 0
+  lastFailureAt = null
   counts = null
 }
 
@@ -35,7 +34,7 @@ export const clearRunCounts = (): void => {
 
 type Gate = { kind: 'closed' } | { kind: 'open'; scope: string | null } | { kind: 'failed' }
 
-// Il run puo esistere solo se c'e il record o lo stato proprio e auto: altrimenti nessun processo parte.
+// Il run può esistere solo se c'è il record o lo stato proprio è auto: altrimenti nessun processo parte.
 async function gate($: EngineInterface, main: string, own: WorkState | null): Promise<Gate> {
   try {
     const text = (await $.fs.read(`${trim(main)}/${RECORD_PATH}`)) as string
@@ -46,27 +45,8 @@ async function gate($: EngineInterface, main: string, own: WorkState | null): Pr
   }
 }
 
-// null: l'elenco git e fallito (diverso da un elenco vuoto).
-async function listWorktrees($: EngineInterface, main: string) {
-  try {
-    const out = await $.process.run(['git', 'worktree', 'list', '--porcelain'], { cwd: main, timeoutMs: GIT_TIMEOUT_MS })
-    return out.exitCode === 0 ? parseWorktreeBranches(out.stdout) : null
-  } catch {
-    return null
-  }
-}
-
-async function listSiblings($: EngineInterface, main: string): Promise<string[] | null> {
-  try {
-    const entries = await $.fs.list(dirname(main))
-    return siblingClones(main, entries.filter(entry => entry.kind === 'dir').map(entry => entry.name))
-  } catch {
-    return null
-  }
-}
-
 // La regola di cloneOnBranch (trailhead-auto-slot.js): git dir dentro la cartella e HEAD sul branch dello slot.
-// undefined: git non e riuscito a girare.
+// undefined: git non è riuscito a girare.
 async function cloneOnBranch($: EngineInterface, dir: string, ticket: number): Promise<boolean | undefined> {
   const git = (args: string[]) => $.process.run(['git', '-C', dir, ...args], { cwd: dir, timeoutMs: GIT_TIMEOUT_MS })
   try {
@@ -101,7 +81,7 @@ const candidatesOf = (main: string, pinned: string, listed: readonly { path: str
 type Scan = { ok: true; run: AutoRun | null } | { ok: false }
 
 async function scan($: EngineInterface, main: string, pinned: string): Promise<Scan> {
-  const listed = await listWorktrees($, main)
+  const listed = await listWorktreeBranches($, main)
   const siblings = await listSiblings($, main)
   if (listed === null || siblings === null) return { ok: false }
   const candidates = candidatesOf(main, pinned, listed, siblings)
@@ -114,7 +94,7 @@ async function scan($: EngineInterface, main: string, pinned: string): Promise<S
     if (state === null || !state.auto) continue
     let where: Where
     if (c.where.kind === 'sibling') {
-      // Il controllo git costa due processi: solo per un fratello il cui stato e gia auto del suo ticket.
+      // Il controllo git costa due processi: solo per un fratello il cui stato è già auto del suo ticket.
       if (state.ticket !== c.where.ticket) continue
       const onBranch = await cloneOnBranch($, c.path, c.where.ticket)
       if (onBranch === undefined) return { ok: false }
@@ -125,6 +105,16 @@ async function scan($: EngineInterface, main: string, pinned: string): Promise<S
   return { ok: true, run: aggregateRun(members) }
 }
 
+// Un turno fa più refresh: un fallimento conta solo se dall'ultimo contato è passato MIN_REFRESH_MS,
+// così un singhiozzo breve di git non azzera un run vivo. Senza orologio ogni fallimento conta.
+async function isNewFailure($: EngineInterface): Promise<boolean> {
+  const now = await nowOf($)
+  if (now === null) return true
+  if (lastFailureAt !== null && now - lastFailureAt < MIN_REFRESH_MS) return false
+  lastFailureAt = now
+  return true
+}
+
 // Il run attuale e lo scope del record. Una scansione fallita tiene l'ultimo risultato per al massimo
 // MAX_FAILURES volte di fila; un miss pulito o il gate chiuso lo azzerano subito.
 export async function scanRun($: EngineInterface, input: { main: string; pinned: string; ownState: WorkState | null }): Promise<{ run: AutoRun | null; scope: string | null }> {
@@ -132,13 +122,15 @@ export async function scanRun($: EngineInterface, input: { main: string; pinned:
   if (g.kind === 'closed') {
     lastRun = null
     failures = 0
+    lastFailureAt = null
     return { run: null, scope: null }
   }
   const result = g.kind === 'open' ? await scan($, trim(input.main), input.pinned) : ({ ok: false } as const)
   if (result.ok) {
     failures = 0
+    lastFailureAt = null
     lastRun = result.run
-  } else {
+  } else if (await isNewFailure($)) {
     failures += 1
     lastRun = nextRunAfterFailure(lastRun, failures)
   }
@@ -153,19 +145,21 @@ async function nowOf($: EngineInterface): Promise<number | null> {
   }
 }
 
-// I conteggi dello scope, mai piu spesso di MIN_REFRESH_MS; una lettura fallita tiene gli ultimi.
+// I conteggi dello scope, mai più spesso di MIN_REFRESH_MS; una lettura fallita tiene gli ultimi.
 export async function readRunCounts($: EngineInterface, pin: RepoPin, scope: string | null): Promise<RunCounts | null> {
   const key = `${pinKey(pin)}|${scope ?? ''}`
   const now = await nowOf($)
   const cached = counts !== null && counts.key === key ? counts : null
-  if (cached !== null && now !== null && now - cached.at < MIN_REFRESH_MS) return cached.value
+  // Senza orologio non c'è pavimento: niente gh a ruota libera, vale il valore in cache (o nulla).
+  if (now === null) return cached?.value ?? null
+  if (cached !== null && now - cached.at < MIN_REFRESH_MS) return cached.value
   let value = cached?.value ?? null
   try {
-    const out = await $.process.run(['gh', ...runCountsArgs(pin.slug, scope)], { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
+    const out = await $.process.run(['gh', ...runCountsArgs(pin.host, pin.slug, scope)], { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
     if (out.exitCode === 0) value = parseRunCounts(out.stdout) ?? value
   } catch {
     // Lettura fallita: restano gli ultimi conteggi.
   }
-  counts = { key, at: now ?? 0, value }
+  counts = { key, at: now, value }
   return value
 }

@@ -50,7 +50,7 @@ let shownStatus: string | undefined | typeof UNSET = UNSET
 // Refreshes run one after the other, so two events never interleave their writes.
 let queue: Promise<void> = Promise.resolve()
 
-// Un turno del loop principale e in corso: una compattazione dentro il turno non interrompe il run.
+// Un turno del loop principale è in corso: una compattazione dentro il turno non interrompe il run.
 let mainTurnRunning = false
 
 function pin($: Dollar, text: string | undefined) {
@@ -384,7 +384,7 @@ export const register: Register = on => {
     const result = await next(e)
     if (e.agentId === undefined) {
       mainTurnRunning = true
-      // Il run puo proseguire da solo (il completamento di uno slot apre un nuovo turno).
+      // Il run può proseguire da solo (il completamento di uno slot apre un nuovo turno).
       await setInterrupted($, false).catch(err => debug($, `trailhead mod: resume hint reset failed: ${String(err)}`))
     }
     await safeRefresh($)
