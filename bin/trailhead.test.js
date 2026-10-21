@@ -891,7 +891,7 @@ ok('README.md no-performable-step case asks human-driven or skip', /human-driven
 ok('README.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(readmeSource));
 const siteAcceptanceSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'acceptance-testing.md'), 'utf8');
 ok('docs: auto never-picks-skip antecedent is the auto run, in all three docs',
-  /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(readmeSource) && /listed in the run's summary; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource) && /elencato nel riepilogo della run; `\/trailhead:auto` non sceglie mai skip/.test(readmeItSource));
+  /the parent ticket resolves; `\/trailhead:auto` never picks skip/.test(readmeSource) && /the parent ticket resolves; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource) && /il ticket genitore si risolve; `\/trailhead:auto` non sceglie mai skip/.test(readmeItSource));
 ok('README.md build row and acceptance.browser row name skip',
   /🔨 `build`[\s\S]{0,500}or skip/.test(readmeSource) && /`acceptance\.browser`[\s\S]{0,300}or skip/.test(readmeSource));
 ok('README.it.md acceptance testing section names the waiver (skip) recorded as unconfirmed',
