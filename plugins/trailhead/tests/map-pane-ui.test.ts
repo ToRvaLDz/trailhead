@@ -1867,6 +1867,29 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
+  test(`a press made right after a cancel keeps its queued mark and claim and runs when the turn ends [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    // No settling in between: the cancel's own redraw must not let a stale-claim sweep erase the next press.
+    await ui.press({ key: 'cancel-209' })
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    await ui.redraw()
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(await textOf(ui, 'queued-210')).toBe('queued')
+    expect(await ui.find({ key: 'cancel-210' })).toBeDefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
+  })
+
   for (const phase of [null, 'starting'] as const) {
     test(`a pending claim with phase ${phase} and no press behind it is cleared when the pane draws [${surface}]`, async ($, on) => {
       const r = rig(on, $)

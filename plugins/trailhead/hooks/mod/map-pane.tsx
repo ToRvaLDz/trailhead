@@ -573,11 +573,18 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
 
 // The pending marks go phase first, the claim last: until pendingWork is clear no new press can take the slot,
 // so a new press never has its phase erased by the old one's cleanup.
+// `dropping` counts the drops in flight, so the stale-claim sweep (clearStale) never starts beside one.
+let dropping = 0
 async function dropPending($: Dollar) {
+  dropping += 1
   try {
-    await update($, pendingPhase, () => null)
+    try {
+      await update($, pendingPhase, () => null)
+    } finally {
+      await update($, pendingWork, () => null).catch(err => debug($, `trailhead mod: pending mark not cleared: ${String(err)}`))
+    }
   } finally {
-    await update($, pendingWork, () => null).catch(err => debug($, `trailhead mod: pending mark not cleared: ${String(err)}`))
+    dropping -= 1
   }
 }
 
@@ -676,11 +683,22 @@ async function clearStale($: Dollar) {
   if (isClearingStale) return
   isClearingStale = true
   try {
-    const isIdle = () => held === null && claiming === null && dispatching === null && inFlight === null
-    if (!isIdle() || (await read($, pendingWork)) === null || !isIdle()) return
+    const isIdle = () => held === null && claiming === null && dispatching === null && inFlight === null && dropping === 0
+    if (!isIdle()) return
+    // The claim is read with its version and released only if that version still stands, so a press that took the
+    // slot meanwhile is never cleared. The phase goes first (while the stale claim still blocks every new press),
+    // then the compare-and-set on the claim.
+    const { value, version } = await $.state.get(PENDING)
+    if (value == null || !isIdle()) return
     if ((await read($, pendingPhase)) === 'queued' || !isIdle()) return
     debug($, 'trailhead mod: cleared a pending press left with no owner')
-    await dropPending($)
+    dropping += 1
+    try {
+      await update($, pendingPhase, () => null)
+      await $.state.set(PENDING, null, { ifVersion: version })
+    } finally {
+      dropping -= 1
+    }
   } catch (err) {
     debug($, `trailhead mod: stale press not cleared: ${String(err)}`)
   } finally {
