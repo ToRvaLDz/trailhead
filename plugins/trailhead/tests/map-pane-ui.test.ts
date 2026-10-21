@@ -125,7 +125,7 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'paneAutoOpened', 'ownTicket', 'repoPin']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'pendingPhase', 'paneAutoOpened', 'ownTicket', 'repoPin']
 
 const PANE_PROPS = {
   title: 'Map',
@@ -207,7 +207,9 @@ const rig = (on: On, engine?: any) => {
     // The clear answered by a `{ deny }` hook: it resolves the call and the session stays.
     denyClear: false,
     // Runs between the old session ending and the new one starting.
-    duringClear: null as (() => void) | null,
+    duringClear: null as (() => void | Promise<void>) | null,
+    // Runs once, in the next `session.id` read (a dispatch's own read before its clear).
+    beforeSessionId: null as (() => void | Promise<void>) | null,
     session: SESSION,
     clock: mock.clock(on, { now: T0 }),
     // The person opening the pane: the engine's own record, the plugin is not told.
@@ -284,7 +286,7 @@ const rig = (on: On, engine?: any) => {
   })
   const emulateClear = async () => {
     await engine.session.end({ reason: 'clear', sessionId: r.session, resume: {} })
-    r.duringClear?.()
+    await r.duringClear?.()
     ATOM_KEYS.forEach(key => emptied.add(key))
     r.session = `${NEXT_SESSION}-${(clears += 1)}`
     await engine.classic.SessionStart({ source: 'clear' })
@@ -303,7 +305,12 @@ const rig = (on: On, engine?: any) => {
     if (r.refuse !== null) throw new Error(r.refuse)
     return { text: '' }
   })
-  on('session.id', () => ({ value: r.session }))
+  on('session.id', async () => {
+    const hold = r.beforeSessionId
+    r.beforeSessionId = null
+    await hold?.()
+    return { value: r.session }
+  })
   on('ui.log', (_$, e) => {
     r.logs.push(e.text)
     return { value: undefined }
@@ -398,8 +405,6 @@ const hasKey = async (ui: any, key: string): Promise<boolean> => (await ui.find(
 const textOf = async (ui: any, key: string): Promise<string | undefined> => (await ui.find({ key }))?.text
 const keysOf = async (ui: any, prefix: string): Promise<string[]> =>
   (await ui.findAll({ type: 'Box' })).map((el: any) => el.key).filter((k: string | undefined) => k?.startsWith(prefix))
-
-const PLUGIN_ORIGIN = { kind: 'plugin', name: 'trailhead' }
 
 for (const surface of SURFACES) {
   const mountPane = ($: any, props: Record<string, unknown> = {}) =>
@@ -1396,8 +1401,8 @@ for (const surface of SURFACES) {
     const first = ui.press({ key: 'work-209' })
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
-    expect(await textOf(ui, 'queued-209')).toBe('queued')
-    expect((await ui.find({ key: 'queued-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
+    expect(await textOf(ui, 'starting-209')).toBe('starting')
+    expect((await ui.find({ key: 'starting-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
     expect(await ui.find({ key: 'work-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-210' })).toBeDefined()
 
@@ -1405,12 +1410,12 @@ for (const surface of SURFACES) {
     await ui.press({ key: 'work-210' })
     await settle(r)
     expect(r.runs).toHaveLength(2)
-    expect(await ui.find({ key: 'queued-210' })).toBeUndefined()
+    expect(await ui.find({ key: 'starting-210' })).toBeUndefined()
 
     release()
     await first
     await settle(r)
-    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
 
     // free again: the next press goes through
@@ -1436,7 +1441,7 @@ for (const surface of SURFACES) {
     const first = ui.press({ key: 'resume-230' })
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:resume', args: '230' }])
-    expect(await textOf(ui, 'queued-230')).toBe('queued')
+    expect(await textOf(ui, 'starting-230')).toBe('starting')
     expect(await ui.find({ key: 'resume-230' })).toBeUndefined()
 
     // a work press meanwhile is ignored: one in flight at a time
@@ -1447,7 +1452,7 @@ for (const surface of SURFACES) {
     release()
     await first
     await settle(r)
-    expect(await ui.find({ key: 'queued-230' })).toBeUndefined()
+    expect(await ui.find({ key: 'starting-230' })).toBeUndefined()
     expect(await ui.find({ key: 'resume-230' })).toBeDefined()
 
     // outside the pinned repo it is refused before the clear
@@ -1522,7 +1527,7 @@ for (const surface of SURFACES) {
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
   })
 
-  test(`a work press clears the conversation first, the row staying queued across the reset [${surface}]`, async ($, on) => {
+  test(`a work press clears the conversation first, the row staying starting across the reset [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     let releaseClear: () => void = () => undefined
     let releaseWork: () => void = () => undefined
@@ -1534,7 +1539,7 @@ for (const surface of SURFACES) {
     const first = ui.press({ key: 'work-209' })
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect(await textOf(ui, 'starting-209')).toBe('starting')
 
     // a second press while the clear is pending is ignored
     await ui.press({ key: 'work-210' })
@@ -1547,163 +1552,244 @@ for (const surface of SURFACES) {
     expect(r.session).toBe(`${NEXT_SESSION}-1`)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
     await ui.redraw()
-    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect(await textOf(ui, 'starting-209')).toBe('starting')
     await ui.press({ key: 'work-210' })
     expect(r.runs).toHaveLength(2)
 
     releaseWork()
     await first
     await settle(r)
-    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
-  test(`a queued row has a cancel button; cancelling during a held clear puts the work button back and runs no verb [${surface}]`, async ($, on) => {
+  // The main loop's turn, as the host raises it: a press during it is held by the panel until it ends.
+  const startMainTurn = ($: any, id = 'held-turn') => $.turn.start({ text: 'go', turnId: id })
+  const abortTurn = ($: any) =>
+    $.turn.complete({ turnId: `t${(turns += 1)}`, answer: '', durationMs: 1, isAborted: true, reason: 'aborted' })
+
+  test(`a press during a running turn is held with a cancel button and runs when the turn ends [${surface}]`, async ($, on) => {
     const r = rig(on, $)
-    let releaseClear: () => void = () => undefined
-    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
     await $.session.start(START)
     const ui = await openAndMount($, r)
     expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
 
-    const first = ui.press({ key: 'work-209' })
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
     await settle(r)
+    // Nothing reaches the host while the turn runs.
+    expect(r.runs).toEqual([])
     expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect((await ui.find({ key: 'queued-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
     expect((await ui.find({ key: 'cancel-209' }))?.props).toMatchObject({ label: 'cancel' })
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeUndefined()
 
-    await ui.press({ key: 'cancel-209' })
+    // A second press while one is held is ignored.
+    await ui.press({ key: 'work-210' })
     await settle(r)
-    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
-    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
-    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+    expect(r.runs).toEqual([])
+    expect(await ui.find({ key: 'queued-210' })).toBeUndefined()
 
-    releaseClear()
-    await first
+    await completeTurn($)
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+    expect(r.session).toBe(`${NEXT_SESSION}-1`)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
-  test(`a cancel pressed while the clear runs lets it finish, runs no verb and leaves the work button [${surface}]`, async ($, on) => {
+  test(`a cancel before the turn ends sends nothing, keeps the conversation and puts the work button back [${surface}]`, async ($, on) => {
     const r = rig(on, $)
-    let releaseClear: () => void = () => undefined
-    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
     await $.session.start(START)
     const ui = await openAndMount($, r)
-    const first = ui.press({ key: 'work-209' })
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
     await settle(r)
     expect(await ui.find({ key: 'cancel-209' })).toBeDefined()
-    // The row drawn queued is still the one on screen when the press lands, mid-clear.
-    r.duringClear = () => void ui.press({ key: 'cancel-209' })
-    releaseClear()
-    await first
-    await settle(r)
-    expect(r.session).toBe(`${NEXT_SESSION}-1`)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-    await ui.redraw()
-    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
-    expect(await ui.find({ key: 'work-209' })).toBeDefined()
-  })
 
-  test(`a press after a cancel is refused with a toast until the cancelled call settles, then starts normally [${surface}]`, async ($, on) => {
-    const r = rig(on, $)
-    let releaseClear: () => void = () => undefined
-    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
-    await $.session.start(START)
-    const ui = await openAndMount($, r)
-
-    const first = ui.press({ key: 'work-209' })
-    await settle(r)
     await ui.press({ key: 'cancel-209' })
     await settle(r)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
 
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.session).toBe(SESSION)
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+
+    // The slot is free again: another row can be pressed and is held.
+    await startMainTurn($, 'second')
     await ui.press({ key: 'work-210' })
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-    expect(r.toasts).toEqual(['#210 not started: previous press still settling'])
-
-    releaseClear()
-    await first
+    expect(await textOf(ui, 'queued-210')).toBe('queued')
+    expect(r.runs).toEqual([])
+    await completeTurn($)
     await settle(r)
-    r.clearGate = null
-    await ui.press({ key: 'work-210' })
-    await settle(r)
-    expect(r.runs).toEqual([
-      { command: 'clear', args: '' },
-      { command: 'clear', args: '' },
-      { command: 'trailhead:work', args: '210' },
-    ])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
   })
 
-  test(`a cancel once the host dispatched the verb says it already started and the verb completes [${surface}]`, async ($, on) => {
+  test(`a cancel of a held resume press sends nothing [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [...TICKETS, issue(230, 'Paused one', ['trailhead:build', 'trailhead:paused'], ['alice'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'resume-230' })
+    await settle(r)
+    expect(await textOf(ui, 'queued-230')).toBe('queued')
+    await ui.press({ key: 'cancel-230' })
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(await ui.find({ key: 'resume-230' })).toBeDefined()
+  })
+
+  test(`a press with no turn running starts at once and reads starting, with no cancel button [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     let release: () => void = () => undefined
     r.gate = new Promise<void>(resolve => (release = resolve))
     await $.session.start(START)
     const ui = await openAndMount($, r)
-
     const first = ui.press({ key: 'work-209' })
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
-    // The kit has no host queue: the host raising the verb is played by a call carrying the plugin's origin.
-    void $.command.run({ command: 'trailhead:work', args: '209', origin: PLUGIN_ORIGIN } as never)
-    await settle(r)
-    await ui.press({ key: 'cancel-209' })
-    await settle(r)
-    expect(r.toasts).toEqual(['#209 already started'])
-    expect(await textOf(ui, 'queued-209')).toBe('queued')
-
+    expect(await textOf(ui, 'starting-209')).toBe('starting')
+    expect((await ui.find({ key: 'starting-209' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
     release()
     await first
     await settle(r)
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`an interrupted turn releases a held press too [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    await abortTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+  })
+
+  test(`a subagent's turn does not hold a press, nor does its end release one [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await $.turn.start({ text: 'sub', turnId: 'sub-1', agentId: 'agent-1' })
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+
+    await startMainTurn($, 'main-1')
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toHaveLength(2)
+    await $.turn.complete({ turnId: 'sub-1', answer: '', durationMs: 1, isAborted: false, reason: 'answer', agentId: 'agent-1' })
+    await settle(r)
+    expect(r.runs).toHaveLength(2)
+    expect(await textOf(ui, 'queued-210')).toBe('queued')
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toHaveLength(4)
+  })
+
+  test(`a turn that starts while the dispatch is still reading re-holds the press, cancel offered again [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await completeTurn($)
+    // The next session id read is the dispatch's own, before its clear.
+    r.beforeSessionId = async () => void (await startMainTurn($, 'late'))
+    await settle(r)
+    expect(r.runs).toEqual([])
+    await ui.redraw()
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect(await ui.find({ key: 'cancel-209' })).toBeDefined()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
-  test(`a cancelled press has its pending clear and verb answered without running, a person's own commands passing [${surface}]`, async ($, on) => {
+  test(`a turn that starts between the end of one and the release keeps the press held until it ends [${surface}]`, async ($, on) => {
     const r = rig(on, $)
-    let releaseClear: () => void = () => undefined
-    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
     await $.session.start(START)
     const ui = await openAndMount($, r)
-    const first = ui.press({ key: 'work-209' })
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await completeTurn($)
+    // The release timer has not run yet: a queued prompt of the person's starts a turn.
+    await startMainTurn($, 'next')
     await settle(r)
-    await ui.press({ key: 'cancel-209' })
+    expect(r.runs).toEqual([])
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect(await ui.find({ key: 'cancel-209' })).toBeDefined()
+
+    await completeTurn($)
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-
-    const plugin = (command: string, args: string) => $.command.run({ command, args, origin: PLUGIN_ORIGIN } as never)
-    expect(await plugin('trailhead:work', '209')).toEqual({ text: '#209 cancelled' })
-    expect(await plugin('clear', '')).toEqual({ text: '#209 cancelled' })
-    expect(await plugin('trailhead:resume', '209')).toEqual({ text: '#209 cancelled' })
-    expect(r.runs).toHaveLength(1)
-
-    // The person's own command is never swallowed.
-    await $.command.run({ command: 'trailhead:work', args: '5', origin: { kind: 'composer' } } as never)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '5' }])
-
-    releaseClear()
-    await first
-    await settle(r)
-    expect(r.runs).toHaveLength(2)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
   })
 
-  test(`a cancel of a resume press runs no resume verb [${surface}]`, async ($, on) => {
+  for (const reason of ['prompt_input_exit', 'logout', 'other'] as const) {
+    test(`a session that ends (${reason}) while a press is held drops it and resets the turn flag [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      await startMainTurn($)
+      await ui.press({ key: 'work-209' })
+      await settle(r)
+      expect(await textOf(ui, 'queued-209')).toBe('queued')
+
+      await $.session.end({ reason, sessionId: r.session, resume: {} })
+      await settle(r)
+      expect(r.runs).toEqual([])
+      await ui.redraw()
+      expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+      expect(await ui.find({ key: 'work-209' })).toBeDefined()
+
+      // No turn is running in the next session: a press goes straight through.
+      await ui.press({ key: 'work-210' })
+      await settle(r)
+      expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
+    })
+  }
+
+  test(`the mod's own clear leaves the row starting across the reset until the verb settles [${surface}]`, async ($, on) => {
     const r = rig(on, $)
-    let releaseClear: () => void = () => undefined
-    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
-    r.tickets = [...TICKETS, issue(230, 'Paused one', ['trailhead:build', 'trailhead:paused'], ['alice'])]
+    let release: () => void = () => undefined
+    r.gate = new Promise<void>(resolve => (release = resolve))
     await $.session.start(START)
     const ui = await openAndMount($, r)
-    const first = ui.press({ key: 'resume-230' })
+    let during: string | undefined
+    r.duringClear = async () => {
+      await ui.redraw()
+      during = await textOf(ui, 'starting-209')
+    }
+    const first = ui.press({ key: 'work-209' })
     await settle(r)
-    await ui.press({ key: 'cancel-230' })
-    releaseClear()
+    expect(during).toBe('starting')
+    await ui.redraw()
+    expect(await textOf(ui, 'starting-209')).toBe('starting')
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+    release()
     await first
     await settle(r)
-    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
-    expect(await ui.find({ key: 'resume-230' })).toBeDefined()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
   test(`a clear that is refused runs no work command and clears the queued mark [${surface}]`, async ($, on) => {

@@ -495,14 +495,6 @@ const asideWidth = (a: RowAside | null): number =>
 // The press the panel holds back while a turn runs, and releases when it ends.
 export type HeldPress = { id: number; verb: 'work' | 'resume'; number: number }
 
-// The press the panel is carrying from its click to the verb command (one at a time).
-export type Flight = { id: number; verb: 'work' | 'resume'; number: number; isCancelled: boolean; isStarted: boolean }
-
-// A command this plugin issued itself while a cancelled flight exists: the mod issues /clear and the verb
-// only from a press, one flight at a time, so it is that flight's. A person's own command never matches.
-export const isOwnQueuedCommand = (origin: { kind: string; name?: string }, flight: Flight | null): boolean =>
-  origin.kind === 'plugin' && origin.name === 'trailhead' && flight !== null && flight.isCancelled
-
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
   const mark = ctx.isInPlay ? MARK : ctx.hasMarkColumn ? MARK_PAD : null

@@ -13,12 +13,11 @@ import {
   burndownEnd,
   burndownSeries,
   failureReason,
-  type Flight,
   footerStatus,
   groupTickets,
+  type HeldPress,
   headingRoom,
   HISTORY_LIMIT,
-  isOwnQueuedCommand,
   isTimerLate,
   LIST_LIMIT,
   MAP_LABEL,
@@ -45,6 +44,7 @@ import {
   withLabel,
 } from './map-pane-view'
 import { isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
+import { isMainTurnRunning } from './turn-state'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
@@ -117,6 +117,8 @@ export const isDashboard = atom({ plugin: 'trailhead', key: 'isDashboard' } as c
 export const dashboardPane = atom({ plugin: 'trailhead', key: 'dashboardPane' } as const, EMPTY_DASHBOARD)
 // The ticket whose `work` or `resume` press is queued; one at a time.
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
+// Whether that press waits for the running turn to end (cancellable) or was sent to the host.
+export const pendingPhase = atom({ plugin: 'trailhead', key: 'pendingPhase' } as const, null as 'queued' | 'starting' | null)
 // Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
@@ -156,10 +158,12 @@ let ticker: Tracked | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
 let carried: Carried | null = null
-// The `work` or `resume` press that is running: /clear empties the pendingWork atom meanwhile. Updated by
-// building a new object; `id` tells one press from the next.
-let flight: Flight | null = null
-let flightCount = 0
+// A `work` or `resume` press made during a running turn: the panel keeps it, and sends nothing, until the
+// main turn ends. One slot, shared with `inFlight` (the pendingWork claim): never both at once.
+let held: HeldPress | null = null
+// The id of the press whose /clear and verb are being sent: /clear empties the pendingWork atom meanwhile.
+let inFlight: number | null = null
+let pressCount = 0
 
 async function readActiveMap($: Dollar): Promise<number | null> {
   const pin = await read($, repoPin)
@@ -528,66 +532,105 @@ async function refusalOf($: Dollar): Promise<string | null> {
   return where === 'out' ? `cd into ${pin.slug}` : 'checkout unreadable'
 }
 
-// Clears the conversation, then runs `/trailhead:<verb> <n>` (work or resume) in the new one; the host queues both
-// behind a running turn. Outside the pinned repo it refuses before the clear, which is destructive.
-// The claim is taken with the version it read, so two presses never both pass, and `flight`
-// holds the next ones off while the clear has emptied the atom. Released once the calls settle.
-// A cancel (cancelQueued) marks the flight; the hook below answers its pending commands without running them,
-// and every step here checks the mark again after an await.
+// A press during a running turn is held (row `queued`, with a cancel button) and sent when the main turn ends;
+// with no turn running it is sent at once. Outside the pinned repo it refuses before anything, as the clear is
+// destructive. The pendingWork claim is taken with the version it read, so two presses never both pass.
 async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
-  if (flight !== null) {
-    // A cancelled press still settling: say why this one did nothing.
-    if (flight.isCancelled) $.ui.toast(`#${number} not started: previous press still settling`)
-    return
-  }
+  if (held !== null || inFlight !== null) return
   const refusal = await refusalOf($)
   // The toast box is narrow and already names the plugin: the text stays a few words.
   if (refusal !== null) return $.ui.toast(`#${number} not started: ${refusal}`)
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
-  if (flight !== null) return
+  if (held !== null || inFlight !== null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
-  const id = (flightCount += 1)
-  flight = { id, verb, number, isCancelled: false, isStarted: false }
-  const isMine = () => flight?.id === id
-  const isCancelled = () => isMine() && flight?.isCancelled === true
+  const press: HeldPress = { id: (pressCount += 1), verb, number }
   try {
-    const before = await $.session.id()
-    if (!isMine() || isCancelled()) return debug($, `trailhead mod: ${verb} ${number} cancelled before the clear`)
-    await $.command.run({ command: CLEAR_COMMAND, args: '' })
-    if (!isMine()) return
-    // A clear another hook answered without running resolves too (a cancel's answer too): the verb must not
-    // start in the old conversation.
-    if ((await $.session.id()) === before) return debug($, `trailhead mod: ${verb} ${number} skipped, the conversation was not cleared`)
-    if (!isMine() || isCancelled()) return debug($, `trailhead mod: ${verb} ${number} cancelled during the clear`)
-    // The clear emptied the atom: the row is still queued in the new session.
-    await update($, pendingWork, () => number)
-    if (!isMine() || isCancelled()) {
-      if (isMine()) await update($, pendingWork, () => null)
-      return debug($, `trailhead mod: ${verb} ${number} cancelled after the clear`)
+    await update($, pendingPhase, () => 'queued')
+    // The turn mark is synchronous with the turn start, so this read is the latest word on it.
+    if (isMainTurnRunning()) {
+      held = press
+      return
     }
-    await $.command.run({ command: verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args: String(number) })
   } catch (err) {
     debug($, `trailhead mod: ${verb} ${number} did not start: ${String(err)}`)
+    return dropPending($)
+  }
+  await dispatch($, press)
+}
+
+// The pending marks go phase first, the claim last: until pendingWork is clear no new press can take the slot,
+// so a new press never has its phase erased by the old one's cleanup.
+async function dropPending($: Dollar) {
+  try {
+    await update($, pendingPhase, () => null)
   } finally {
-    if (isMine()) {
+    await update($, pendingWork, () => null).catch(err => debug($, `trailhead mod: pending mark not cleared: ${String(err)}`))
+  }
+}
+
+// Sends the press: /clear, then `/trailhead:<verb> <n>` in the new conversation. Every await comes first, then the
+// turn check and the /clear call follow with no await between, so a turn that started at any point before is seen
+// and the press is held again instead of queued behind it in the host, where it could not be cancelled.
+async function dispatch($: Dollar, press: HeldPress) {
+  inFlight = press.id
+  let isReheld = false
+  try {
+    let clearing: Promise<unknown> | null = null
+    let before = ''
+    while (clearing === null) {
+      await update($, pendingPhase, () => 'starting')
+      before = await $.session.id()
+      if (!isMainTurnRunning()) {
+        clearing = $.command.run({ command: CLEAR_COMMAND, args: '' })
+        break
+      }
+      // A turn began meanwhile: back to queued. Ownership returns to `held` only while the turn still runs, else go round.
+      await update($, pendingPhase, () => 'queued')
+      if (isMainTurnRunning()) {
+        held = press
+        isReheld = true
+        return
+      }
+    }
+    await clearing
+    // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
+    if ((await $.session.id()) === before) return debug($, `trailhead mod: ${press.verb} ${press.number} skipped, the conversation was not cleared`)
+    // The clear emptied the atoms: the row is still starting in the new session.
+    await update($, pendingWork, () => press.number)
+    await update($, pendingPhase, () => 'starting')
+    await $.command.run({ command: press.verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args: String(press.number) })
+  } catch (err) {
+    debug($, `trailhead mod: ${press.verb} ${press.number} did not start: ${String(err)}`)
+  } finally {
+    // A press held again keeps its marks and its place in `held`; only the in-flight guard goes.
+    if (isReheld) inFlight = null
+    else {
       try {
-        await update($, pendingWork, () => null)
+        await dropPending($)
       } finally {
-        flight = null
+        if (inFlight === press.id) inFlight = null
       }
     }
   }
 }
 
-// The cancel button of a queued row: until the verb command is dispatched the press does not start, and the row
-// goes back to its button at once. A cancel for a ticket not in flight does nothing.
+// The zero-delay timer after a main turn ends. It claims the held press in its first statements, with no await,
+// so the press stays cancellable until this instant; a turn running again (a queued prompt) leaves it held.
+function releaseHeld($: Dollar) {
+  if (isMainTurnRunning()) return
+  const press = held
+  if (press === null) return
+  held = null
+  void dispatch($, press)
+}
+
+// The cancel button of a queued row: the press never leaves the panel, so nothing is sent and the conversation
+// stays. A cancel for a ticket not held does nothing.
 async function cancelQueued($: Dollar, number: number) {
-  const current = flight
-  if (current === null || current.number !== number || current.isCancelled) return
-  if (current.isStarted) return $.ui.toast(`#${number} already started`)
-  flight = { ...current, isCancelled: true }
-  await update($, pendingWork, () => null)
+  if (held?.number !== number) return
+  held = null
+  await dropPending($)
 }
 
 // A click on a map of the list: show it, or (the active map, or null) go back to following the active one.
@@ -689,12 +732,20 @@ export function registerMapPane(on: On) {
     await safeSyncPin($)
     await safeReadActiveMap($)
     void requestRefresh($)
+    // The band's hook marks the turn over; the timer runs after the whole chain, and releases a held press.
+    if (e.agentId === undefined) $.clock.after(0, () => releaseHeld($))
     return result
   })
 
-  // A /clear empties the atoms: note what the pane must get back, then restore it in the new session.
-  on('session.end', { reason: 'clear' }, async ($, e, next) => {
-    await carryOverClear($).catch(err => debug($, `trailhead mod: map pane carry-over failed: ${String(err)}`))
+  // Every reason: a /clear empties the atoms, so note what the pane must get back and restore it in the new
+  // session; any ending drops a held press (nothing is left to run it in). The mod's own /clear never finds one:
+  // only a dispatch issues it, and a held press and a dispatch never coexist.
+  on('session.end', { reason: ['clear', 'resume', 'logout', 'prompt_input_exit', 'other'] }, async ($, e, next) => {
+    if (e.reason === 'clear') await carryOverClear($).catch(err => debug($, `trailhead mod: map pane carry-over failed: ${String(err)}`))
+    if (held !== null) {
+      held = null
+      await dropPending($).catch(err => debug($, `trailhead mod: held press not dropped: ${String(err)}`))
+    }
     return next(e)
   })
 
@@ -714,19 +765,6 @@ export function registerMapPane(on: On) {
 
   // /trailhead:panel is a plugin command file; this answers it, so the model never runs.
   on('command.run', { command: PANEL_COMMAND }, async $ => ({ text: await togglePanel($) }))
-
-  // A cancelled press's pending commands (the clear, then the verb) are answered without running. The mod issues
-  // them only from startVerb, one flight at a time, so a plugin-origin one while a cancelled flight exists is that
-  // flight's; a person's own /clear or /trailhead:work always passes. The plugin's own verb passing marks the flight
-  // started, which ends the window to cancel.
-  on('command.run', { command: [CLEAR_COMMAND, WORK_COMMAND, RESUME_COMMAND] }, async ($, e, next) => {
-    if (flight !== null && isOwnQueuedCommand(e.origin, flight)) return { text: `#${flight.number} cancelled` }
-    if (flight !== null && e.command !== CLEAR_COMMAND && e.origin.kind === 'plugin' && e.origin.name === 'trailhead') {
-      flight = { ...flight, isStarted: true }
-    }
-    return next(e)
-    // This hook never judges a command of the person: if it fails, the command goes on untouched.
-  }).catch((_$, e, next) => next(e))
 
   // Only in fullscreen, where a pane docks beside the transcript; this bare matcher is
   // narrower than the band's, and the band's own hook (in register.tsx) draws after it.
@@ -759,6 +797,7 @@ export function registerMapPane(on: On) {
     const own = await read($, ownTicket)
     const pin = await read($, repoPin)
     const pending = await read($, pendingWork)
+    const phase = await read($, pendingPhase)
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
     const isDock = e.props.placement === 'dock'
@@ -830,7 +869,7 @@ export function registerMapPane(on: On) {
     // This session's own ticket survives a work-state file another session took over; without one, the file decides.
     const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
-      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: null, columns: cols })
+      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: phase, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isDim ? dim : {}
       const line = (
@@ -845,6 +884,7 @@ export function registerMapPane(on: On) {
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
           {r.aside?.kind === 'self' ? text(`self-${t.number}`, { color: ACCENT }, r.aside.text) : null}
           {r.aside?.kind === 'queued' ? text(`queued-${t.number}`, { color: AMBER }, r.aside.text) : null}
+          {r.aside?.kind === 'starting' ? text(`starting-${t.number}`, { color: AMBER }, r.aside.text) : null}
           {r.aside?.kind === 'queued' ? (
             <Button
               key={`cancel-${t.number}`}
