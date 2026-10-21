@@ -49,13 +49,14 @@ const VALUE_FLAGS = new Set([
 const ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 // Read the options of one `gh issue create` statement.
-//   { labels: [lowercased label names], unresolved: bool, repoFlag: bool }
+//   { labels: [lowercased label names], unresolved: bool, repoFlag: bool, help: bool }
 function parseCreate(text) {
   const { args } = parseRedirects(words(text));
   const toks = args.map(dequote);
   const labels = [];
   let unresolved = false;
   let repoFlag = false;
+  let help = false;
   let afterCreate = false;
   let sawIssue = false;
   const take = (v) => {
@@ -72,7 +73,9 @@ function parseCreate(text) {
     i++;
   }
   for (i += 1; i < toks.length; i++) { // past the gh word
+    if (args[i].startsWith('#')) break; // an unquoted shell comment: the rest is not an argument
     const t = toks[i];
+    if (t === '-h' || t === '--help') { help = true; continue; }
     if (!t.startsWith('-')) {
       if (!sawIssue && t === 'issue') sawIssue = true;
       else if (sawIssue && t === 'create') afterCreate = true;
@@ -94,7 +97,7 @@ function parseCreate(text) {
     if (flag === '-R' || flag === '--repo') repoFlag = true;
     else if (afterCreate && (flag === '--label' || flag === '-l')) take(value);
   }
-  return { labels, unresolved, repoFlag };
+  return { labels, unresolved, repoFlag, help };
 }
 
 // Is `cwd` in a git work tree whose top level has a `.trailhead/` directory? Walks up to
@@ -141,6 +144,7 @@ function block(code, reason) {
 
 // Verdict for one parsed create, or null to allow.
 function checkCreate(parsed, { cmd, cwd, cwdKnown }) {
+  if (parsed.help) return null; // `--help` creates nothing
   if (parsed.unresolved) return null; // a label we cannot read: never block on it
   const th = parsed.labels.filter((l) => l.startsWith('trailhead:'));
   if (th.length > 0) {

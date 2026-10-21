@@ -179,6 +179,14 @@ for (const c of [
   '',
 ]) ok(`untouched: ${c || '(empty)'}`, !blocked(c, TH));
 
+// --- help and shell comments (review of #308) ---
+ok('--help is not a create', !blocked('gh issue create --help', TH));
+ok('-h is not a create', !blocked('gh issue create -h', TH));
+ok('a trailing comment cannot supply the labels',
+  blocked('gh issue create -t x -b y # --label trailhead:ticket,trailhead:bug,trailhead:whiteboard', TH));
+ok('a comment after a full set changes nothing', !blocked(`${create(FULL_WB)} # note`, TH));
+ok('a quoted # is still a value', !blocked('gh issue create -t "#1 x" -b y --label "trailhead:ticket,trailhead:bug,trailhead:whiteboard"', TH));
+
 // --- parseCreate ---
 {
   const p = parseCreate('gh issue create -l a,b --label=c -ld --title t');
