@@ -220,7 +220,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   (`GH_ISSUE_WRITE`); reads never refresh. Never two fetches inside `MIN_REFRESH_MS`: a request inside the floor
   keeps one trailing refresh for the rest of it. A write that reads at once also arms that trailing refresh, so one
   more read follows when the floor ends, after the search index (the history) caught up; a burst of writes still costs one
-  read per floor plus one trailing.
+  read per floor plus one trailing. The host drops a refused timer without a word (a refused `every` period ends
+  the interval), so the slow timer is kept with its due time: past it by more than `TIMER_GRACE_MS` it is held dead
+  and the next trigger starts it again (`isTimerLate`). A read asked while the pane is undrawn is dropped; a render
+  whose list (with no error) is older than `TIMER_MS + TIMER_GRACE_MS` asks for a read at once, as an empty view does.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed
   by the person (a press on the `close` button counts as closing it). The open runs from a zero-delay timer because a render may not write state.
@@ -228,7 +231,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   then opens it again as the person's request (drawn at any width) instead of closing it, and closes it only when even
   that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
-  `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
+  `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`, `TIMER_GRACE_MS = 30_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`flight`, which a cancel marks),

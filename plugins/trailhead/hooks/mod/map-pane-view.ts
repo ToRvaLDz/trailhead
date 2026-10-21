@@ -400,6 +400,10 @@ export const refreshDecision = (now: number, lastStartedAt: number | null, minMs
   return waitMs <= 0 ? { run: true } : { run: false, waitMs }
 }
 
+// A host timer dies silently (a refused `clock.after` never fires, a refused `every` period ends the
+// interval): one whose due time is past by more than the grace is held dead and started again.
+export const isTimerLate = (now: number, dueAt: number, graceMs: number): boolean => now - dueAt > graceMs
+
 export const ageLabel = (ms: number): string => {
   if (ms < 5_000) return 'just now'
   if (ms < 60_000) return `${Math.floor(ms / 1_000)}s ago`

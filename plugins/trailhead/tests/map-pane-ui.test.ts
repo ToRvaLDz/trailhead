@@ -1083,6 +1083,34 @@ for (const surface of SURFACES) {
     expect(fetches(r)).toBe(2)
   })
 
+  // The host drops a refused timer silently (a closed ticket stayed on the pane for good): the pane must not
+  // wait on a dead handle.
+  test(`a slow timer the host dropped is started again by the next trigger [${surface}]`, async ($, on) => {
+    // Above the mock clock, which answers the wait without passing it on.
+    let isDropping = false
+    on('clock.every', { ms: TIMER }, async ($$, e, next) => (isDropping ? { deny: 'dropped' } : next(e)))
+    const r = rig(on, $)
+    await $.session.start(START)
+    // the first period is refused: the interval ends unseen
+    isDropping = true
+    await openAndMount($, r)
+    expect(fetches(r)).toBe(1)
+    await r.clock.advance(TIMER)
+    await settle(r)
+    isDropping = false
+    await r.clock.advance(TIMER)
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    // one trigger brings the timer back
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+    await r.clock.advance(TIMER)
+    await settle(r)
+    expect(fetches(r)).toBe(3)
+  })
+
   // The open list is a GraphQL read, never the search-backed `gh issue list --label`, which lags a write.
   const listReads = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('--label') && argv.includes('trailhead:map-198') && argv.includes('open') && !argv.includes('trailhead:uat'))
 
@@ -1112,6 +1140,31 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await hasKey(ui, 'row-209')).toBe(false)
     expect(listReads(r)).toEqual([])
+  })
+
+  // The reads asked while the pane was undrawn (the person on another session) are dropped: drawn again with a
+  // list older than one slow-timer period, the pane reads at once instead of showing a closed ticket.
+  test(`a pane drawn again with an overdue list reads at once [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const first = await openAndMount($, r)
+    expect(fetches(r)).toBe(1)
+
+    await first.unmount()
+    r.panes = r.panes.map(p => ({ ...p, isPlaced: false }))
+    r.tickets = TICKETS.filter(t => t.number !== 209)
+    await r.clock.advance(FLOOR)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
+    await completeTurn($)
+    await r.clock.advance(TIMER + 30_001)
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    r.panes = r.panes.map(p => ({ ...p, isPlaced: true }))
+    const ui = await mountPane($)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+    expect(await hasKey(ui, 'row-209')).toBe(false)
   })
 
   test(`a create inside the floor shows at the floor's end [${surface}]`, async ($, on) => {

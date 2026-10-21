@@ -19,6 +19,7 @@ import {
   headingRoom,
   HISTORY_LIMIT,
   isOwnQueuedCommand,
+  isTimerLate,
   LIST_LIMIT,
   MAP_LABEL,
   mapRowLayout,
@@ -52,6 +53,8 @@ export const PANEL_COMMAND = 'trailhead:panel'
 export const MIN_REFRESH_MS = 15_000
 export const TIMER_MS = 180_000
 export const GH_TIMEOUT_MS = 20_000
+// How late past its due time a timer may fire before it is held dead (isTimerLate) and started again.
+export const TIMER_GRACE_MS = 30_000
 // A list unchanged for this long is still written, so its age label moves on.
 const AGE_REFRESH_MS = 60_000
 // Shown when no GitHub repo was ever pinned; the pane then makes no `gh` call.
@@ -131,6 +134,9 @@ const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, null as R
 
 type Dollar = EngineInterface
 type Timer = { cancel: () => void }
+// The slow timer with the time it should fire next: the host drops a refused period silently, so the handle
+// alone cannot tell a live timer from a dead one.
+type Tracked = { timer: Timer; dueAt: number }
 
 const debug = ($: Dollar, message: string) => {
   try {
@@ -146,7 +152,7 @@ let queue: Promise<void> = Promise.resolve()
 let generation = 0
 let lastStartedAt: number | null = null
 let trailing: Timer | null = null
-let ticker: Timer | null = null
+let ticker: Tracked | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
 let carried: Carried | null = null
@@ -403,14 +409,34 @@ function stopTimers() {
   isFilling = false
   trailing?.cancel()
   trailing = null
-  ticker?.cancel()
+  ticker?.timer.cancel()
   ticker = null
 }
+
+// The slow timer past its due time by more than the grace never fired: drop it, so the caller starts another.
+// A dropped trailing needs no such check: the next read outside the floor clears it.
+const liveOrNull = (t: Tracked | null, now: number): Tracked | null => {
+  if (t === null || !isTimerLate(now, t.dueAt, TIMER_GRACE_MS)) return t
+  t.timer.cancel()
+  return null
+}
+
+const startTrailing = ($: Dollar, waitMs: number): Timer =>
+  $.clock.after(waitMs, () => {
+    trailing = null
+    void requestRefresh($)
+  })
+
+const startTicker = ($: Dollar, now: number): Tracked => ({
+  timer: $.clock.every(TIMER_MS, () => void requestRefresh($, { isTick: true })),
+  dueAt: now + TIMER_MS,
+})
 
 // `bypassFloor`: the caller's last result was dropped unseen, so reading again is not a repeat.
 // `isWrite`: a tracker write just ran; a read that starts at once is followed by one more at the floor's end,
 // by when the search index (history, the list fallback) has caught up.
-type Request = { bypassFloor?: boolean; isWrite?: boolean }
+// `isTick`: the slow timer fired, so its next due time moves on.
+type Request = { bypassFloor?: boolean; isWrite?: boolean; isTick?: boolean }
 
 // Throttled: inside the floor it keeps ONE trailing refresh for the rest of it, so an event
 // just after a refresh still shows.
@@ -419,28 +445,20 @@ async function decide($: Dollar, request: Request) {
   // Nothing pinned: no repo to read, so no call.
   const pin = await syncPin($)
   if (pin === null) return
-  ticker ??= $.clock.every(TIMER_MS, () => void requestRefresh($))
   const now = await $.clock.now()
+  if (request.isTick === true && ticker !== null) ticker = { ...ticker, dueAt: now + TIMER_MS }
+  // A timer the host dropped is started again here, else the pane would wait on it for good.
+  ticker = liveOrNull(ticker, now) ?? startTicker($, now)
   const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
   if (!decision.run) {
-    if (trailing === null) {
-      trailing = $.clock.after(decision.waitMs, () => {
-        trailing = null
-        void requestRefresh($)
-      })
-    }
+    trailing ??= startTrailing($, decision.waitMs)
     return
   }
   lastStartedAt = now
   trailing?.cancel()
   trailing = null
   // Never bypassFloor: a burst of writes still costs one read per floor plus this one trailing.
-  if (request.isWrite === true) {
-    trailing = $.clock.after(MIN_REFRESH_MS, () => {
-      trailing = null
-      void requestRefresh($)
-    })
-  }
+  if (request.isWrite === true) trailing = startTrailing($, MIN_REFRESH_MS)
   const again = () => void requestRefresh($, { bypassFloor: true })
   if (await read($, isDashboard)) await fetchDashboard($, pin, generation, again)
   else await fetchMap($, pin, generation, again)
@@ -935,6 +953,11 @@ export function registerMapPane(on: On) {
       })
     }
 
+    // A list older than one slow-timer period missed its reads (the pane undrawn when they came, or the
+    // timer dropped): the render asks for one, as for an empty view. A failing read keeps its slow pace.
+    const isOverdue = (d: { fetchedAt: number | null; error: string | null; isLoading: boolean }) =>
+      d.fetchedAt !== null && d.error === null && !d.isLoading && isTimerLate(now, d.fetchedAt + TIMER_MS, TIMER_GRACE_MS)
+
     // No GitHub repo was ever pinned: say so rather than a `gh` failure; nothing is read.
     if (pin === null) {
       return (
@@ -946,7 +969,7 @@ export function registerMapPane(on: On) {
 
     if (isBoard) {
       const isLoaded = board.fetchedAt !== null
-      if (!isLoaded && !board.isLoading && board.error === null) askFill()
+      if ((!isLoaded && !board.isLoading && board.error === null) || isOverdue(board)) askFill()
       const heading = fit('Dashboard', headingRoom(cols, MAP_LABEL))
       const title = (
         <Box key="dashboard-title">
@@ -982,7 +1005,7 @@ export function registerMapPane(on: On) {
     }
     const isCurrent = data.map?.number === target
     const isLoading = !isCurrent && (data.isLoading || data.error === null)
-    if (!isCurrent && !data.isLoading && data.error === null) askFill()
+    if ((!isCurrent && !data.isLoading && data.error === null) || (isCurrent && isOverdue(data))) askFill()
 
     const map = isCurrent ? data.map : null
     const heading = map === null ? `map #${target}` : fit(`#${map.number} ${map.title}`, cols)

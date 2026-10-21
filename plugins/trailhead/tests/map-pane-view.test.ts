@@ -13,6 +13,7 @@ import {
   headingRoom,
   HISTORY_LIMIT,
   isOwnQueuedCommand,
+  isTimerLate,
   mapRowLayout,
   nextViewed,
   parseActiveMap,
@@ -295,6 +296,16 @@ test('refreshDecision runs now outside the floor and waits the remainder inside 
   expect(refreshDecision(1000, 1000, 15000)).toEqual({ run: false, waitMs: 15000 })
   // a clock that moved back never waits longer than the floor
   expect(refreshDecision(500, 1000, 15000)).toEqual({ run: false, waitMs: 15000 })
+})
+
+test('isTimerLate holds a timer dead only once its due time is past by more than the grace', () => {
+  // in time, or late within the grace: still alive
+  expect(isTimerLate(1000, 5000, 2000)).toBe(false)
+  expect(isTimerLate(7000, 5000, 2000)).toBe(false)
+  // past the grace: the host dropped it (a refused dispatch never fires)
+  expect(isTimerLate(7001, 5000, 2000)).toBe(true)
+  // a clock that moved back never makes a timer late
+  expect(isTimerLate(0, 5000, 2000)).toBe(false)
 })
 
 test('ageLabel reads just now, seconds, minutes, hours', () => {
