@@ -8,14 +8,17 @@ import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSum
 import {
   ageLabel,
   axisStart,
+  CANCEL_LABEL,
   type BurndownSeries,
   burndownEnd,
   burndownSeries,
   failureReason,
+  type Flight,
   footerStatus,
   groupTickets,
   headingRoom,
   HISTORY_LIMIT,
+  isOwnQueuedCommand,
   LIST_LIMIT,
   MAP_LABEL,
   mapRowLayout,
@@ -147,8 +150,10 @@ let ticker: Timer | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
 let carried: Carried | null = null
-// The ticket whose `work` or `resume` press is running: /clear empties the pendingWork atom meanwhile.
-let workInFlight: number | null = null
+// The `work` or `resume` press that is running: /clear empties the pendingWork atom meanwhile. Updated by
+// building a new object; `id` tells one press from the next.
+let flight: Flight | null = null
+let flightCount = 0
 
 async function readActiveMap($: Dollar): Promise<number | null> {
   const pin = await read($, repoPin)
@@ -507,31 +512,64 @@ async function refusalOf($: Dollar): Promise<string | null> {
 
 // Clears the conversation, then runs `/trailhead:<verb> <n>` (work or resume) in the new one; the host queues both
 // behind a running turn. Outside the pinned repo it refuses before the clear, which is destructive.
-// The claim is taken with the version it read, so two presses never both pass, and `workInFlight`
-// holds the next ones off while the clear has emptied the atom. Cleared once the calls settle.
+// The claim is taken with the version it read, so two presses never both pass, and `flight`
+// holds the next ones off while the clear has emptied the atom. Released once the calls settle.
+// A cancel (cancelQueued) marks the flight; the hook below answers its pending commands without running them,
+// and every step here checks the mark again after an await.
 async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
-  if (workInFlight !== null) return
+  if (flight !== null) {
+    // A cancelled press still settling: say why this one did nothing.
+    if (flight.isCancelled) $.ui.toast(`#${number} not started: previous press still settling`)
+    return
+  }
   const refusal = await refusalOf($)
   // The toast box is narrow and already names the plugin: the text stays a few words.
   if (refusal !== null) return $.ui.toast(`#${number} not started: ${refusal}`)
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
+  if (flight !== null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
-  workInFlight = number
+  const id = (flightCount += 1)
+  flight = { id, verb, number, isCancelled: false, isStarted: false }
+  const isMine = () => flight?.id === id
+  const isCancelled = () => isMine() && flight?.isCancelled === true
   try {
     const before = await $.session.id()
+    if (!isMine() || isCancelled()) return debug($, `trailhead mod: ${verb} ${number} cancelled before the clear`)
     await $.command.run({ command: CLEAR_COMMAND, args: '' })
-    // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
+    if (!isMine()) return
+    // A clear another hook answered without running resolves too (a cancel's answer too): the verb must not
+    // start in the old conversation.
     if ((await $.session.id()) === before) return debug($, `trailhead mod: ${verb} ${number} skipped, the conversation was not cleared`)
+    if (!isMine() || isCancelled()) return debug($, `trailhead mod: ${verb} ${number} cancelled during the clear`)
     // The clear emptied the atom: the row is still queued in the new session.
     await update($, pendingWork, () => number)
+    if (!isMine() || isCancelled()) {
+      if (isMine()) await update($, pendingWork, () => null)
+      return debug($, `trailhead mod: ${verb} ${number} cancelled after the clear`)
+    }
     await $.command.run({ command: verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args: String(number) })
   } catch (err) {
     debug($, `trailhead mod: ${verb} ${number} did not start: ${String(err)}`)
   } finally {
-    workInFlight = null
-    await update($, pendingWork, () => null)
+    if (isMine()) {
+      try {
+        await update($, pendingWork, () => null)
+      } finally {
+        flight = null
+      }
+    }
   }
+}
+
+// The cancel button of a queued row: until the verb command is dispatched the press does not start, and the row
+// goes back to its button at once. A cancel for a ticket not in flight does nothing.
+async function cancelQueued($: Dollar, number: number) {
+  const current = flight
+  if (current === null || current.number !== number || current.isCancelled) return
+  if (current.isStarted) return $.ui.toast(`#${number} already started`)
+  flight = { ...current, isCancelled: true }
+  await update($, pendingWork, () => null)
 }
 
 // A click on a map of the list: show it, or (the active map, or null) go back to following the active one.
@@ -659,6 +697,19 @@ export function registerMapPane(on: On) {
   // /trailhead:panel is a plugin command file; this answers it, so the model never runs.
   on('command.run', { command: PANEL_COMMAND }, async $ => ({ text: await togglePanel($) }))
 
+  // A cancelled press's pending commands (the clear, then the verb) are answered without running. The mod issues
+  // them only from startVerb, one flight at a time, so a plugin-origin one while a cancelled flight exists is that
+  // flight's; a person's own /clear or /trailhead:work always passes. The plugin's own verb passing marks the flight
+  // started, which ends the window to cancel.
+  on('command.run', { command: [CLEAR_COMMAND, WORK_COMMAND, RESUME_COMMAND] }, async ($, e, next) => {
+    if (flight !== null && isOwnQueuedCommand(e.origin, flight)) return { text: `#${flight.number} cancelled` }
+    if (flight !== null && e.command !== CLEAR_COMMAND && e.origin.kind === 'plugin' && e.origin.name === 'trailhead') {
+      flight = { ...flight, isStarted: true }
+    }
+    return next(e)
+    // This hook never judges a command of the person: if it fails, the command goes on untouched.
+  }).catch((_$, e, next) => next(e))
+
   // Only in fullscreen, where a pane docks beside the transcript; this bare matcher is
   // narrower than the band's, and the band's own hook (in register.tsx) draws after it.
   on('ui.render', { component: 'AbovePrompt', viewport: { isFullscreen: true } }, async ($, e, next) => {
@@ -776,6 +827,15 @@ export function registerMapPane(on: On) {
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
           {r.aside?.kind === 'self' ? text(`self-${t.number}`, { color: ACCENT }, r.aside.text) : null}
           {r.aside?.kind === 'queued' ? text(`queued-${t.number}`, { color: AMBER }, r.aside.text) : null}
+          {r.aside?.kind === 'queued' ? (
+            <Button
+              key={`cancel-${t.number}`}
+              label={CANCEL_LABEL}
+              onPress={() => {
+                void cancelQueued($, t.number).catch(err => debug($, `trailhead mod: cancel press failed: ${String(err)}`))
+              }}
+            />
+          ) : null}
           {r.aside?.kind === 'work' || r.aside?.kind === 'resume' ? (
             <Button
               key={`${r.aside.kind}-${t.number}`}

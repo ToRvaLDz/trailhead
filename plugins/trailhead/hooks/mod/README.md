@@ -113,8 +113,11 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   label); never a partial map, no search fallback. A
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
   `/trailhead:work <n>` in the new one (a paused row's `resume` does the same with `/trailhead:resume <n>`), both through `$.command.run`, which the host queues behind a
-  running turn; the row shows `queued` until the calls settle (across the reset too), and a
-  second press meanwhile is ignored. A press while the session is not in the pinned repo (a shell `cd` moved it, or its
+  running turn; the row shows `queued` (with a `cancel` button) until the calls settle (across the reset too), and a
+  second press meanwhile is ignored. A cancel works until the ticket's verb is dispatched: the verb then does not
+  start (a `/clear` still pending is skipped too; one already run is not undone) and the row goes back to its button;
+  once dispatched, a cancel only says `already started`. A press made before the cancelled call has settled is refused
+  with a toast. A press while the session is not in the pinned repo (a shell `cd` moved it, or its
   checkout cannot be read) is refused with a toast before the `/clear`, since the host runs the verb in the
   session's own directory. A refused `/clear`, or one that
   did not change the session, runs no work command. `trailhead:unverified` tickets are never listed,
@@ -228,7 +231,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
-  the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
+  the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`flight`, which a cancel marks),
   because `/clear` empties the atoms while they are needed.
 - **Validator note**: `claude plugin validate` follows `$` only inside one file and refuses two
   hooks on one event with no matcher. So `map-pane.tsx` registers `session.start`, `turn.complete`

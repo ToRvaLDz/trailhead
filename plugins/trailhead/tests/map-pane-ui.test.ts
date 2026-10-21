@@ -399,6 +399,8 @@ const textOf = async (ui: any, key: string): Promise<string | undefined> => (awa
 const keysOf = async (ui: any, prefix: string): Promise<string[]> =>
   (await ui.findAll({ type: 'Box' })).map((el: any) => el.key).filter((k: string | undefined) => k?.startsWith(prefix))
 
+const PLUGIN_ORIGIN = { kind: 'plugin', name: 'trailhead' }
+
 for (const surface of SURFACES) {
   const mountPane = ($: any, props: Record<string, unknown> = {}) =>
     $.ui.mount({ plugin: 'trailhead', surface, component: 'Pane', requestId: PANE, props: { ...PANE_PROPS, ...props } })
@@ -1501,6 +1503,154 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a queued row has a cancel button; cancelling during a held clear puts the work button back and runs no verb [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
+
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    expect((await ui.find({ key: 'cancel-209' }))?.props).toMatchObject({ label: 'cancel' })
+
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'cancel-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+
+    releaseClear()
+    await first
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+  })
+
+  test(`a cancel pressed while the clear runs lets it finish, runs no verb and leaves the work button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(await ui.find({ key: 'cancel-209' })).toBeDefined()
+    // The row drawn queued is still the one on screen when the press lands, mid-clear.
+    r.duringClear = () => void ui.press({ key: 'cancel-209' })
+    releaseClear()
+    await first
+    await settle(r)
+    expect(r.session).toBe(`${NEXT_SESSION}-1`)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    await ui.redraw()
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a press after a cancel is refused with a toast until the cancelled call settles, then starts normally [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(r.toasts).toEqual(['#210 not started: previous press still settling'])
+
+    releaseClear()
+    await first
+    await settle(r)
+    r.clearGate = null
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(r.runs).toEqual([
+      { command: 'clear', args: '' },
+      { command: 'clear', args: '' },
+      { command: 'trailhead:work', args: '210' },
+    ])
+  })
+
+  test(`a cancel once the host dispatched the verb says it already started and the verb completes [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let release: () => void = () => undefined
+    r.gate = new Promise<void>(resolve => (release = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+    // The kit has no host queue: the host raising the verb is played by a call carrying the plugin's origin.
+    void $.command.run({ command: 'trailhead:work', args: '209', origin: PLUGIN_ORIGIN } as never)
+    await settle(r)
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+    expect(r.toasts).toEqual(['#209 already started'])
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+
+    release()
+    await first
+    await settle(r)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a cancelled press has its pending clear and verb answered without running, a person's own commands passing [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const first = ui.press({ key: 'work-209' })
+    await settle(r)
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+
+    const plugin = (command: string, args: string) => $.command.run({ command, args, origin: PLUGIN_ORIGIN } as never)
+    expect(await plugin('trailhead:work', '209')).toEqual({ text: '#209 cancelled' })
+    expect(await plugin('clear', '')).toEqual({ text: '#209 cancelled' })
+    expect(await plugin('trailhead:resume', '209')).toEqual({ text: '#209 cancelled' })
+    expect(r.runs).toHaveLength(1)
+
+    // The person's own command is never swallowed.
+    await $.command.run({ command: 'trailhead:work', args: '5', origin: { kind: 'composer' } } as never)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '5' }])
+
+    releaseClear()
+    await first
+    await settle(r)
+    expect(r.runs).toHaveLength(2)
+  })
+
+  test(`a cancel of a resume press runs no resume verb [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    let releaseClear: () => void = () => undefined
+    r.clearGate = new Promise<void>(resolve => (releaseClear = resolve))
+    r.tickets = [...TICKETS, issue(230, 'Paused one', ['trailhead:build', 'trailhead:paused'], ['alice'])]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    const first = ui.press({ key: 'resume-230' })
+    await settle(r)
+    await ui.press({ key: 'cancel-230' })
+    releaseClear()
+    await first
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }])
+    expect(await ui.find({ key: 'resume-230' })).toBeDefined()
   })
 
   test(`a clear that is refused runs no work command and clears the queued mark [${surface}]`, async ($, on) => {
