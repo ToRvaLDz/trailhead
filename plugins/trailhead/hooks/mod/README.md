@@ -107,9 +107,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   ticket carrying `trailhead:uat` (a pending UAT follow-up, a marker never a state) shows once, under `UAT`,
   between In progress and Paused, whatever its state (`paused` and `needs-you` win), keeping its `work` button or holder, with a
   dim `tests <parent title> #<n>` line under it. The parent comes from the `UAT of:` line of its body, read once
-  per refresh by `gh issue list --label trailhead:uat --label trailhead:map-<n>` (`--label trailhead:whiteboard`
-  on the whiteboard view) `--json number,body`, capped like the ticket list at 200: beyond that, or when the read
-  fails, a UAT row is drawn without its parent line (the rows still group by label). A
+  per refresh by a paged `gh api graphql` read of `repository.issues(states: OPEN, labels: ["trailhead:uat"])` (100 a page,
+  up to 10 pages), filtered here to `trailhead:map-<n>` (`trailhead:whiteboard` on the whiteboard view). When a page fails
+  or is unreadable, or pages are left at the cap, a UAT row is drawn without its parent line (the rows still group by
+  label); never a partial map, no search fallback. A
   frontier row has a `work` button that clears the conversation (`/clear`) and then runs
   `/trailhead:work <n>` in the new one (a paused row's `resume` does the same with `/trailhead:resume <n>`), both through `$.command.run`, which the host queues behind a
   running turn; the row shows `queued` until the calls settle (across the reset too), and a
@@ -195,8 +196,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   paged 100 a page up to 200 rows, because `gh issue list --label` goes through the search API, which lags a write by seconds:
   a ticket just created or closed would show stale. GraphQL `labels` is any-of, so the whiteboard read filters
   `trailhead:ticket` itself. A page that fails or is unreadable discards the whole GraphQL read (never a partial list)
-  and `gh issue list --label <label> --state open` runs once instead. The history (`--state all`) and the UAT-parent
-  reads stay on `gh issue list` (search-backed): they can trail a write by seconds, which the follow-up read below covers.
+  and `gh issue list --label <label> --state open` runs once instead. The UAT-parent read joins the open list on
+  GraphQL (above), with no search fallback. Only the history (`--state all`) stays on `gh issue list` (search-backed): it can
+  trail a write by seconds, which the follow-up read below covers.
 - **Which repo**: the one the session started in, pinned (`repo-pin.ts`) when `$.session.repo()` has a
   remote of the form host/owner/name (github.com or an Enterprise host, any ssh/https form). The pinned root
   is the checkout's own toplevel (`git rev-parse --show-toplevel` in the session's project root), so a
@@ -214,7 +216,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   (`-f`, `-F`, `--field`, `--raw-field`, `--input`) and no `-X GET`, or the `trailhead-issue-body.js` helper
   (`GH_ISSUE_WRITE`); reads never refresh. Never two fetches inside `MIN_REFRESH_MS`: a request inside the floor
   keeps one trailing refresh for the rest of it. A write that reads at once also arms that trailing refresh, so one
-  more read follows when the floor ends, after the search index caught up; a burst of writes still costs one
+  more read follows when the floor ends, after the search index (the history) caught up; a burst of writes still costs one
   read per floor plus one trailing.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed
