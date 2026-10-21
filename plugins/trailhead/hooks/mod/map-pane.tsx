@@ -43,7 +43,7 @@ import {
   whiteboardRowLayout,
   withLabel,
 } from './map-pane-view'
-import { isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
+import { currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { isMainTurnRunning } from './turn-state'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -522,7 +522,8 @@ export const GH_ISSUE_WRITE =
 // refused too, but not told it is elsewhere.
 async function whereIsSession($: Dollar, pin: RepoPin): Promise<'in' | 'out' | 'unknown'> {
   try {
-    return isPinCheckout(pin, await $.session.repo(), await toplevelOf($)) ? 'in' : 'out'
+    const { repo, toplevel } = await currentRepo($)
+    return isPinCheckout(pin, repo, toplevel ?? (await toplevelOf($))) ? 'in' : 'out'
   } catch {
     return 'unknown'
   }

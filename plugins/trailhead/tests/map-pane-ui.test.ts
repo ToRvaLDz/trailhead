@@ -194,6 +194,8 @@ const rig = (on: On, engine?: any) => {
     toasts: [] as string[],
     // `session.repo` answers a denial (the checkout cannot be read).
     repoFails: false,
+    // What `git remote get-url origin` answers (null: no origin), for a `session.repo` that answers null (#299).
+    gitRemote: null as string | null,
     opens: [] as { id: string; title?: string }[],
     // `command.run` beneath the plugin: every run is recorded; `gate` holds a work run, `refuse` rejects it.
     // Every file write beneath the plugin: the pane must never write the active-map marker.
@@ -343,6 +345,10 @@ const rig = (on: On, engine?: any) => {
       r.gitCalls.push({ argv: [...e.argv], cwd: e.init?.cwd })
       // Answered per directory, like git: the worktree gives `top`, the other checkouts their own root.
       const where = e.init?.cwd
+      if (e.argv[1] === 'remote') {
+        const remote = r.gitRemote === null ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: `${r.gitRemote}\n`, stderr: '' }
+        return { value: { ...remote, isStdoutTruncated: false, isStderrTruncated: false } }
+      }
       const top = where === ROOT_TREE ? r.top : where === ROOT || where === ROOT_OTHER ? where : null
       const out = top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${top}\n`, stderr: '' }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
@@ -1521,6 +1527,18 @@ for (const surface of SURFACES) {
     expect(r.runs).toEqual([])
     expect(r.toasts).toHaveLength(1)
     expect(r.toasts[0]).toContain('o/r')
+  })
+
+  test(`a work press in the pinned repo goes through although session.repo answers null [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.repo = null
+    r.gitRemote = 'git@github.com:o/r.git'
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.toasts).toEqual([])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
   })
 
   test(`a work press whose checkout cannot be read is refused, and the next one from the repo goes through [${surface}]`, async ($, on) => {

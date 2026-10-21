@@ -78,14 +78,26 @@ export const repoFromGit = (top: GitOut | null, origin: GitOut | null): RepoRead
   return { root, remote: remote === '' ? null : remote }
 }
 
-async function gitRepo($: EngineInterface): Promise<RepoRead | null> {
+// The fallback read: null outside a repo (no second spawn then); `toplevel` is the root git just gave.
+async function gitRepo($: EngineInterface): Promise<{ repo: RepoRead; toplevel: string } | null> {
   try {
     const cwd = await $.session.cwd()
     const run = (argv: string[]) => $.process.run(argv, { cwd, timeoutMs: 5_000 })
-    return repoFromGit(await run(['git', 'rev-parse', '--show-toplevel']), await run(['git', 'remote', 'get-url', 'origin']))
+    const top = await run(['git', 'rev-parse', '--show-toplevel'])
+    if (repoFromGit(top, null) === null) return null
+    const repo = repoFromGit(top, await run(['git', 'remote', 'get-url', 'origin']))
+    return repo === null ? null : { repo, toplevel: repo.root }
   } catch {
     return null
   }
+}
+
+// The repo the session is in: the host's answer, else git's (#299). `toplevel` comes with it only on the
+// git path, where it is already read; a throw of the host read reaches the caller.
+export async function currentRepo($: EngineInterface): Promise<{ repo: RepoRead | null; toplevel: string | null }> {
+  const host = await $.session.repo()
+  if (host !== null) return { repo: host, toplevel: null }
+  return (await gitRepo($)) ?? { repo: null, toplevel: null }
 }
 
 // github.com is served by gh as it is; any other host only once `gh auth status --hostname <host>` succeeds
@@ -122,10 +134,11 @@ export async function refreshPin($: EngineInterface, init: { isStart?: boolean; 
   let repo: RepoRead | null = null
   let toplevel: string | null = null
   try {
-    repo = (await $.session.repo()) ?? (await gitRepo($))
+    const found = await currentRepo($)
+    repo = found.repo
     const id = remoteId(repo?.remote ?? null)
     if (repo !== null && id !== null) {
-      toplevel = await toplevelOf($)
+      toplevel = found.toplevel ?? (await toplevelOf($))
       // A host gh cannot serve is no usable remote: the last pin stays.
       if (!(await isServed($, id.host, toplevel ?? repo.root))) repo = null
     }
