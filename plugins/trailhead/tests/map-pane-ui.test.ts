@@ -1815,6 +1815,76 @@ for (const surface of SURFACES) {
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
   })
 
+  // A cancel from a screen a frame behind: the row is drawn queued (the engine reports that phase) for the press.
+  const staleCancel = (ui: any, r: Rig, number: number) => async () => {
+    r.forced = { pendingPhase: 'queued' }
+    await ui.redraw()
+    await ui.press({ key: `cancel-${number}` })
+  }
+
+  test(`a cancel landing while a re-hold writes queued drops the press instead of holding it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    await completeTurn($)
+    // A turn starts during the dispatch's reads: it re-holds, and the cancel lands on that queued write.
+    r.beforeSessionId = async () => {
+      await startMainTurn($, 'late')
+      r.beforePhaseWrite = staleCancel(ui, r, 209)
+    }
+    await settle(r)
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.session).toBe(SESSION)
+    await ui.redraw()
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a cancel landing between the queued write and the hold drops the press [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+
+    r.beforePhaseWrite = staleCancel(ui, r, 209)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    await ui.redraw()
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  for (const phase of [null, 'starting'] as const) {
+    test(`a pending claim with phase ${phase} and no press behind it is cleared when the pane draws [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      // What a hot reload leaves: the atoms say pending, the module state is empty.
+      r.forced = { pendingWork: 209, pendingPhase: phase }
+      await ui.redraw()
+      await settle(r)
+      await ui.redraw()
+      expect(await ui.find({ key: 'starting-209' })).toBeUndefined()
+      expect(await ui.find({ key: 'work-209' })).toBeDefined()
+      await ui.press({ key: 'work-210' })
+      await settle(r)
+      expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '210' }])
+    })
+  }
+
   test(`a press with no turn running never shows queued or a cancel button [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     let release: () => void = () => undefined

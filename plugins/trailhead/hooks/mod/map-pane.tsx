@@ -166,7 +166,7 @@ let inFlight: number | null = null
 // The press being sent, until its /clear is called: a cancel marks it and the dispatch drops it at that line.
 let dispatching: { id: number; number: number; isCancelled: boolean; isSent: boolean } | null = null
 // The number of a press between its claim and the choice to hold it or send it.
-let claiming: number | null = null
+let claiming: { number: number; isCancelled: boolean } | null = null
 let pressCount = 0
 
 async function readActiveMap($: Dollar): Promise<number | null> {
@@ -549,11 +549,13 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   if (held !== null || inFlight !== null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
   const press: HeldPress = { id: (pressCount += 1), verb, number }
-  claiming = number
+  claiming = { number, isCancelled: false }
   try {
     // A press that needs no hold is never shown queued: no turn running, no cancel button.
     if (isMainTurnRunning()) {
       await update($, pendingPhase, () => 'queued')
+      // A cancel landed during that write: nothing was sent, so dropping the press is the whole cancel.
+      if (claiming.isCancelled) return dropPending($)
       // The turn mark is synchronous with the turn start, so this read is the latest word on it.
       if (isMainTurnRunning()) {
         held = press
@@ -601,6 +603,8 @@ async function dispatch($: Dollar, press: HeldPress) {
       }
       // A turn began meanwhile: back to queued. Ownership returns to `held` only while the turn still runs, else go round.
       await update($, pendingPhase, () => 'queued')
+      // A cancel landed during that write: drop the press (isReheld stays false, so the finally clears the marks).
+      if (dispatching?.isCancelled === true) return debug($, `trailhead mod: ${press.verb} ${press.number} cancelled before the clear`)
       if (isMainTurnRunning()) {
         held = press
         isReheld = true
@@ -652,11 +656,36 @@ async function cancelQueued($: Dollar, number: number) {
     if (!dispatching.isSent) dispatching = { ...dispatching, isCancelled: true }
     return
   }
-  if (claiming === number || dispatching !== null || inFlight !== null || held !== null) return
+  if (claiming?.number === number) {
+    claiming = { ...claiming, isCancelled: true }
+    return
+  }
+  if (claiming !== null || dispatching !== null || inFlight !== null || held !== null) return
   if ((await read($, pendingPhase)) !== 'queued' || (await read($, pendingWork)) !== number) return
   // The reads above awaited: a press made meanwhile owns the atoms.
   if (claiming !== null || dispatching !== null || inFlight !== null || held !== null) return
   await dropPending($)
+}
+
+// A pending claim the pane draws with no press behind it and no `queued` mark (a hot reload reset the module,
+// the atoms stayed) would block every press for good. Run from a zero-delay timer, as a render cannot write state.
+// The claim is read first, then the module state is checked: a press that took the claim has set its guards by
+// the time that read answers.
+let isClearingStale = false
+async function clearStale($: Dollar) {
+  if (isClearingStale) return
+  isClearingStale = true
+  try {
+    const isIdle = () => held === null && claiming === null && dispatching === null && inFlight === null
+    if (!isIdle() || (await read($, pendingWork)) === null || !isIdle()) return
+    if ((await read($, pendingPhase)) === 'queued' || !isIdle()) return
+    debug($, 'trailhead mod: cleared a pending press left with no owner')
+    await dropPending($)
+  } catch (err) {
+    debug($, `trailhead mod: stale press not cleared: ${String(err)}`)
+  } finally {
+    isClearingStale = false
+  }
 }
 
 // A click on a map of the list: show it, or (the active map, or null) go back to following the active one.
@@ -824,6 +853,7 @@ export function registerMapPane(on: On) {
     const pin = await read($, repoPin)
     const pending = await read($, pendingWork)
     const phase = await read($, pendingPhase)
+    if (pending !== null && phase !== 'queued') $.clock.after(0, () => void clearStale($))
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
     const isDock = e.props.placement === 'dock'
