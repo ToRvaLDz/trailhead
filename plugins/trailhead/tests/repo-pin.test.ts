@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPinCheckout, isSamePin, nextPin, pinOf, pinPath, remoteId } from '../hooks/mod/repo-pin'
+import { isPinCheckout, isSamePin, nextPin, pinOf, pinPath, remoteId, repoFromGit } from '../hooks/mod/repo-pin'
 
 const repo = (remote: string | null, root = '/repo') => ({ root, remote })
 const GH = { host: 'github.com', slug: 'o/r' }
@@ -91,4 +91,23 @@ test('isPinCheckout holds only for the pinned repo, checked out at the pinned ro
   expect(isPinCheckout(pin, null, null)).toBe(false)
   expect(isPinCheckout(pin, repo('git@github.com:o/r.git'), null)).toBe(false)
   expect(isPinCheckout(null, repo('git@github.com:o/r.git'), '/repo')).toBe(false)
+})
+
+test('repoFromGit builds the repo from the two git outputs', () => {
+  expect(repoFromGit({ exitCode: 0, stdout: '/w/p\n' }, { exitCode: 0, stdout: 'git@github.com:o/p.git\n' })).toEqual({ root: '/w/p', remote: 'git@github.com:o/p.git' })
+})
+
+test('repoFromGit is null outside a repo, so the last pin stays', () => {
+  const current = { root: '/w/p', host: 'github.com', slug: 'o/p' }
+  const repo = repoFromGit({ exitCode: 128, stdout: '' }, { exitCode: 128, stdout: '' })
+  expect(repo).toBeNull()
+  expect(nextPin(current, repo)).toBe(current)
+  expect(repoFromGit(null, null)).toBeNull()
+})
+
+test('repoFromGit keeps a repo with no origin remote unpinned, so the last pin stays', () => {
+  const current = { root: '/w/p', host: 'github.com', slug: 'o/p' }
+  const repo = repoFromGit({ exitCode: 0, stdout: '/w/q\n' }, { exitCode: 2, stdout: '' })
+  expect(repo).toEqual({ root: '/w/q', remote: null })
+  expect(nextPin(current, repo)).toBe(current)
 })

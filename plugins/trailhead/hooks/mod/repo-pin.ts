@@ -67,6 +67,27 @@ export async function toplevelOf($: EngineInterface): Promise<string | null> {
   }
 }
 
+// The repo as git answers it, for when the host's `session.repo()` has nothing (#299): the two outputs
+// of `git rev-parse --show-toplevel` and `git remote get-url origin`. null outside a repo; a repo with
+// no origin has a null remote (no usable pin, so the last one stays).
+type GitOut = { exitCode: number; stdout: string }
+export const repoFromGit = (top: GitOut | null, origin: GitOut | null): RepoRead | null => {
+  const root = top !== null && top.exitCode === 0 ? top.stdout.trim() : ''
+  if (!root.startsWith('/')) return null
+  const remote = origin !== null && origin.exitCode === 0 ? origin.stdout.trim() : ''
+  return { root, remote: remote === '' ? null : remote }
+}
+
+async function gitRepo($: EngineInterface): Promise<RepoRead | null> {
+  try {
+    const cwd = await $.session.cwd()
+    const run = (argv: string[]) => $.process.run(argv, { cwd, timeoutMs: 5_000 })
+    return repoFromGit(await run(['git', 'rev-parse', '--show-toplevel']), await run(['git', 'remote', 'get-url', 'origin']))
+  } catch {
+    return null
+  }
+}
+
 // github.com is served by gh as it is; any other host only once `gh auth status --hostname <host>` succeeds
 // (an Enterprise host the person logged in to). A success is kept for the life of the module (the
 // session's start hooks of the pane and the band both refresh, so it is not reset there). A failure is
@@ -92,7 +113,8 @@ async function isServed($: EngineInterface, host: string, cwd: string): Promise<
   }
 }
 
-// Checks the working copy now and pins what it finds; a failed read keeps the last pin. A session
+// Checks the working copy now and pins what it finds; a failed read keeps the last pin. The host's
+// `session.repo()` can stay null for a repo created mid-session, so git in the cwd answers then (#299). A session
 // start begins from nothing: the pin of an earlier session is not this one's.
 export async function refreshPin($: EngineInterface, init: { isStart?: boolean; onMove?: (pin: RepoPin | null) => Promise<void> } = {}): Promise<RepoPin | null> {
   const stored = await read($, repoPin)
@@ -100,7 +122,7 @@ export async function refreshPin($: EngineInterface, init: { isStart?: boolean; 
   let repo: RepoRead | null = null
   let toplevel: string | null = null
   try {
-    repo = await $.session.repo()
+    repo = (await $.session.repo()) ?? (await gitRepo($))
     const id = remoteId(repo?.remote ?? null)
     if (repo !== null && id !== null) {
       toplevel = await toplevelOf($)
