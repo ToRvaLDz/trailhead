@@ -114,7 +114,8 @@ export const withLabel = (rows: readonly unknown[], name: string): unknown[] =>
 export type IssuesPage = { rows: unknown[]; hasNextPage: boolean; endCursor: string | null }
 
 // One page of the GraphQL open-ticket read (`repository.issues(...){nodes{...}pageInfo{...}}`), its nodes
-// flattened to the rows `gh issue list --json` prints so one parser serves both. Any `errors` (even beside
+// flattened to the rows `gh issue list --json` prints so one parser serves both (`body` rides along only when
+// the node has a string one, so the ticket rows keep their shape). Any `errors` (even beside
 // partial `data`), a missing page info or a next page without a cursor is unreadable: the caller falls back.
 export const parseIssuesPage = (stdout: string): IssuesPage | null => {
   let raw: unknown
@@ -136,11 +137,12 @@ export const parseIssuesPage = (stdout: string): IssuesPage | null => {
     url: n.url,
     labels: inner(n.labels),
     assignees: inner(n.assignees),
+    ...(typeof n.body === 'string' ? { body: n.body } : {}),
   }))
   return { rows, hasNextPage, endCursor: hasNextPage ? (endCursor as string) : null }
 }
 
-// `gh issue list --label trailhead:uat ... --json number,body`: ticket number -> the parent its first
+// The open `trailhead:uat` rows of the GraphQL read, as JSON (`number` and `body`): ticket number -> the parent its first
 // `UAT of:` line names, `[<name>](<url>/issues/<n>)` (or a bare `#<n>`, with an empty title). A row with
 // no such line, or an unreadable one, is skipped; not a list is unreadable (null).
 export const parseUatParents = (stdout: string): ReadonlyMap<number, UatParent> | null => {

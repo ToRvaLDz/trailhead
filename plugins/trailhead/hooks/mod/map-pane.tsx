@@ -55,7 +55,6 @@ const AGE_REFRESH_MS = 60_000
 const NO_REPO = 'Not in a GitHub repository: open the session in a trailhead repo'
 const ACTIVE_MAP_PATH = '.trailhead/active-map'
 const TICKET_FIELDS = 'number,title,labels,assignees,url'
-const UAT_FIELDS = 'number,body'
 const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
@@ -64,6 +63,10 @@ const PAGE_SIZE = 100
 const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}`
 // The open tickets of one label, newest first like `gh issue list`; paged by the module (PAGE_SIZE a page).
 const TICKETS_QUERY = `query($owner:String!,$repo:String!,$label:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:[$label],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}`
+// Every open UAT follow-up with its body and labels, newest first; paged by the module (PAGE_SIZE a page, at
+// most UAT_MAX_PAGES pages). The scope is filtered by the caller: GraphQL's `labels` is any-of.
+const UAT_QUERY = `query($owner:String!,$repo:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:["trailhead:uat"],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number body labels(first:50){nodes{name}}}pageInfo{hasNextPage endCursor}}}}`
+const UAT_MAX_PAGES = 10
 const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
@@ -216,11 +219,25 @@ const readOpen = async ($: Dollar, pin: RepoPin, label: string, also?: string): 
 const readOpenFallback = ($: Dollar, pin: RepoPin, label: string, also?: string) =>
   gh($, pin, ['issue', 'list', ...(also === undefined ? [] : ['--label', also]), '--label', label, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS])
 
-// The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent
-// each one tests. A failed or unreadable read is null: the rows still group by label, only the parent line goes.
+// The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent each
+// one tests. Read through GraphQL (the search index lags a write by seconds, so a follow-up just opened would
+// show without its parent line), all open `trailhead:uat` tickets, the scope filtered here. Fail-closed: a page
+// that fails or is unreadable, or pages left at UAT_MAX_PAGES, make the read null (never a partial map, no search
+// fallback). Null is the failure value: the rows still group by label, only the parent line goes.
 const readUat = async ($: Dollar, pin: RepoPin, scope: string): Promise<ReadonlyMap<number, UatParent> | null> => {
-  const out = await gh($, pin, ['issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', UAT_FIELDS])
-  return out.ok ? parseUatParents(out.stdout) : null
+  const rows: unknown[] = []
+  let cursor: string | null = null
+  for (let n = 0; n < UAT_MAX_PAGES; n++) {
+    // The {owner}/{repo} placeholders come from the pinned root's remote, as in readMaps.
+    const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${UAT_QUERY}`]
+    const out = await gh($, pin, cursor === null ? args : [...args, '-f', `after=${cursor}`])
+    const page = out.ok ? parseIssuesPage(out.stdout) : null
+    if (page === null) return null
+    rows.push(...page.rows)
+    if (!page.hasNextPage) return parseUatParents(JSON.stringify(withLabel(rows, scope)))
+    cursor = page.endCursor
+  }
+  return null
 }
 
 // The open maps of the repo and the whiteboard's counts. A failed or unreadable maps read is null: the
@@ -387,7 +404,7 @@ function stopTimers() {
 
 // `bypassFloor`: the caller's last result was dropped unseen, so reading again is not a repeat.
 // `isWrite`: a tracker write just ran; a read that starts at once is followed by one more at the floor's end,
-// by when the search index (history, UAT parents, the list fallback) has caught up.
+// by when the search index (history, the list fallback) has caught up.
 type Request = { bypassFloor?: boolean; isWrite?: boolean }
 
 // Throttled: inside the floor it keeps ONE trailing refresh for the rest of it, so an event

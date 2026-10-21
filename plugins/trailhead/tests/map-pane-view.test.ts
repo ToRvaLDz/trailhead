@@ -953,6 +953,20 @@ test('parseIssuesPage flattens the nodes to the rows gh issue list prints, with 
   expect(parseTickets(JSON.stringify(out?.rows))?.tickets.map(t => [t.number, t.state])).toEqual([[7, 'in-progress']])
 })
 
+test('parseIssuesPage carries a string body and leaves any other out', () => {
+  const withBody = { ...node(7, ['trailhead:uat']), body: 'UAT of: #3' }
+  const out = parseIssuesPage(page([withBody, node(8, ['trailhead:uat']), { ...node(9, []), body: null }, { ...node(10, []), body: 5 }]))
+  expect(out?.rows[0]).toEqual({
+    number: 7,
+    title: 't7',
+    url: 'https://github.com/o/r/issues/7',
+    labels: [{ name: 'trailhead:uat' }],
+    assignees: [],
+    body: 'UAT of: #3',
+  })
+  expect(out?.rows.slice(1).map(r => 'body' in r)).toEqual([false, false, false])
+})
+
 test('parseIssuesPage is null on anything but a clean page', () => {
   expect(parseIssuesPage('nope')).toBeNull()
   expect(parseIssuesPage('[]')).toBeNull()

@@ -70,8 +70,20 @@ const MAPS_QUERY =
   'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
 const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
-// The pending-UAT read of one scope (a map label, or the whiteboard): the tickets with their bodies.
-const uatCall = (scope: string) => ['gh', 'issue', 'list', '--label', 'trailhead:uat', '--label', scope, '--state', 'open', '--limit', '200', '--json', 'number,body']
+// The pending-UAT read: every open `trailhead:uat` ticket with its body and labels, one GraphQL page per call;
+// the scope (a map label, or the whiteboard) is filtered by the pane.
+const UAT_QUERY =
+  'query($owner:String!,$repo:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:100,after:$after,states:OPEN,labels:["trailhead:uat"],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number body labels(first:50){nodes{name}}}pageInfo{hasNextPage endCursor}}}}'
+const uatCall = (after?: string) => [
+  'gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${UAT_QUERY}`,
+  ...(after === undefined ? [] : ['-f', `after=${after}`]),
+]
+const isUatRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes(`query=${UAT_QUERY}`)
+// The retired search read of the UAT parents: the pane must never run it.
+const isUatSearch = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:uat')
+const UAT_MAX_PAGES = 10
+// One open UAT ticket as the read returns it: its body and the labels it carries (the scope among them).
+const uatRow = (number: number, body: string, scope = 'trailhead:map-198') => ({ number, body, labels: [{ name: 'trailhead:uat' }, { name: scope }] })
 // The open-ticket read: one GraphQL page per call (`after=` carries the cursor of the next one).
 const TICKETS_QUERY =
   'query($owner:String!,$repo:String!,$label:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:100,after:$after,states:OPEN,labels:[$label],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}'
@@ -82,7 +94,7 @@ const ticketsCall = (label: string, after?: string) => [
 const ticketsListCall = (label: string) => ['gh', 'issue', 'list', '--label', label, '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url']
 const isTicketsRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes(`query=${TICKETS_QUERY}`)
 // The maps read only: the ticket reads are GraphQL too, but answered and failed on their own.
-const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv)
+const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv) && !isUatRead(argv)
 const flatNode = (t: any) => ({ ...t, labels: { nodes: t.labels }, assignees: { nodes: t.assignees } })
 const PAGE = 100
 const isMapsList = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:map')
@@ -147,8 +159,11 @@ const rig = (on: On, engine?: any) => {
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
     whiteboard: WHITEBOARD as unknown[],
-    // The UAT read's answer: one row per UAT ticket, `{ number, body }`; null makes the read fail.
+    // The UAT read's answer: one row per open UAT ticket, `{ number, body, labels }` (the scope label rides
+    // in `labels`); null makes the read fail. `uatErrors` answers a reply with `errors`, `uatBroken` non-JSON.
     uat: [] as unknown[] | null,
+    uatErrors: false,
+    uatBroken: false,
     dashboard: DASHBOARD as unknown[],
     gh: null as Gh | null,
     // What `gh` answers when no test replaced it; a test can wrap it.
@@ -210,7 +225,17 @@ const rig = (on: On, engine?: any) => {
       const pageInfo = { hasNextPage: to < all.length, endCursor: `c${to}` }
       return ok(JSON.stringify({ data: { repository: { issues: { nodes: all.slice(from, to).map(flatNode), pageInfo } } } }))
     }
-    if (argv.includes('trailhead:uat')) return r.uat === null ? { exitCode: 1, stdout: '', stderr: 'boom' } : ok(JSON.stringify(r.uat))
+    if (isUatRead(argv)) {
+      if (r.uat === null) return { exitCode: 1, stdout: '', stderr: 'boom' }
+      if (r.uatBroken) return ok('not json')
+      if (r.uatErrors) return ok(JSON.stringify({ data: { repository: { issues: { nodes: [] } } }, errors: [{ message: 'x' }] }))
+      const cursor = argv.find(a => a.startsWith('after='))
+      const from = cursor === undefined ? 0 : Number(cursor.slice('after=c'.length))
+      const to = from + PAGE
+      const pageInfo = { hasNextPage: to < r.uat.length, endCursor: `c${to}` }
+      const nodes = (r.uat as any[]).slice(from, to).map(u => ({ ...u, labels: { nodes: u.labels ?? [] } }))
+      return ok(JSON.stringify({ data: { repository: { issues: { nodes, pageInfo } } } }))
+    }
     if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
     if (isGraphql(argv)) {
@@ -395,7 +420,7 @@ for (const surface of SURFACES) {
       ticketsCall('trailhead:map-198'),
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
       MAPS_CALL,
-      uatCall('trailhead:map-198'),
+      uatCall(),
     ])
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect((await ui.find({ type: 'Link' }))?.props).toMatchObject({ href: `${URL}/198` })
@@ -452,9 +477,9 @@ for (const surface of SURFACES) {
       issue(243, 'Paused UAT', ['trailhead:task', 'trailhead:uat', 'trailhead:paused']),
     ]
     r.uat = [
-      { number: 240, body: `Run it\n\nUAT of: [Burn-down view of the map](${URL}/209)\n` },
-      { number: 241, body: `UAT of: #212` },
-      { number: 243, body: `UAT of: [Paused parent](${URL}/150)` },
+      uatRow(240, `Run it\n\nUAT of: [Burn-down view of the map](${URL}/209)\n`),
+      uatRow(241, `UAT of: #212`),
+      uatRow(243, `UAT of: [Paused parent](${URL}/150)`),
     ]
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -474,6 +499,9 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'uat-of-241')).toBe('tests #212')
     expect(await hasKey(ui, 'uat-of-242')).toBe(false)
     expect(await textOf(ui, 'uat-of-243')).toBe('tests Paused parent #150')
+    // the parents come through one GraphQL read, never through the search index
+    expect(r.calls.filter(isUatRead)).toEqual([uatCall()])
+    expect(r.calls.filter(isUatSearch)).toEqual([])
     // a marker, not a state: a frontier UAT task keeps its work button, a held one its holder, a seed stays dim
     expect(await hasKey(ui, 'work-240')).toBe(true)
     expect(await textOf(ui, 'holder-242')).toBe('@alice')
@@ -500,14 +528,67 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'error')).toBe(false)
   })
 
+  test(`a UAT row of another scope does not set the parent of a row with the same number [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [...TICKETS, issue(240, 'UAT of the burn-down', ['trailhead:task', 'trailhead:uat'])]
+    r.uat = [uatRow(240, `UAT of: [Elsewhere](${URL}/14)`, 'trailhead:map-14'), uatRow(241, `UAT of: #5`)]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
+    expect(await hasKey(ui, 'uat-of-240')).toBe(false)
+  })
+
+  test(`more than one page of follow-ups is read, the second call carrying the cursor [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [...TICKETS, issue(500, 'Deep UAT', ['trailhead:task', 'trailhead:uat'])]
+    r.uat = [...Array.from({ length: 149 }, (_, i) => uatRow(1000 + i, 'no parent line')), uatRow(500, `UAT of: [Deep parent](${URL}/77)`)]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(isUatRead)).toEqual([uatCall(), uatCall('c100')])
+    expect(await textOf(ui, 'uat-of-500')).toBe('tests Deep parent #77')
+  })
+
+  const failClosed: [string, (r: Rig) => void][] = [
+    ['a failed second page', r => { r.gh = argv => (isUatRead(argv) && argv.some(a => a.startsWith('after=')) ? { exitCode: 1, stdout: '', stderr: 'boom' } : r.defaultGh(argv)) }],
+    ['a reply with errors', r => { r.uatErrors = true }],
+    ['a reply that is not JSON', r => { r.uatBroken = true }],
+  ]
+  for (const [name, arm] of failClosed) {
+    test(`${name} draws the UAT rows with no parent line, no fallback, no partial map [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      r.tickets = [...TICKETS, issue(240, 'UAT of the burn-down', ['trailhead:task', 'trailhead:uat'])]
+      // the parent sits on page 1; a second page exists so the failed-page case has something to lose
+      r.uat = [uatRow(240, `UAT of: [Burn-down](${URL}/209)`), ...Array.from({ length: 120 }, (_, i) => uatRow(1000 + i, 'x'))]
+      arm(r)
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
+      expect(await hasKey(ui, 'uat-of-240')).toBe(false)
+      expect(await hasKey(ui, 'error')).toBe(false)
+      expect(r.calls.filter(isUatSearch)).toEqual([])
+    })
+  }
+
+  test(`a read still paging at the cap draws no parent line and stops at the cap [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.tickets = [...TICKETS, issue(240, 'UAT of the burn-down', ['trailhead:task', 'trailhead:uat'])]
+    r.uat = [uatRow(240, `UAT of: [Burn-down](${URL}/209)`), ...Array.from({ length: UAT_MAX_PAGES * PAGE + 5 }, (_, i) => uatRow(2000 + i, 'x'))]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(isUatRead)).toHaveLength(UAT_MAX_PAGES)
+    expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
+    expect(await hasKey(ui, 'uat-of-240')).toBe(false)
+  })
+
   test(`the dashboard view groups UAT whiteboard tickets with their parent, reading the whiteboard scope [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.whiteboard = [...WHITEBOARD, issue(306, 'Loose UAT', [...WB, 'trailhead:task', 'trailhead:uat'])]
-    r.uat = [{ number: 306, body: `UAT of: [Loose parent](${URL}/290)` }]
+    r.uat = [uatRow(306, `UAT of: [Loose parent](${URL}/290)`, 'trailhead:whiteboard'), uatRow(306, `UAT of: #1`, 'trailhead:map-14')]
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
-    expect(r.calls.some(argv => JSON.stringify(argv) === JSON.stringify(uatCall('trailhead:whiteboard')))).toBe(true)
+    expect(r.calls.filter(isUatRead)).toContainEqual(uatCall())
+    expect(r.calls.filter(isUatSearch)).toEqual([])
     expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
     expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
     expect(await textOf(ui, 'uat-of-306')).toBe('tests Loose parent #290')
@@ -1790,7 +1871,7 @@ for (const surface of SURFACES) {
       ['gh', 'api', 'graphql', '-F'],
       ['gh', 'issue', 'list', '--label'],
       ['gh', 'api', 'graphql', '-F'],
-      ['gh', 'issue', 'list', '--label'],
+      ['gh', 'api', 'graphql', '-F'],
     ])
     expect(r.calls.some(argv => argv.includes('trailhead:map-14'))).toBe(true)
 
@@ -1996,7 +2077,7 @@ for (const surface of SURFACES) {
       ticketsCall('trailhead:whiteboard'),
       ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
       MAPS_CALL,
-      uatCall('trailhead:whiteboard'),
+      uatCall(),
     ])
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
     expect((await ui.find({ key: 'dashboard-title' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
