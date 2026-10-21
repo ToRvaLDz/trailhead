@@ -1606,6 +1606,27 @@ for (const surface of SURFACES) {
     expect((await panel($)).text).toBe('Map panel closed.')
   })
 
+  test(`/trailhead:panel shows a pane the auto-open left undrawn instead of closing it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    // sessione vuota, terminale sotto la soglia dei pannelli non richiesti: l'auto-open resta non disegnato
+    r.isPlaced = false
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
+
+    // la richiesta della persona lo disegna a qualsiasi larghezza
+    r.isPlaced = true
+    expect((await panel($)).text).toBe('Map panel opened.')
+    expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, true]])
+    await settle(r)
+    expect(fetches(r)).toBe(1)
+
+    // disegnato, il comando torna a chiuderlo
+    expect((await panel($)).text).toBe('Map panel closed.')
+    expect(r.panes).toEqual([])
+  })
+
   for (const withBand of [false, true]) {
     test(`the pane opens by itself once in fullscreen, the band ${withBand ? 'drawing' : 'yielding'} [${surface}]`, async ($, on) => {
       const r = rig(on, $)

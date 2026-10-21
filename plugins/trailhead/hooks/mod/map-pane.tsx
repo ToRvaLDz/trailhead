@@ -569,8 +569,16 @@ async function autoOpen($: Dollar) {
   }
 }
 
+// Un pannello aperto ma non disegnato (l'auto-open sotto la soglia dei pannelli non richiesti, tipico di
+// una sessione appena aperta) non è visibile: il comando lo riapre, e una richiesta della persona lo
+// disegna a qualsiasi larghezza. Se nemmeno così viene disegnato (nessuna superficie), lo chiude.
 async function togglePanel($: Dollar): Promise<string> {
-  if ((await $.ui.panes()).some(pane => pane.id === PANE_ID)) {
+  const pane = (await $.ui.panes()).find(p => p.id === PANE_ID)
+  if (pane?.isPlaced === false) {
+    const reopened = await openPane($)
+    if (reopened.isPlaced) return 'Map panel opened.'
+  }
+  if (pane !== undefined) {
     await $.ui.close({ id: PANE_ID })
     return 'Map panel closed.'
   }

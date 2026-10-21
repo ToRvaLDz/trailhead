@@ -218,6 +218,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed
   by the person (a press on the `close` button counts as closing it). The open runs from a zero-delay timer because a render may not write state.
+  Being unasked, it waits undrawn below 144 columns (`isPlaced: false`), typical of a fresh session; `/trailhead:panel`
+  then opens it again as the person's request (drawn at any width) instead of closing it, and closes it only when even
+  that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
