@@ -42,6 +42,8 @@ for (const frag of [
   'consciously accepted risk',
   'reopens that branch',
   'the review runs again on the new set',
+  're-confirmed in one play-back',
+  'at most once more',
   'Only then is the final set played back, confirmed and recorded',
   '`AskUserQuestion` menu',
   'without the delegate option',
@@ -51,6 +53,7 @@ for (const frag of [
 const stop = lines.find((l) => l.startsWith('- **Stop only when the frontier is empty'));
 ok('stop bullet found', !!stop);
 ok('stop bullet references the anchor', stop.includes(ANCHOR));
+ok('stop bullet scopes the hold to the final set', stop.includes('the final set is not confirmed or recorded before it has run'));
 
 // 4. call-sites only point at the rule
 const pointer = (name, text, startsWith) => {
@@ -67,6 +70,8 @@ ok('build Discuss records the set after the review', engines.split('\n').find((l
 const charting = read('trailhead-chart/references/charting.md');
 pointer('charting Mode 1 step 3', charting, '3. **Create the map**');
 pointer('charting Mode 1-bis step 2', charting, '2. **Name the destination of the remaining stretch.**');
+pointer('charting Mode 1-bis step 4', charting, '4. **Map the frontier of the remainder**');
+ok('charting Mode 1 step 3 covers the destination too', charting.split('\n').find((l) => l.startsWith('3. **Create the map**')).includes('step 1 destination'));
 const choices = read('_shared/choices.md');
 const row = choices.split('\n').find((l) => l.startsWith('| Grilling holistic review'));
 ok('choices row found', !!row);
