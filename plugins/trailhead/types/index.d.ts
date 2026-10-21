@@ -15,6 +15,11 @@ export type PromptSnapshot = { key: string; text: string | null }
 // The repo the session works in: its checkout root, remote host and owner/name. Pinned so a shell cd never loses it.
 export type RepoPin = { root: string; host: string; slug: string }
 
+// The autonomous run seen from the main checkout: the most slots done, and the slots still in flight.
+export type AutoRun = { done: number; inFlight: number }
+// The scope's open tickets waiting on the person and paused ones (scope counts, not run-only counts).
+export type RunCounts = { needsYou: number; paused: number }
+
 // The map pane (#208): what the last `gh` read of the active map gave.
 export type TicketType = 'decision' | 'research' | 'prototype' | 'build' | 'bug' | 'task'
 export type TicketState = 'frontier' | 'in-progress' | 'paused' | 'blocked'
@@ -104,6 +109,10 @@ declare module 'claude-code' {
       paneAutoOpened: boolean
       // The repo the pane and band read from; null until a GitHub working copy was seen.
       repoPin: RepoPin | null
+      // The autonomous run found beside the main checkout (null: none), its scope counts, and the Esc/compaction flag.
+      autoRun: AutoRun | null
+      runCounts: RunCounts | null
+      autoInterrupted: boolean
     }
   }
 }
