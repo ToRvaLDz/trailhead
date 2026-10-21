@@ -17,12 +17,13 @@ the status text, the pipeline stages) are in `work-state-view.ts`. The map pane 
 
 - **Status entry**: one line under the prompt, `map #198 · #203 Title · plan` (the engine prefixes it with the plugin name, `trailhead:`)
   (`whiteboard` instead of `map #<n>` for a ticket with no map; the title is left out when
-  there is none). During an autonomous run ` · auto 3 done` is appended.
+  there is none). During an autonomous run ` · auto 3 done · 2 in flight` is appended (see
+  [Autonomous run](#autonomous-run)).
 - **Band above the prompt**: row one is the ticket number (bold, accent) and the title cut to
   the band width with `…`; row two is the pipeline `discuss › plan › execute › verify`
   (`✓` done in green, `▸` current in bold accent, pending dim). Step `resolve` shows all four
   done, step `paused` shows all four dim followed by `‖ paused`. During an autonomous run
-  `auto · <n> done` sits at the right end of row two.
+  `auto · <n> done · <m> in flight` sits at the right end of row two.
 - **Orphaned**: when the file names another session than the current one (a `/clear`, a
   resume, a new window), the entry gets ` · orphaned, resume?` and the band is drawn dim with
   `orphaned, resume?` after the stages. A `/clear` marks the state on screen as orphaned at
@@ -223,7 +224,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
-  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
+  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `auto-run-view.ts`: `MAX_FAILURES = 3`, `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
   because `/clear` empties the atoms while they are needed.
@@ -231,6 +232,48 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   hooks on one event with no matcher. So `map-pane.tsx` registers `session.start`, `turn.complete`
   and `tool.call` with matchers that always hold (or narrow: the tracker write), next to the
   bare hooks of `register.tsx`.
+
+## Autonomous run
+
+The mod only watches an autonomous run (`/trailhead:auto`): no Stop hook, no `$.prompt.submit`
+that drives, no write to a work state or to the tracker.
+
+- **Run membership.** The run's main checkout is `$.session.repo().root` (the main working tree,
+  whatever linked worktree the session sits in); only when that is unreadable the pinned root
+  stands in. A checkout's work state belongs to the run when it says `auto: true` and the checkout is
+  (a) the main checkout or the pinned one, (b) a `git worktree` of the repo on branch
+  `trailhead/t<n>` whose state is for ticket `<n>`, or (c) a sibling directory `<repo>-t<n>` that is an
+  independent checkout (its git dir inside it) on `trailhead/t<n>`, with a state for ticket `<n>`. The
+  session in the state is ignored: slot states are sessionless on purpose. A symlinked alias of one
+  checkout is not recognised as the same path (the mod has no realpath).
+- **Scan gate.** The scan runs only when a run can exist: `<main>/.trailhead/auto-run.json` is
+  present, or the own work state says `auto: true`. Otherwise the run is cleared at once and no process
+  runs, so a session outside a run costs one file read.
+- **Label.** `auto · 3 done · 2 in flight · 1 needs you · 1 paused`: `done` is the highest
+  `autoDone` among the members, `in flight` counts the members whose step is not `paused`; zero
+  counts are left out. With a work state of its own the label sits at the right end of band row two and
+  after the step in the status; without one (the slots' states are sessionless) it is a one-line band and
+  the whole status.
+- **Counts.** `needs you` and `paused` come from one GraphQL `gh api graphql` read with two searches
+  (open `trailhead:ticket` issues labelled `trailhead:needs-you` or `trailhead:paused`), narrowed by the
+  run record's scope (`map:<n>` to `trailhead:map-<n>`, `whiteboard` to `trailhead:whiteboard`,
+  `everything` or an unreadable record to the whole repo). They are scope counts, not run-only counts:
+  `paused` is not narrowed to the run's own tickets, and an earlier needs-you mark stays until the
+  person clears it. The read runs under the pinned root, only while a run is detected, never
+  faster than `MIN_REFRESH_MS`; a failed read keeps the last counts; no pin means no call.
+- **Bounded failures.** A scan that fails (the git listing, a read other than a missing file) keeps
+  the last run for at most `MAX_FAILURES = 3` failures in a row, then clears it; a success resets the count.
+  A clean scan with no member clears the run at once.
+- **Resume hint.** `auto interrupted · /trailhead:auto to resume` (in the status
+  `auto interrupted, /trailhead:auto to resume`) shows while a flag is set and a run member remains. The
+  flag is set by a main-loop `turn.complete` with `isAborted` (an Esc), and by an accepted main-conversation
+  compaction that lands while no main turn is running. A compaction inside a running turn sets nothing; if
+  that turn then ends aborted, the first rule applies. Subagent turns never touch it. It clears at the
+  next main-loop `turn.start` (a background slot's completion starts a new turn), when `/trailhead:auto`
+  is submitted and not dropped, and it is hidden once no member is left (hand-back).
+- **State.** Atoms `autoRun`, `runCounts`, `autoInterrupted`; the module variables are the last run, the
+  failure count, the counts cache and the running-turn flag. The status is recomputed last in each
+  refresh, from all of them at once.
 
 ## Requirements
 
