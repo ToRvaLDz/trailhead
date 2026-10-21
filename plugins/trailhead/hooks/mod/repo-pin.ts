@@ -93,7 +93,9 @@ async function gitRepo($: EngineInterface): Promise<{ repo: RepoRead; toplevel: 
 }
 
 // The repo the session is in: the host's answer, else git's (#299). `toplevel` comes with it only on the
-// git path, where it is already read; a throw of the host read reaches the caller.
+// git path, where it is already read; a throw of the host read reaches the caller. The git fallback covers
+// a host whose `repo()` stays null for a repo created mid-session (anthropics/claude-code#104070): keep it
+// while hosts without the upstream fix are supported, even once a fixed release ships.
 export async function currentRepo($: EngineInterface): Promise<{ repo: RepoRead | null; toplevel: string | null }> {
   const host = await $.session.repo()
   if (host !== null) return { repo: host, toplevel: null }
