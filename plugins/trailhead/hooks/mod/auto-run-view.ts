@@ -5,6 +5,8 @@ import type { AutoRun, RunCounts, WorkState } from '../../types'
 // Quanti fallimenti di fila tengono l'ultimo run noto prima di azzerarlo (come in work-state-locate).
 export const MAX_FAILURES = 3
 export const RESUME_HINT = 'auto interrupted · /trailhead:auto to resume'
+// Nello status il separatore e la virgola, perche il punto mediano separa gia le parti.
+export const RESUME_HINT_STATUS = 'auto interrupted, /trailhead:auto to resume'
 
 const SLOT_BRANCH = /^refs\/heads\/trailhead\/t(\d+)$/
 const SCOPE = /^(?:map:([1-9]\d*)|whiteboard|everything)$/

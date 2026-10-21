@@ -2390,7 +2390,8 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect(r.reads).toContain(`${ROOT_TREE}/.trailhead/active-map`)
     expect(r.reads).toContain(`${ROOT_TREE}/.trailhead/work-state.json`)
-    expect(r.reads.filter(path => path.startsWith(`${ROOT}/`))).toEqual([])
+    // Il record del run vive nel main checkout (#296): e l'unica lettura ammessa fuori dal toplevel.
+    expect(r.reads.filter(path => path.startsWith(`${ROOT}/`) && !path.endsWith('/.trailhead/auto-run.json'))).toEqual([])
     expect(r.cwds.length).toBeGreaterThan(0)
     expect(r.cwds.every(cwd => cwd === ROOT_TREE)).toBe(true)
   })

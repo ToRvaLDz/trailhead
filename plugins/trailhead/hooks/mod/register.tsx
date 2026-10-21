@@ -6,7 +6,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { PromptSnapshot, RepoPin, WorkState } from '../../types'
+import type { AutoRun, PromptSnapshot, RepoPin, RunCounts, WorkState } from '../../types'
+import { RESUME_HINT, runLabel, showsResumeHint } from './auto-run-view'
+import { clearRunCounts, readRunCounts, scanRun } from './auto-run'
 import { onPinMove, registerMapPane } from './map-pane'
 import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
@@ -23,11 +25,17 @@ export const promptSnapshot = atom({ plugin: 'trailhead', key: 'promptSnapshot' 
 // so this copy and the one in repo-pin.ts must keep the same { plugin, key }.
 const repoPin = atom({ plugin: 'trailhead', key: 'repoPin' } as const, null as RepoPin | null)
 
+// L'ultimo run trovato accanto al main checkout, i suoi conteggi di scope e il flag di ripresa (Esc o compattazione).
+export const autoRun = atom({ plugin: 'trailhead', key: 'autoRun' } as const, null as AutoRun | null)
+export const runCounts = atom({ plugin: 'trailhead', key: 'runCounts' } as const, null as RunCounts | null)
+export const autoInterrupted = atom({ plugin: 'trailhead', key: 'autoInterrupted' } as const, false)
+
 const STATE_PATH = '.trailhead/work-state.json'
 const HELPER = 'trailhead-work-state.js'
 const ACCENT = '#7aa2f7'
 const GREEN = '#9ece6a'
 const AMBER = '#e0af68'
+const AUTO_COMMAND = 'trailhead:auto'
 const SECTION_ID = 'trailhead:work-state'
 const STALE_NOTE =
   'No trailhead ticket is in play any more: the earlier `# trailhead work state` section of the system prompt is stale.'
@@ -42,8 +50,10 @@ let shownStatus: string | undefined | typeof UNSET = UNSET
 // Refreshes run one after the other, so two events never interleave their writes.
 let queue: Promise<void> = Promise.resolve()
 
-function pin($: Dollar, state: WorkState | null, orphaned: boolean) {
-  const text = statusLine(state, orphaned)
+// Un turno del loop principale e in corso: una compattazione dentro il turno non interrompe il run.
+let mainTurnRunning = false
+
+function pin($: Dollar, text: string | undefined) {
   if (text === shownStatus) return
   shownStatus = text
   $.ui.status(text)
@@ -53,6 +63,57 @@ function pin($: Dollar, state: WorkState | null, orphaned: boolean) {
 async function setWorkState($: Dollar, value: WorkState | null) {
   const current = await read($, workState)
   if (!sameValue(current, value)) await update($, workState, () => value)
+}
+
+async function setRun($: Dollar, value: AutoRun | null) {
+  const current = await read($, autoRun)
+  if (!sameValue(current, value)) await update($, autoRun, () => value)
+}
+
+async function setCounts($: Dollar, value: RunCounts | null) {
+  const current = await read($, runCounts)
+  if (!sameValue(current, value)) await update($, runCounts, () => value)
+}
+
+async function setInterrupted($: Dollar, value: boolean) {
+  const current = await read($, autoInterrupted)
+  if (current !== value) await update($, autoInterrupted, () => value)
+}
+
+// Lo status si ricalcola per ultimo, da tutti gli atom: stato, run, conteggi e suggerimento.
+async function showStatus($: Dollar) {
+  const state = await read($, workState)
+  const run = await read($, autoRun)
+  const hint = showsResumeHint(await read($, autoInterrupted), run)
+  pin($, statusLine(state, await read($, isOrphaned), { run, counts: await read($, runCounts), hint }))
+}
+
+async function mainRootOf($: Dollar): Promise<string | null> {
+  try {
+    return (await $.session.repo())?.root ?? null
+  } catch {
+    return null
+  }
+}
+
+// Il run dei checkout accanto al main (il main working tree, non quello della sessione); solo lettura.
+async function settleRun($: Dollar, state: WorkState | null) {
+  let run: AutoRun | null = null
+  let found: RunCounts | null = null
+  try {
+    const pinned = await read($, repoPin)
+    const main = (await mainRootOf($)) ?? pinned?.root ?? null
+    if (main !== null) {
+      const scanned = await scanRun($, { main, pinned: pinned?.root ?? main, ownState: state })
+      run = scanned.run
+      if (run !== null && pinned !== null) found = await readRunCounts($, pinned, scanned.scope)
+    }
+  } catch (err) {
+    debug($, `trailhead mod: autonomous run scan failed: ${String(err)}`)
+  }
+  if (run === null) clearRunCounts()
+  await setRun($, run)
+  await setCounts($, run === null ? null : found)
 }
 
 async function setOrphaned($: Dollar, value: boolean) {
@@ -146,7 +207,8 @@ async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
   const isStale = state !== null && orphaned
   await setWorkState($, state)
   await setOrphaned($, isStale)
-  pin($, state, isStale)
+  await settleRun($, state)
+  await showStatus($)
 }
 
 // Decided from the state read before this refresh replaces it.
@@ -215,13 +277,22 @@ function safeRefresh($: Dollar, init: RefreshInit = {}): Promise<void> {
   return queue
 }
 
+async function resumeHintCleared($: Dollar) {
+  try {
+    await setInterrupted($, false)
+    await showStatus($)
+  } catch (err) {
+    debug($, `trailhead mod: resume hint reset failed: ${String(err)}`)
+  }
+}
+
 // A /clear ends the session the state belongs to: show it as orphaned at once.
 async function markOrphaned($: Dollar) {
   const state = await read($, workState)
   // A file with no session is never orphaned, /clear included.
   if (state === null || state.session === null) return
   await setOrphaned($, true)
-  pin($, state, true)
+  await showStatus($)
 }
 
 type Look = { dim?: boolean; bold?: boolean; color?: string }
@@ -268,6 +339,12 @@ export const register: Register = on => {
 
   // A change after the one compose reaches the model here; fail-open, the prompt always goes on.
   on('prompt.submit', async ($, e, next) => {
+    if (e.command === AUTO_COMMAND) {
+      // Il run riprende: il suggerimento sparisce, a meno che il comando non sia stato scartato.
+      const result = await next(e)
+      if (result.drop === undefined) await resumeHintCleared($)
+      return result
+    }
     if (e.command !== undefined) return next(e)
     await safeRefresh($)
     const { note, previous, live } = await serial(() => changeNote($))
@@ -293,6 +370,8 @@ export const register: Register = on => {
     // A subagent's or a precomputed compaction installs nothing in the main conversation.
     if (e.agentId !== undefined || e.trigger === 'precompute' || result.messages === undefined) return result
     try {
+      // Una compattazione tra due turni interrompe il run; dentro un turno in corso no (il run prosegue).
+      if (!mainTurnRunning) await setInterrupted($, true)
       await safeRefresh($)
       await setSnapshot($, null)
     } catch (err) {
@@ -303,12 +382,21 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     const result = await next(e)
+    if (e.agentId === undefined) {
+      mainTurnRunning = true
+      // Il run puo proseguire da solo (il completamento di uno slot apre un nuovo turno).
+      await setInterrupted($, false).catch(err => debug($, `trailhead mod: resume hint reset failed: ${String(err)}`))
+    }
     await safeRefresh($)
     return result
   })
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    if (e.agentId === undefined) {
+      mainTurnRunning = false
+      if (e.isAborted) await setInterrupted($, true).catch(err => debug($, `trailhead mod: resume hint set failed: ${String(err)}`))
+    }
     await safeRefresh($)
     return result
   })
@@ -347,7 +435,20 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const state = await read($, workState)
     const orphaned = await read($, isOrphaned)
-    if (state === null || e.props.hasSurvey) return next(e)
+    const run = await read($, autoRun)
+    const counts = await read($, runCounts)
+    const hint = showsResumeHint(await read($, autoInterrupted), run)
+    if (e.props.hasSurvey) return next(e)
+    if (state === null) {
+      // Nessuno stato proprio (gli slot non hanno sessione): una riga sola per il run o per il suggerimento.
+      if (run === null) return next(e)
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box key="run">
+          <Text color={AMBER}>{hint ? RESUME_HINT : runLabel(run, counts)}</Text>
+        </Box>
+      )
+    }
 
     const { Box, Text } = $.ui.resolve(e)
     const { stages, isPaused } = pipeline(state.step)
@@ -385,9 +486,9 @@ export const register: Register = on => {
               </Box>
             )}
           </Box>
-          {state.auto && !orphaned ? (
+          {hint || (state.auto && !orphaned) ? (
             <Box key="auto">
-              <Text color={AMBER}>{`auto · ${state.autoDone} done`}</Text>
+              <Text color={AMBER}>{hint ? RESUME_HINT : runLabel(run ?? { done: state.autoDone }, counts)}</Text>
             </Box>
           ) : null}
         </Box>

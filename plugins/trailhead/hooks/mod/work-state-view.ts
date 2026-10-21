@@ -1,6 +1,7 @@
 // Pure view logic of the trailhead mod: parse the work state file, build the
 // status line and the pipeline stages. No engine calls here, so it is easy to test.
-import type { WorkState } from '../../types'
+import type { AutoRun, RunCounts, WorkState } from '../../types'
+import { RESUME_HINT_STATUS, runLabel, runParts } from './auto-run-view'
 
 export const STEPS = ['discuss', 'plan', 'execute', 'verify', 'resolve', 'paused'] as const
 export const STAGES = ['discuss', 'plan', 'execute', 'verify'] as const
@@ -85,15 +86,28 @@ export const nextOwnTicket = (
 
 export const sameValue = (a: unknown, b: unknown): boolean => stableJson(a) === stableJson(b)
 
-export const statusLine = (state: WorkState | null, isOrphaned: boolean): string | undefined => {
-  if (state === null || state.ticket === null) return undefined
+// What the autonomous run adds to the status: the run found beside the main checkout, its scope counts, and
+// whether the resume hint shows.
+export type RunInfo = { run: AutoRun | null; counts: RunCounts | null; hint: boolean }
+
+export const statusLine = (state: WorkState | null, isOrphaned: boolean, info?: RunInfo): string | undefined => {
+  const hint = info?.hint === true ? RESUME_HINT_STATUS : null
+  if (state === null || state.ticket === null) {
+    // Nessuno stato proprio: il run (slot senza sessione) o il suggerimento di ripresa, se ce ne sono.
+    if (hint !== null) return hint
+    return info?.run == null ? undefined : runLabel(info.run, info.counts)
+  }
   const where = state.map === null ? 'whiteboard' : `map #${state.map}`
   const ticket = state.title === null ? `#${state.ticket}` : `#${state.ticket} ${state.title}`
   // No own "trailhead" prefix: the engine already prefixes a plugin's status with its name.
   const parts = [where, ticket]
   if (state.step !== null) parts.push(state.step)
-  if (state.auto) parts.push(`auto ${state.autoDone} done`)
+  if (state.auto) {
+    const [first, ...rest] = runParts(info?.run ?? { done: state.autoDone }, info?.counts ?? null)
+    parts.push(`auto ${first}`, ...rest)
+  }
   if (isOrphaned) parts.push('orphaned, resume?')
+  if (hint !== null) parts.push(hint)
   return parts.join(' · ')
 }
 

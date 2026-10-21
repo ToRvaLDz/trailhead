@@ -108,3 +108,15 @@ test('nextOwnTicket clears on a missing file only when the last state read was t
   expect(nextOwnTicket(259, null, null, 's1')).toBe(259)
   expect(nextOwnTicket(null, null, null, 's1')).toBeNull()
 })
+
+test('statusLine adds the run, its counts and the resume hint; unchanged without run info', () => {
+  const auto = { ...valid, auto: true, autoDone: 3 }
+  expect(statusLine(auto, false)).toBe('map #198 · #203 Status entry · plan · auto 3 done')
+  const run = { done: 4, inFlight: 2 }
+  const counts = { needsYou: 1, paused: 0 }
+  expect(statusLine(auto, false, { run, counts, hint: false })).toBe('map #198 · #203 Status entry · plan · auto 4 done · 2 in flight · 1 needs you')
+  expect(statusLine(null, false, { run, counts, hint: false })).toBe('auto · 4 done · 2 in flight · 1 needs you')
+  expect(statusLine(null, false, { run: null, counts: null, hint: false })).toBeUndefined()
+  expect(statusLine(null, false, { run, counts: null, hint: true })).toBe('auto interrupted, /trailhead:auto to resume')
+  expect(statusLine(auto, false, { run: null, counts: null, hint: true })).toBe('map #198 · #203 Status entry · plan · auto 3 done · auto interrupted, /trailhead:auto to resume')
+})
