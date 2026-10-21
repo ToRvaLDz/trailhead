@@ -912,10 +912,10 @@ ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
 const codexHooksJson = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
 const codexHooksJsonStr = JSON.stringify(codexHooksJson);
 ok('codex: hooks.json registers the merged Bash guards under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => g.matcher === 'Bash' &&
-  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body'))));
-ok('codex: hooks.json registers none of the per-guard scripts on their own', !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(codexHooksJsonStr));
-ok('codex: the five guard modules the merged hook requires are still shipped (no search)',
-  ['commit', 'secret', 'install', 'body'].every((n) => fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', `trailhead-${n}-guard.js`))) &&
+  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body,labels'))));
+ok('codex: hooks.json registers none of the per-guard scripts on their own', !/trailhead-(commit|secret|install|search|body|labels)-guard\.js/.test(codexHooksJsonStr));
+ok('codex: the six guard modules the merged hook requires are still shipped (no search)',
+  ['commit', 'secret', 'install', 'body', 'labels'].every((n) => fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', `trailhead-${n}-guard.js`))) &&
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-bash-guards.js')));
 ok('codex: hooks.json registers injection-scanner under PostToolUse', (codexHooksJson.hooks.PostToolUse || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-issue-injection-scanner.js'))));
 ok('codex: hooks.json registers check-update under SessionStart', (codexHooksJson.hooks.SessionStart || []).some((g) => (g.hooks || []).some((h) => h.command.includes('trailhead-check-update.js'))));
@@ -1088,7 +1088,7 @@ ok('codex uninstall: cluster trailhead-view gone', !fs.existsSync(path.join(code
 ok('codex uninstall: hooks.json no longer contains trailhead commands', (() => {
   const h = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
   const str = JSON.stringify(h);
-  return !str.includes('trailhead-bash-guards.js') && !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(str) &&
+  return !str.includes('trailhead-bash-guards.js') && !/trailhead-(commit|secret|install|search|body|labels)-guard\.js/.test(str) &&
     !str.includes('trailhead-issue-injection-scanner.js') && !str.includes('trailhead-check-update.js');
 })());
 
@@ -1304,12 +1304,12 @@ ok('claude: settings.json exists', fs.existsSync(settingsPath));
 const settingsContent = fs.readFileSync(settingsPath, 'utf8');
 ok('claude: settings.json registers the merged Bash guards', settingsContent.includes('trailhead-bash-guards.js'));
 ok('claude: settings.json registers none of the per-guard scripts on their own',
-  !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(settingsContent));
+  !/trailhead-(commit|secret|install|search|body|labels)-guard\.js/.test(settingsContent));
 ok('claude: exactly one PreToolUse/Bash trailhead-bash-guards registration', (() => {
   const s = JSON.parse(settingsContent);
   return (s.hooks.PreToolUse || []).flatMap((g) => g.hooks || []).filter((h) => h.command.includes('trailhead-bash-guards.js')).length === 1;
 })());
-ok('claude: hooks/trailhead-bash-guards.js and its five modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard']
+ok('claude: hooks/trailhead-bash-guards.js and its six modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard', 'labels-guard']
   .every((n) => fs.existsSync(path.join(claudeDir, 'hooks', `trailhead-${n}.js`))));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
@@ -1690,7 +1690,7 @@ const bashGuardCommands = (registry) => (registry.hooks.PreToolUse || [])
   ok('(#207) codex migration: exit 0', out.status === 0);
   const cmds = bashGuardCommands(JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8')));
   ok('(#207) codex migration: only the merged entry remains', cmds.length === 1 &&
-    cmds[0].endsWith(' --guards=commit,secret,install,body'));
+    cmds[0].endsWith(' --guards=commit,secret,install,body,labels'));
   const once = fs.readFileSync(hooksJsonFile, 'utf8');
   runInstaller([`--codex`, `--dir=${mDir}`]);
   ok('(#207) codex install twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === once);
