@@ -112,7 +112,7 @@ async function listSiblings($: EngineInterface, mainRoot: string): Promise<strin
 }
 
 // The file's text; null when it is not there, undefined when the read failed any other way.
-async function readAt($: EngineInterface, root: string): Promise<string | null | undefined> {
+export async function readAt($: EngineInterface, root: string): Promise<string | null | undefined> {
   try {
     return (await $.fs.read(`${root}/${STATE_PATH}`)) as string
   } catch (err) {
