@@ -116,7 +116,8 @@ export type IssuesPage = { rows: unknown[]; hasNextPage: boolean; endCursor: str
 // One page of the GraphQL open-ticket read (`repository.issues(...){nodes{...}pageInfo{...}}`), its nodes
 // flattened to the rows `gh issue list --json` prints so one parser serves both (`body` rides along only when
 // the node has a string one, so the ticket rows keep their shape). Any `errors` (even beside
-// partial `data`), a missing page info or a next page without a cursor is unreadable: the caller falls back.
+// partial `data`), a missing page info or a next page without a cursor is unreadable: the caller decides (`readOpen` falls back to
+// `gh issue list`, `readUat` fails closed to null).
 export const parseIssuesPage = (stdout: string): IssuesPage | null => {
   let raw: unknown
   try {
