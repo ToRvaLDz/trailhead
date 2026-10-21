@@ -5,12 +5,14 @@ import {
   axisStart,
   burndownEnd,
   burndownSeries,
+  CANCEL_LABEL,
   countsLabel,
   failureReason,
   footerStatus,
   groupTickets,
   headingRoom,
   HISTORY_LIMIT,
+  isOwnQueuedCommand,
   mapRowLayout,
   nextViewed,
   parseActiveMap,
@@ -334,6 +336,27 @@ test('rowLayout: a frontier row carries the work button, the number, the title a
 test('rowLayout: the pending ticket shows queued in place of the button', () => {
   expect(layout(ticket(), { pendingWork: 209 }).aside).toEqual({ kind: 'queued', text: 'queued' })
   expect(layout(ticket(), { pendingWork: 210 }).aside).toEqual({ kind: 'work', text: 'work' })
+})
+
+test('rowLayout: the queued aside counts the cancel button in the row width', () => {
+  const t = ticket({ title: 'x'.repeat(200) })
+  for (const columns of [30, 40, 60]) {
+    const r = layout(t, { columns, pendingWork: 209 })
+    const used = (r.mark?.length ?? 0) + r.label.length + (r.type?.length ?? 0) + (r.aside?.text.length ?? 0) + 1 + CANCEL_LABEL.length + 4 + 1
+    expect(used).toBeLessThanOrEqual(columns)
+    // Less title room than the work button leaves.
+    expect(r.label.length).toBeLessThan(layout(t, { columns }).label.length)
+  }
+})
+
+test('isOwnQueuedCommand: only this plugin\'s origin while a cancelled flight exists', () => {
+  const cancelled = { id: 1, verb: 'work' as const, number: 209, isCancelled: true, isStarted: false }
+  const own = { kind: 'plugin', name: 'trailhead' } as never
+  expect(isOwnQueuedCommand(own, cancelled)).toBe(true)
+  expect(isOwnQueuedCommand({ kind: 'person' } as never, cancelled)).toBe(false)
+  expect(isOwnQueuedCommand({ kind: 'plugin', name: 'other' } as never, cancelled)).toBe(false)
+  expect(isOwnQueuedCommand(own, null)).toBe(false)
+  expect(isOwnQueuedCommand(own, { ...cancelled, isCancelled: false })).toBe(false)
 })
 
 test('rowLayout: holders are drawn as @login on in-progress and blocked rows', () => {

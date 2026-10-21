@@ -472,8 +472,22 @@ const asideOf = (t: PaneTicket, pendingWork: number | null, isInPlay: boolean): 
   return t.assignees.length === 0 ? null : holderOf(t)
 }
 
+// The button that takes a queued ticket back out of the queue.
+export const CANCEL_LABEL = 'cancel'
+const CANCEL_WIDTH = CANCEL_LABEL.length + BUTTON_CHROME + 1
+
 const asideWidth = (a: RowAside | null): number =>
-  a === null ? 0 : a.text.length + (a.kind === 'work' || a.kind === 'resume' ? BUTTON_CHROME : 0) + 1
+  a === null
+    ? 0
+    : a.text.length + (a.kind === 'work' || a.kind === 'resume' ? BUTTON_CHROME : 0) + 1 + (a.kind === 'queued' ? CANCEL_WIDTH : 0)
+
+// The press the panel is carrying from its click to the verb command (one at a time).
+export type Flight = { id: number; verb: 'work' | 'resume'; number: number; isCancelled: boolean; isStarted: boolean }
+
+// A command this plugin issued itself while a cancelled flight exists: the mod issues /clear and the verb
+// only from a press, one flight at a time, so it is that flight's. A person's own command never matches.
+export const isOwnQueuedCommand = (origin: { kind: string; name?: string }, flight: Flight | null): boolean =>
+  origin.kind === 'plugin' && origin.name === 'trailhead' && flight !== null && flight.isCancelled
 
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {
