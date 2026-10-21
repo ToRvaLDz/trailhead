@@ -19,12 +19,16 @@ Positive (delegate offered): config values and the `/trailhead config` menus, mo
 
 Negative (delegate NOT offered): `decision`-ticket convergence, a scope or destination change, an out-of-scope ruling, routing a deferred line to seed/idea/todo, whether to close an exhausted map, a claim collision. These are the human's to make (or already are a routing the human owns).
 
+## Checking the agent's own pick
+
+**Stress-test the pick before offering it.** Whenever the agent puts forward a pick of its own (a recommended answer in grilling, an option marked `(Recommended)`, the choice it states under the delegate option, an option `auto` takes on its own), it first attacks that pick once, as the human would if they asked it to think it over again: (a) the edge case or failure mode where it breaks; (b) every premise it rests on about the code or the environment, checked against the code rather than assumed; (c) its fit with the choices already settled (earlier grilled questions, the ticket's recorded choices, the map's `Decisions so far`). Look for real holes, not manufactured doubt: a pick that survives stays a firm recommendation. One pass, no loop: when the pass breaks the pick, replace it with the better one and present only that, never "A, but maybe B". Show the outcome with the pick in one line, `Weak point: <X>; still recommended because <Y>` (rendered in the user's conversation language), so the check is visible and can be judged; where no human sees it live (`auto`), the line goes into the record the choice lands in. A trivial or already-decided choice needs no pass.
+
 ## Option 1: "Let the agent pick (with rationale, then confirm)"
 
 The delegate option. It does not let the agent silently decide: it is a **two-step, confirm-gated** interaction.
 
 1. The human selects the delegate option.
-2. The agent states **which option it would choose and why it beats the others** (concise, honest, the real trade-off), then asks a plain **yes/no confirmation**.
+2. The agent states **which option it would choose and why it beats the others** (concise, honest, the real trade-off), stress-tested first per **Stress-test the pick before offering it** above (its `Weak point:` line included), then asks a plain **yes/no confirmation**.
    - **Yes** → act on the chosen option.
    - **No, a counter-proposal, a "let's chat", or silence** → the choice **re-opens** (back to the menu / discussion). Never proceed on anything but an explicit yes. The human may counter-propose (the agent adopts it and re-confirms) or defer at this point.
 
