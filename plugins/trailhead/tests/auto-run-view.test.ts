@@ -7,13 +7,12 @@ import {
   nextRunAfterFailure,
   parseRunCounts,
   parseRunScope,
-  parseWorktreeBranches,
   runCountsArgs,
   runLabel,
   showsResumeHint,
   slotTicket,
 } from '../hooks/mod/auto-run-view'
-import { MAX_FAILURES } from '../hooks/mod/work-state-locate'
+import { MAX_FAILURES, parseWorktreeBranches } from '../hooks/mod/worktree-porcelain'
 
 const state = (over: Record<string, unknown> = {}) => ({
   map: 1,

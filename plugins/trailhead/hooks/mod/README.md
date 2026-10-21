@@ -224,7 +224,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`,
-  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `work-state-locate.ts`: `MAX_FAILURES = 3` (shared with the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
+  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`) and the `work` press in flight (`workInFlight`),
   because `/clear` empties the atoms while they are needed.

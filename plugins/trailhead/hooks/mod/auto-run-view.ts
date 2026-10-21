@@ -1,28 +1,16 @@
 // Pure view logic of the autonomous run in the mod: which checkouts belong to the run, the counts,
 // the label and the resume hint. No engine calls here, so it is easy to test.
 import type { AutoRun, RunCounts, WorkState } from '../../types'
-import { MAX_FAILURES } from './work-state-locate'
+import { MAX_FAILURES } from './worktree-porcelain'
 
 export const RESUME_HINT = 'auto interrupted · /trailhead:auto to resume'
-// Nello status il separatore è la virgola, perché il punto mediano separa gia le parti.
+// Nello status il separatore è la virgola, perché il punto mediano separa già le parti.
 export const RESUME_HINT_STATUS = 'auto interrupted, /trailhead:auto to resume'
 
 const SLOT_BRANCH = /^refs\/heads\/trailhead\/t(\d+)$/
 const SCOPE = /^(?:map:([1-9]\d*)|whiteboard|everything)$/
 
 export type Where = { kind: 'main' } | { kind: 'worktree'; ticket: number } | { kind: 'clone'; ticket: number; onBranch: boolean }
-
-// Path and full branch ref of each checkout in `git worktree list --porcelain` (null: detached or bare).
-export const parseWorktreeBranches = (porcelain: string): { path: string; branch: string | null }[] =>
-  porcelain
-    .split(/\n\s*\n/)
-    .map(block => block.split('\n'))
-    .filter(lines => lines.some(line => line.startsWith('worktree /')))
-    .map(lines => {
-      const path = (lines.find(line => line.startsWith('worktree ')) as string).slice('worktree '.length).replace(/(.)\/+$/, '$1')
-      const branch = lines.find(line => line.startsWith('branch '))
-      return { path, branch: branch === undefined ? null : branch.slice('branch '.length) }
-    })
 
 // The ticket of a slot branch `refs/heads/trailhead/t<n>`; any other branch is no slot.
 export const slotTicket = (branch: string | null): number | null => {
@@ -100,7 +88,6 @@ export const runLabel = (run: { done: number; inFlight?: number }, counts: RunCo
 
 export const showsResumeHint = (flag: boolean, run: AutoRun | null): boolean => flag && run !== null
 
-// A failed scan keeps the last run, until MAX_FAILURES in a row.
-// Un fallimento di troppo (MAX_FAILURES, come in work-state-locate) azzera il run.
+// Una scansione fallita tiene l'ultimo run, finché non arriva il MAX_FAILURES-esimo fallimento di fila.
 export const nextRunAfterFailure = (prev: AutoRun | null, failures: number): AutoRun | null =>
   failures >= MAX_FAILURES ? null : prev

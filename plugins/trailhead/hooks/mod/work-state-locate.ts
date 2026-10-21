@@ -3,8 +3,8 @@
 // may sit in the main checkout. Pure parts first, then the engine part that looks the state up.
 import type { EngineInterface } from 'claude-code'
 
-import { parseWorktreeBranches } from './auto-run-view'
 import { isMissing, parseWorkState } from './work-state-view'
+import { MAX_FAILURES, parseWorktreeBranches } from './worktree-porcelain'
 
 const STATE_PATH = '.trailhead/work-state.json'
 const LOOKUP_TIMEOUT_MS = 5_000
@@ -66,7 +66,6 @@ const misses = new Map<string, number>()
 // A scan that failed is remembered for a shorter while, with how many failed in a row: past MAX_FAILURES
 // the caller stops keeping the last state and treats the file as missing.
 const FAILED_MS = 3_000
-export const MAX_FAILURES = 3
 const failures = new Map<string, { at: number | null; count: number }>()
 
 // Writes a miss time, dropping the misses whose window has ended.
