@@ -17,8 +17,8 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 const eq = (name, actual, expected) => { assert.deepStrictEqual(actual, expected, name); passed++; };
 
 // Run the merged hook end-to-end: tool_input JSON on stdin, capture {code, out, err}.
-function runHook(command, { env = {}, args = [], hook = HOOK } = {}) {
-  const input = JSON.stringify({ tool_input: { command } });
+function runHook(command, { env = {}, args = [], hook = HOOK, cwd } = {}) {
+  const input = JSON.stringify({ tool_input: { command }, ...(cwd ? { cwd } : {}) });
   const r = spawnSync('node', [hook, ...args], { input, env: { ...process.env, ...env } });
   return { code: r.status, out: r.stdout.toString(), err: r.stderr.toString() };
 }
@@ -30,9 +30,10 @@ const BAD_SECRET = 'gh issue comment 5 --body "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012
 const BAD_INSTALL = 'npm install left-pad';
 const BAD_SEARCH = 'cd x && grep y z';
 const BAD_BODY = 'gh issue edit 5 --body ""';
+const BAD_LABELS = 'gh issue create --title x --body y --label trailhead:bug';
 
 // --- unit: constants ---
-eq('guard order is fixed', GUARD_ORDER, ['commit', 'secret', 'install', 'search', 'body']);
+eq('guard order is fixed', GUARD_ORDER, ['commit', 'secret', 'install', 'search', 'body', 'labels']);
 ok('freshness window is 5s', MOD_GUARDS_FRESH_MS === 5000);
 
 // --- unit: parseModGuards ---
@@ -48,10 +49,10 @@ for (const bad of ['commit', '@123', 'commit@abc', ',@1', '', undefined, 'commit
 eq('unknown names are ignored', [...parseModGuards(`commit,bogus@${NOW}`, NOW)], ['commit']);
 
 // --- unit: parseGuardsArg ---
-eq('no --guards -> all five', parseGuardsArg([]), GUARD_ORDER);
+eq('no --guards -> all six', parseGuardsArg([]), GUARD_ORDER);
 eq('valid subset keeps canonical order', parseGuardsArg(['--guards=body,commit']), ['commit', 'body']);
-eq('empty --guards -> all five', parseGuardsArg(['--guards=']), GUARD_ORDER);
-eq('malformed --guards -> all five', parseGuardsArg(['--guards=commit,,body']), GUARD_ORDER);
+eq('empty --guards -> all six', parseGuardsArg(['--guards=']), GUARD_ORDER);
+eq('malformed --guards -> all six', parseGuardsArg(['--guards=commit,,body']), GUARD_ORDER);
 eq('any unknown name invalidates the whole list', parseGuardsArg(['--guards=commit,secert']), GUARD_ORDER);
 
 // --- unit: runGuards with fake evaluators ---
@@ -65,7 +66,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
     evaluators: {
       commit: spy('commit', () => { throw new Error('boom'); }),
       secret: spy('secret', allow), install: spy('install', blocker('I')),
-      search: spy('search', blocker('S')), body: spy('body', allow),
+      search: spy('search', blocker('S')), body: spy('body', allow), labels: spy('labels', allow),
     },
   });
   eq('a throwing guard counts as allow and the next one still blocks', r.code, 2);
@@ -75,7 +76,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
 {
   const r = runGuards('x', {
     now: NOW, env: { TRAILHEAD_MOD_GUARDS: `commit@${NOW}` },
-    evaluators: { commit: blocker('C'), secret: allow, install: allow, search: allow, body: allow },
+    evaluators: { commit: blocker('C'), secret: allow, install: allow, search: allow, body: allow, labels: allow },
   });
   eq('a fresh stamp skips the listed guard', r.code, 0);
 }
@@ -83,7 +84,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
   const adv = (t) => () => ({ kind: 'advise', stderr: `${t}\n`, payload: { hookSpecificOutput: { additionalContext: t } } });
   const r = runGuards('x', {
     now: NOW, env: {},
-    evaluators: { commit: adv('a'), secret: adv('b'), install: allow, search: allow, body: allow },
+    evaluators: { commit: adv('a'), secret: adv('b'), install: allow, search: allow, body: allow, labels: allow },
   });
   eq('advisories exit 0', r.code, 0);
   eq('advisory stderr lines are all written', r.stderr, 'a\nb\n');
@@ -96,9 +97,10 @@ const { evaluate: evSecret } = require('./trailhead-secret-guard.js');
 const { evaluate: evInstall } = require('./trailhead-install-guard.js');
 const { evaluate: evSearch } = require('./trailhead-search-guard.js');
 const { evaluate: evBody } = require('./trailhead-body-guard.js');
+const { evaluate: evLabels } = require('./trailhead-labels-guard.js');
 for (const [name, cmd, ev] of [
   ['commit', BAD_COMMIT, evCommit], ['secret', BAD_SECRET, evSecret], ['install', BAD_INSTALL, evInstall],
-  ['search', BAD_SEARCH, evSearch], ['body', BAD_BODY, evBody],
+  ['search', BAD_SEARCH, evSearch], ['body', BAD_BODY, evBody], ['labels', BAD_LABELS, evLabels],
 ]) {
   const r = runHook(cmd);
   const want = ev(cmd);
@@ -169,19 +171,19 @@ for (const [name, cmd, ev] of [
     const hook = path.join(tmp, 'trailhead-bash-guards.js');
     fs.rmSync(path.join(tmp, 'trailhead-search-guard.js'));
 
-    const codex = runHook(BAD_SEARCH, { hook, args: ['--guards=commit,secret,install,body'] });
+    const codex = runHook(BAD_SEARCH, { hook, args: ['--guards=commit,secret,install,body,labels'] });
     eq('--guards without search never loads search-guard', codex.code, 0);
     eq('--guards without search: no warning', codex.err, '');
-    const still = runHook(BAD_INSTALL, { hook, args: ['--guards=commit,secret,install,body'] });
+    const still = runHook(BAD_INSTALL, { hook, args: ['--guards=commit,secret,install,body,labels'] });
     eq('--guards subset still blocks with its guards', still.code, 2);
     const only = runHook(BAD_INSTALL, { hook, args: ['--guards=commit'] });
     eq('unselected guards do not run', only.code, 0);
 
     for (const bad of ['--guards=', '--guards=commit,secert', '--guards=commit,,body']) {
       const r = runHook(BAD_INSTALL, { hook, args: [bad] });
-      eq(`${bad}: falls back to all five (install blocks)`, r.code, 2);
+      eq(`${bad}: falls back to all six (install blocks)`, r.code, 2);
       const clean = runHook('git status', { hook, args: [bad] });
-      ok(`${bad}: all five are selected (the missing search module is reported)`, /search/.test(clean.err));
+      ok(`${bad}: all six are selected (the missing search module is reported)`, /search/.test(clean.err));
     }
 
     const missing = runHook(`${BAD_BODY} && ${BAD_SEARCH}`, { hook });
@@ -212,12 +214,16 @@ for (const [name, cmd, ev] of [
 }
 
 // --- every existing guard suite, re-run through the merged hook ---
-for (const name of ['commit', 'secret', 'install', 'search', 'body']) {
+// Run from a scratch dir outside any trailhead repo: those suites open unlabelled issues, which
+// the labels guard (rightly) blocks inside a trailhead repo.
+const SUITE_CWD = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-suites-'));
+for (const name of ['commit', 'secret', 'install', 'search', 'body', 'labels']) {
   const file = path.join(__dirname, `trailhead-${name}-guard.test.js`);
-  const r = spawnSync('node', [file], { env: { ...process.env, TRAILHEAD_GUARD_HOOK: HOOK } });
+  const r = spawnSync('node', [file], { cwd: SUITE_CWD, env: { ...process.env, TRAILHEAD_GUARD_HOOK: HOOK } });
   if (r.status !== 0) process.stderr.write(r.stdout.toString() + r.stderr.toString());
   eq(`${name}-guard suite passes through the merged hook`, r.status, 0);
 }
+fs.rmSync(SUITE_CWD, { recursive: true, force: true });
 
 // --- registration: one Bash entry, one command (the merged hook) ---
 {
