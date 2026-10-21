@@ -11,6 +11,7 @@ import { RESUME_HINT, runLabel, showsResumeHint } from './auto-run-view'
 import { clearRunCounts, readRunCounts, scanRun } from './auto-run'
 import { onPinMove, registerMapPane } from './map-pane'
 import { pinKey, pinPath, refreshPin } from './repo-pin'
+import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
@@ -49,9 +50,6 @@ const UNSET = Symbol('unset')
 let shownStatus: string | undefined | typeof UNSET = UNSET
 // Refreshes run one after the other, so two events never interleave their writes.
 let queue: Promise<void> = Promise.resolve()
-
-// Un turno del loop principale è in corso: una compattazione dentro il turno non interrompe il run.
-let mainTurnRunning = false
 
 function pin($: Dollar, text: string | undefined) {
   if (text === shownStatus) return
@@ -371,7 +369,7 @@ export const register: Register = on => {
     if (e.agentId !== undefined || e.trigger === 'precompute' || result.messages === undefined) return result
     try {
       // Una compattazione tra due turni interrompe il run; dentro un turno in corso no (il run prosegue).
-      if (!mainTurnRunning) await setInterrupted($, true)
+      if (!isMainTurnRunning()) await setInterrupted($, true)
       await safeRefresh($)
       await setSnapshot($, null)
     } catch (err) {
@@ -381,9 +379,10 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    // Marked before the chain runs, so a press handled meanwhile already sees the turn.
+    if (e.agentId === undefined) markTurnStart()
     const result = await next(e)
     if (e.agentId === undefined) {
-      mainTurnRunning = true
       // Il run può proseguire da solo (il completamento di uno slot apre un nuovo turno).
       await setInterrupted($, false).catch(err => debug($, `trailhead mod: resume hint reset failed: ${String(err)}`))
     }
@@ -394,7 +393,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId === undefined) {
-      mainTurnRunning = false
+      markTurnComplete()
       if (e.isAborted) await setInterrupted($, true).catch(err => debug($, `trailhead mod: resume hint set failed: ${String(err)}`))
     }
     await safeRefresh($)
@@ -410,6 +409,8 @@ export const register: Register = on => {
   }).catch((_$, e, next) => next(e))
 
   on('session.end', async ($, e, next) => {
+    // The session ends with no turn left running, whatever the reason.
+    markTurnComplete()
     if (e.reason === 'clear') {
       try {
         await markOrphaned($)
