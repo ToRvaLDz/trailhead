@@ -40,3 +40,38 @@ test('the pin follows a repo created mid-session although session.repo() still a
   await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
   expect(pins.at(-1)).toEqual({ root: CWD, host: 'github.com', slug: 'o/new-project' })
 })
+
+test('the git fallback spawns no more than it needs: nothing past a failed rev-parse, one rev-parse per read', async ($, on) => {
+  const spawned: string[] = []
+  let isCreated = false
+  on('state.set', (_$, e, next) => next(e))
+  on('fs.read', () => ({ deny: 'ENOENT: none' }))
+  on('fs.write', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.log', () => ({ value: undefined }))
+  on('ui.panes', () => ({ value: [] }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.cwd', () => ({ value: CWD }))
+  on('session.root', () => ({ value: CWD }))
+  on('session.repo', () => ({ value: null }))
+  on('process.run', (_$, e) => {
+    const cmd = e.argv.join(' ')
+    spawned.push(cmd)
+    if (cmd === 'git rev-parse --show-toplevel') return isCreated ? out(`${CWD}\n`) : out('', 128)
+    if (cmd === 'git remote get-url origin') return out(`${REMOTE}\n`)
+    return out('', 1)
+  })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  expect(spawned).not.toContain('git remote get-url origin')
+  spawned.length = 0
+  isCreated = true
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
+  // The fallback hands its toplevel back: each read is one rev-parse and one remote lookup, no repeat.
+  const tops = spawned.filter(c => c === 'git rev-parse --show-toplevel').length
+  expect(tops).toBeGreaterThan(0)
+  expect(spawned.filter(c => c === 'git remote get-url origin')).toHaveLength(tops)
+})
