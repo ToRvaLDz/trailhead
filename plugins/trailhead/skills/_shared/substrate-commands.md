@@ -215,7 +215,14 @@ gh issue list --state open --json number,labels \
 # whiteboard frontier size: the whiteboard frontier query above, counted
 gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused" --json number --jq 'length'
 # per-map exhaustion pre-filter: open issues scoped to map <n>; count == 0 makes it a candidate (not yet a verdict)
-gh issue list --label "trailhead:map-<n>" --state open --json number --jq 'length'
+gh issue list --label "trailhead:map-<n>" --state open --limit 1000 --json number --jq 'length'
+# open tickets across the repo (the `map` render's "Open across the repo" line): the open maps, then one count per map plus the whiteboard, summed.
+# The maps list is the dashboard's `maps` limit (200); a list that reaches it makes the line `at least N`.
+gh issue list --label trailhead:map --state open --limit 200 --json number --jq '.[].number'
+# per open map <n> (the dashboard helper's `scoped` limit, 1000: a count reaching it makes the line `at least N`)
+gh issue list --label "trailhead:map-<n>" --state open --limit 1000 --json number --jq length
+# the whiteboard (the helper's `whiteboard` limit, 200: a count reaching it makes the line `at least N`)
+gh issue list --label "trailhead:whiteboard" --state open --limit 200 --json number --jq length
 # confirm no fog before flagging a candidate closeable: its body's `## Not yet specified` must be empty
 gh issue view <map> --json body --jq .body
 # per-map sub-issue cap: total native sub-issues (>=90 near cap, >=100 at cap)
