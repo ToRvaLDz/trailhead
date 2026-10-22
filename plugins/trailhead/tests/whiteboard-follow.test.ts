@@ -52,6 +52,23 @@ test('isWhiteboardCreate refuses other labels, other verbs and other commands', 
   for (const c of no) expect(isWhiteboardCreate(c)).toBe(false)
 })
 
+test('isWhiteboardCreate reads continued lines, quoted separators and the attached short flag', () => {
+  const yes = [
+    'gh issue create \\\n  --title x \\\n  --label trailhead:whiteboard',
+    'gh issue create --title "a & b" --label trailhead:whiteboard',
+    'gh issue create --title "a; b | c" --label trailhead:whiteboard',
+    'gh issue create --body "a\nb" --label trailhead:whiteboard',
+    'gh issue create -t t -ltrailhead:whiteboard',
+    'cd /x && gh issue create -t t --label trailhead:whiteboard',
+  ]
+  for (const c of yes) expect(isWhiteboardCreate(c)).toBe(true)
+})
+
+test('isWhiteboardCreate ignores a label flag written inside a quoted argument', () => {
+  expect(isWhiteboardCreate('gh issue create --title "fix -l trailhead:whiteboard"')).toBe(false)
+  expect(isWhiteboardCreate("gh issue create -b 'see --label trailhead:whiteboard' -t t")).toBe(false)
+})
+
 test('createdIssueNumber reads the last-line issue URL from stdout, a string or the text', () => {
   const url = 'https://github.com/o/r/issues/310'
   expect(createdIssueNumber({ result: { stdout: `${url}\n`, stderr: '' } })).toBe(310)
