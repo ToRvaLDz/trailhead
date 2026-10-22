@@ -43,7 +43,7 @@ import {
   whiteboardRowLayout,
   withLabel,
 } from './map-pane-view'
-import { currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
+import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { isMainTurnRunning } from './turn-state'
 import { fit, isMissing, sameValue } from './work-state-view'
 
@@ -517,9 +517,9 @@ async function restoreAfterClear($: Dollar) {
 export const GH_ISSUE_WRITE =
   /\bgh\b[^\n;&|]*\bissue\s+(?:edit|close|create|comment|reopen|delete|transfer)\b|\bgh\b(?=[^\n;&|]*\sapi\s)(?=[^\n;&|]*\brepos\/[^\s;&|]*\/issues\b)(?=[^\n;&|]*(?:\s(?:-X|--method)[\s=]*["']?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-[fF]|--field\b|--raw-field\b|--input\b)))(?![^\n;&|]*\s(?:-X|--method)[\s=]*["']?GET\b)|\btrailhead-issue-body\.js\b/
 
-// The host runs the verb in the session's own directory, which a shell `cd` may have moved, so a work press
-// goes through only while the session is in the pinned repo. A checkout that cannot be read is `unknown`,
-// refused too, but not told it is elsewhere.
+// The host runs the verb in the session's own directory, which a shell `cd` may have moved, and the mod cannot
+// move it back: `out` hands the pinned checkout to the verb, which moves first (#312). A checkout that cannot
+// be read is `unknown`, refused, but not told it is elsewhere.
 async function whereIsSession($: Dollar, pin: RepoPin): Promise<'in' | 'out' | 'unknown'> {
   try {
     const { repo, toplevel } = await currentRepo($)
@@ -529,22 +529,21 @@ async function whereIsSession($: Dollar, pin: RepoPin): Promise<'in' | 'out' | '
   }
 }
 
-async function refusalOf($: Dollar): Promise<string | null> {
+// Where the press stands, read at the press and again at the send: the pin to hand over, or the refusal.
+async function placeOf($: Dollar): Promise<{ pin: RepoPin; where: 'in' | 'out' } | { refusal: string }> {
   const pin = await read($, repoPin)
-  if (pin === null) return 'no repo pinned'
+  if (pin === null) return { refusal: 'no repo pinned' }
   const where = await whereIsSession($, pin)
-  if (where === 'in') return null
-  return where === 'out' ? `cd into ${pin.slug}` : 'checkout unreadable'
+  return where === 'unknown' ? { refusal: 'checkout unreadable' } : { pin, where }
 }
 
 // A press during a running turn is held (row `queued`, with a cancel button) and sent when the main turn ends;
-// with no turn running it is sent at once. Outside the pinned repo it refuses before anything, as the clear is
-// destructive. The pendingWork claim is taken with the version it read, so two presses never both pass.
+// with no turn running it is sent at once. With no pin or an unreadable checkout it refuses before anything, as the
+// clear is destructive; outside the pinned repo it goes through and the verb moves into it. The pendingWork claim is taken with the version it read, so two presses never both pass.
 async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   if (held !== null || inFlight !== null) return
-  const refusal = await refusalOf($)
-  // The toast box is narrow and already names the plugin: the text stays a few words.
-  if (refusal !== null) return $.ui.toast(`#${number} not started: ${refusal}`)
+  const place = await placeOf($)
+  if ('refusal' in place) return refuse($, number, place.refusal)
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
   if (held !== null || inFlight !== null) return
@@ -571,6 +570,9 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   }
   await dispatch($, press)
 }
+
+// The toast box is narrow and already names the plugin: the text stays a few words.
+const refuse = ($: Dollar, number: number, refusal: string) => $.ui.toast(`#${number} not started: ${refusal}`)
 
 // The pending marks go phase first, the claim last: until pendingWork is clear no new press can take the slot,
 // so a new press never has its phase erased by the old one's cleanup.
@@ -599,9 +601,14 @@ async function dispatch($: Dollar, press: HeldPress) {
   try {
     let clearing: Promise<unknown> | null = null
     let before = ''
+    let args = String(press.number)
     while (clearing === null) {
       await update($, pendingPhase, () => 'starting')
       before = await $.session.id()
+      // Read at the send, not only at the press: a held press may find the session moved or the checkout gone.
+      const place = await placeOf($)
+      if ('refusal' in place) return refuse($, press.number, place.refusal)
+      args = place.where === 'out' ? `${press.number} ${checkoutArg(place.pin)}` : String(press.number)
       // A cancel pressed while the row still read queued: dropped here, the last line before the clear.
       if (dispatching?.isCancelled === true) return debug($, `trailhead mod: ${press.verb} ${press.number} cancelled before the clear`)
       if (!isMainTurnRunning()) {
@@ -625,7 +632,7 @@ async function dispatch($: Dollar, press: HeldPress) {
     // The clear emptied the atoms: the row is still starting in the new session.
     await update($, pendingWork, () => press.number)
     await update($, pendingPhase, () => 'starting')
-    await $.command.run({ command: press.verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args: String(press.number) })
+    await $.command.run({ command: press.verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args })
   } catch (err) {
     debug($, `trailhead mod: ${press.verb} ${press.number} did not start: ${String(err)}`)
   } finally {

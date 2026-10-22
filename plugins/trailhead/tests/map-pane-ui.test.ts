@@ -15,6 +15,13 @@ const ROOT = '/repo'
 const ROOT_OTHER = '/other'
 // A linked worktree of ROOT: the repo's root is the main tree's, the checkout's own is this.
 const ROOT_TREE = '/repo-t5'
+// The checkout handed to a verb: base64url of the root, computed here by hand so the pane's own encoder is checked.
+// The helper's decodeIn cannot be imported here (the CommonJS template does not load in this suite); the node suite
+// checks decodeIn against Buffer's base64url, and these tests pin the same alphabet.
+const IN = (root: string) => {
+  const b64 = btoa(Array.from(new TextEncoder().encode(root), byte => String.fromCharCode(byte)).join(''))
+  return `--in=${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
+}
 
 const MAP = {
   title: 'trailhead mod',
@@ -1475,14 +1482,14 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'starting-230' })).toBeUndefined()
     expect(await ui.find({ key: 'resume-230' })).toBeDefined()
 
-    // outside the pinned repo it is refused before the clear
+    // outside the pinned repo it goes through, handing the pinned checkout to the verb
     const runs = r.runs.length
     r.cwd = ROOT_OTHER
     r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
     await ui.press({ key: 'resume-230' })
     await settle(r)
-    expect(r.runs).toHaveLength(runs)
-    expect(r.toasts).toHaveLength(1)
+    expect(r.runs.slice(runs)).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:resume', args: `230 ${IN(ROOT)}` }])
+    expect(r.toasts).toEqual([])
   })
 
   test(`a work command that is refused clears the queued mark [${surface}]`, async ($, on) => {
@@ -1497,7 +1504,7 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
-  test(`a work press with the session outside any repo is refused before the clear [${surface}]`, async ($, on) => {
+  test(`a work press with the session outside any repo goes through with the pinned checkout handed over [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -1505,18 +1512,19 @@ for (const surface of SURFACES) {
     r.repo = null
     await ui.press({ key: 'work-209' })
     await settle(r)
-    expect(r.runs).toEqual([])
-    expect(r.toasts).toHaveLength(1)
-    expect(r.toasts[0]).toContain('o/r')
-    expect(r.toasts[0]).toContain('#209')
-    expect(r.toasts[0]).toContain('cd into o/r')
-    // Short enough for the narrow toast box, the slug aside.
-    expect(r.toasts[0].replace('o/r', '').length).toBeLessThanOrEqual(36)
+    expect(r.toasts).toEqual([])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: `209 ${IN(ROOT)}` }])
+    // The token the verb receives decodes (plain base64url, the helper's alphabet) to the pinned root; the suite has no Buffer.
+    const [number, word] = r.runs[1].args.split(' ')
+    expect(number).toBe('209')
+    expect(word).toMatch(/^--in=[A-Za-z0-9_-]+$/)
+    expect(word).toBe(IN(ROOT))
+    expect(atob(word.slice('--in='.length).replace(/-/g, '+').replace(/_/g, '/'))).toBe(ROOT)
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
-  test(`a work press with the session in another repo is refused before the clear [${surface}]`, async ($, on) => {
+  test(`a work press with the session in another repo goes through with the pinned checkout handed over [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
@@ -1524,9 +1532,30 @@ for (const surface of SURFACES) {
     r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
     await ui.press({ key: 'work-209' })
     await settle(r)
-    expect(r.runs).toEqual([])
-    expect(r.toasts).toHaveLength(1)
-    expect(r.toasts[0]).toContain('o/r')
+    expect(r.toasts).toEqual([])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: `209 ${IN(ROOT)}` }])
+  })
+
+  test(`a pinned worktree checkout is handed over by its own root [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.top = ROOT_TREE
+    r.cwd = ROOT_TREE
+    r.sessionRoot = ROOT_TREE
+    r.active = '14\n'
+    r.treeActive = '198\n'
+    await $.session.start({ ...START, cwd: ROOT_TREE })
+    const ui = await openAndMount($, r)
+    // From inside it nothing is handed over.
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+    // A shell cd out of it: the token names the worktree root, not the main tree's.
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'https://github.com/o/other.git', internal: false }
+    r.runs.length = 0
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: `209 ${IN(ROOT_TREE)}` }])
   })
 
   test(`a work press in the pinned repo goes through although session.repo answers null [${surface}]`, async ($, on) => {
@@ -1627,6 +1656,41 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
     expect(r.session).toBe(`${NEXT_SESSION}-1`)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
+  })
+
+  test(`a press held in the repo while the session cd's out is sent with the pinned checkout handed over [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    // The turn moves the session out of any repo (a GitHub repo would move the pin along with it).
+    r.cwd = '/tmp'
+    r.repo = null
+    await completeTurn($)
+    await settle(r)
+    expect(r.toasts).toEqual([])
+    expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: `209 ${IN(ROOT)}` }])
+  })
+
+  test(`a held press whose checkout cannot be read at release is refused before the clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    r.repoFails = true
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toContain('unreadable')
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPinCheckout, isSamePin, nextPin, pinOf, pinPath, remoteId, repoFromGit } from '../hooks/mod/repo-pin'
+import { checkoutArg, isPinCheckout, isSamePin, nextPin, pinOf, pinPath, remoteId, repoFromGit } from '../hooks/mod/repo-pin'
 
 const repo = (remote: string | null, root = '/repo') => ({ root, remote })
 const GH = { host: 'github.com', slug: 'o/r' }
@@ -110,4 +110,14 @@ test('repoFromGit keeps a repo with no origin remote unpinned, so the last pin s
   const repo = repoFromGit({ exitCode: 0, stdout: '/w/q\n' }, { exitCode: 2, stdout: '' })
   expect(repo).toEqual({ root: '/w/q', remote: null })
   expect(nextPin(current, repo)).toBe(current)
+})
+
+test('checkoutArg hands the root over as one shell-safe word the helper decodes back', () => {
+  for (const root of ['/repo', '/with space/r', "/it's/r", '/-dash/r', '/uni\u00e8\u4e2d/r', '/a"b$c`d']) {
+    const arg = checkoutArg({ ...GH, root })
+    expect(arg).toMatch(/^--in=[A-Za-z0-9_-]+$/)
+    const token = arg.slice('--in='.length)
+    const bytes = Uint8Array.from(atob(token.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(token.length / 4) * 4, '=')), c => c.charCodeAt(0))
+    expect(new TextDecoder().decode(bytes)).toBe(root)
+  }
 })

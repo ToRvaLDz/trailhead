@@ -45,6 +45,15 @@ export const nextPin = (current: RepoPin | null, repo: RepoRead | null, toplevel
   return isSamePin(current, found) ? current : found
 }
 
+// The pinned checkout as the trailing word of a verb's args: `--in=` plus base64url of the root (alphabet
+// [A-Za-z0-9_-], no padding), so a path with spaces, quotes or a leading `-` stays one shell-safe word. The verb
+// decodes it with templates/trailhead-checkout-in.js and moves there first (#312).
+// No Buffer in the mod's runtime: UTF-8 bytes through btoa, then the url-safe alphabet.
+export const checkoutArg = (pin: RepoPin): string => {
+  const binary = Array.from(new TextEncoder().encode(pin.root), byte => String.fromCharCode(byte)).join('')
+  return `--in=${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
+}
+
 // A repo-relative path under the pinned root, absolute whatever the session cwd is.
 export const pinPath = (pin: RepoPin, relative: string): string => `${pin.root.replace(/\/+$/, '')}/${relative}`
 
