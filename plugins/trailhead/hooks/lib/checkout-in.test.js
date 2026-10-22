@@ -3,7 +3,7 @@
 // No framework: plain asserts, same style as uat-backfill.test.js.
 //
 // Layers covered:
-//   1. The pure token helpers: encode / split / decode round-trip.
+//   1. The pure token helpers: encode / decode round-trip.
 //   2. The CLI against real temp git repos: invalid, here, move, the `cd` field.
 //   3. The protocol contract: the work skill moves before it loads or preflights.
 const assert = require('assert');
@@ -14,7 +14,7 @@ const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-checkout-in.js');
 const skillPath = path.resolve(__dirname, '..', '..', 'skills', 'trailhead-work', 'SKILL.md');
-const { encodeIn, splitIn, decodeIn } = require(scriptPath);
+const { encodeIn, decodeIn } = require(scriptPath);
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -53,12 +53,6 @@ for (const p of odd) {
   ok(`token shape ${p}`, /^--in=[A-Za-z0-9_-]+$/.test(enc));
   eq(`round-trip ${p}`, decodeIn(enc.slice(5)), p);
 }
-eq('split takes the last word', splitIn('209 --in=abc_-'), { rest: '209', token: 'abc_-' });
-eq('split with no token', splitIn('209'), { rest: '209', token: null });
-eq('split ignores a non-final token', splitIn('--in=abc 209'), { rest: '--in=abc 209', token: null });
-eq('split ignores a malformed token', splitIn('209 --in=a+b'), { rest: '209 --in=a+b', token: null });
-eq('split ignores an empty token', splitIn('209 --in='), { rest: '209 --in=', token: null });
-eq('split trims trailing blanks', splitIn('209 --in=abc  '), { rest: '209', token: 'abc' });
 eq('decode of garbage', decodeIn('!!!'), null);
 eq('decode of empty', decodeIn(''), null);
 

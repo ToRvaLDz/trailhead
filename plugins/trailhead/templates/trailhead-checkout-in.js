@@ -23,19 +23,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const PREFIX = '--in=';
-const TOKEN_WORD_RE = /^--in=([A-Za-z0-9_-]+)$/;
 
 function encodeIn(p) {
   return PREFIX + Buffer.from(String(p), 'utf8').toString('base64url');
-}
-
-// The token counts only as the last whitespace-separated word.
-function splitIn(args) {
-  const text = String(args);
-  const m = /(^|\s)(\S+)\s*$/.exec(text);
-  const hit = m ? TOKEN_WORD_RE.exec(m[2]) : null;
-  if (!hit) return { rest: text, token: null };
-  return { rest: text.slice(0, m.index).trim(), token: hit[1] };
 }
 
 function decodeIn(token) {
@@ -93,6 +83,6 @@ function main(argv) {
   return 0;
 }
 
-module.exports = { encodeIn, splitIn, decodeIn, check, cdCommand };
+module.exports = { encodeIn, decodeIn, check, cdCommand };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
