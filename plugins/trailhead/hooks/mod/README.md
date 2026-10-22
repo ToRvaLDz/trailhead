@@ -118,9 +118,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `cancel` drops it before anything is sent, so the conversation is untouched and the row goes back to its button.
   With no turn running the press starts at once and the row reads `starting` (no cancel) until the calls settle,
   across the reset too. One press at a time: another while one is held or starting is ignored. A session that ends
-  while a press is held drops it. A press while the session is not in the pinned repo (a shell `cd` moved it, or its
-  checkout cannot be read) is refused with a toast before the `/clear`, since the host runs the verb in the
-  session's own directory. A refused `/clear`, or one that
+  while a press is held drops it. A press while the session is not in the pinned repo (a shell `cd` moved it) still
+  starts: the mod cannot move the session, so it appends the pinned checkout to the verb's args as `--in=<token>`
+  (base64url of the root) and the verb `cd`s there first. With no repo pinned, or a checkout that cannot be read,
+  the press is refused with a toast before the `/clear`; both are checked again when a held press is sent. A refused `/clear`, or one that
   did not change the session, runs no work command. `trailhead:unverified` tickets are never listed,
   only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
   button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
