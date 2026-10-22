@@ -2,6 +2,41 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.16.0 (2026-10-22)
+
+### Why
+This release turns `/trailhead:auto` into a run you can leave alone: it works tickets in up to four parallel slots, merges verified branches locally, parks what needs you and writes every record as it goes, so you come back to a report instead of a stalled session. Around it, the Claude Code map panel learns to follow the repo and the ticket in play wherever the session goes, and the guards close a few holes found in real use.
+
+### Added
+- **Parallel slots for the autonomous run (#283).** `/trailhead:auto` asks how many tickets to keep in flight (1 to 4, 2 proposed). Above one slot each ticket gets its own `trailhead/t<n>` worktree next to the checkout (an explicit `clone` stays a clone, a superrepo escalates to a clone), every engine step runs as a background agent for its slot, and a freed slot takes the next oldest ticket.
+- **Run scope and oldest-first order (#280).** A run asks its scope first (one map, the whiteboard or everything, each with its frontier count; `/trailhead:auto <n>` skips the ask) and works the oldest workable ticket first, one map at a time by ascending number, the whiteboard last.
+- **Local merge and unblocking (#286).** Under `git: main` a verified slot branch is merged into the local trunk (fast-forward, else a merge commit), one at a time after the stale-base check, never pushed; then the ticket resolves and its dependents unblock (`templates/trailhead-auto-merge.js`, `templates/trailhead-unblock.js`).
+- **Merge tickets for unmerged branches (#287).** A conflicting slot branch is left untouched with its workspace, and the run opens or updates one needs-you merge ticket per map (or for the whiteboard) listing each branch, its conflicting files and a suggested merge order.
+- **`trailhead:needs-you` (#282, #285).** A ticket whose next step needs you (a decision, fog, a safety-rail action such as a push or release, a stale-base stop, a failing UAT setup, a non-converging plan review) is parked at once with a `NEEDS YOU` comment and the new label, and the run moves on. Later runs skip it; a `work` or `quick` claim clears it. The map panel lists these tickets first, in a `Needs you` group.
+- **External review rounds per run (#284).** A run asks how many cross-AI plan review rounds to allow (as configured, 1, 2, 3 or until convergence, hard ceiling 5); a plan whose blocking concerns survive is parked needs-you with the concerns quoted in full.
+- **Records as it goes, UAT follow-ups (#281).** Every record (engine comments, commits, UAT follow-ups, `NEEDS YOU` comments, merge tickets, `PAUSED` checkpoints) lands on the tracker when it arises; human-only acceptance steps go to a UAT follow-up so the parent can resolve. Each run ends with a run report in chat, also posted on each touched map.
+- **Run record survives compaction (#295).** The run's choices and its skip and unmerged lists are kept in the gitignored `.trailhead/auto-run.json` (`templates/trailhead-auto-run.js`), re-read after a compaction and offered for resume in a new session.
+- **The run in the mod (#296).** The band and the status line show an autonomous run (`auto · <done> done · <n> in flight · <k> needs you · <p> paused`) and a resume hint after an interrupted run.
+- **Holistic review before a grilling closes (#301).** Every grilling round reviews the whole set of choices before the final confirmation, proposing amendments where answers do not fit together. Each pick the agent offers is now stress-tested first, with its weak point stated, and inbox closes are gated on the user.
+- **Cancel a queued ticket from the panel (#304).** A `work` or `resume` press during a running turn is held by the panel and can be cancelled before anything is sent.
+- **Open-ticket total (#307).** The map panel and `/trailhead:map` show the open tickets across every open map plus the whiteboard.
+- **Labels guard (#308).** A new guard blocks a `gh issue create` whose ticket label set is incomplete (`trailhead:ticket`, exactly one type, exactly one destination), so a ticket can no longer be born invisible to every map. Installed on Claude Code and Codex; trailhead now ships nine hooks.
+- **Resume from the panel (#272).** Paused tickets get a `resume` button in the map pane.
+
+### Changed
+- **The autonomous run is introduced at the entry points (#288, #313).** The README (en, it), the landing page and Getting started present `/trailhead:auto`; its sections open with what it is for, when to use it over `/trailhead:work`, a run example, and a note on the main checkout a parallel run merges into.
+- **The panel's work press moves into the pinned repo (#312).** A `work` or `resume` press from a session that drifted out of the pinned repo now starts the ticket there (`templates/trailhead-checkout-in.js`) instead of refusing.
+- **Statusline context meter tracks real compaction (#266).** The meter now measures against Claude Code's auto-compact threshold (compaction window and overrides read from the environment and settings) instead of a fixed 80% of the window.
+- **Fresh panel lists after a write (#277, #291).** Open tickets and UAT follow-ups are read through GraphQL instead of the lagging search index, so a ticket just opened or closed shows at once.
+- **Singleton lookups fail closed (#274).** The dashboard, codebase and conventions lookups stop and name the duplicates instead of silently taking the first match.
+
+### Fixed
+- **Esc during an autonomous run (#300).** An interrupt writes nothing and leaves the same trace as a crash; the next `/trailhead:auto` writes the missing `PAUSED` checkpoint and resumes each ticket in its workspace.
+- **Interactive work beside a parallel run (#303).** Another session's ticket marker no longer blocks a slot merge, and the band shows a live foreign session's ticket as in another session rather than orphaned.
+- **Map panel repo and ticket tracking (#268, #269, #270, #271, #299, #305, #306).** The panel pins its repo instead of following the session cwd, finds the work state in an isolated worktree or clone, shows a work state set mid-session, recognises a repo created mid-session, keeps refreshing after a dropped timer, follows the whiteboard ticket in play, and `/trailhead:panel` shows a pane the auto-open left undrawn.
+- **Secret-read guard gaps (#273, #275, #276).** Commands carried in command-valued git config (`-c`, `git config` writes) and backslash-escaped paths such as `cat \.env` are now caught.
+- **Docs drift (#297).** The auto docs test and the three docs agree again on the never-picks-skip rule.
+
 ## 0.15.0 (2026-10-15)
 
 ### Why
