@@ -392,6 +392,17 @@ if (existsSync(hooksIndex)) {
     }
   }
 }
+const workflowIndex = docsPage('workflow');
+if (existsSync(workflowIndex)) {
+  if (!readFileSync(workflowIndex, 'utf8').includes('id="autonomous-run-auto"')) {
+    failures.push('docs/workflow has no id="autonomous-run-auto" (anchor other pages link to)');
+  }
+}
+if (existsSync(gettingStartedIndex)) {
+  if (!readFileSync(gettingStartedIndex, 'utf8').includes('href="/docs/workflow#autonomous-run-auto"')) {
+    failures.push('docs/getting-started does not link to /docs/workflow#autonomous-run-auto');
+  }
+}
 const teamworkIndex = docsPage('teamwork');
 if (existsSync(teamworkIndex)) {
   if (!readFileSync(teamworkIndex, 'utf8').includes('href="/docs/hooks#commit-msg-hook"')) {
