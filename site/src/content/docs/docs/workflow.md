@@ -69,7 +69,7 @@ A ticket that will not verify gets a bounded **failure budget** (a no-progress r
 
 Every record is written on the tracker when it arises (engine comments, commits, UAT follow-ups, `NEEDS YOU` comments, merge tickets, `PAUSED` checkpoints), so a crash loses nothing. The chat progress line, which names the tickets in the slots, is only a mirror.
 
-**Interruption** is just the host interrupt (Stop/Esc), the only mid-run halt: every in-flight ticket (each slot's) keeps its claim and gets a `PAUSED` checkpoint naming its workspace and branch. **Resume** is you running `/trailhead:auto` again: it first recovers an interrupted merge, resumes paused or crashed tickets in their own workspaces, then continues. Needs-you tickets are not reconsidered.
+**Interruption** is just the host interrupt (Stop/Esc), the only mid-run halt: it writes nothing, so every in-flight ticket (each slot's) keeps its claim and Esc leaves the same trace as a crash. **Resume** is you running `/trailhead:auto` again: it writes the missing `PAUSED` checkpoint (naming workspace and branch) on each such ticket, then recovers an interrupted merge, resumes paused or crashed tickets in their own workspaces, then continues. In the same session it reuses the run's choices; a new session asks again. Needs-you tickets are not reconsidered.
 
 ### The run report
 

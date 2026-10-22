@@ -36,7 +36,25 @@ ok('auto.md: run end unites the in-memory lists with the record', /in-memory ski
 ok('auto.md: run end clears the record, then resets the work states', /trailhead-auto-run\.js clear --repo <main-checkout>[^\n]*then[^\n]*--auto false/.test(auto) && /Clearing first means a crash between the two/.test(auto));
 ok('auto.md: a host interrupt writes nothing, so Esc leaves the crash signature', !/graceful interrupt clears it too/.test(auto) && !/a graceful interrupt clears the record/.test(auto) && /same on disk as a crash/.test(auto) && /signature of both an Esc and a crash/.test(auto));
 ok('auto.md: after Esc the same session reuses the record, a new session is asked again', /Esc[^\n]*reuses the record/.test(auto) && /new session[^\n]*(asked again|resume-or-fresh)/.test(auto));
-ok('auto.md: step 2 writes the missing PAUSED checkpoint and label before resuming a crash-signature ticket', /Reconstruct the missing checkpoint/.test(auto) && /reconstructed at resume/.test(auto) && /`trailhead:paused`[^\n]*(before|then)[^\n]*resume/.test(auto) && /no second checkpoint/.test(auto));
+ok('auto.md: step 2 writes the missing PAUSED checkpoint and label before resuming a crash-signature ticket', /Reconstruct the missing checkpoint/.test(auto) && /reconstructed at resume/.test(auto) && /adds `trailhead:paused` \(after the comment, so a failed comment never leaves a label without a checkpoint\)/.test(auto) && /resumes the ticket through the `resume` engine, which drops the label/.test(auto) && /no second checkpoint/.test(auto));
 ok('auto.md: no run-end summary at a host interrupt, the resumed run covers it', /not emitted at the interrupt/.test(auto) && /resumed run's own (run-end )?summary/.test(auto));
+ok('auto.md: crash signature and idempotence are stated on the latest checkpoint', /whose latest checkpoint is not a `PAUSED` comment/.test(auto) && /skipped only when the latest checkpoint is already a `PAUSED` comment or the label is present/.test(auto));
+ok('auto.md: a slot ticket at the resolve step is exempt from reconstruction', /work state step is `resolve`[^\n]*exempt from (the )?reconstruction/.test(auto));
+ok('auto.md: reconstruction happens when the ticket is resumed, not for a waiting extra', /Reconstruction happens when the ticket is actually resumed[^\n]*untouched/.test(auto));
+const docs = {
+  'README.md': 'README.md',
+  'README.it.md': 'README.it.md',
+  'workflow.md': 'site/src/content/docs/docs/workflow.md',
+  'commands/work.md': 'site/src/content/docs/docs/commands/work.md',
+};
+const root = path.resolve(__dirname, '..');
+for (const [name, rel] of Object.entries(docs)) {
+  const t = fs.readFileSync(path.join(root, rel), 'utf8');
+  const it = name === 'README.it.md';
+  ok(`${name}: no interrupt-time PAUSED checkpoint promise`, !/(Stop\/Esc|Esc or Stop|Esc)[^\n]*(keeps its claim and gets|keeps its claim with|mantiene il claim e riceve)[^\n]*`PAUSED`/.test(t) && !/gets a `PAUSED` checkpoint naming/.test(t));
+  ok(`${name}: Esc writes nothing and the next auto writes the missing PAUSED checkpoint`, it
+    ? /Esc[^\n]*non scrive nulla[^\n]*stessa traccia di un crash[^\n]*`\/trailhead:auto`[^\n]*checkpoint `PAUSED` mancante[^\n]*workspace e branch/.test(t) && /stessa sessione[^\n]*riusa[^\n]*nuova sessione[^\n]*chiede di nuovo/.test(t)
+    : /Esc[^\n]*writes nothing[^\n]*same trace as a crash[^\n]*`\/trailhead:auto`[^\n]*missing `PAUSED` checkpoint[^\n]*workspace and branch/.test(t) && /same session[^\n]*reuses[^\n]*new session[^\n]*asks again/.test(t));
+}
 ok('auto.md: no em-dash', !auto.includes(String.fromCharCode(0x2014)));
 console.log(`auto-run-docs.test.js: ${passed} checks passed`);
