@@ -48,7 +48,11 @@ export type MapCounts = { open: number; total: number }
 export type MapSummary = { number: number; title: string; counts: MapCounts | null }
 
 // What the maps read gives: the open maps and the whiteboard's counts (null when they were unreadable).
-export type MapsRead = { maps: readonly MapSummary[]; whiteboard: MapCounts | null }
+// `isMapsCapped`: more open maps exist than the read returned, so a sum over them is a lower bound.
+export type MapsRead = { maps: readonly MapSummary[]; whiteboard: MapCounts | null; isMapsCapped: boolean }
+
+// The open tickets across every open map plus the whiteboard, with the map numbers it was computed over.
+export type OpenTotal = { total: number; maps: readonly number[]; isMapsCapped: boolean }
 
 export type MapInfo = { number: number; title: string; destination: string | null; url: string }
 
@@ -68,6 +72,8 @@ export type MapPaneData = {
   maps: readonly MapSummary[]
   // The whiteboard's open and total tickets; null = unknown, the Whiteboard row is drawn name-only.
   whiteboard: MapCounts | null
+  // The open tickets across every open map plus the whiteboard; null = unknown, the line is hidden.
+  openTotal: OpenTotal | null
   history: BurndownHistory | null
   historyAt: number | null
   fetchedAt: number | null

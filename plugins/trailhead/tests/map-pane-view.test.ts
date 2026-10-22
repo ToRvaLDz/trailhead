@@ -13,6 +13,7 @@ import {
   headingRoom,
   HISTORY_LIMIT,
   isTimerLate,
+  keepOpenTotal,
   mapRowLayout,
   nextViewed,
   openTotalLabel,
@@ -858,6 +859,17 @@ test('parseOpenTotal is null on errors, a missing alias or a bad count (never a 
   expect(parseOpenTotal(totals({ m3: 4, wb: 2 }), [3, 198])).toBeNull()
   // negative, fractional, textual, null counts
   for (const bad of [-1, 1.5, '4', null]) expect(parseOpenTotal(totals({ m3: bad, wb: 2 }), [3])).toBeNull()
+})
+
+test('keepOpenTotal keeps the last total only over the same maps and the same cut', () => {
+  const kept = { total: 10, maps: [14, 198], isMapsCapped: false }
+  expect(keepOpenTotal(kept, [14, 198], false)).toBe(kept)
+  expect(keepOpenTotal(kept, [14], false)).toBeNull()
+  expect(keepOpenTotal(kept, [14, 198, 300], false)).toBeNull()
+  expect(keepOpenTotal(kept, [14, 199], false)).toBeNull()
+  expect(keepOpenTotal(kept, [14, 198], true)).toBeNull()
+  expect(keepOpenTotal(null, [14, 198], false)).toBeNull()
+  expect(keepOpenTotal({ total: 3, maps: [], isMapsCapped: false }, [], false)).toEqual({ total: 3, maps: [], isMapsCapped: false })
 })
 
 test('openTotalLabel words the total across all maps and the whiteboard', () => {

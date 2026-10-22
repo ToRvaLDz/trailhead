@@ -74,7 +74,7 @@ const MAPS = [
 ]
 // The maps read: one GraphQL call that carries each map's sub-issue counts and the whiteboard's.
 const MAPS_QUERY =
-  'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
+  'query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:100,states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}totalCount}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}'
 const MAPS_CALL = ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`]
 const MAPS_LIST_CALL = ['gh', 'issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', '100', '--json', 'number,title,url']
 // The pending-UAT read: every open `trailhead:uat` ticket with its body and labels, one GraphQL page per call;
@@ -101,7 +101,12 @@ const ticketsCall = (label: string, after?: string) => [
 const ticketsListCall = (label: string) => ['gh', 'issue', 'list', '--label', label, '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url']
 const isTicketsRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes(`query=${TICKETS_QUERY}`)
 // The maps read only: the ticket reads are GraphQL too, but answered and failed on their own.
-const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv) && !isUatRead(argv)
+const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv) && !isUatRead(argv) && !isCountRead(argv)
+// The open-ticket total: one aliased `totalCount` per open map (`m<n>`) plus the whiteboard (`wb`), in one call.
+const countQuery = (maps: number[]) =>
+  `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){${[...maps.map(n => `m${n}:issues(states:OPEN,labels:["trailhead:map-${n}"]){totalCount}`), 'wb:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}'].join('')}}}`
+const countCall = (...maps: number[]) => ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${countQuery(maps)}`]
+const isCountRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.some(a => a.startsWith('query=') && a.includes('wb:issues('))
 const flatNode = (t: any) => ({ ...t, labels: { nodes: t.labels }, assignees: { nodes: t.assignees } })
 const PAGE = 100
 const isMapsList = (argv: readonly string[]) => argv[2] === 'list' && argv.includes('trailhead:map')
@@ -162,6 +167,11 @@ const rig = (on: On, engine?: any) => {
     mapSummary: { 198: { total: 23, completed: 16 }, 14: { total: 5, completed: 2 } } as Record<number, unknown>,
     // The whiteboard's open and total tickets as the same call reports them (null: the fields are absent).
     whiteboardCounts: { open: 3, total: 9 } as { open: number; total: number } | null,
+    // The open tickets per label, as the total's count read reports them (a missing label counts 0); `countMode`
+    // makes that read fail (`fail`), answer `errors` (`errors`) or non-JSON (`junk`), `countTotal` the maps read's `totalCount`.
+    openCounts: { 'trailhead:map-198': 5, 'trailhead:map-14': 2, 'trailhead:whiteboard': 3 } as Record<string, number>,
+    countMode: 'ok' as 'ok' | 'fail' | 'errors' | 'junk',
+    countTotal: null as number | null,
     otherMap: OTHER_MAP as unknown,
     otherTickets: OTHER_TICKETS as unknown[],
     otherHistory: OTHER_HISTORY as unknown[],
@@ -257,13 +267,21 @@ const rig = (on: On, engine?: any) => {
       const nodes = (r.uat as any[]).slice(from, to).map(u => ({ ...u, labels: { nodes: u.labels ?? [] } }))
       return ok(JSON.stringify({ data: { repository: { issues: { nodes, pageInfo } } } }))
     }
+    if (isCountRead(argv)) {
+      if (r.countMode === 'fail') return { exitCode: 1, stdout: '', stderr: 'boom' }
+      if (r.countMode === 'junk') return ok('not json')
+      const query = (argv.find(a => a.startsWith('query=')) ?? '').slice('query='.length)
+      const repo = Object.fromEntries([...query.matchAll(/(\w+):issues\(states:OPEN,labels:\["([^"]+)"\]\)\{totalCount\}/g)].map(m => [m[1], { totalCount: r.openCounts[m[2] as string] ?? 0 }]))
+      return ok(JSON.stringify({ data: { repository: repo }, ...(r.countMode === 'errors' ? { errors: [{ message: 'x' }] } : {}) }))
+    }
     if (argv.includes('trailhead:whiteboard')) return ok(JSON.stringify(r.whiteboard))
     if (argv.includes('trailhead:dashboard')) return ok(JSON.stringify(r.dashboard))
     if (isGraphql(argv)) {
       const nodes = (r.maps as { number: number }[]).map(m => ({ ...m, subIssuesSummary: r.mapSummary[m.number] }))
       const wb = r.whiteboardCounts
       const counts = wb === null ? {} : { whiteboardOpen: { totalCount: wb.open }, whiteboardAll: { totalCount: wb.total } }
-      return ok(JSON.stringify({ data: { repository: { issues: { nodes }, ...counts } } }))
+      const totalCount = r.countTotal ?? nodes.length
+      return ok(JSON.stringify({ data: { repository: { issues: { nodes, totalCount }, ...counts } } }))
     }
     if (isMapsList(argv)) return ok(JSON.stringify(r.maps))
     const isOther = argv.includes('14') || argv.includes('trailhead:map-14')
@@ -429,7 +447,7 @@ const fetches = (r: Rig) => r.calls.filter(argv => isTicketsRead(argv) && !argv.
 // A gh that answers as the default does, except for the history read.
 const withHistory = (r: Rig, answer: GhOut): Gh => argv => {
   if (argv.includes('all')) return answer
-  if (isGraphql(argv) || isMapsList(argv)) return r.defaultGh(argv)
+  if (isGraphql(argv) || isCountRead(argv) || isMapsList(argv)) return r.defaultGh(argv)
   return argv[2] === 'view' ? ok(JSON.stringify(r.map)) : ok(JSON.stringify(r.tickets))
 }
 const hasKey = async (ui: any, key: string): Promise<boolean> => (await ui.find({ key })) !== undefined
@@ -459,6 +477,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'list', '--label', 'trailhead:map-198', '--state', 'all', '--limit', '5000', '--json', 'number,labels,createdAt,closedAt'],
       MAPS_CALL,
       uatCall(),
+      countCall(14, 198),
     ])
     expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
     expect((await ui.find({ type: 'Link' }))?.props).toMatchObject({ href: `${URL}/198` })
@@ -994,7 +1013,7 @@ for (const surface of SURFACES) {
     await completeTurn($)
     await settle(r)
     // the open maps are still read, so one can be picked; no map is
-    expect(r.calls).toEqual([MAPS_CALL])
+    expect(r.calls).toEqual([MAPS_CALL, countCall(14, 198)])
   })
 
   test(`first fetch in flight: the map number and Loading tickets [${surface}]`, async ($, on) => {
@@ -2455,10 +2474,11 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'burndown-counts')).toBe('open 2 · done 0 · removed 0 · peak 2')
     // the ticket in play belongs to the other map: nothing here is marked
     expect(await hasKey(ui, 'mark-208')).toBe(false)
-    expect(r.calls.slice(-5).map(argv => argv.slice(0, 4))).toEqual([
+    expect(r.calls.slice(-6).map(argv => argv.slice(0, 4))).toEqual([
       ['gh', 'issue', 'view', '14'],
       ['gh', 'api', 'graphql', '-F'],
       ['gh', 'issue', 'list', '--label'],
+      ['gh', 'api', 'graphql', '-F'],
       ['gh', 'api', 'graphql', '-F'],
       ['gh', 'api', 'graphql', '-F'],
     ])
@@ -2667,6 +2687,7 @@ for (const surface of SURFACES) {
       ['gh', 'issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', 'number,url'],
       MAPS_CALL,
       uatCall(),
+      countCall(14, 198),
     ])
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
     expect((await ui.find({ key: 'dashboard-title' }))?.children[0]).toMatchObject({ props: { bold: true, color: ACCENT } })
@@ -2870,6 +2891,166 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
     expect(await hasKey(ui, 'map-aside-14')).toBe(false)
+  })
+
+  // The open-ticket total across every open map plus the whiteboard (5 + 2 + 3 with the default counts).
+  const TOTAL_TEXT = '10 open across all maps + whiteboard'
+  const totalLines = async (ui: any): Promise<number> => (await ui.findAll({ key: 'open-total' })).length
+  const refreshOnce = async ($: any, r: Rig) => {
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+  }
+
+  test(`the total line shows exactly once in the map view, under the Whiteboard row [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await totalLines(ui)).toBe(1)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    expect((await ui.find({ key: 'open-total' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('open-total')).toBeGreaterThan(keys.indexOf('whiteboard-row'))
+    expect(keys.indexOf('open-total')).toBeLessThan(keys.indexOf('group-frontier'))
+  })
+
+  test(`the total line shows exactly once in the loading state and the no-active-map view [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.active = null
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
+    await completeTurn($)
+    await settle(r)
+    expect(await totalLines(ui)).toBe(1)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+
+    // a map pressed while its read is held: Loading tickets, the last good total beside the Whiteboard row
+    const base = r.defaultGh
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => (release = resolve))
+    r.gh = async argv => {
+      if (argv[2] === 'view' || isTicketsRead(argv)) await held
+      return base(argv)
+    }
+    await ui.press({ key: 'map-14' })
+    await settle(r)
+    expect(await textOf(ui, 'loading')).toBe('Loading tickets…')
+    expect(await totalLines(ui)).toBe(1)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    release()
+    await settle(r)
+  })
+
+  test(`the total line shows exactly once under the Dashboard header row [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await hasKey(ui, 'dashboard-title')).toBe(true)
+    expect(await totalLines(ui)).toBe(1)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    const keys = (await ui.findAll({ type: 'Box' })).map((el: any) => el.key)
+    expect(keys.indexOf('open-total')).toBeGreaterThan(keys.indexOf('header-row'))
+    expect(keys.indexOf('open-total')).toBeLessThan(keys.indexOf('group-maps'))
+  })
+
+  test(`the total is counted over the open maps' numbers, one extra call per read [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.maps = [MAPS[0]]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(isCountRead)).toEqual([countCall(198)])
+    // 5 open on the map + 3 on the whiteboard
+    expect(await textOf(ui, 'open-total')).toBe('8 open across all maps + whiteboard')
+    // a closed map is never counted: only the open maps are enumerated
+    r.maps = MAPS
+    await refreshOnce($, r)
+    expect(r.calls.filter(isCountRead).at(-1)).toEqual(countCall(14, 198))
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+  })
+
+  for (const mode of ['fail', 'errors', 'junk'] as const) {
+    test(`a count read that fails (${mode}) before any good read draws no total line [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      r.countMode = mode
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      expect(await totalLines(ui)).toBe(0)
+      // the rest of the pane is unharmed and no footer error is raised for it
+      expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+      expect(await textOf(ui, 'age')).toBe('updated just now')
+    })
+  }
+
+  test(`a later failing count read keeps the last good total while the open maps are the same [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    r.countMode = 'fail'
+    r.openCounts = { ...r.openCounts, 'trailhead:whiteboard': 99 }
+    await refreshOnce($, r)
+    expect(await totalLines(ui)).toBe(1)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    // a good read takes over again
+    r.countMode = 'ok'
+    await refreshOnce($, r)
+    expect(await textOf(ui, 'open-total')).toBe('106 open across all maps + whiteboard')
+  })
+
+  test(`a failing count read after the open maps changed hides the total, never stale [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
+    r.countMode = 'fail'
+    r.maps = [MAPS[0]]
+    await refreshOnce($, r)
+    expect(await totalLines(ui)).toBe(0)
+  })
+
+  test(`the name-only maps fallback draws no total and makes no count call [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    const base = r.defaultGh
+    r.gh = argv => (isGraphql(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.calls.filter(isCountRead)).toEqual([])
+    expect(await totalLines(ui)).toBe(0)
+    expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
+  })
+
+  test(`a fallback after a good total hides it rather than keep a figure over a list of unknown completeness [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    const base = r.defaultGh
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await totalLines(ui)).toBe(1)
+    r.gh = argv => (isGraphql(argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : base(argv))
+    await refreshOnce($, r)
+    expect(await totalLines(ui)).toBe(0)
+  })
+
+  test(`a narrow pane keeps the lower bound in the short form [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.countTotal = 101
+    await $.session.start(START)
+    const ui = await openAndMount($, r, { bodyColumns: 24 })
+    expect(await textOf(ui, 'open-total')).toBe('≥10 open in total')
+  })
+
+  test(`a truncated maps read words the total as a lower bound only [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    // more open maps exist (101) than the two the read returned
+    r.countTotal = 101
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'open-total')).toBe('at least 10 open across all maps + whiteboard')
+    // exactly as many maps as were read is not a cut
+    r.countTotal = null
+    await refreshOnce($, r)
+    expect(await textOf(ui, 'open-total')).toBe(TOTAL_TEXT)
   })
 
   test(`the dashboard heading counts the whiteboard and every assigned trusted ticket is a row [${surface}]`, async ($, on) => {

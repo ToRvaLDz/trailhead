@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapSummary, PaneTicket, RepoPin, UatParent, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapsRead, MapSummary, OpenTotal, PaneTicket, RepoPin, UatParent, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
@@ -19,10 +19,14 @@ import {
   headingRoom,
   HISTORY_LIMIT,
   isTimerLate,
+  keepOpenTotal,
   LIST_LIMIT,
   MAP_LABEL,
+  MAPS_READ_LIMIT,
   mapRowLayout,
   nextViewed,
+  openTotalLabel,
+  openTotalQuery,
   parseActiveMap,
   parseDashboard,
   parseHistory,
@@ -30,6 +34,7 @@ import {
   parseMap,
   parseMaps,
   parseMapsRead,
+  parseOpenTotal,
   parseTickets,
   parseUatParents,
   rasterCells,
@@ -65,9 +70,9 @@ const TICKET_FIELDS = 'number,title,labels,assignees,url'
 const MAP_FIELDS = 'title,body,url'
 const HISTORY_FIELDS = 'number,labels,createdAt,closedAt'
 const MAPS_FIELDS = 'number,title,url'
-const MAPS_LIMIT = 100
+const MAPS_LIMIT = MAPS_READ_LIMIT
 const PAGE_SIZE = 100
-const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}`
+const MAPS_QUERY = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){issues(first:${MAPS_LIMIT},states:OPEN,labels:["trailhead:map"]){nodes{number title url subIssuesSummary{total completed}}totalCount}whiteboardOpen:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}whiteboardAll:issues(labels:["trailhead:whiteboard"]){totalCount}}}`
 // The open tickets of one label, newest first like `gh issue list`; paged by the module (PAGE_SIZE a page).
 const TICKETS_QUERY = `query($owner:String!,$repo:String!,$label:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:[$label],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}`
 // Every open UAT follow-up with its body and labels, newest first; paged by the module (PAGE_SIZE a page, at
@@ -89,6 +94,7 @@ const EMPTY: MapPaneData = {
   tickets: [],
   maps: [],
   whiteboard: null,
+  openTotal: null,
   unverifiedCount: 0,
   isCapped: false,
   history: null,
@@ -206,12 +212,12 @@ async function gh($: Dollar, pin: RepoPin, args: readonly string[]): Promise<GhR
   }
 }
 
-const readList = ($: Dollar, pin: RepoPin, target: number) =>
+const readList = ($: Dollar, pin: RepoPin, target: number, kept: OpenTotal | null) =>
   Promise.all([
     gh($, pin, ['issue', 'view', String(target), '--json', MAP_FIELDS]),
     readOpen($, pin, `trailhead:map-${target}`),
     gh($, pin, ['issue', 'list', '--label', `trailhead:map-${target}`, '--state', 'all', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS]),
-    readMaps($, pin),
+    readMaps($, pin, kept),
     readUat($, pin, `trailhead:map-${target}`),
   ])
 
@@ -260,17 +266,29 @@ const readUat = async ($: Dollar, pin: RepoPin, scope: string): Promise<Readonly
   return null
 }
 
-// The open maps of the repo and the whiteboard's counts. A failed or unreadable maps read is null: the
-// caller keeps the last good list. One GraphQL call gives every map with its sub-issue counts and the
-// whiteboard's; if it fails or is unreadable the name-only `gh issue list` runs instead (counts null, and
-// the whiteboard null: the row is drawn name-only, never stale). Both bounded at MAPS_LIMIT open maps.
-const readMaps = async ($: Dollar, pin: RepoPin): Promise<{ maps: readonly MapSummary[] | null; whiteboard: MapCounts | null }> => {
+// The open maps of the repo, the whiteboard's counts and the open-ticket total across them. A failed or
+// unreadable maps read is null: the caller keeps the last good list. One GraphQL call gives every map with its
+// sub-issue counts and the whiteboard's; if it fails or is unreadable the name-only `gh issue list` runs instead
+// (counts null, the whiteboard null: the row is drawn name-only, never stale; the total null too, as a sum over a
+// list of unknown completeness is never shown). Both bounded at MAPS_LIMIT open maps.
+type MapsResult = { maps: readonly MapSummary[] | null; whiteboard: MapCounts | null; openTotal: OpenTotal | null }
+
+// The total over the open maps just read, one aliased `totalCount` query. A failed or unreadable count keeps
+// `kept` only while it was computed over exactly these maps (and the same cut), else it is hidden, never stale.
+const readOpenTotal = async ($: Dollar, pin: RepoPin, read: MapsRead, kept: OpenTotal | null): Promise<OpenTotal | null> => {
+  const maps = read.maps.map(m => m.number)
+  const out = await gh($, pin, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${openTotalQuery(maps)}`])
+  const total = out.ok ? parseOpenTotal(out.stdout, maps) : null
+  return total === null ? keepOpenTotal(kept, maps, read.isMapsCapped) : { total, maps, isMapsCapped: read.isMapsCapped }
+}
+
+const readMaps = async ($: Dollar, pin: RepoPin, kept: OpenTotal | null): Promise<MapsResult> => {
   // The {owner}/{repo} placeholders come from the pinned root's remote, which gh resolves with its host too.
   const counted = await gh($, pin, ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MAPS_QUERY}`])
   const withCounts = counted.ok ? parseMapsRead(counted.stdout) : null
-  if (withCounts !== null) return withCounts
+  if (withCounts !== null) return { maps: withCounts.maps, whiteboard: withCounts.whiteboard, openTotal: await readOpenTotal($, pin, withCounts, kept) }
   const out = await gh($, pin, ['issue', 'list', '--label', 'trailhead:map', '--state', 'open', '--limit', String(MAPS_LIMIT), '--json', MAPS_FIELDS])
-  return { maps: out.ok ? parseMaps(out.stdout) : null, whiteboard: null }
+  return { maps: out.ok ? parseMaps(out.stdout) : null, whiteboard: null, openTotal: null }
 }
 
 // What the pane compares to skip a write: times aside, but whether the history is as fresh as the list.
@@ -308,35 +326,35 @@ async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: ()
 
   if (target === null) {
     // No map to show: the open maps alone, so one can be picked.
-    const mapsRead = await readMaps($, pin)
+    const mapsRead = await readMaps($, pin, before.openTotal)
     const maps = mapsRead.maps ?? before.maps
     if (await isStale()) return
-    return setPane($, { ...EMPTY, maps, whiteboard: mapsRead.whiteboard })
+    return setPane($, { ...EMPTY, maps, whiteboard: mapsRead.whiteboard, openTotal: mapsRead.openTotal })
   }
   const isSameMap = before.map?.number === target
   if (!isSameMap) {
     if (await isStale()) return
-    await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, isLoading: true })
+    await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, openTotal: before.openTotal, isLoading: true })
   }
 
-  const [view, list, historyRead, mapsRead, uatParents] = await readList($, pin, target)
+  const [view, list, historyRead, mapsRead, uatParents] = await readList($, pin, target, before.openTotal)
   const maps = mapsRead.maps ?? before.maps
-  const { whiteboard } = mapsRead
+  const { whiteboard, openTotal } = mapsRead
   await dropClosedView($, mapsRead.maps)
   const now = await $.clock.now()
   if (await isStale()) return
 
   const kept = isSameMap ? before : EMPTY
   const failure = !view.ok ? view.reason : !list.ok ? list.reason : null
-  if (failure !== null) return setPane($, { ...kept, maps, whiteboard, error: failure, isLoading: false })
+  if (failure !== null) return setPane($, { ...kept, maps, whiteboard, openTotal, error: failure, isLoading: false })
   const map = view.ok ? parseMap(view.stdout, target) : null
   const tickets = list.ok ? parseTickets(list.stdout) : null
-  if (map === null || tickets === null) return setPane($, { ...kept, maps, whiteboard, error: 'gh returned unreadable output', isLoading: false })
+  if (map === null || tickets === null) return setPane($, { ...kept, maps, whiteboard, openTotal, error: 'gh returned unreadable output', isLoading: false })
 
   // A history that failed alone keeps the last good one of this map (with its own time), never another map's.
   const history = historyRead.ok ? parseHistory(historyRead.stdout) : null
   const historyPart = history !== null ? { history, historyAt: now } : { history: kept.history, historyAt: kept.historyAt }
-  const next: MapPaneData = { map, ...tickets, tickets: withUatParents(tickets.tickets, uatParents), maps, whiteboard, ...historyPart, fetchedAt: now, error: null, isLoading: false }
+  const next: MapPaneData = { map, ...tickets, tickets: withUatParents(tickets.tickets, uatParents), maps, whiteboard, openTotal, ...historyPart, fetchedAt: now, error: null, isLoading: false }
   const isFresh = before.fetchedAt !== null && now - before.fetchedAt < AGE_REFRESH_MS
   if (isFresh && isSameMap && sameValue(shape(before), shape(next))) return
   await setPane($, next)
@@ -355,19 +373,20 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
     return true
   }
   const before = await read($, dashboardPane)
+  const keptTotal = (await read($, mapPane)).openTotal
   if (before.fetchedAt === null && !before.isLoading && before.error === null) {
     await update($, dashboardPane, () => ({ ...before, isLoading: true }))
   }
   const [list, index, mapsRead, uatParents] = await Promise.all([
     readOpen($, pin, 'trailhead:whiteboard', 'trailhead:ticket'),
     gh($, pin, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
-    readMaps($, pin),
+    readMaps($, pin, keptTotal),
     readUat($, pin, 'trailhead:whiteboard'),
   ])
   const now = await $.clock.now()
   if (await isStale()) return
   const shown = await read($, mapPane)
-  await setPane($, { ...shown, maps: mapsRead.maps ?? shown.maps, whiteboard: mapsRead.whiteboard })
+  await setPane($, { ...shown, maps: mapsRead.maps ?? shown.maps, whiteboard: mapsRead.whiteboard, openTotal: mapsRead.openTotal })
   await dropClosedView($, mapsRead.maps)
 
   const kept = await read($, dashboardPane)
@@ -994,6 +1013,10 @@ export function registerMapPane(on: On) {
       </Box>
     )
 
+    // The total of open tickets across every open map and the whiteboard, one dim line; hidden while unknown.
+    const totalText = openTotalLabel(data.openTotal?.total ?? null, data.openTotal?.isMapsCapped ?? false, cols)
+    const totalLine = totalText === null ? null : text('open-total', dim, totalText)
+
     // This session's own ticket survives a work-state file another session took over; without one, the file decides.
     const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
     const row = (t: PaneTicket, hasMarkColumn: boolean) => {
@@ -1148,6 +1171,7 @@ export function registerMapPane(on: On) {
       return (
         <Box flexDirection="column" width={cols} {...(isDock ? { minHeight: e.props.scroll.bodyRows } : {})}>
           {headerRow(title)}
+          {totalLine}
           {mapsGroup}
           <Box key="whiteboard" marginTop={gap}>
             {text('head-whiteboard', bold, whiteboardHeading(isLoaded ? board.tickets : null, board.isCapped))}
@@ -1167,6 +1191,7 @@ export function registerMapPane(on: On) {
         <Box flexDirection="column" width={cols}>
           {text('empty', dim, 'No active map. Run /trailhead:map to pick one.')}
           {whiteboardRow}
+          {totalLine}
           {mapsGroup}
         </Box>
       )
@@ -1192,6 +1217,7 @@ export function registerMapPane(on: On) {
           {viewing}
           {text('loading', dim, 'Loading tickets…')}
           {whiteboardRow}
+          {totalLine}
           {mapsGroup}
         </Box>
       )
@@ -1222,6 +1248,7 @@ export function registerMapPane(on: On) {
         {header}
         {viewing}
         {whiteboardRow}
+        {totalLine}
         {mapsGroup}
         {ticketGroups(tickets)}
         {isCurrent && data.error === null && tickets.length === 0 ? (

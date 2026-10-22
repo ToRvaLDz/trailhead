@@ -1,7 +1,7 @@
 // Pure view logic of the map pane: parse what `gh` printed, group the rows, word a
 // failure and an age, decide when a refresh may run. No engine calls here, so it is easy to test.
 import { fit } from './work-state-view'
-import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapsRead, MapSummary, PaneTicket, TicketState, TicketType, UatParent } from '../../types'
+import type { BurndownHistory, BurndownIssue, DashboardRef, MapCounts, MapInfo, MapsRead, MapSummary, OpenTotal, PaneTicket, TicketState, TicketType, UatParent } from '../../types'
 
 export const TICKET_TYPES: readonly TicketType[] = ['decision', 'research', 'prototype', 'build', 'bug', 'task']
 
@@ -279,7 +279,55 @@ export const parseMapsRead = (stdout: string): MapsRead | null => {
       }),
     )
     .sort((a, b) => a.number - b.number)
-  return { maps, whiteboard: whiteboardOf(repo) }
+  return { maps, whiteboard: whiteboardOf(repo), isMapsCapped: isCappedBy(issues, nodes.length) }
+}
+
+// More open maps exist than the read returned (`totalCount` above the nodes read); without a usable
+// `totalCount` a read that filled MAPS_READ_LIMIT is taken as cut.
+const isCappedBy = (issues: Record<string, unknown>, read: number): boolean => {
+  const count = totalOf(issues)
+  return count === null ? read >= MAPS_READ_LIMIT : count > read
+}
+
+// The most open maps one maps read asks for.
+export const MAPS_READ_LIMIT = 100
+
+// One query counting the open tickets of every open map and of the whiteboard: the dashboard's own scopes
+// (a ticket carries one map label or the whiteboard label, never both, so nothing counts twice).
+export const openTotalQuery = (maps: readonly number[]): string => {
+  const scope = (alias: string, label: string) => `${alias}:issues(states:OPEN,labels:["${label}"]){totalCount}`
+  const fields = [...maps.map(n => scope(`m${n}`, `${LABEL_PREFIX}map-${n}`)), scope('wb', `${LABEL_PREFIX}whiteboard`)]
+  return `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){${fields.join('')}}}`
+}
+
+// The sum of every alias of `openTotalQuery`; any `errors`, a missing alias or an unusable count is
+// unreadable (null), never a partial sum shown as exact.
+export const parseOpenTotal = (stdout: string, maps: readonly number[]): number | null => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || 'errors' in raw || !isRecord(raw.data) || !isRecord(raw.data.repository)) return null
+  const repo = raw.data.repository
+  const counts = [...maps.map(n => totalOf(repo[`m${n}`])), totalOf(repo.wb)]
+  return counts.some(c => c === null) ? null : counts.reduce((sum: number, c) => sum + (c as number), 0)
+}
+
+// The last good total, kept through a failed count read only while it was computed over exactly these open
+// maps (and the same cut of the maps read); a changed map set hides it rather than show it stale.
+export const keepOpenTotal = (kept: OpenTotal | null, maps: readonly number[], isMapsCapped: boolean): OpenTotal | null =>
+  kept !== null && kept.isMapsCapped === isMapsCapped && kept.maps.length === maps.length && kept.maps.every((n, i) => n === maps[i]) ? kept : null
+
+// The line of the total, long form first, the short one when that does not fit, null when unknown or when
+// not even the short one fits. A truncated maps read is a lower bound, worded as one.
+export const openTotalLabel = (total: number | null, isCapped: boolean, columns: number): string | null => {
+  if (total === null) return null
+  const long = `${isCapped ? 'at least ' : ''}${total} open across all maps + whiteboard`
+  if (long.length <= columns) return long
+  const short = `${isCapped ? '≥' : ''}${total} open in total`
+  return short.length <= columns ? short : null
 }
 
 // `gh issue list --label trailhead:dashboard --json number,url`: the pinned index, the lowest number
