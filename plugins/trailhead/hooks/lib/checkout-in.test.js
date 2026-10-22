@@ -5,6 +5,7 @@
 // Layers covered:
 //   1. The pure token helpers: encode / split / decode round-trip.
 //   2. The CLI against real temp git repos: invalid, here, move, the `cd` field.
+//   3. The protocol contract: the work skill moves before it loads or preflights.
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -148,6 +149,30 @@ fs.mkdirSync(plain);
     const cd = spawnSync('sh', ['-c', `${r.out.cd} && pwd -P`], { encoding: 'utf8', cwd: plain });
     eq(`cd lands in ${name}`, cd.stdout.trim(), real);
   }
+}
+
+// --- 3. protocol contract: the move comes before anything else -----------------------
+{
+  const skill = fs.readFileSync(skillPath, 'utf8');
+  const move = skill.indexOf('## Move into the handed checkout');
+  ok('move section exists', move >= 0);
+  const load = skill.indexOf('## Load first');
+  const pre = skill.indexOf('## Preflight');
+  ok('move section sits before Load first', load > move);
+  ok('move section sits before the Preflight', pre > move);
+  const section = skill.slice(move, load);
+  ok('names the helper', section.includes('trailhead-checkout-in.js'));
+  ok('names the --in= word', section.includes('--in='));
+  ok('names work and resume', /`work`/.test(section) && /`resume`/.test(section));
+  ok('runs the cd field verbatim', /`cd` field[^.]*verbatim/.test(section));
+  ok('cd is its own Bash call', /own Bash call/.test(section));
+  ok('post-move re-check requires here', /re-run the helper/.test(section) && /`here`/.test(section));
+  ok('stops on invalid', /`invalid`[^.]*stop/.test(section));
+  ok('stops on a failed cd', /failed `cd`[^.]*stop|`cd` fails[^.]*stop|stop[^.]*`cd` fail/i.test(section));
+  ok('stops when the post-check is not here', /could not move/.test(section));
+  ok('stops when the helper is missing', /missing[^.]*stop|stop[^.]*missing/i.test(section));
+  ok('never moves by hand', /by hand/.test(section));
+  ok('Routing points at the move section', /Routing[\s\S]*Move into the handed checkout/.test(skill.slice(skill.indexOf('## Routing'))));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
