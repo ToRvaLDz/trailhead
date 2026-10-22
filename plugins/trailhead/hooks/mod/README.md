@@ -167,7 +167,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   hidden while unknown: before a first good count, when the count read fails or is unreadable and the open maps are not
   the set the last good total covered (a failed read keeps the last total only over exactly the same maps, beside the
   pane's own failure note), and whenever the maps read fell back to the name-only `gh issue list` (the count query runs
-  only on the GraphQL maps path). When more open maps exist than the maps read returned (`totalCount` above the nodes
+  only on the GraphQL maps path), including when that fallback fails too and the last maps list is kept: with no maps
+  read there is no set to check the last total against, so it is hidden until the next good read. When more open maps exist than the maps read returned (`totalCount` above the nodes
   read, so exactly 100 maps is not a cut) the total is a lower bound and reads `at least <N> open across all maps +
   whiteboard`. In a narrow pane it shortens to `<N> open in total` (`≥<N> open in total` for a lower bound), and is left
   out when even that does not fit.
