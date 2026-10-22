@@ -12,6 +12,7 @@ export type Stage = { name: StageName; status: StageStatus }
 export type Pipeline = { stages: readonly Stage[]; isPaused: boolean }
 
 const ELLIPSIS = '…'
+export const ELSEWHERE = 'in another session'
 
 // Cuts by code point, so a surrogate pair (an emoji in an issue title) is never split.
 export const fit = (text: string, room: number): string => {
@@ -87,8 +88,9 @@ export const nextOwnTicket = (
 export const sameValue = (a: unknown, b: unknown): boolean => stableJson(a) === stableJson(b)
 
 // What the autonomous run adds to the status: the run found beside the main checkout, its scope counts, and
-// whether the resume hint shows.
-export type RunInfo = { run: AutoRun | null; counts: RunCounts | null; hint: boolean }
+// whether the resume hint shows. `elsewhere`: the foreign state's session is not known gone, so the
+// status words it neutrally instead of offering to resume it.
+export type RunInfo = { run: AutoRun | null; counts: RunCounts | null; hint: boolean; elsewhere?: boolean }
 
 export const statusLine = (state: WorkState | null, isOrphaned: boolean, info?: RunInfo): string | undefined => {
   const hint = info?.hint === true ? RESUME_HINT_STATUS : null
@@ -106,7 +108,7 @@ export const statusLine = (state: WorkState | null, isOrphaned: boolean, info?: 
     const [first, ...rest] = runParts(info?.run ?? { done: state.autoDone }, info?.counts ?? null)
     parts.push(`auto ${first}`, ...rest)
   }
-  if (isOrphaned) parts.push('orphaned, resume?')
+  if (isOrphaned) parts.push(info?.elsewhere === true ? ELSEWHERE : 'orphaned, resume?')
   if (hint !== null) parts.push(hint)
   return parts.join(' · ')
 }

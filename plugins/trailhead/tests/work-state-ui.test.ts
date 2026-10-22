@@ -47,10 +47,24 @@ const rig = (on: On, engine: any) => {
     // The session's working directory (a shell `cd` moves it) and what `session.repo` finds there.
     cwd: '/repo',
     repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
+    // Il registro delle sessioni del motore: i sessionId con un pid vivo; Error = non si legge (default).
+    registry: new Error('EACCES') as string[] | Error,
   }
+  on('env.get', (_$, e) => ({ value: e.name === 'CLAUDE_CONFIG_DIR' ? '/cfg' : undefined }))
+  on('fs.exists', (_$, e) => ({ value: e.path === '/proc/self' || /^\/proc\/\d+$/.test(e.path) }))
+  on('fs.list', (_$, e) => {
+    if (e.path !== '/cfg/sessions') return { deny: `unexpected list of ${e.path}` }
+    if (r.registry instanceof Error) return { deny: r.registry.message }
+    return { value: r.registry.map((_id, i) => ({ name: `${100 + i}.json`, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })) }
+  })
   on('session.repo', () => ({ value: r.repo }))
   on('fs.read', (_$, e) => {
     r.reads += 1
+    if (e.path.startsWith('/cfg/sessions/')) {
+      const i = Number(e.path.slice('/cfg/sessions/'.length).replace('.json', '')) - 100
+      const id = r.registry instanceof Error ? undefined : r.registry[i]
+      return id === undefined ? { deny: `ENOENT: ${e.path}` } : { value: JSON.stringify({ sessionId: id, pid: 100 + i }) }
+    }
     if (!e.path.endsWith('/.trailhead/work-state.json')) return { deny: `unexpected read of ${e.path}` }
     // A relative path reaches the hook resolved against the host's directory; the engine resolves it
     // against the session's, so outside the repo it misses. A pinned read is absolute and stays.
@@ -251,8 +265,9 @@ for (const surface of SURFACES) {
     expect(await ui.find({ key: 'auto' })).toBeUndefined()
   })
 
-  test(`a state from another session is orphaned: dim band, tag, status [${surface}]`, async ($, on) => {
+  test(`a state from a session gone from the registry is orphaned: dim band, tag, status [${surface}]`, async ($, on) => {
     const r = rig(on, $)
+    r.registry = ['sess-B', 'sess-C']
     r.file = stateText({ session: 'sess-OLD' })
     await $.session.start(START)
     expect(lastStatus(r)).toBe(`${STATUS_PLAN} · orphaned, resume?`)
@@ -278,6 +293,40 @@ for (const surface of SURFACES) {
     r.file = stateText({ session: null })
     await turn($)
     expect(lastStatus(r)).toBe(STATUS_PLAN)
+  })
+
+  test(`a state from a live other session reads neutrally, never orphaned [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.registry = ['sess-A', 'sess-B']
+    r.file = stateText({ session: 'sess-A' })
+    r.session = 'sess-B'
+    await $.session.start(START)
+    expect(lastStatus(r)).toBe(`${STATUS_PLAN} · in another session`)
+    expect(lastStatus(r)).not.toContain('orphaned')
+    const ui = await mountBand($)
+    expect((await leaf(ui, 'tag'))?.text).toBe('  in another session')
+    const ticket = await leaf(ui, 'ticket')
+    expect(ticket?.props).toMatchObject({ bold: true, color: ACCENT })
+    expect(ticket?.props).not.toHaveProperty('dimColor')
+    expect((await leaf(ui, 'stage-plan'))?.props).toMatchObject({ bold: true, color: ACCENT })
+    // la sessione finisce: da quel momento e' orfano
+    r.registry = ['sess-B']
+    await turn($)
+    expect(lastStatus(r)).toBe(`${STATUS_PLAN} · orphaned, resume?`)
+    expect((await leaf(ui, 'tag'))?.text).toBe('  orphaned, resume?')
+  })
+
+  test(`an unreadable registry falls back to the neutral wording [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.file = stateText({ session: 'sess-OLD' })
+    await $.session.start(START)
+    expect(lastStatus(r)).toBe(`${STATUS_PLAN} · in another session`)
+    const ui = await mountBand($)
+    expect((await leaf(ui, 'tag'))?.text).toBe('  in another session')
+    // un registro vuoto non prova nulla
+    r.registry = []
+    await turn($)
+    expect(lastStatus(r)).toBe(`${STATUS_PLAN} · in another session`)
   })
 
   test(`the band yields while a survey holds it [${surface}]`, async ($, on) => {

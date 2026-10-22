@@ -57,6 +57,13 @@ test('statusLine builds the entry for each shape', () => {
   expect(statusLine(null, true)).toBeUndefined()
 })
 
+test('statusLine words a state of a session not known gone neutrally', () => {
+  const info = { run: null, counts: null, hint: false, elsewhere: true }
+  expect(statusLine(parse({}), true, info)).toBe('map #198 · #203 Status entry · plan · in another session')
+  expect(statusLine(parse({}), true, info)).not.toContain('orphaned')
+  expect(statusLine(parse({}), true, { ...info, elsewhere: false })).toBe('map #198 · #203 Status entry · plan · orphaned, resume?')
+})
+
 test('pipeline marks the stages for each step', () => {
   const status = (step: string) => pipeline(step).stages.map(s => s.status)
   expect(pipeline('plan').stages.map(s => s.name)).toEqual(['discuss', 'plan', 'execute', 'verify'])

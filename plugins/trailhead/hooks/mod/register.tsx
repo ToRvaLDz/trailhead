@@ -13,12 +13,16 @@ import { followWhiteboard, onPinMove, registerMapPane } from './map-pane'
 import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
+import { sessionLiveness } from './session-registry'
 import { promptSection, snapshotKey } from './work-state-prompt'
-import { fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
+import { ELSEWHERE, fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
 
 export const workState = atom({ plugin: 'trailhead', key: 'workState' } as const, null as WorkState | null)
+// A foreign state is "orphaned" (not this session's, nothing in play); `isElsewhere` says the session
+// that wrote it is not known gone, so the wording is neutral and offers no resume.
 export const isOrphaned = atom({ plugin: 'trailhead', key: 'isOrphaned' } as const, false)
+export const isElsewhere = atom({ plugin: 'trailhead', key: 'isElsewhere' } as const, false)
 // The ticket this session works, kept across a work-state file other sessions share.
 export const ownTicket = atom({ plugin: 'trailhead', key: 'ownTicket' } as const, null as number | null)
 export const promptSnapshot = atom({ plugin: 'trailhead', key: 'promptSnapshot' } as const, null as PromptSnapshot | null)
@@ -83,7 +87,8 @@ async function showStatus($: Dollar) {
   const state = await read($, workState)
   const run = await read($, autoRun)
   const hint = showsResumeHint(await read($, autoInterrupted), run)
-  pin($, statusLine(state, await read($, isOrphaned), { run, counts: await read($, runCounts), hint }))
+  const elsewhere = await read($, isElsewhere)
+  pin($, statusLine(state, await read($, isOrphaned), { run, counts: await read($, runCounts), hint, elsewhere }))
 }
 
 async function mainRootOf($: Dollar): Promise<string | null> {
@@ -117,6 +122,41 @@ async function settleRun($: Dollar, state: WorkState | null) {
 async function setOrphaned($: Dollar, value: boolean) {
   const current = await read($, isOrphaned)
   if (current !== value) await update($, isOrphaned, () => value)
+}
+
+async function setElsewhere($: Dollar, value: boolean) {
+  const current = await read($, isElsewhere)
+  if (current !== value) await update($, isElsewhere, () => value)
+}
+
+// Le sessioni chiuse da un /clear di questa: per loro lo stato e' orfano subito, senza guardare il registro.
+const ended = new Set<string>()
+
+// Il registro delle sessioni del motore (<config>/sessions/<pid>.json). Il pid si controlla solo dove c'e'
+// /proc (Linux); altrove conta la presenza della voce. Ogni errore e' "unknown": mai orfano per un dubbio.
+async function registryDir($: Dollar): Promise<string | null> {
+  const config = await $.env.get('CLAUDE_CONFIG_DIR')
+  if (config !== undefined && config !== '') return `${config}/sessions`
+  const home = await $.env.get('HOME')
+  return home === undefined || home === '' ? null : `${home}/.claude/sessions`
+}
+
+async function foreignIsGone($: Dollar, sessionId: string): Promise<boolean> {
+  try {
+    if (ended.has(sessionId)) return true
+    const dir = await registryDir($)
+    if (dir === null) return false
+    const hasProc = await $.fs.exists('/proc/self').catch(() => false)
+    const liveness = await sessionLiveness(dir, sessionId, {
+      list: async path => (await $.fs.list(path)).filter(e => e.kind === 'file').map(e => e.name),
+      read: path => $.fs.read(path) as Promise<string>,
+      pidAlive: async pid => (hasProc ? $.fs.exists(`/proc/${pid}`) : null),
+    })
+    return liveness === 'gone'
+  } catch (err) {
+    debug($, `trailhead mod: session registry lookup failed: ${String(err)}`)
+    return false
+  }
 }
 
 // What the latch was last set to, per session, once the atom write succeeded. Overlapping calls may see the
@@ -201,10 +241,11 @@ async function restoreLatch($: Dollar, previous: PromptSnapshot, live: PromptSna
   if (current !== null && current.key === live.key) await setSnapshot($, previous)
 }
 
-async function apply($: Dollar, state: WorkState | null, orphaned: boolean) {
+async function apply($: Dollar, state: WorkState | null, orphaned: boolean, elsewhere = false) {
   const isStale = state !== null && orphaned
   await setWorkState($, state)
   await setOrphaned($, isStale)
+  await setElsewhere($, isStale && elsewhere)
   await settleRun($, state)
   await showStatus($)
 }
@@ -261,7 +302,10 @@ async function refresh($: Dollar, init: RefreshInit = {}) {
   await setOwnTicket($, state)
   if (state === null) return apply($, null, false)
   const session = await $.session.id()
-  return apply($, state, state.session !== null && state.session !== session)
+  const foreign = state.session !== null && state.session !== session
+  // Una sessione straniera e' "altrove" finche' il registro non conferma che e' finita.
+  const gone = foreign && (await foreignIsGone($, state.session as string))
+  return apply($, state, foreign, foreign && !gone)
 }
 
 function safeRefresh($: Dollar, init: RefreshInit = {}): Promise<void> {
@@ -290,6 +334,7 @@ async function markOrphaned($: Dollar) {
   // A file with no session is never orphaned, /clear included.
   if (state === null || state.session === null) return
   await setOrphaned($, true)
+  await setElsewhere($, false)
   await showStatus($)
 }
 
@@ -417,6 +462,7 @@ export const register: Register = on => {
     // The session ends with no turn left running, whatever the reason.
     markTurnComplete()
     if (e.reason === 'clear') {
+      ended.add(e.sessionId)
       try {
         await markOrphaned($)
       } catch {
@@ -440,7 +486,9 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const state = await read($, workState)
-    const orphaned = await read($, isOrphaned)
+    const isStale = await read($, isOrphaned)
+    const elsewhere = isStale && (await read($, isElsewhere))
+    const orphaned = isStale && !elsewhere
     const run = await read($, autoRun)
     const counts = await read($, runCounts)
     const hint = showsResumeHint(await read($, autoInterrupted), run)
@@ -461,7 +509,7 @@ export const register: Register = on => {
     const ticketLabel = `#${state.ticket}`
     const room = e.props.bodyColumns - ticketLabel.length - 1
     const title = state.title === null ? null : fit(state.title, room)
-    const tag = orphaned ? '  orphaned, resume?' : isPaused ? '  ‖ paused' : null
+    const tag = elsewhere ? `  ${ELSEWHERE}` : orphaned ? '  orphaned, resume?' : isPaused ? '  ‖ paused' : null
 
     return (
       <Box flexDirection="column">
@@ -492,7 +540,7 @@ export const register: Register = on => {
               </Box>
             )}
           </Box>
-          {hint || (state.auto && !orphaned) ? (
+          {hint || (state.auto && !isStale) ? (
             <Box key="auto">
               <Text color={AMBER}>{hint ? RESUME_HINT : runLabel(run ?? { done: state.autoDone }, counts)}</Text>
             </Box>

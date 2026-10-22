@@ -101,6 +101,8 @@ declare module 'claude-code' {
     trailhead: {
       workState: WorkState | null
       isOrphaned: boolean
+      // The foreign state's session is not known gone: neutral wording, no resume hint.
+      isElsewhere: boolean
       // The ticket this session works, kept when another session's state takes over the shared file.
       ownTicket: number | null
       promptSnapshot: PromptSnapshot | null

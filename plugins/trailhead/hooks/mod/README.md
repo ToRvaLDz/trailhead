@@ -24,12 +24,20 @@ the status text, the pipeline stages) are in `work-state-view.ts`. The map pane 
   (`✓` done in green, `▸` current in bold accent, pending dim). Step `resolve` shows all four
   done, step `paused` shows all four dim followed by `‖ paused`. During an autonomous run
   `auto · <n> done · <m> in flight` sits at the right end of row two.
-- **Orphaned**: when the file names another session than the current one (a `/clear`, a
-  resume, a new window), the entry gets ` · orphaned, resume?` and the band is drawn dim with
-  `orphaned, resume?` after the stages. A `/clear` marks the state on screen as orphaned at
-  once, without waiting for a turn: the engine empties the mod's atoms on `/clear`, so the file is
-  read again when the new session starts (`classic.SessionStart`, source `clear`). A file with no
-  session is never orphaned.
+- **Another session / orphaned**: when the file names another session than the current one (a
+  resume, a new window, a parallel session), the ticket is not this session's, so it is not in
+  play and not in the system prompt. By default it reads neutrally: the entry gets
+  ` · in another session` and the band keeps its normal look with `in another session` after
+  the stages, no resume hint. It reads ` · orphaned, resume?` (band drawn dim with
+  `orphaned, resume?` after the stages) only when the Claude Code session registry confirms the
+  session is gone: the registry is `<config dir>/sessions/<pid>.json` (`sessionId`, `pid`; the
+  config dir is `$CLAUDE_CONFIG_DIR`, else `~/.claude`), and a session is gone when no entry names
+  its id with a live pid. The pid is checked through `/proc` where it exists (Linux); elsewhere the
+  entry's presence counts as alive. A registry that cannot be listed or read, has unparseable
+  files, or is empty falls back to the neutral wording, never orphaned. A `/clear` marks the state
+  on screen as orphaned at once, without the registry and without waiting for a turn: the engine
+  empties the mod's atoms on `/clear`, so the file is read again when the new session starts
+  (`classic.SessionStart`, source `clear`). A file with no session is never orphaned.
 - **Quiet**: with no file, or a file that cannot be parsed (no valid ticket and step), the
   band draws nothing and the status entry is cleared. A survey holding the band makes the
   band yield, and the status entry stays. A read error other than "missing file" keeps what
@@ -45,7 +53,7 @@ Next to the screen pieces, the mod appends one section, `trailhead:work-state`, 
 prompt through `prompt.compose` (session side of the cache boundary, after the engine's own
 sections). It names the active map, the ticket in play (number, title, link) and the step, so the
 agent keeps its bearings after a compaction. Links follow the pinned repo (its host included, see "Which repo"), so a shell `cd` out of it keeps
-them; with no pin the numbers stand alone. The section is absent with no state, with an orphaned one, and under `--bare`.
+them; with no pin the numbers stand alone. The section is absent with no state, with a foreign one (orphaned or in another session), and under `--bare`.
 
 It is a latched snapshot kept in the `promptSnapshot` atom (session scoped): what the model has
 been told. It is reset at `session.start`, after a main-loop compaction (`session.compact`, once it
