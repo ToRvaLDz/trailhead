@@ -32,6 +32,7 @@ The design choices that fall out of it:
 
 - **Everything lives on GitHub Issues.** The map is the parent issue; each ticket is a child issue; discussion, plan, and verification are *comments*. There is no `.planning/` directory: the repo holds code only, and the plan is always visible to anyone with the repo.
 - **Execution happens inside the map.** Unlike pure Wayfinder ("plan, don't do"), build tickets graduate from the fog and are executed as children of the map. The destination is the **working artifact** (a deployed app), not a spec document, though a project can override that and stop at the spec.
+- **Hand it a map and come back.** `/trailhead:auto` drains a map or the whiteboard unattended, in up to four parallel slots, and leaves a run report, the tickets that need you, and local commits for you to push. See [Autonomous run](#-autonomous-run-auto).
 - **Lean by default.** The heavy machinery (codebase mapping, systematic debugging) runs once where it earns its keep; the per-ticket cycle stays light.
 
 - **Built for teams, because the plan is shared.** The tracker is the single source of truth, so the map is a **shared workspace**, not one person's local file. Many people (and their agents) work it at once, and the mechanics keep them from colliding:
@@ -115,6 +116,22 @@ Along the way: **capture** ideas mid-work without derailing, **split** a ticket 
 ### 🤖 Autonomous run: `auto`
 
 `/trailhead:auto [map]` runs a chosen scope unattended, ticket after ticket, resolving each with its normal engine instead of handing back to you in between. It suspends the one-ticket-per-session rule, and it never re-engages on its own: you start every run.
+
+`auto` drains a map (or the whiteboard, or everything) unattended, ticket after ticket, in 1 to 4 parallel slots. `/trailhead:work` is the other mode: one ticket per session, with you in the loop (briefs, grilling, UAT choices). Reach for `auto` when the frontier holds well-specified build or bug work you don't need to steer; use `work` for decisions, fuzzy tickets, or when you want to drive. When you come back you find the run report in chat (also posted on each touched map), the tickets that need you labelled `trailhead:needs-you` with a `NEEDS YOU` comment, and local commits waiting for you to push: the run never pushes.
+
+While it runs, the chat shows a progress line naming the tickets in the slots and what just resolved or comes next; at the end, the run report. Something like:
+
+```text
+auto: slot 1 #42 add social login (verify) | slot 2 #43 session cookie (execute) | resolved #41, next #44
+
+Run report
+Stopped:  frontier empty
+Resolved: #41, #42, #43, #44
+Merged:   #41, #42, #43, #44 into main; local main is 7 commits ahead of origin (pushing is yours)
+Remains:  #45 needs you (which providers to support); #46 blocked by #45
+```
+
+**Main checkout.** With more than one slot, the run merges each verified slot branch into the local trunk of the main checkout (a fast-forward when possible, else a merge commit), so if you are working in that checkout by hand your branch can move under you. Uncommitted tracked work stays protected: the merge stops on a dirty tree and the ticket is parked needs-you. Untracked files do not block it.
 
 - **It asks first, before claiming anything, with no delegate option.** The run scope (one map, the whiteboard, or everything, each with its frontier count, then which map when you pick one map and several are open; `/trailhead:auto <n>` skips only this ask). The parallel slots (1, 2, 3 or 4, 2 proposed; asked under `<n>` too). The external review rounds (as configured, 1, 2, 3 or until convergence, which stops on a round with no progress, hard ceiling 5; at most four options in the structured menu, the full five as a numbered list on a host without one). The review ask is skipped when plan review is off or no independent reviewer CLI is installed (the host's own CLI does not count), and the choice holds for every `build` ticket of the run, overriding `plan_review.rounds` for that run.
 - **Order.** Under everything it works one map at a time by ascending map number, the whiteboard last. Inside a scope, the oldest workable ticket first. Blocked tickets are never queued, tickets marked needs-you are skipped, and your own interrupted (paused) tickets in the scope are resumed first.

@@ -32,6 +32,7 @@ Le scelte di design che ne derivano:
 
 - **Tutto vive su GitHub Issues.** La mappa è la parent issue; ogni ticket è una child issue; discussione, piano e verifica sono *commenti*. Non c'è alcuna directory `.planning/`: il repo contiene solo codice, e il piano è sempre visibile a chiunque abbia accesso al repo.
 - **L'esecuzione avviene dentro la mappa.** A differenza del Wayfinder puro ("plan, don't do"), i build ticket si diplomano dalla fog e vengono eseguiti come figli della mappa. La destination è l'**artefatto funzionante** (un'app deployata), non un documento di specifica, anche se un progetto può ridefinire questo e fermarsi alla specifica.
+- **Dai una mappa e torna dopo.** `/trailhead:auto` svuota una mappa o la whiteboard senza supervisione, in fino a quattro slot paralleli, e lascia un run report, i ticket che hanno bisogno di te e i commit locali da pushare. Vedi [Run autonoma](#-run-autonoma-auto).
 - **Lean by default.** Il macchinario pesante (codebase mapping, debugging sistematico) gira una volta dove vale la pena; il ciclo per-ticket resta leggero.
 
 - **Costruito per i team, perché il piano è condiviso.** Il tracker è l'unica fonte di verità, quindi la mappa è un **workspace condiviso**, non il file locale di una singola persona. Molte persone (e i loro agenti) ci lavorano contemporaneamente, e i meccanismi impediscono che si scontrino:
@@ -115,6 +116,22 @@ Lungo il cammino: **cattura** idee in corso d'opera senza deragliare, **splitta*
 ### 🤖 Run autonoma: `auto`
 
 `/trailhead:auto [map]` esegue in autonomia uno scope scelto, ticket dopo ticket, risolvendo ciascuno con il suo motore normale invece di restituirti il controllo nel mezzo. Sospende la regola un-ticket-per-sessione e non si riattiva mai da solo: ogni run la avvii tu.
+
+`auto` svuota una mappa (o la whiteboard, o tutto) senza supervisione, ticket dopo ticket, in 1-4 slot paralleli. `/trailhead:work` è l'altra modalità: un ticket per sessione, con te nel loop (brief, grilling, scelte UAT). Usa `auto` quando la frontier contiene lavoro build o bug ben specificato che non devi guidare; usa `work` per le decisioni, i ticket vaghi o quando vuoi guidare tu. Quando torni trovi il run report in chat (postato anche su ogni mappa toccata), i ticket che hanno bisogno di te con label `trailhead:needs-you` e un commento `NEEDS YOU`, e i commit locali che aspettano il tuo push: la run non pusha mai.
+
+Mentre gira, la chat mostra una riga di avanzamento con i ticket negli slot e cosa si è appena risolto o viene dopo; alla fine, il run report. Qualcosa come:
+
+```text
+auto: slot 1 #42 add social login (verify) | slot 2 #43 session cookie (execute) | resolved #41, next #44
+
+Run report
+Stopped:  frontier empty
+Resolved: #41, #42, #43, #44
+Merged:   #41, #42, #43, #44 into main; local main is 7 commits ahead of origin (pushing is yours)
+Remains:  #45 needs you (which providers to support); #46 blocked by #45
+```
+
+**Checkout principale.** Con più di 1 slot, la run unisce ogni branch di slot verificato nel trunk locale del checkout principale (un fast-forward quando possibile, altrimenti un merge commit), quindi se stai lavorando a mano in quel checkout il tuo branch può spostarsi sotto di te. Il lavoro tracked non committato resta protetto: il merge si ferma su un albero sporco e il ticket viene parcheggiato needs-you. I file untracked non lo bloccano.
 
 - **Chiede prima, prima di prendere in carico qualsiasi cosa, senza opzione delegate.** Lo scope della run (una mappa, la whiteboard o tutto, ciascuno con il suo conteggio di frontier, poi quale mappa se ne scegli una e ce ne sono più aperte; `/trailhead:auto <n>` salta solo questa domanda). Gli slot paralleli (1, 2, 3 o 4, con 2 proposto; chiesti anche con `<n>`). I round di review esterna (come da config, 1, 2, 3 o fino a convergenza, che si ferma a un round senza progressi, tetto rigido 5; al massimo quattro opzioni nel menu strutturato, le cinque complete come elenco numerato su un host che non lo ha). La domanda sulla review viene saltata se la plan review è disattivata o non c'è nessuna CLI di reviewer indipendente installata (la CLI dell'host stesso non conta), e la scelta vale per ogni ticket `build` della run, sovrascrivendo `plan_review.rounds` per quella run.
 - **Ordine.** Con tutto, lavora una mappa alla volta in ordine crescente di numero, la whiteboard per ultima. Dentro uno scope, prima il ticket lavorabile più vecchio. I ticket bloccati non vengono mai messi in coda, quelli segnati needs-you vengono saltati e i tuoi ticket interrotti (in pausa) nello scope vengono ripresi per primi.
