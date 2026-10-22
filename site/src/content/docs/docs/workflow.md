@@ -32,7 +32,7 @@ Merged:   #41, #42, #43, #44 into main; local main is 7 commits ahead of origin 
 Remains:  #45 needs you (which providers to support); #46 blocked by #45
 ```
 
-**Main checkout.** With more than one slot, the run merges each verified slot branch into the local trunk of the main checkout (a fast-forward when possible, else a merge commit), so if you are working in that checkout by hand your branch can move under you. Uncommitted tracked work stays protected: the merge stops on a dirty tree and the ticket is parked needs-you. Untracked files do not block it.
+**Main checkout.** With more than one slot, the run merges each verified slot branch into the local trunk of the main checkout (a fast-forward when possible, else a merge commit), so if you are working in that checkout by hand your branch can move under you. Uncommitted tracked work stays protected: the merge stops on a dirty tree and the ticket is parked needs-you. Untracked files do not trip that check (one in the way of a file the merge brings in still stops it, parked the same way).
 
 ### What it asks first
 
