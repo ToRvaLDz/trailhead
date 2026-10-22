@@ -199,6 +199,8 @@ const rig = (on: On, engine?: any) => {
     isPlaced: true,
     logs: [] as string[],
     toasts: [] as string[],
+    // What a Bash call prints on stdout (the created issue's URL for a `gh issue create`).
+    stdout: 'ok' as string,
     // `session.repo` answers a denial (the checkout cannot be read).
     repoFails: false,
     // What `git remote get-url origin` answers (null: no origin), for a `session.repo` that answers null (#299).
@@ -393,7 +395,7 @@ const rig = (on: On, engine?: any) => {
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: r.panes }))
-  on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok' }) as never)
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: r.stdout, stderr: '' } }) as never)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('classic.SessionStart', () => ({}))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
@@ -3203,5 +3205,126 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
+  // The panel follows the whiteboard ticket this session takes (#306).
+  const WB_STATE = { map: null, ticket: 301, title: 'Fix the README badge', step: 'discuss' }
+  const BOARD_KEY = 'dashboard-title'
+  const CREATE_WB = 'gh issue create -t t --label trailhead:whiteboard'
+
+  test(`an own whiteboard ticket in play switches the panel to the whiteboard [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText(WB_STATE)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(true)
+    expect(await hasKey(ui, 'map')).toBe(false)
+  })
+
+  test(`going back to the map by hand is not undone by the next turn [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText(WB_STATE)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'to-map' })
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(false)
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(false)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+  })
+
+  test(`the followed ticket is not forced again after /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText(WB_STATE)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'to-map' })
+    await settle(r)
+    await $.command.run({ command: 'clear', args: '' } as never)
+    r.work = stateText({ ...WB_STATE, session: r.session })
+    await ui.redraw()
+    await settle(r)
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(false)
+  })
+
+  test(`a state that appears mid-session is followed after the helper call [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await textOf(ui, 'map')).toBe('#198 trailhead mod')
+    r.work = stateText(WB_STATE)
+    await $.tool.call({ tool: 'Bash', command: 'node /x/trailhead-work-state.js set --ticket 301' } as never)
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(true)
+  })
+
+  test(`a state that appears before a turn ends is followed [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.work = stateText(WB_STATE)
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(true)
+  })
+
+  test(`a map ticket in play does not switch the panel [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(false)
+  })
+
+  test(`a Resolve leaves the panel on the whiteboard [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.work = stateText(WB_STATE)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.work = null
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await hasKey(ui, BOARD_KEY)).toBe(true)
+  })
+
+  test(`a whiteboard ticket created while a map is shown raises one toast and no switch [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.stdout = `${URL}/310\n`
+    await $.tool.call({ tool: 'Bash', command: CREATE_WB } as never)
+    await settle(r)
+    expect(r.toasts).toEqual(['new whiteboard ticket #310: open Whiteboard'])
+    expect(await hasKey(ui, BOARD_KEY)).toBe(false)
+  })
+
+  test(`a whiteboard ticket created on the whiteboard view raises no toast [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'open-whiteboard' })
+    await settle(r)
+    r.stdout = `${URL}/310\n`
+    await $.tool.call({ tool: 'Bash', command: CREATE_WB } as never)
+    await settle(r)
+    expect(r.toasts).toEqual([])
+  })
+
+  test(`a ticket created without the whiteboard label raises no toast [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    r.stdout = `${URL}/310\n`
+    await $.tool.call({ tool: 'Bash', command: 'gh issue create -t t --label trailhead:task' } as never)
+    await settle(r)
+    expect(r.toasts).toEqual([])
   })
 }

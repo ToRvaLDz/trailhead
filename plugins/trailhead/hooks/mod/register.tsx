@@ -9,7 +9,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AutoRun, PromptSnapshot, RepoPin, RunCounts, WorkState } from '../../types'
 import { RESUME_HINT, runLabel, showsResumeHint } from './auto-run-view'
 import { clearRunCounts, readRunCounts, scanRun } from './auto-run'
-import { onPinMove, registerMapPane } from './map-pane'
+import { followWhiteboard, onPinMove, registerMapPane } from './map-pane'
 import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
@@ -317,6 +317,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await safeRefresh($, { isStart: true })
+    await followWhiteboard($)
     await setSnapshot($, null).catch(err => debug($, `trailhead mod: snapshot reset failed: ${String(err)}`))
     return result
   })
@@ -397,13 +398,17 @@ export const register: Register = on => {
       if (e.isAborted) await setInterrupted($, true).catch(err => debug($, `trailhead mod: resume hint set failed: ${String(err)}`))
     }
     await safeRefresh($)
+    await followWhiteboard($)
     return result
   })
 
   // The helper runs through Bash: read again once the call has run.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (typeof e.command === 'string' && e.command.includes(HELPER)) await safeRefresh($, { fresh: true })
+    if (typeof e.command === 'string' && e.command.includes(HELPER)) {
+      await safeRefresh($, { fresh: true })
+      await followWhiteboard($)
+    }
     return result
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))

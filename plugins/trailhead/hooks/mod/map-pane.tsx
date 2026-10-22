@@ -45,6 +45,7 @@ import {
 } from './map-pane-view'
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { isMainTurnRunning } from './turn-state'
+import { createdIssueNumber, isWhiteboardCreate, nextFollow, whiteboardHint } from './whiteboard-follow'
 import { fit, isMissing, sameValue } from './work-state-view'
 
 export const PANE_ID = 'trailhead-map'
@@ -140,7 +141,7 @@ type Timer = { cancel: () => void }
 // alone cannot tell a live timer from a dead one.
 type Tracked = { timer: Timer; dueAt: number }
 
-const debug = ($: Dollar, message: string) => {
+function debug($: Dollar, message: string): void {
   try {
     $.ui.log(message, { to: 'debug' })
   } catch {
@@ -728,6 +729,36 @@ async function clearStale($: Dollar) {
   }
 }
 
+// The whiteboard ticket the panel last switched to. A module variable, not an atom: a /clear empties the atoms,
+// and a ticket the person already left for the map must not pull the panel back.
+let followedTicket: number | null = null
+
+// Called by the work state's refresh once it has applied (the state atom is written there): when this session's
+// own whiteboard ticket is in play the panel shows the whiteboard, once per ticket (#306).
+export async function followWhiteboard($: Dollar): Promise<void> {
+  try {
+    const { follow, memo } = nextFollow(followedTicket, await read($, workState), await read($, ownTicket), await read($, isOrphaned))
+    followedTicket = memo
+    if (!follow) return
+    await update($, isDashboard, () => true)
+    void requestRefresh($, { bypassFloor: true })
+  } catch (err) {
+    debug($, `trailhead mod: whiteboard follow failed: ${String(err)}`)
+  }
+}
+
+// A whiteboard ticket created while a map is shown: a hint, never a switch.
+async function hintWhiteboard($: Dollar, command: unknown, call: unknown): Promise<void> {
+  try {
+    if (typeof command !== 'string' || !isWhiteboardCreate(command)) return
+    const number = createdIssueNumber(call)
+    if (number === null || (await read($, isDashboard))) return
+    $.ui.toast(whiteboardHint(number))
+  } catch (err) {
+    debug($, `trailhead mod: whiteboard hint failed: ${String(err)}`)
+  }
+}
+
 // A click on a map of the list: show it, or (the active map, or null) go back to following the active one.
 // A view change is not a repeat read, so the floor does not apply.
 async function viewMap($: Dollar, number: number | null) {
@@ -854,6 +885,7 @@ export function registerMapPane(on: On) {
   on('tool.call', { tool: 'Bash', command: GH_ISSUE_WRITE }, async ($, e, next) => {
     const result = await next(e)
     void requestRefresh($, { isWrite: true })
+    await hintWhiteboard($, e.command, result)
     return result
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))
