@@ -211,7 +211,7 @@ The trailhead mod (Claude Code 2.1.287+) ships inside the plugin and draws the w
 
 ![The map panel docked beside the transcript: open maps, frontier with a work button per ticket, in progress, blocked, and a footer with refresh and close](assets/screenshots/map-panel.png)
 
-The map panel lists the open maps to view, the tickets an autonomous run parked for you in a `Needs you` group at the top, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what (your own ticket is marked `this session`), the pending UAT follow-ups in a `UAT` group (each naming the ticket it tests), the paused ones in a `Paused` group, and what is blocked. The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
+The map panel lists the open maps to view, the tickets an autonomous run parked for you in a `Needs you` group at the top, the frontier with a `work` button per ticket that clears the context and starts the ticket, who holds what (your own ticket is marked `this session`), the pending UAT follow-ups in a `UAT` group (each naming the ticket it tests), the paused ones in a `Paused` group, and what is blocked. A dim line under the Whiteboard row totals the open tickets across every open map plus the whiteboard, the same number `/trailhead:map` states (`at least N` when more open maps exist than the panel reads). The footer has `refresh` and `close`. `/trailhead:panel` toggles it, and it opens by itself once in fullscreen.
 
 ![The panel viewing another map, with a viewing and active header and a back to active button](assets/screenshots/map-panel-viewing.png)
 

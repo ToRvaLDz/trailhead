@@ -155,6 +155,22 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   aliased `totalCount` connections on `trailhead:whiteboard`), never a per-ticket query. If that call
   fails or its whiteboard fields are unreadable the row is drawn name-only, no counts and no error (the
   `whiteboard` field of the `mapPane` atom is `null`; a failed read never keeps stale counts).
+- **Total line**: one dim line, `<N> open across all maps + whiteboard`, directly under the `Whiteboard` row (in the map
+  view, its loading state and the no-active-map view) and under the header row in the Dashboard view. It is the sum of the
+  open issues labelled `trailhead:map-<n>` for every open map plus the open issues labelled `trailhead:whiteboard`: the
+  dashboard's own count scopes. Both labels are only ever applied to `trailhead:ticket` issues and a ticket carries one of
+  them, never both, so the label scopes are the ticket count and nothing is counted twice; closed maps never count,
+  whiteboard tickets always do. The source is one extra `gh api graphql` call after the maps read, with one aliased
+  `totalCount`-only connection per open map (at most `MAPS_LIMIT` = 100) plus one for the whiteboard, so it is exact and
+  has no list limit; the cost is up to one connection per enumerated map per refresh, only while the pane is open (15 s
+  floor). The result is the `openTotal` field of the `mapPane` atom, with the map numbers it was computed over. It is
+  hidden while unknown: before a first good count, when the count read fails or is unreadable and the open maps are not
+  the set the last good total covered (a failed read keeps the last total only over exactly the same maps, beside the
+  pane's own failure note), and whenever the maps read fell back to the name-only `gh issue list` (the count query runs
+  only on the GraphQL maps path). When more open maps exist than the maps read returned (`totalCount` above the nodes
+  read, so exactly 100 maps is not a cut) the total is a lower bound and reads `at least <N> open across all maps +
+  whiteboard`. In a narrow pane it shortens to `<N> open in total` (`≥<N> open in total` for a lower bound), and is left
+  out when even that does not fit.
 - **Dashboard view**: the `Whiteboard` row (the header has no button for it) opens the repo index. It draws a `Dashboard` title (a link
   to the pinned `trailhead:dashboard` issue when there is one) with a `map` button that goes back to the map
   shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
@@ -242,7 +258,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   that leaves it undrawn (no surface places panes).
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`, `TIMER_GRACE_MS = 30_000`,
-  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = 100` (not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
+  `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = MAPS_READ_LIMIT = 100` (`MAPS_LIMIT` not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `MAPS_READ_LIMIT = 100`, `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `pendingPhase` (`queued` or `starting`), `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`), the held press (`held`) and the one being sent (`inFlight`),
   because `/clear` empties the atoms while they are needed. Whether a main turn runs is `turn-state.ts`, kept by
