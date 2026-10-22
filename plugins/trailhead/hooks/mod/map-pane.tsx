@@ -534,12 +534,26 @@ async function placeOf($: Dollar): Promise<{ pin: RepoPin; where: 'in' | 'out' }
   const pin = await read($, repoPin)
   if (pin === null) return { refusal: 'no repo pinned' }
   const where = await whereIsSession($, pin)
-  return where === 'unknown' ? { refusal: 'checkout unreadable' } : { pin, where }
+  if (where === 'unknown') return { refusal: 'checkout unreadable' }
+  // Out of it, the verb must move into the pin: a removed worktree or clone would fail only after the destructive /clear.
+  if (where === 'out' && !(await isCheckoutRoot($, pin.root))) return { refusal: 'checkout unreadable' }
+  return { pin, where }
+}
+
+// Whether the pinned root still answers as a checkout root, the same test the verb's helper applies.
+async function isCheckoutRoot($: Dollar, root: string): Promise<boolean> {
+  try {
+    const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: root, timeoutMs: 5_000 })
+    return out.exitCode === 0 && out.stdout.trim() === root
+  } catch {
+    return false
+  }
 }
 
 // A press during a running turn is held (row `queued`, with a cancel button) and sent when the main turn ends;
 // with no turn running it is sent at once. With no pin or an unreadable checkout it refuses before anything, as the
-// clear is destructive; outside the pinned repo it goes through and the verb moves into it. The pendingWork claim is taken with the version it read, so two presses never both pass.
+// clear is destructive; outside the pinned repo it goes through and the verb moves into it. The pendingWork claim is
+// taken with the version it read, so two presses never both pass.
 async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
   if (held !== null || inFlight !== null) return
   const place = await placeOf($)

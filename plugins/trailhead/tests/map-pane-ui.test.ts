@@ -203,6 +203,8 @@ const rig = (on: On, engine?: any) => {
     repoFails: false,
     // What `git remote get-url origin` answers (null: no origin), for a `session.repo` that answers null (#299).
     gitRemote: null as string | null,
+    // Checkout roots that no longer exist: git answers 128 there (a removed worktree or clone).
+    gone: [] as string[],
     opens: [] as { id: string; title?: string }[],
     // `command.run` beneath the plugin: every run is recorded; `gate` holds a work run, `refuse` rejects it.
     // Every file write beneath the plugin: the pane must never write the active-map marker.
@@ -356,7 +358,7 @@ const rig = (on: On, engine?: any) => {
         const remote = r.gitRemote === null ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: `${r.gitRemote}\n`, stderr: '' }
         return { value: { ...remote, isStdoutTruncated: false, isStderrTruncated: false } }
       }
-      const top = where === ROOT_TREE ? r.top : where === ROOT || where === ROOT_OTHER ? where : null
+      const top = where !== undefined && r.gone.includes(where) ? null : where === ROOT_TREE ? r.top : where === ROOT || where === ROOT_OTHER ? where : null
       const out = top === null ? { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } : { exitCode: 0, stdout: `${top}\n`, stderr: '' }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
@@ -1556,6 +1558,24 @@ for (const surface of SURFACES) {
     await ui.press({ key: 'work-209' })
     await settle(r)
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: `209 ${IN(ROOT_TREE)}` }])
+  })
+
+  test(`a work press whose pinned checkout is gone while the session is out is refused before the clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.gone = [ROOT]
+    r.cwd = '/tmp'
+    r.repo = null
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toContain('#209')
+    expect(r.toasts[0]).toContain('unreadable')
+    expect(r.toasts[0].length).toBeLessThanOrEqual(40)
+    expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
+    expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })
 
   test(`a work press in the pinned repo goes through although session.repo answers null [${surface}]`, async ($, on) => {
