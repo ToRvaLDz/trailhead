@@ -3,7 +3,7 @@ title: Hooks
 description: The commit guard, secret guard, install guard, search guard, body guard, labels guard, secret-read guard, mockup-link guard, injection scanner, the session-start update check, and the git commit-msg hook that enforce trailhead's discipline.
 ---
 
-Beyond the skill's instructions, trailhead ships eight of its own hooks (self-contained, installed alongside the plugin) that *enforce* the parts of the discipline the model shouldn't be trusted to remember:
+Beyond the skill's instructions, trailhead ships nine of its own hooks (self-contained, installed alongside the plugin) that *enforce* the parts of the discipline the model shouldn't be trusted to remember:
 
 - **Commit guard** (`PreToolUse` on `git commit`): hard-blocks a commit whose subject isn't [Conventional Commits](https://www.conventionalcommits.org), and hard-blocks any `Co-Authored-By` trailer. This mirrors GSD's commit validation.
 - **Secret guard** (`PreToolUse` on `gh` issue/PR writes): trailhead posts a lot to the tracker (ticket bodies, engine comments, codebase/conventions issues, resolutions). This scans what a `gh issue`/`gh pr`/`gh api` write is about to post (the inline `--body`, a heredoc, or a `--body-file`) and hard-blocks it if it matches a credential pattern (private keys, GitHub/AWS/OpenAI/Slack/Google/Stripe tokens, JWTs, or a hardcoded `password`/`secret`/`token=…`). The block is a clean-and-retry cue, not a dead end: trailhead redacts the flagged value in place (`<REDACTED>` or an env-var reference) and re-posts automatically, so the cleaned content still lands: the secret just never reaches the tracker. It stays a fail-safe block rather than a silent auto-rewrite on purpose: a block never leaks, whereas a redaction that quietly failed to apply would. It never scans reads, only outbound writes.
@@ -21,7 +21,7 @@ The commit, secret, install, search, body, and labels guards run in **one proces
 
 The secret, body, and secret-read guards also **fail closed on shell constructs they cannot interpret with certainty** (`eval`, `source` / `.`, a bash 5.3 `${ cmd; }`, `printf -v`, a function definition, an alias, a quoted `gh api` body key, a backslash-newline inside a word): when one can hide or precede a write (or sits next to a secret path), the command is blocked with a "rewrite it in a simple form" message instead of being emulated; the same constructs with no write or secret nearby pass.
 
-All eight are crash-safe (any error → allow) and active whenever the plugin is installed. The commit, secret, install, search, body, and secret-read guards therefore apply in **every** repo, not only trailhead projects: intentional, since conventional commits, no `Co-Authored-By`, no leaked secrets, no unvetted installs, no `cd`-then-relative-read, no clobbered issue bodies, and no readable `.env`/`.secrets` are trailhead's standing rules.
+All nine are crash-safe (any error → allow) and active whenever the plugin is installed. The commit, secret, install, search, body, and secret-read guards therefore apply in **every** repo, not only trailhead projects: intentional, since conventional commits, no `Co-Authored-By`, no leaked secrets, no unvetted installs, no `cd`-then-relative-read, no clobbered issue bodies, and no readable `.env`/`.secrets` are trailhead's standing rules.
 
 To opt out, disable the plugin's hooks in your Claude Code settings.
 
