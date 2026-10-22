@@ -27,7 +27,7 @@ ok('auto.md: isolation override above 1 slot, none and auto included', /Above 1 
 ok('auto.md: background dispatch, nothing inline', auto.includes('background subagent') && auto.includes('nothing runs inline'));
 ok('auto.md: in-flight tickets join --skip when filling a slot', /in-flight ticket/.test(auto) && /--skip <csv>` with the run's skip list \*\*plus every in-flight ticket\*\*/.test(auto));
 ok('auto.md: integration held under git: pr and for a clone slot, branch and workspace kept', /Integration stays held under `git: pr`, and for a clone slot/.test(auto) && /parked needs-you for integration/.test(auto) && /\*\*kept\*\*/.test(auto));
-ok('auto.md: interruption and run end per workspace', /every in-flight slot ticket\*\* gets its `PAUSED` checkpoint/.test(auto) && auto.includes('each remaining workspace'));
+ok('auto.md: no interrupt-time PAUSED for slot tickets, resume reconstructs it per workspace, run end per workspace', !/every in-flight slot ticket\*\* gets its `PAUSED` checkpoint/.test(auto) && /naming the slot workspace path and branch/.test(auto) && auto.includes('each remaining workspace'));
 
 ok('auto.md: every set on a slot workspace is sessionless', /every `set` on a slot workspace[^.]*`env -u CLAUDE_CODE_SESSION_ID`/.test(auto));
 ok('auto.md: the run-end reset on a workspace is sessionless too', /env -u CLAUDE_CODE_SESSION_ID node <templates>\/trailhead-work-state\.js set --repo <workspace> --auto false/.test(auto));

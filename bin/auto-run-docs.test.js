@@ -34,6 +34,9 @@ ok('auto.md: no session id host note (Codex)', /`sameSession` is always false on
 ok('auto.md: the slot table bullet points at the general rule', /slot table from `trailhead-auto-slot\.js list`[^\n]*general compaction rule/.test(parallel) && !/trailhead-auto-run\.js read/.test(parallel));
 ok('auto.md: run end unites the in-memory lists with the record', /in-memory skip and unmerged lists[^\n]*united with the record's/.test(auto));
 ok('auto.md: run end clears the record, then resets the work states', /trailhead-auto-run\.js clear --repo <main-checkout>[^\n]*then[^\n]*--auto false/.test(auto) && /Clearing first means a crash between the two/.test(auto));
-ok('auto.md: a graceful interrupt clears it, a leftover record is the crash signature', /graceful interrupt clears it too/.test(auto) && /signature of a crash mid-run/.test(auto));
+ok('auto.md: a host interrupt writes nothing, so Esc leaves the crash signature', !/graceful interrupt clears it too/.test(auto) && !/a graceful interrupt clears the record/.test(auto) && /same on disk as a crash/.test(auto) && /signature of both an Esc and a crash/.test(auto));
+ok('auto.md: after Esc the same session reuses the record, a new session is asked again', /Esc[^\n]*reuses the record/.test(auto) && /new session[^\n]*(asked again|resume-or-fresh)/.test(auto));
+ok('auto.md: step 2 writes the missing PAUSED checkpoint and label before resuming a crash-signature ticket', /Reconstruct the missing checkpoint/.test(auto) && /reconstructed at resume/.test(auto) && /`trailhead:paused`[^\n]*(before|then)[^\n]*resume/.test(auto) && /no second checkpoint/.test(auto));
+ok('auto.md: no run-end summary at a host interrupt, the resumed run covers it', /not emitted at the interrupt/.test(auto) && /resumed run's own (run-end )?summary/.test(auto));
 ok('auto.md: no em-dash', !auto.includes(String.fromCharCode(0x2014)));
 console.log(`auto-run-docs.test.js: ${passed} checks passed`);
