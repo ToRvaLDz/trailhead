@@ -15,6 +15,8 @@ import {
   isTimerLate,
   mapRowLayout,
   nextViewed,
+  openTotalLabel,
+  openTotalQuery,
   parseActiveMap,
   parseDashboard,
   parseHistory,
@@ -22,6 +24,7 @@ import {
   parseMap,
   parseMaps,
   parseMapsRead,
+  parseOpenTotal,
   parseTickets,
   parseUatParents,
   rasterCells,
@@ -776,7 +779,11 @@ test('parseMapsRead gives a null whiteboard, maps intact, when its fields are mi
     { whiteboardOpen: { totalCount: 10 }, whiteboardAll: { totalCount: 9 } },
   ]
   for (const repo of bad) {
-    expect(parseMapsRead(gql([node], {}, repo))).toEqual({ maps: [{ number: 1, title: 'a', counts: { open: 3, total: 4 } }], whiteboard: null })
+    expect(parseMapsRead(gql([node], {}, repo))).toEqual({
+      maps: [{ number: 1, title: 'a', counts: { open: 3, total: 4 } }],
+      whiteboard: null,
+      isMapsCapped: false,
+    })
   }
 })
 
@@ -791,6 +798,90 @@ test('parseMapsRead is null on anything but a clean reply', () => {
   expect(parseMapsRead(JSON.stringify({ errors: [{ message: 'boom' }] }))).toBeNull()
   // partial data next to errors is still a failed read
   expect(parseMapsRead(gql([node], { errors: [{ message: 'partial' }] }))).toBeNull()
+})
+
+// A maps connection with a `totalCount` beside its nodes, as the maps read asks for.
+const gqlTotal = (nodes: unknown[], totalCount: unknown) =>
+  JSON.stringify({ data: { repository: { issues: { nodes, totalCount }, ...WB_FIELDS } } })
+const mapNodes = (n: number) => Array.from({ length: n }, (_, i) => ({ number: i + 1, title: `m${i + 1}`, subIssuesSummary: { total: 1, completed: 0 } }))
+
+test('parseMapsRead marks the maps read capped only when more open maps exist than were read', () => {
+  expect(parseMapsRead(gqlTotal(mapNodes(3), 3))?.isMapsCapped).toBe(false)
+  expect(parseMapsRead(gqlTotal(mapNodes(3), 4))?.isMapsCapped).toBe(true)
+  // exactly the limit, with no more behind it, is not capped
+  expect(parseMapsRead(gqlTotal(mapNodes(100), 100))?.isMapsCapped).toBe(false)
+  expect(parseMapsRead(gqlTotal(mapNodes(100), 101))?.isMapsCapped).toBe(true)
+})
+
+test('parseMapsRead without a usable totalCount falls back to the read limit', () => {
+  expect(parseMapsRead(gqlTotal(mapNodes(3), undefined))?.isMapsCapped).toBe(false)
+  expect(parseMapsRead(gqlTotal(mapNodes(100), undefined))?.isMapsCapped).toBe(true)
+  expect(parseMapsRead(gqlTotal(mapNodes(100), 'x'))?.isMapsCapped).toBe(true)
+})
+
+test('openTotalQuery counts the open tickets of each map and the whiteboard in one query', () => {
+  const q = openTotalQuery([3, 198])
+  expect(q).toContain('query($owner:String!,$repo:String!)')
+  expect(q).toContain('repository(owner:$owner,name:$repo)')
+  expect(q).toContain('m3:issues(states:OPEN,labels:["trailhead:map-3"]){totalCount}')
+  expect(q).toContain('m198:issues(states:OPEN,labels:["trailhead:map-198"]){totalCount}')
+  expect(q).toContain('wb:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}')
+})
+
+test('openTotalQuery with no open map still counts the whiteboard', () => {
+  const q = openTotalQuery([])
+  expect(q).toContain('wb:issues(states:OPEN,labels:["trailhead:whiteboard"]){totalCount}')
+  expect(q).not.toContain('trailhead:map-')
+})
+
+const totals = (counts: Record<string, unknown>) =>
+  JSON.stringify({ data: { repository: Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, { totalCount: v }])) } })
+
+test('parseOpenTotal sums every map alias and the whiteboard', () => {
+  expect(parseOpenTotal(totals({ m3: 4, m198: 7, wb: 2 }), [3, 198])).toBe(13)
+  expect(parseOpenTotal(totals({ wb: 0 }), [])).toBe(0)
+  expect(parseOpenTotal(totals({ m3: 0, wb: 5 }), [3])).toBe(5)
+})
+
+test('parseOpenTotal is null on errors, a missing alias or a bad count (never a partial sum)', () => {
+  const ok = { m3: 4, wb: 2 }
+  expect(parseOpenTotal(totals(ok), [3])).toBe(6)
+  expect(parseOpenTotal('not json', [3])).toBeNull()
+  expect(parseOpenTotal('[]', [3])).toBeNull()
+  expect(parseOpenTotal('{"data":null}', [3])).toBeNull()
+  expect(parseOpenTotal('{"data":{"repository":null}}', [3])).toBeNull()
+  expect(parseOpenTotal(JSON.stringify({ errors: [{ message: 'boom' }] }), [3])).toBeNull()
+  expect(parseOpenTotal(JSON.stringify({ ...JSON.parse(totals(ok)), errors: [{ message: 'partial' }] }), [3])).toBeNull()
+  // a map alias or the whiteboard missing
+  expect(parseOpenTotal(totals({ wb: 2 }), [3])).toBeNull()
+  expect(parseOpenTotal(totals({ m3: 4 }), [3])).toBeNull()
+  expect(parseOpenTotal(totals({ m3: 4, wb: 2 }), [3, 198])).toBeNull()
+  // negative, fractional, textual, null counts
+  for (const bad of [-1, 1.5, '4', null]) expect(parseOpenTotal(totals({ m3: bad, wb: 2 }), [3])).toBeNull()
+})
+
+test('openTotalLabel words the total across all maps and the whiteboard', () => {
+  expect(openTotalLabel(13, false, 80)).toBe('13 open across all maps + whiteboard')
+  expect(openTotalLabel(0, false, 80)).toBe('0 open across all maps + whiteboard')
+})
+
+test('openTotalLabel words a truncated maps read as a lower bound', () => {
+  expect(openTotalLabel(13, true, 80)).toBe('at least 13 open across all maps + whiteboard')
+  expect(openTotalLabel(13, true, 20)).toBe('≥13 open in total')
+})
+
+test('openTotalLabel shortens when the long form does not fit, then gives up', () => {
+  const long = '13 open across all maps + whiteboard'
+  expect(openTotalLabel(13, false, long.length)).toBe(long)
+  expect(openTotalLabel(13, false, long.length - 1)).toBe('13 open in total')
+  expect(openTotalLabel(13, false, '13 open in total'.length)).toBe('13 open in total')
+  expect(openTotalLabel(13, false, '13 open in total'.length - 1)).toBeNull()
+  expect(openTotalLabel(13, true, '≥13 open in total'.length - 1)).toBeNull()
+})
+
+test('openTotalLabel is null when the total is unknown', () => {
+  expect(openTotalLabel(null, false, 80)).toBeNull()
+  expect(openTotalLabel(null, true, 80)).toBeNull()
 })
 
 test('countsLabel words open over total', () => {
