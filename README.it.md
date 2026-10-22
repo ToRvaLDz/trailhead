@@ -115,9 +115,11 @@ Lungo il cammino: **cattura** idee in corso d'opera senza deragliare, **splitta*
 
 ### 🤖 Run autonoma: `auto`
 
-`/trailhead:auto [map]` esegue in autonomia uno scope scelto, ticket dopo ticket, risolvendo ciascuno con il suo motore normale invece di restituirti il controllo nel mezzo. Sospende la regola un-ticket-per-sessione e non si riattiva mai da solo: ogni run la avvii tu.
+`/trailhead:auto [map]` svuota una mappa (o la whiteboard, o tutto) senza supervisione: prende un ticket dopo l'altro, in 1-4 slot paralleli, e risolve ciascuno con lo stesso motore che userebbe `/trailhead:work`, senza restituirti il controllo nel mezzo. Non parte mai da sola: ogni run la avvii tu.
 
-`auto` svuota una mappa (o la whiteboard, o tutto) senza supervisione, ticket dopo ticket, in 1-4 slot paralleli. `/trailhead:work` è l'altra modalità: un ticket per sessione, con te nel loop (brief, grilling, scelte UAT). Usa `auto` quando la frontier contiene lavoro build o bug ben specificato che non devi guidare; usa `work` per le decisioni, i ticket vaghi o quando vuoi guidare tu. Quando torni trovi il run report in chat (postato anche su ogni mappa toccata), i ticket che hanno bisogno di te con label `trailhead:needs-you` e un commento `NEEDS YOU`, e i commit locali che aspettano il tuo push: la run non pusha mai.
+**`auto` o `work`?** Entrambi risolvono ticket; cambia chi resta nel loop. `/trailhead:work` è la modalità interattiva: un ticket per sessione, e si ferma a chiederti le cose lungo la strada (il brief dello scope, il grilling, l'acceptance). `auto` chiede solo all'inizio, poi fa da sé le scelte di processo e parcheggia per te ciò che solo tu puoi decidere. Usa `auto` per ticket build e bug ben specificati che non devi guidare; usa `work` per le decisioni, i ticket vaghi o quando vuoi guidare tu.
+
+**Quando torni** trovi il run report in chat (postato anche su ogni mappa toccata), i ticket che hanno bisogno di te con label `trailhead:needs-you` e un commento `NEEDS YOU`, e i commit locali che aspettano il tuo push: la run non pusha mai.
 
 Mentre gira, la chat mostra una riga di avanzamento con i ticket negli slot e cosa si è appena risolto o viene dopo; alla fine, il run report. Qualcosa come:
 

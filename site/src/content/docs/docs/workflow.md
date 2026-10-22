@@ -16,9 +16,11 @@ Along the way: capture ideas mid-work without derailing (see [Captures & the whi
 
 ## Autonomous run: `auto`
 
-`/trailhead:auto [map]` runs a chosen scope unattended: it takes one ticket after another (suspending the one-ticket-per-session rule) and resolves each with its normal type engine, instead of handing back to you between tickets. It never re-engages on its own: you start every run.
+`/trailhead:auto [map]` drains a map (or the whiteboard, or everything) unattended: it takes ticket after ticket, in 1 to 4 parallel slots, and resolves each with the same engine `/trailhead:work` would run, without handing back to you in between. It never starts on its own: you launch every run.
 
-`auto` drains a map (or the whiteboard, or everything) unattended, ticket after ticket, in 1 to 4 parallel slots. `/trailhead:work` is the other mode: one ticket per session, with you in the loop (briefs, grilling, UAT choices). Reach for `auto` when the frontier holds well-specified build or bug work you don't need to steer; use `work` for decisions, fuzzy tickets, or when you want to drive. When you come back you find the run report in chat (also posted on each touched map), the tickets that need you labelled `trailhead:needs-you` with a `NEEDS YOU` comment, and local commits waiting for you to push: the run never pushes.
+**`auto` or `work`?** Both resolve tickets; what changes is who stays in the loop. `/trailhead:work` is the interactive mode: one ticket per session, and it stops to ask you along the way (the scope brief, grilling, acceptance). `auto` asks only at the start, then makes the process choices itself and parks for you whatever only you can settle. Use `auto` for well-specified build and bug tickets you don't need to steer; use `work` for decisions, fuzzy tickets, or when you want to drive.
+
+**When you come back** you find the run report in chat (also posted on each touched map), the tickets that need you labelled `trailhead:needs-you` with a `NEEDS YOU` comment, and local commits waiting for you to push: the run never pushes.
 
 While it runs, the chat shows a progress line naming the tickets in the slots and what just resolved or comes next; at the end, the run report. Something like:
 
