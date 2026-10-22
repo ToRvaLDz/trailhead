@@ -19,7 +19,8 @@ ok('auto.md: merged / already-merged resolves, unblocks, removes, frees the slot
 ok('auto.md: unblocks dependents with the helper', auto.includes('trailhead-unblock.js --issue <n> --repo <owner/name>'));
 ok('auto.md: dependents open their slot at the new trunk SHA', /open their slot at the new trunk SHA/.test(auto));
 ok('auto.md: a conflict stays separate, is parked and recorded, dependents stay blocked', /`conflict`[^\n]*stays \*\*separate\*\*/.test(auto) && /conflicting files/.test(auto) && /unmerged list/.test(auto) && /dependents stay blocked/.test(auto));
-ok('auto.md: the other statuses park needs-you naming the status', /`dirty`, `not-on-trunk`, `slot-dirty`, `in-progress`, `merge-failed` and `marker-mismatch`: park the ticket needs-you/.test(auto) && !/`not-merged`: park/.test(auto));
+ok('auto.md: the other statuses park needs-you naming the status', /`dirty`, `not-on-trunk`, `slot-dirty`, `in-progress` and `merge-failed`: park the ticket needs-you/.test(auto) && !/`not-merged`: park/.test(auto));
+ok('auto.md: a foreign marker never blocks the merge', !/marker-mismatch/.test(auto) && /never blocks it[^)]*--no-verify[^)]*only when the marker names another ticket/.test(auto));
 ok('auto.md: error hands back at once with no further merge', /`error`: hand back at once, with no further merge/.test(auto));
 ok('auto.md: other slots are never rebased mid-step', /Other in-flight slots are never rebased mid-step/.test(auto) && /strictly ahead of `origin`/.test(auto));
 ok('auto.md: a remove failure is a cleanup error, not a park', /`remove` failure after the close is a cleanup error, not a park/.test(auto) && /other than `removed` \(`error`, `not-merged`, `kept`\)[^.]*never park or reopen it/.test(auto) && /free the slot, list the workspace and the branch in the run-end summary/.test(auto));

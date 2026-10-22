@@ -202,14 +202,60 @@ function leaveRunMerge(ctx, n) {
 
 // --- marker ------------------------------------------------------------------------
 {
+  // marker di un altro ticket: il fast-forward non crea commit, procede sempre
   const ctx = makeRepo();
+  installHook(ctx.repo);
   makeSlot(ctx, 7, 'b.txt', 'b\n');
   write(path.join(ctx.repo, '.trailhead', 'session-ticket'), '#12 another ticket\n');
   const r = merge(ctx.repo, 7);
-  ok('merge: marker-mismatch with a foreign marker', r.code === 0 && r.json.status === 'marker-mismatch' && git(ctx.repo, 'rev-parse', 'HEAD') === ctx.base);
+  ok('merge: a foreign marker does not block a fast-forward', r.code === 0 && r.json.status === 'merged' && r.json.method === 'ff');
   ok('merge: the marker is never rewritten', fs.readFileSync(path.join(ctx.repo, '.trailhead', 'session-ticket'), 'utf8') === '#12 another ticket\n');
-  write(path.join(ctx.repo, '.trailhead', 'session-ticket'), '#7 this ticket\n');
-  ok('merge: a matching marker merges', merge(ctx.repo, 7).json.status === 'merged');
+  cleanup(ctx);
+}
+{
+  // marker di un altro ticket: il merge commit passa con --no-verify, hook attivo che lo rifiuterebbe
+  const ctx = makeRepo();
+  installHook(ctx.repo);
+  makeSlot(ctx, 7, 'b.txt', 'b\n');
+  commitFile(ctx.repo, 'c.txt', 'c\n', 'feat: trunk moved\n\nRefs: #12');
+  write(path.join(ctx.repo, '.trailhead', 'session-ticket'), '#12 another ticket\n');
+  const r = merge(ctx.repo, 7);
+  ok('merge: a foreign marker does not block a true merge', r.code === 0 && r.json.status === 'merged' && r.json.method === 'merge');
+  ok('merge: the merge commit carries the merged ticket trailer', /Refs: #7\s*$/.test(git(ctx.repo, 'log', '-1', '--format=%B')) && git(ctx.repo, 'log', '-1', '--format=%s') === 'chore(auto): merge trailhead/t7');
+  ok('merge: the marker is still untouched after a true merge', fs.readFileSync(path.join(ctx.repo, '.trailhead', 'session-ticket'), 'utf8') === '#12 another ticket\n');
+  cleanup(ctx);
+}
+for (const [label, marker] of [['a matching marker', '#7 this ticket\n'], ['no marker', null]]) {
+  // --no-verify solo con marker di un altro ticket
+  const ctx = makeRepo();
+  makeSlot(ctx, 7, 'b.txt', 'b\n');
+  commitFile(ctx.repo, 'c.txt', 'c\n', 'feat: trunk moved');
+  if (marker) write(path.join(ctx.repo, '.trailhead', 'session-ticket'), marker);
+  const calls = [];
+  const spy = (args) => {
+    calls.push(args.join(' '));
+    const r = spawnSync('git', args, { encoding: 'utf8' });
+    return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+  };
+  const r = merge(ctx.repo, 7, { git: spy });
+  const mergeCall = calls.find((c) => / merge --no-edit /.test(c));
+  ok(`merge: ${label} merges without --no-verify`, r.json.status === 'merged' && !!mergeCall && !/--no-verify/.test(mergeCall));
+  cleanup(ctx);
+}
+{
+  const ctx = makeRepo();
+  makeSlot(ctx, 7, 'b.txt', 'b\n');
+  commitFile(ctx.repo, 'c.txt', 'c\n', 'feat: trunk moved');
+  write(path.join(ctx.repo, '.trailhead', 'session-ticket'), '#12 another ticket\n');
+  const calls = [];
+  const spy = (args) => {
+    calls.push(args.join(' '));
+    const r = spawnSync('git', args, { encoding: 'utf8' });
+    return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+  };
+  const r = merge(ctx.repo, 7, { git: spy });
+  const mergeCall = calls.find((c) => / merge --no-edit /.test(c));
+  ok('merge: a foreign marker adds --no-verify to the merge', r.json.status === 'merged' && !!mergeCall && /--no-verify/.test(mergeCall));
   cleanup(ctx);
 }
 {
