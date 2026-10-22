@@ -165,6 +165,13 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   Its reads replace the map's in a refresh: the whiteboard list (the GraphQL open read above), `gh issue list --label trailhead:dashboard
   --json number,url` and the maps list; a failed list keeps the last one with the footer reason, a failed index
   read alone keeps the last link. Data in the `dashboardPane` atom; the mode survives `/clear` like the view.
+- **Following the whiteboard**: when this session takes a whiteboard ticket (its own work state names a ticket with no
+  map), the panel switches to the Dashboard view by itself, once per ticket. It looks at session start, at the end of a
+  turn and after a call to the work-state helper, always after the work state was re-read. Going back to the map by hand
+  is not undone (the followed ticket is remembered in a module variable, so a `/clear` does not forget it); a different
+  whiteboard ticket later is followed again. After a Resolve the panel stays on the whiteboard. A whiteboard ticket
+  created while a map is shown (`gh issue create` with the `trailhead:whiteboard` label) raises a toast,
+  `new whiteboard ticket #<n>: open Whiteboard`, instead of switching. The rules are pure, in `whiteboard-follow.ts`.
 - **Burn-down**: below the groups, a `Burn-down` section shows the shown map's open-ticket count
   over time, from its first ticket to now. A dim line gives `open <o> · done <d> · removed <r> · peak <p>`
   (`removed` = closed with `trailhead:superseded` or `trailhead:out-of-scope`; `done` = other closed
