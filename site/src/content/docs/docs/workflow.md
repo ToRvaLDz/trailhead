@@ -18,6 +18,22 @@ Along the way: capture ideas mid-work without derailing (see [Captures & the whi
 
 `/trailhead:auto [map]` runs a chosen scope unattended: it takes one ticket after another (suspending the one-ticket-per-session rule) and resolves each with its normal type engine, instead of handing back to you between tickets. It never re-engages on its own: you start every run.
 
+`auto` drains a map (or the whiteboard, or everything) unattended, ticket after ticket, in 1 to 4 parallel slots. `/trailhead:work` is the other mode: one ticket per session, with you in the loop (briefs, grilling, UAT choices). Reach for `auto` when the frontier holds well-specified build or bug work you don't need to steer; use `work` for decisions, fuzzy tickets, or when you want to drive. When you come back you find the run report in chat (also posted on each touched map), the tickets that need you labelled `trailhead:needs-you` with a `NEEDS YOU` comment, and local commits waiting for you to push: the run never pushes.
+
+While it runs, the chat shows a progress line naming the tickets in the slots and what just resolved or comes next; at the end, the run report. Something like:
+
+```text
+auto: slot 1 #42 add social login (verify) | slot 2 #43 session cookie (execute) | resolved #41, next #44
+
+Run report
+Stopped:  frontier empty
+Resolved: #41, #42, #43, #44
+Merged:   #41, #42, #43, #44 into main; local main is 7 commits ahead of origin (pushing is yours)
+Remains:  #45 needs you (which providers to support); #46 blocked by #45
+```
+
+**Main checkout.** With more than one slot, the run merges each verified slot branch into the local trunk of the main checkout (a fast-forward when possible, else a merge commit), so if you are working in that checkout by hand your branch can move under you. Uncommitted tracked work stays protected: the merge stops on a dirty tree and the ticket is parked needs-you. Untracked files do not block it.
+
 ### What it asks first
 
 Before anything is claimed, a run asks you, with no delegate option:
