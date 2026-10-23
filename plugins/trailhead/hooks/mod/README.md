@@ -252,10 +252,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   timer started on open. A write is `gh issue edit|close|create|comment|reopen|delete|transfer`, a `gh api` call on a
   `repos/.../issues` path with a write method (`-X`/`--method` POST, PATCH, PUT, DELETE) or an implicit POST
   (`-f`, `-F`, `--field`, `--raw-field`, `--input`) and no `-X GET`, or the `trailhead-issue-body.js` helper
-  (`GH_ISSUE_WRITE`); reads never refresh. Never two fetches inside `MIN_REFRESH_MS`: a request inside the floor
+  (`GH_ISSUE_WRITE`); reads never refresh. Never two fetches inside `MIN_REFRESH_MS` (save the turn-end read below): a request inside the floor
   keeps one trailing refresh for the rest of it. A write that reads at once also arms that trailing refresh, so one
   more read follows when the floor ends, after the search index (the history) caught up; a burst of writes still costs one
-  read per floor plus one trailing. The host drops a refused timer without a word (a refused `every` period ends
+  read per floor plus one trailing, and one more when the turn ends after it. The host drops a refused timer without a word (a refused `every` period ends
   the interval), so the slow timer is kept with its due time: past it by more than `TIMER_GRACE_MS` it is held dead
   and the next trigger starts it again (`isTimerLate`). The trailing refresh is kept with its due time the same way:
   a dropped one is replaced by the next trigger, and a render past its due time by more than `TIMER_GRACE_MS` asks
