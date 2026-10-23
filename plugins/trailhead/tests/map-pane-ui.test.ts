@@ -3365,6 +3365,68 @@ for (const surface of SURFACES) {
     expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
   })
 
+  test(`a refresh in flight when the pin moves to another checkout of the same repo is read again [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    // The answer is fixed when the call starts, so the reads begun in /repo keep its tracker state.
+    r.gh = async argv => {
+      const answer = r.defaultGh(argv)
+      await gate
+      return answer
+    }
+    r.open()
+    const ui = await mountPane($)
+    await settle(r)
+    // Another checkout of the SAME repo (same remote), with map 198 active there; the tracker changed after the
+    // read started. A turn start refreshes the band, which moves the pin while the read is still in flight.
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'git@github.com:o/r.git', internal: false }
+    r.otherActive = '198\n'
+    r.tickets = OTHER_TICKETS
+    r.history = OTHER_HISTORY
+    await $.turn.start({ text: 'go', turnId: 'race-same-repo' })
+    release()
+    await settle(r)
+    await r.clock.advance(FLOOR)
+    await settle(r)
+    // The dropped read is repeated: the pane shows the new tracker state, not the old list.
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
+  test(`a dashboard read in flight when the pin moves to another checkout of the same repo is read again [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.maps = [MAPS[0]]
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    r.gh = async argv => {
+      const answer = r.defaultGh(argv)
+      await gate
+      return answer
+    }
+    // The dashboard read starts under /repo and waits on the gate.
+    await ui.press({ key: 'open-whiteboard' })
+    await settle(r)
+    r.cwd = ROOT_OTHER
+    r.repo = { root: ROOT_OTHER, remote: 'git@github.com:o/r.git', internal: false }
+    r.otherActive = '198\n'
+    r.whiteboard = [issue(320, 'New loose one', [...WB, 'trailhead:bug'])]
+    await $.turn.start({ text: 'go', turnId: 'race-same-repo-dash' })
+    release()
+    await settle(r)
+    await r.clock.advance(FLOOR)
+    await settle(r)
+    expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
+    expect(await keysOf(ui, 'row-')).toEqual(['row-320'])
+  })
+
   test(`the pin survives /clear after the session cwd moved out of the repo [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.work = stateText()
