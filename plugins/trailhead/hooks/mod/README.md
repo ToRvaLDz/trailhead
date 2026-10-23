@@ -259,7 +259,10 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   the interval), so the slow timer is kept with its due time: past it by more than `TIMER_GRACE_MS` it is held dead
   and the next trigger starts it again (`isTimerLate`). The trailing refresh is kept with its due time the same way:
   a dropped one is replaced by the next trigger, and a render past its due time by more than `TIMER_GRACE_MS` asks
-  for the read at once. A read asked while the pane is undrawn is dropped; a render
+  for the read at once. A turn end that follows a tracker write newer than the last read start reads at once,
+  floor or not (one extra read per turn at most, never without a write), so the final state shows with no timer
+  involved; it leaves an armed trailing refresh alone, so the read after the search index caught up still follows.
+  A read asked while the pane is undrawn is dropped; a render
   whose list (with no error) is older than `TIMER_MS + TIMER_GRACE_MS` asks for a read at once, as an empty view does.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed

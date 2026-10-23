@@ -160,6 +160,8 @@ function debug($: Dollar, message: string): void {
 let queue: Promise<void> = Promise.resolve()
 let generation = 0
 let lastStartedAt: number | null = null
+// When the last tracker write finished: a turn end that finds it newer than the last read start reads at once.
+let lastWriteAt: number | null = null
 let trailing: Tracked | null = null
 let ticker: Tracked | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
@@ -437,6 +439,7 @@ function stopTimers() {
   isFilling = false
   trailing?.timer.cancel()
   trailing = null
+  lastWriteAt = null
   ticker?.timer.cancel()
   ticker = null
 }
@@ -466,7 +469,9 @@ const startTicker = ($: Dollar, now: number): Tracked => ({
 // `isWrite`: a tracker write just ran; a read that starts at once is followed by one more at the floor's end,
 // by when the search index (history, the list fallback) has caught up.
 // `isTick`: the slow timer fired, so its next due time moves on.
-type Request = { bypassFloor?: boolean; isWrite?: boolean; isTick?: boolean }
+// `isTurnEnd`: the turn is over; if a write landed after the last read started, the read runs inside the floor
+// too, so the pane shows the turn's final tracker state without waiting on a timer the host may have dropped.
+type Request = { bypassFloor?: boolean; isWrite?: boolean; isTick?: boolean; isTurnEnd?: boolean }
 
 // Throttled: inside the floor it keeps ONE trailing refresh for the rest of it, so an event
 // just after a refresh still shows.
@@ -481,14 +486,19 @@ async function decide($: Dollar, request: Request) {
   ticker = liveOrNull(ticker, now) ?? startTicker($, now)
   // Same for the trailing refresh: a dead handle would keep `??=` below from arming a live one.
   trailing = liveOrNull(trailing, now)
-  const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
+  // Strictly newer: a read that started at the write's own instant already saw it.
+  const isFlush = request.isTurnEnd === true && lastWriteAt !== null && (lastStartedAt === null || lastWriteAt > lastStartedAt)
+  const decision = request.bypassFloor === true || isFlush ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
   if (!decision.run) {
     trailing ??= startTrailing($, now, decision.waitMs)
     return
   }
   lastStartedAt = now
-  trailing?.timer.cancel()
-  trailing = null
+  // A flush leaves the trailing refresh alone: it still owes the read after the search index caught up.
+  if (!isFlush) {
+    trailing?.timer.cancel()
+    trailing = null
+  }
   // Never bypassFloor: a burst of writes still costs one read per floor plus this one trailing.
   if (request.isWrite === true) trailing = startTrailing($, now, MIN_REFRESH_MS)
   const again = () => void requestRefresh($, { bypassFloor: true })
@@ -880,7 +890,7 @@ export function registerMapPane(on: On) {
     const result = await next(e)
     await safeSyncPin($)
     await safeReadActiveMap($)
-    void requestRefresh($)
+    void requestRefresh($, { isTurnEnd: true })
     // The band's hook marks the turn over; the timer runs after the whole chain, and releases a held press.
     if (e.agentId === undefined) $.clock.after(0, () => releaseHeld($))
     return result
@@ -907,6 +917,7 @@ export function registerMapPane(on: On) {
   // After the call ran: a Bash `gh issue` write changed the tracker.
   on('tool.call', { tool: 'Bash', command: GH_ISSUE_WRITE }, async ($, e, next) => {
     const result = await next(e)
+    lastWriteAt = await $.clock.now()
     void requestRefresh($, { isWrite: true })
     await hintWhiteboard($, e.command, result)
     return result

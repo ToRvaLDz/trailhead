@@ -1119,9 +1119,9 @@ for (const surface of SURFACES) {
     await openAndMount($, r)
     expect(fetches(r)).toBe(1)
 
+    // two turn ends with no write between: no flush, the trailing refresh is the only extra read
     await r.clock.advance(2_000)
     await completeTurn($)
-    await $.tool.call({ tool: 'Bash', command: 'gh issue close 5' } as never)
     await completeTurn($)
     await settle(r)
     expect(fetches(r)).toBe(1)
@@ -1136,6 +1136,37 @@ for (const surface of SURFACES) {
     await r.clock.advance(FLOOR)
     await settle(r)
     expect(fetches(r)).toBe(2)
+  })
+
+  // A write followed by a turn end flushes: the turn end reads at once, inside the floor. The armed trailing
+  // refresh is kept, so the read after the search index caught up still follows, one floor after the flush.
+  test(`a write then a turn end inside the floor reads at once and keeps the trailing [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    expect(fetches(r)).toBe(1)
+
+    await r.clock.advance(2_000)
+    await completeTurn($)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 5' } as never)
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+    // a second turn end with no write since the flush adds nothing
+    await completeTurn($)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+
+    // the trailing one fires at the first floor's end, lands inside the flush's floor and waits for its end
+    await r.clock.advance(FLOOR - 2_000)
+    await settle(r)
+    expect(fetches(r)).toBe(2)
+    await r.clock.advance(2_000)
+    await settle(r)
+    expect(fetches(r)).toBe(3)
+    await r.clock.advance(FLOOR * 2)
+    await settle(r)
+    expect(fetches(r)).toBe(3)
   })
 
   // The host drops a refused timer silently (a closed ticket stayed on the pane for good): the pane must not
@@ -1166,16 +1197,14 @@ for (const surface of SURFACES) {
     expect(fetches(r)).toBe(3)
   })
 
-  // The trailing refresh is dropped like the slow timer (a closed ticket stayed on the pane as held): the next
-  // trigger or a late render replaces it, so the close still shows.
-  test(`a trailing refresh the host dropped is replaced, so a close still shows [${surface}]`, async ($, on) => {
-    let isDropping = false
-    on('clock.after', { ms: FLOOR }, async ($$, e, next) => (isDropping ? { deny: 'dropped' } : next(e)))
+  // The trailing refresh is dropped like the slow timer (a closed ticket stayed on the pane as held): the turn
+  // end after a write reads at once, floor or not, so the final tracker state shows with no timer involved.
+  test(`a turn end after a write shows the close although the trailing refresh was dropped [${surface}]`, async ($, on) => {
+    on('clock.after', { ms: FLOOR }, async () => ({ deny: 'dropped' }))
     const r = rig(on, $)
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await r.clock.advance(FLOOR)
-    isDropping = true
     // the resolution comment reads at once, before the close
     await $.tool.call({ tool: 'Bash', command: 'gh issue comment 209 -b done' } as never)
     await settle(r)
@@ -1184,12 +1213,29 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
     await completeTurn($)
     await settle(r)
+    expect(await hasKey(ui, 'row-209')).toBe(false)
+  })
+
+  // Without a turn end, a pane drawn again past the dead trailing's due time and grace reads at once.
+  test(`a pane drawn again after a dropped trailing refresh reads at once [${surface}]`, async ($, on) => {
+    let isDropping = false
+    on('clock.after', { ms: FLOOR }, async ($$, e, next) => (isDropping ? { deny: 'dropped' } : next(e)))
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await r.clock.advance(FLOOR)
+    isDropping = true
+    await $.tool.call({ tool: 'Bash', command: 'gh issue comment 209 -b done' } as never)
+    await settle(r)
+    r.tickets = TICKETS.filter(t => t.number !== 209)
+    await r.clock.advance(2_000)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
+    await settle(r)
     isDropping = false
     // nothing fired for the close: the pane still shows the closed ticket
     await r.clock.advance(FLOOR * 4)
     await settle(r)
     expect(await hasKey(ui, 'row-209')).toBe(true)
-    // drawn again past the dead trailing's due time and grace, it reads at once
     await ui.unmount()
     const again = await mountPane($)
     await settle(r)
