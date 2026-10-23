@@ -192,6 +192,8 @@ const rig = (on: On, engine?: any) => {
     repo: { root: '/repo', remote: 'git@github.com:o/r.git', internal: false } as { root: string; remote: string | null; internal: boolean } | null,
     // The active-map marker of the second checkout (ROOT_OTHER); null: it has none.
     otherActive: null as string | null,
+    // Runs once before the next read of the active-map marker, to land an event inside a check.
+    beforeMarkerRead: null as (() => Promise<void>) | null,
     // The worktree checkout's marker, what `git rev-parse --show-toplevel` answers there (null: it fails), and the
     // session's project root; every path read and every `git` run is recorded.
     treeActive: null as string | null,
@@ -288,13 +290,18 @@ const rig = (on: On, engine?: any) => {
     if (argv[2] === 'view') return ok(JSON.stringify(isOther ? r.otherMap : r.map))
     return ok(JSON.stringify(argv.includes('all') ? (isOther ? r.otherHistory : r.history) : isOther ? r.otherTickets : r.tickets))
   }
-  on('fs.read', (_$, e) => {
+  on('fs.read', async (_$, e) => {
     // A relative path reaches the hook already resolved against the host's directory, not the repo's: put
     // it under the session's working directory, which is what the engine resolves it against. A path under
     // one of the repos is absolute (a pinned read) and stays.
     const isAbsolute = [ROOT, ROOT_OTHER, ROOT_TREE].some(root => e.path.startsWith(`${root}/`))
     const path = isAbsolute ? e.path : `${r.cwd}${e.path.slice(e.path.indexOf('/.trailhead/'))}`
     r.reads.push(path)
+    if (path.endsWith('/.trailhead/active-map') && r.beforeMarkerRead !== null) {
+      const hook = r.beforeMarkerRead
+      r.beforeMarkerRead = null
+      await hook()
+    }
     const root = path.startsWith(`${ROOT_TREE}/`) ? ROOT_TREE : path.startsWith(`${ROOT_OTHER}/`) ? ROOT_OTHER : path.startsWith(`${ROOT}/`) ? ROOT : null
     const marker = root === ROOT_TREE ? r.treeActive : root === ROOT_OTHER ? r.otherActive : r.active
     const file = path.endsWith('/.trailhead/active-map') ? (root === null ? null : marker) : path.endsWith('/.trailhead/work-state.json') ? (root === null ? null : r.work) : undefined
@@ -3394,6 +3401,38 @@ for (const surface of SURFACES) {
     await r.clock.advance(FLOOR)
     await settle(r)
     // The dropped read is repeated: the pane shows the new tracker state, not the old list.
+    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+  })
+
+  test(`a same-repo pin move landing inside the stale check is read again [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    r.gh = async argv => {
+      const answer = r.defaultGh(argv)
+      await gate
+      return answer
+    }
+    r.open()
+    const ui = await mountPane($)
+    await settle(r)
+    // The first marker read once the gate opens is the stale check's last await: the move lands there,
+    // after the check read the old pin and before it decides.
+    r.beforeMarkerRead = async () => {
+      r.cwd = ROOT_OTHER
+      r.repo = { root: ROOT_OTHER, remote: 'git@github.com:o/r.git', internal: false }
+      r.otherActive = '198\n'
+      r.tickets = OTHER_TICKETS
+      r.history = OTHER_HISTORY
+      await $.turn.start({ text: 'go', turnId: 'race-in-check' })
+    }
+    release()
+    await settle(r)
+    await r.clock.advance(FLOOR)
+    await settle(r)
     expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
   })
 

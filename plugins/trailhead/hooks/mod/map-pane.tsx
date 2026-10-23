@@ -159,6 +159,8 @@ function debug($: Dollar, message: string): void {
 // A hot reload resets it, which costs at most one early refresh.
 let queue: Promise<void> = Promise.resolve()
 let generation = 0
+// Bumped by every pin move, same repo or not: a read that spans one is stale even when `generation` held.
+let pinMoves = 0
 let lastStartedAt: number | null = null
 // When the last tracker write finished: a turn end that finds it newer than the last read start reads at once.
 let lastWriteAt: number | null = null
@@ -310,17 +312,17 @@ async function dropClosedView($: Dollar, maps: readonly MapSummary[] | null) {
 
 // One read of the viewed (else active) map. The result is dropped when the pane closed meanwhile
 // (generation) or the target or pin moved on, checked before every write; a moved one is read again.
-async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
+async function fetchMap($: Dollar, pin: RepoPin, token: number, moves: number, wantsAnother: () => void) {
   const target = await readTarget($)
   if (token !== generation) return
-  // Checked before every write: the last test is the token, with no await after it. A pin that moved to
-  // another repo (even with the same map number there) makes the read stale; the target is not read
-  // under the new pin for it.
+  // Checked before every write: the last test is the token, then the pin-move count, with no await after
+  // them. A pin that moved to another repo (even with the same map number there) makes the read stale; the
+  // target is not read under the new pin for it. A move that landed during the checks shows in the count.
   const isStale = async () => {
     if (token !== generation) return true
     const isMoved = !isSamePin(await read($, repoPin), pin) || (await read($, isDashboard)) || (await readTarget($)) !== target
     if (token !== generation) return true
-    if (!isMoved) return false
+    if (!isMoved && moves === pinMoves) return false
     wantsAnother()
     return true
   }
@@ -364,13 +366,13 @@ async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: ()
 
 // The whiteboard's open tickets (map-less) and the pinned index, plus the open maps. Same drop rule
 // as a map read: a result is not committed once the pane closed or the dashboard was left.
-async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
+async function fetchDashboard($: Dollar, pin: RepoPin, token: number, moves: number, wantsAnother: () => void) {
   const isStale = async () => {
     if (token !== generation) return true
     const isOther = !isSamePin(await read($, repoPin), pin)
     const isLeft = !(await read($, isDashboard))
     if (token !== generation) return true
-    if (!isOther && !isLeft) return false
+    if (!isOther && !isLeft && moves === pinMoves) return false
     wantsAnother()
     return true
   }
@@ -410,6 +412,7 @@ let paneRepo: string | null = null
 // the old one, then asks for a fresh read (a closed pane makes that a no-op), so its tickets never show under the
 // new repo. A move inside the same repo leaves the read in flight to its own stale check, which reads again.
 export async function onPinMove($: Dollar, pin: RepoPin | null): Promise<void> {
+  pinMoves += 1
   const key = pin === null ? null : pinKey(pin)
   const isOtherRepo = paneRepo !== null && key !== null && key !== paneRepo
   if (isOtherRepo || pin === null) generation += 1
@@ -480,6 +483,7 @@ async function decide($: Dollar, request: Request) {
   if (!(await isPaneUp($))) return
   // Nothing pinned: no repo to read, so no call.
   const pin = await syncPin($)
+  const moves = pinMoves
   if (pin === null) return
   const now = await $.clock.now()
   if (request.isTick === true && ticker !== null) ticker = { ...ticker, dueAt: now + TIMER_MS }
@@ -503,8 +507,8 @@ async function decide($: Dollar, request: Request) {
   // Never bypassFloor: a burst of writes still costs one read per floor plus this one trailing.
   if (request.isWrite === true) trailing = startTrailing($, now, MIN_REFRESH_MS)
   const again = () => void requestRefresh($, { bypassFloor: true })
-  if (await read($, isDashboard)) await fetchDashboard($, pin, generation, again)
-  else await fetchMap($, pin, generation, again)
+  if (await read($, isDashboard)) await fetchDashboard($, pin, generation, moves, again)
+  else await fetchMap($, pin, generation, moves, again)
 }
 
 // Does nothing while the pane is closed: the data exists only for the pane.
