@@ -257,7 +257,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   more read follows when the floor ends, after the search index (the history) caught up; a burst of writes still costs one
   read per floor plus one trailing. The host drops a refused timer without a word (a refused `every` period ends
   the interval), so the slow timer is kept with its due time: past it by more than `TIMER_GRACE_MS` it is held dead
-  and the next trigger starts it again (`isTimerLate`). A read asked while the pane is undrawn is dropped; a render
+  and the next trigger starts it again (`isTimerLate`). The trailing refresh is kept with its due time the same way:
+  a dropped one is replaced by the next trigger, and a render past its due time by more than `TIMER_GRACE_MS` asks
+  for the read at once. A read asked while the pane is undrawn is dropped; a render
   whose list (with no error) is older than `TIMER_MS + TIMER_GRACE_MS` asks for a read at once, as an empty view does.
 - **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
   when a map is active. Never on the main screen, never again after the pane was opened or closed

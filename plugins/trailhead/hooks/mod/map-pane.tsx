@@ -160,7 +160,7 @@ function debug($: Dollar, message: string): void {
 let queue: Promise<void> = Promise.resolve()
 let generation = 0
 let lastStartedAt: number | null = null
-let trailing: Timer | null = null
+let trailing: Tracked | null = null
 let ticker: Tracked | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
 type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
@@ -435,25 +435,27 @@ function stopTimers() {
   generation += 1
   // A fill timer dropped with the pane must not leave the next pane unfillable.
   isFilling = false
-  trailing?.cancel()
+  trailing?.timer.cancel()
   trailing = null
   ticker?.timer.cancel()
   ticker = null
 }
 
-// The slow timer past its due time by more than the grace never fired: drop it, so the caller starts another.
-// A dropped trailing needs no such check: the next read outside the floor clears it.
+// A timer past its due time by more than the grace never fired: drop it, so the caller starts another.
+// Both the slow timer and the trailing refresh are tracked, as the host may silently drop either.
 const liveOrNull = (t: Tracked | null, now: number): Tracked | null => {
   if (t === null || !isTimerLate(now, t.dueAt, TIMER_GRACE_MS)) return t
   t.timer.cancel()
   return null
 }
 
-const startTrailing = ($: Dollar, waitMs: number): Timer =>
-  $.clock.after(waitMs, () => {
+const startTrailing = ($: Dollar, now: number, waitMs: number): Tracked => ({
+  timer: $.clock.after(waitMs, () => {
     trailing = null
     void requestRefresh($)
-  })
+  }),
+  dueAt: now + waitMs,
+})
 
 const startTicker = ($: Dollar, now: number): Tracked => ({
   timer: $.clock.every(TIMER_MS, () => void requestRefresh($, { isTick: true })),
@@ -477,16 +479,18 @@ async function decide($: Dollar, request: Request) {
   if (request.isTick === true && ticker !== null) ticker = { ...ticker, dueAt: now + TIMER_MS }
   // A timer the host dropped is started again here, else the pane would wait on it for good.
   ticker = liveOrNull(ticker, now) ?? startTicker($, now)
+  // Same for the trailing refresh: a dead handle would keep `??=` below from arming a live one.
+  trailing = liveOrNull(trailing, now)
   const decision = request.bypassFloor === true ? { run: true as const } : refreshDecision(now, lastStartedAt, MIN_REFRESH_MS)
   if (!decision.run) {
-    trailing ??= startTrailing($, decision.waitMs)
+    trailing ??= startTrailing($, now, decision.waitMs)
     return
   }
   lastStartedAt = now
-  trailing?.cancel()
+  trailing?.timer.cancel()
   trailing = null
   // Never bypassFloor: a burst of writes still costs one read per floor plus this one trailing.
-  if (request.isWrite === true) trailing = startTrailing($, MIN_REFRESH_MS)
+  if (request.isWrite === true) trailing = startTrailing($, now, MIN_REFRESH_MS)
   const again = () => void requestRefresh($, { bypassFloor: true })
   if (await read($, isDashboard)) await fetchDashboard($, pin, generation, again)
   else await fetchMap($, pin, generation, again)
@@ -1146,8 +1150,12 @@ export function registerMapPane(on: On) {
 
     // A list older than one slow-timer period missed its reads (the pane undrawn when they came, or the
     // timer dropped): the render asks for one, as for an empty view. A failing read keeps its slow pace.
+    // A trailing refresh past its due time by more than the grace was dropped by the host: the render asks for
+    // the read it would have made (the request replaces the dead handle).
+    const isTrailingLate = trailing !== null && isTimerLate(now, trailing.dueAt, TIMER_GRACE_MS)
     const isOverdue = (d: { fetchedAt: number | null; error: string | null; isLoading: boolean }) =>
-      d.fetchedAt !== null && d.error === null && !d.isLoading && isTimerLate(now, d.fetchedAt + TIMER_MS, TIMER_GRACE_MS)
+      isTrailingLate ||
+      (d.fetchedAt !== null && d.error === null && !d.isLoading && isTimerLate(now, d.fetchedAt + TIMER_MS, TIMER_GRACE_MS))
 
     // No GitHub repo was ever pinned: say so rather than a `gh` failure; nothing is read.
     if (pin === null) {

@@ -1166,6 +1166,36 @@ for (const surface of SURFACES) {
     expect(fetches(r)).toBe(3)
   })
 
+  // The trailing refresh is dropped like the slow timer (a closed ticket stayed on the pane as held): the next
+  // trigger or a late render replaces it, so the close still shows.
+  test(`a trailing refresh the host dropped is replaced, so a close still shows [${surface}]`, async ($, on) => {
+    let isDropping = false
+    on('clock.after', { ms: FLOOR }, async ($$, e, next) => (isDropping ? { deny: 'dropped' } : next(e)))
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await r.clock.advance(FLOOR)
+    isDropping = true
+    // the resolution comment reads at once, before the close
+    await $.tool.call({ tool: 'Bash', command: 'gh issue comment 209 -b done' } as never)
+    await settle(r)
+    r.tickets = TICKETS.filter(t => t.number !== 209)
+    await r.clock.advance(2_000)
+    await $.tool.call({ tool: 'Bash', command: 'gh issue close 209' } as never)
+    await completeTurn($)
+    await settle(r)
+    isDropping = false
+    // nothing fired for the close: the pane still shows the closed ticket
+    await r.clock.advance(FLOOR * 4)
+    await settle(r)
+    expect(await hasKey(ui, 'row-209')).toBe(true)
+    // drawn again past the dead trailing's due time and grace, it reads at once
+    await ui.unmount()
+    const again = await mountPane($)
+    await settle(r)
+    expect(await hasKey(again, 'row-209')).toBe(false)
+  })
+
   // The open list is a GraphQL read, never the search-backed `gh issue list --label`, which lags a write.
   const listReads = (r: Rig) => r.calls.filter(argv => argv[2] === 'list' && argv.includes('--label') && argv.includes('trailhead:map-198') && argv.includes('open') && !argv.includes('trailhead:uat'))
 
