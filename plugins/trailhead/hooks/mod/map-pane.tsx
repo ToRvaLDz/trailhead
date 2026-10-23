@@ -309,7 +309,7 @@ async function dropClosedView($: Dollar, maps: readonly MapSummary[] | null) {
 }
 
 // One read of the viewed (else active) map. The result is dropped when the pane closed meanwhile
-// (generation) or the target moved on, checked before every write; a moved target is read again.
+// (generation) or the target or pin moved on, checked before every write; a moved one is read again.
 async function fetchMap($: Dollar, pin: RepoPin, token: number, wantsAnother: () => void) {
   const target = await readTarget($)
   if (token !== generation) return
@@ -406,12 +406,13 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, wantsAnoth
 // holds for the old one (and drops a read of it still in flight), so its tickets never show under the new.
 let paneRepo: string | null = null
 // Called by refreshPin right before the pin atom changes, from the pane's refresh and the band's alike. A move
-// to another repo drops the reads in flight and empties what the pane holds for the old one, then asks for a
-// fresh read (a closed pane makes that a no-op), so its tickets never show under the new repo.
+// to another repo (or to no pin) drops the reads in flight and, to another repo, empties what the pane holds for
+// the old one, then asks for a fresh read (a closed pane makes that a no-op), so its tickets never show under the
+// new repo. A move inside the same repo leaves the read in flight to its own stale check, which reads again.
 export async function onPinMove($: Dollar, pin: RepoPin | null): Promise<void> {
-  generation += 1
   const key = pin === null ? null : pinKey(pin)
   const isOtherRepo = paneRepo !== null && key !== null && key !== paneRepo
+  if (isOtherRepo || pin === null) generation += 1
   paneRepo = key ?? paneRepo
   if (!isOtherRepo) return
   await update($, mapPane, () => EMPTY)
