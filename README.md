@@ -90,7 +90,7 @@ What does **not** need its own map is a single, defined piece of work with no op
 
 Each **ticket** is a child issue with a type label and a one-question body. The **frontier** is the set of open, unassigned tickets whose blockers are all closed and that are not paused: what's takeable right now. You claim a ticket by assigning it to yourself, resolve it with the engine for its type, then record the answer as a comment, close it, and gist it back onto the map.
 
-As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached.
+The fog holds only what you cannot phrase yet: a question you can already phrase becomes a ticket at charting, created blocked when it waits on another answer, so it reaches the frontier by itself once that answer lands. As tickets resolve, the fog clears: after each resolution every fog entry is re-read, and the ones now sharp enough to ticket are proposed together, until nothing is left to decide or build and the destination is reached.
 
 A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in **repo-scoped anchor issues**, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 

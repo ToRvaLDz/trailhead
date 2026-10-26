@@ -23,7 +23,7 @@ The **frontier** is the set of open, unassigned tickets whose blockers are all c
 
 ## Fog
 
-As tickets resolve, the fog clears: questions that were too vague to phrase become sharp enough to ticket, one at a time, until nothing is left to decide or build and the destination is reached. See [Workflow](/docs/workflow) for how a loose suggestion moves from inbox through fog to a graduated ticket.
+The fog holds only what you cannot phrase yet: a question you can already phrase becomes a ticket at charting, created blocked when it waits on another answer, so it reaches the frontier by itself once that answer lands. As tickets resolve, the fog clears: after each resolution every fog entry is re-read, and the ones now sharp enough to ticket are proposed together, until nothing is left to decide or build and the destination is reached. See [Workflow](/docs/workflow) for how a loose suggestion moves from inbox through fog to a graduated ticket.
 
 ## Repo-scoped anchors
 

@@ -90,7 +90,7 @@ Ciò che **non** ha bisogno di una propria mappa è un singolo pezzo di lavoro d
 
 Ogni **ticket** è una child issue con una label di tipo e un corpo di una sola domanda. La **frontier** è l'insieme dei ticket aperti, non assegnati, i cui blocker sono tutti chiusi e che non sono in pausa: ciò che è prendibile proprio ora. Rivendichi un ticket assegnandolo a te stesso, lo risolvi con il motore per il suo tipo, poi registri la risposta come commento, lo chiudi, e ne fai il gist di nuovo sulla mappa.
 
-Man mano che i ticket si risolvono, la fog si dirada: domande che erano troppo vaghe da formulare diventano abbastanza nitide da diventare ticket, una alla volta, finché non resta nulla da decidere o costruire e la destination è raggiunta.
+La fog contiene solo ciò che non si sa ancora formulare: una domanda già formulabile diventa un ticket al charting, creato bloccato quando aspetta un'altra risposta, così entra in frontier da solo appena quella risposta arriva. Man mano che i ticket si risolvono, la fog si dirada: dopo ogni risoluzione ogni voce della fog viene riletta, e quelle ormai abbastanza nitide da diventare ticket vengono proposte insieme, finché non resta nulla da decidere o costruire e la destination è raggiunta.
 
 Una mappa ha come scope **un** solo sforzo, quindi la conoscenza che appartiene al *repo* (non a una singola mappa) vive in **anchor issue con scope di repo**, create una volta e condivise da ogni mappa (le Notes di ciascuna mappa le collegano soltanto, così nulla resta orfano quando una mappa finisce):
 
