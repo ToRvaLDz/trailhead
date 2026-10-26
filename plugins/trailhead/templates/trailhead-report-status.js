@@ -154,28 +154,36 @@ function countsOf(line) {
   return m ? `critical: ${m[1]} · warning: ${m[2]} · info: ${m[3]}` : null;
 }
 
-// A ledger line: `C<n>`, an optional separator, then the disposition word right away
-// (a bare `open` must end the line or be followed by punctuation: `C1 open redirect` is prose).
-const LEDGER_RE = /^C(\d+)\s*[:\-–)]?\s*(fixed|deferred|accepted|reclassified|open(?=\s*(?:$|[:.,;(→])))(?![-\w])/i;
+// A ledger line: `C<n>`, an optional separator (colon, hyphen, en dash, em dash, `)`), then
+// the disposition word right away (a bare `open` must end the line or be followed by
+// punctuation: `C1 open redirect` is prose).
+const LEDGER_RE = /^C(\d+)\s*[:\-\u2013\u2014)]?\s*(fixed|deferred|accepted|reclassified|open(?=\s*(?:$|[:.,;(\u2192])))(?![-\w])/i;
+const CRITICAL_ID_RE = /^C(\d+)\b/i;
 const CLOSED = frozen(['fixed', 'deferred', 'accepted']);
 // Verify verdicts by strictness; unmet and partial claims both mean gaps_found.
 const VERIFY_RANK = Object.freeze({ met: 0, inconclusive: 1, gaps_found: 2 });
 const CLASS_VERDICT = Object.freeze({ met: 'met', unmet: 'gaps_found', partial: 'gaps_found', inconclusive: 'inconclusive' });
 
-// Critical ledger lines in the candidate lines: [{ id, disposition }]. A `C<n>` line whose
-// disposition does not follow the id (finding prose) is not a ledger line and is ignored.
-function criticalLedger(lines, cands) {
-  return cands.flatMap((i) => {
-    const m = LEDGER_RE.exec(strip(lines[i]));
+// Critical ids at the start of any candidate line, as { seen, ledger }: `seen` is every id
+// (parsed as a ledger line or not), `ledger` the parsed lines [{ id, disposition }].
+function criticalLines(lines, cands) {
+  const stripped = cands.map((i) => strip(lines[i]));
+  const seen = stripped.flatMap((s) => { const m = CRITICAL_ID_RE.exec(s); return m ? [`C${m[1]}`] : []; });
+  const ledger = stripped.flatMap((s) => {
+    const m = LEDGER_RE.exec(s);
     return m ? [{ id: `C${m[1]}`, disposition: m[2].toLowerCase() }] : [];
   });
+  return { seen: new Set(seen), ledger };
 }
 
-// Does a `clean` verdict with `critical` Criticals stand against its ledger?
-function cleanStands(critical, ledger) {
+// Does a `clean` verdict with `critical` Criticals stand against its ledger? Every id seen
+// must be closed (or reclassified away), none parsed as open, and the closed count reach N.
+function cleanStands(critical, { seen, ledger }) {
   if (critical === 0) return true;
   if (ledger.some((e) => e.disposition === 'open')) return false;
   const closed = new Set(ledger.filter((e) => CLOSED.includes(e.disposition)).map((e) => e.id));
+  const moved = new Set(ledger.filter((e) => e.disposition === 'reclassified').map((e) => e.id));
+  if ([...seen].some((id) => !closed.has(id) && !moved.has(id))) return false;
   return closed.size >= critical;
 }
 
@@ -193,7 +201,7 @@ function checkedVerdict(technique, verdict, lines, cands, statusIdx, counts) {
   if (technique === 'verify') return raisedVerify(verdict, lines, cands, statusIdx);
   if (technique === 'code-review' && verdict === 'clean') {
     const critical = Number(/^critical: (\d+)/.exec(counts[0].text)[1]);
-    return cleanStands(critical, criticalLedger(lines, cands)) ? verdict : 'issues_found';
+    return cleanStands(critical, criticalLines(lines, cands)) ? verdict : 'issues_found';
   }
   return verdict;
 }
