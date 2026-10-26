@@ -133,12 +133,12 @@ Hunt regressions in closed work, and find duplicate or groupable open tickets.
 
 1. Skips tickets that delivered nothing by design (superseded, out-of-scope, closed as duplicate) and checks the rest by type:
    - `build` and `bug`: a fast, deterministic, agent-free check against the commits that carry `Refs: #<n>`. If the code those commits wrote is untouched since, the ticket is classed **unchanged**.
-   - `decision`, `research`, `task`, `prototype`: a light inline check that the recorded answer or outcome exists.
+   - `decision`, `research`, `task`, `prototype`: a light inline check that the recorded answer or outcome exists. A decision closed with no build ticket carrying its answer (no `Builds:` line in its resolution, no ticket linking back to it) is flagged **no build**.
    - Where the code changed, or there are no `Refs:` commits to compare, a verification agent re-checks the ticket goal-backward against current code. If more than 20 tickets would need an agent, it shows the count and asks whether to proceed, narrow to one map, or cancel.
 2. Classes each ticket: implemented, unchanged, **evolved** (a later ticket changed the code on purpose, named in the report), implemented wrong, not implemented, or unverifiable.
 3. Compares the open tickets for duplicates and groupable clusters (same scope, same type, within one map). Claimed tickets are reported as related only.
 4. Presents one consolidated report. Nothing has been written to GitHub up to this point.
-5. Offers each follow-up as a separate proposal, applied only on an explicit yes: a new `bug` with `Regression of:` for implemented wrong; reopening with a gap comment for not implemented; closing a duplicate natively as a duplicate after carrying its wiring over; or a supersede-and-merge for a groupable cluster. Evolved tickets get no proposal. The last proposal is advancing the audit marker.
+5. Offers each follow-up as a separate proposal, applied only on an explicit yes: a new `bug` with `Regression of:` for implemented wrong; reopening with a gap comment for not implemented; opening the missing build tickets of a no-build decision; closing a duplicate natively as a duplicate after carrying its wiring over; or a supersede-and-merge for a groupable cluster. Evolved tickets get no proposal. The last proposal is advancing the audit marker.
 
 **What it writes**
 
