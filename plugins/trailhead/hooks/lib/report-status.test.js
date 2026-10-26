@@ -16,13 +16,15 @@ const fs = require('fs');
 const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-report-status.js');
-const { checkReport, TOKENS, CONTRACTS, FAMILY_OF } = require(scriptPath);
+const { checkReport, TOKENS, CONTRACTS, FAMILY_OF, VERIFY_CLASSES } = require(scriptPath);
 const techDir = path.resolve(__dirname, '..', '..', 'skills', '_shared', 'techniques');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 const K = 'critical: 0 · warning: 1 · info: 2'; // the counts line
+const K1 = 'critical: 1 · warning: 0 · info: 0';
+const K2 = 'critical: 2 · warning: 1 · info: 0';
 const V = 'verify';
 const C = 'code-review';
 const KEYS = ['action', 'verdict', 'problem', 'report', 'fields', 'body'];
@@ -119,6 +121,46 @@ const rows = [
   ['two counts lines', C, `status: clean\n${K}\nbody\n${K}\n`, ['reask', null, 'counts']],
   ['two different counts lines', C, `status: clean\n${K}\ncritical: 1 · warning: 1 · info: 2\n`, ['reask', null, 'counts']],
   ['counts only inside a code fence', C, `status: clean\n\`\`\`\n${K}\n\`\`\`\n`, ['reask', null, 'counts']],
+
+  // --- verdict vs content: code-review fails closed on an unclosed Critical ---
+  ['clean with critical 2 and no ledger (ticket repro)', C, `status: clean\n${K2}\n\n- critical: SQL injection\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K2}\n\n- critical: SQL injection\n`]],
+  ['clean, critical 1, C1 fixed', C, `status: clean\n${K1}\nC1 fixed (abc123)\n`, ['accept', 'clean', null]],
+  ['clean, critical 1, C1 deferred', C, `status: clean\n${K1}\n- C1: deferred → #12\n`, ['accept', 'clean', null]],
+  ['clean, critical 1, C1 accepted', C, `status: clean\n${K1}\nC1 accepted: false positive\n`, ['accept', 'clean', null]],
+  ['clean, critical 2, only C1 closed', C, `status: clean\n${K2}\nC1 fixed (a)\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K2}\nC1 fixed (a)\n`]],
+  ['clean, critical 1, C1 open', C, `status: clean\n${K1}\nC1 open\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K1}\nC1 open\n`]],
+  ['clean, critical 1, C1 fixed and C2 open', C, `status: clean\n${K1}\nC1 fixed (a)\nC2 open\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K1}\nC1 fixed (a)\nC2 open\n`]],
+  ['clean, critical 1, only a reclassified pointer', C, `status: clean\n${K1}\nC1 reclassified as W3\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K1}\nC1 reclassified as W3\n`]],
+  ['clean, critical 1, ledger line only inside a fence', C, `status: clean\n${K1}\n\`\`\`\nC1 fixed (a)\n\`\`\`\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K1}\n\`\`\`\nC1 fixed (a)\n\`\`\`\n`]],
+  ['clean, critical 2, a repeated C1 line counts once', C, `status: clean\n${K2}\nC1 fixed (a)\nc1 fixed (b)\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K2}\nC1 fixed (a)\nc1 fixed (b)\n`]],
+  ['clean, critical 0, warnings open never gate', C, `status: clean\n${K}\nW1 open\n`, ['accept', 'clean', null]],
+  ['issues_found is never changed', C, `status: issues_found\n${K1}\nC1 fixed (a)\n`, ['accept', 'issues_found', null]],
+
+  // --- verdict vs content: verify raises the tag to the highest claim class ---
+  ['verify met with a met claim', V, 'status: met\n- claim 1, class: met\n', ['accept', 'met', null]],
+  ['verify met with an unmet claim', V, 'status: met\n- Claim 2: login wired, class: unmet\n',
+    ['normalise', 'gaps_found', null, 'status: gaps_found\n- Claim 2: login wired, class: unmet\n']],
+  ['verify met with a partial claim', V, 'status: met\n- claim 1, class: partial\n',
+    ['normalise', 'gaps_found', null, 'status: gaps_found\n- claim 1, class: partial\n']],
+  ['verify met with an inconclusive claim', V, 'status: met\n- claim 1, class: inconclusive\n  reason: unrunnable-check\n',
+    ['normalise', 'inconclusive', null, 'status: inconclusive\n- claim 1, class: inconclusive\n  reason: unrunnable-check\n']],
+  ['verify met with inconclusive and unmet', V, 'status: met\n- a, class: inconclusive\n- b, class: unmet\n',
+    ['normalise', 'gaps_found', null, 'status: gaps_found\n- a, class: inconclusive\n- b, class: unmet\n']],
+  ['verify inconclusive with an unmet claim', V, 'status: inconclusive\n- b, class: unmet\n',
+    ['normalise', 'gaps_found', null, 'status: gaps_found\n- b, class: unmet\n']],
+  ['verify gaps_found with only met claims stays', V, 'status: gaps_found\n- a, class: met\n', ['accept', 'gaps_found', null]],
+  ['verify inconclusive with only met claims stays', V, 'status: inconclusive\n- a, class: met\n', ['accept', 'inconclusive', null]],
+  ['verify class line inside a fence is ignored', V, 'status: met\n```\n- a, class: unmet\n```\n', ['accept', 'met', null]],
+  ['verify class line inside a blockquote is ignored', V, 'status: met\n> - a, class: unmet\n', ['accept', 'met', null]],
+  ['verify upper-case class counts', V, 'status: met\n- a, Class: UNMET\n',
+    ['normalise', 'gaps_found', null, 'status: gaps_found\n- a, Class: UNMET\n']],
 ];
 
 for (const [name, technique, input, expected] of rows) {
@@ -274,6 +316,17 @@ ok('vocabulary: code-review tokens equal the ones code-review.md defines',
     ok(`contracts: technique ${technique} maps to the family of trailhead-${technique} in the sync script`, FAMILIES[`trailhead-${technique}`] === family);
     ok(`contracts: TOKENS.${technique} are the ${family} tokens`, JSON.stringify(TOKENS[technique]) === JSON.stringify(CONTRACTS[family].tokens));
   }
+  // the reviewing block names the verify class vocabulary and the closing dispositions
+  const bullet = (block, prefix) => block.split('\n').find((l) => l.startsWith(`- ${prefix}:`)) || '';
+  const classTokens = (text) => [...text.matchAll(/class: <([a-z|]+)>/g)].flatMap((m) => m[1].split('|'));
+  ok('contracts: reviewing verify bullet names the checker class vocabulary',
+    JSON.stringify(classTokens(bullet(blocks.reviewing, 'trailhead-verify'))) === JSON.stringify(VERIFY_CLASSES));
+  const crBullet = bullet(blocks.reviewing, 'trailhead-code-review');
+  ok('contracts: reviewing code-review bullet names the closing dispositions',
+    ['fixed', 'deferred', 'accepted'].every((d) => new RegExp(`\\x60${d}\\x60`).test(crBullet)));
+  const verifyDoc = fs.readFileSync(path.join(techDir, 'verify.md'), 'utf8');
+  ok('contracts: verify.md names the same class vocabulary',
+    classTokens(verifyDoc.replace(/class: ([a-z]+(?: \| [a-z]+)+)/g, (m, g) => `class: <${g.replace(/ \| /g, '|')}>`)).join() === VERIFY_CLASSES.join());
   ok('contracts: every non-review agent has a technique here',
     Object.entries(FAMILIES).filter(([, f]) => f !== 'reviewing').every(([a]) => FAMILY_OF[a.replace(/^trailhead-/, '')] !== undefined));
 }

@@ -136,10 +136,11 @@ const techniqueTokens = (file) => {
   const text = fs.readFileSync(path.join(techDir, file), 'utf8');
   return [...new Set([...text.matchAll(/`status: (\w+)`/g)].map((m) => m[1]))].sort();
 };
-// The backticked words on the block's vocabulary line for one agent, minus the placeholder.
+// The backticked words on the block's vocabulary line for one agent (before the first `;`,
+// where the token list ends and the content rules begin), minus the placeholder.
 const blockTokens = (agent) => {
   const line = (blocks.reviewing || '').split('\n').find((l) => l.startsWith(`- ${agent}:`)) || '';
-  return [...line.matchAll(/`(\w+)`/g)].map((m) => m[1]).sort();
+  return [...line.split(';')[0].matchAll(/`(\w+)`/g)].map((m) => m[1]).sort();
 };
 const reviewing = (blocks.reviewing || '').toLowerCase();
 ok('source defines the reviewing block', typeof blocks.reviewing === 'string' && blocks.reviewing.length > 0);

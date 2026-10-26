@@ -36,6 +36,12 @@
 // family, matched case-insensitively; an empty value or `none` means none. A required
 // field missing, a label given twice or a broken invariant is the `fields` problem.
 // Problem precedence on mixed defects: missing > conflicting > unknown-token > counts > fields.
+// The verdict must also agree with the report's content, and only ever moves to the
+// stricter one (fail closed, action normalise): a code-review `clean` whose counts line has
+// critical N > 0 stands only if the ledger closes (`fixed`/`deferred`/`accepted`, first
+// disposition word after the `C<n>` id) at least N distinct Critical ids and none is `open`,
+// else it becomes `issues_found`; a verify tag below the highest `class: <c>` claim line
+// (unmet/partial > inconclusive > met) is raised to it. Warnings and Info never gate.
 
 const fs = require('fs');
 
@@ -47,6 +53,10 @@ const REVIEW_TOKENS = Object.freeze({
   verify: frozen(['met', 'gaps_found', 'inconclusive']),
   'code-review': frozen(['clean', 'issues_found']),
 });
+
+// The class a verify claim line carries (`class: <c>`); the contract is pinned against
+// scripts/agent-blocks.md and verify.md by report-status.test.js.
+const VERIFY_CLASSES = frozen(['met', 'unmet', 'partial', 'inconclusive']);
 
 // The return contract of each field family. Hard-coded here (the checker ships
 // self-contained); report-status.test.js asserts these equal what scripts/agent-blocks.md
@@ -144,6 +154,50 @@ function countsOf(line) {
   return m ? `critical: ${m[1]} · warning: ${m[2]} · info: ${m[3]}` : null;
 }
 
+const DISPOSITION_RE = /\b(fixed|deferred|accepted|open|reclassified)\b/i;
+const CLOSED = frozen(['fixed', 'deferred', 'accepted']);
+// Verify verdicts by strictness; unmet and partial claims both mean gaps_found.
+const VERIFY_RANK = Object.freeze({ met: 0, inconclusive: 1, gaps_found: 2 });
+const CLASS_VERDICT = Object.freeze({ met: 'met', unmet: 'gaps_found', partial: 'gaps_found', inconclusive: 'inconclusive' });
+
+// Critical ledger lines in the candidate lines: [{ id, disposition }] (disposition may be null).
+function criticalLedger(lines, cands) {
+  return cands.flatMap((i) => {
+    const s = strip(lines[i]);
+    const m = /^C(\d+)\b(.*)$/i.exec(s);
+    if (!m) return [];
+    const d = DISPOSITION_RE.exec(m[2]);
+    return [{ id: `C${m[1]}`, disposition: d ? d[1].toLowerCase() : null }];
+  });
+}
+
+// Does a `clean` verdict with `critical` Criticals stand against its ledger?
+function cleanStands(critical, ledger) {
+  if (critical === 0) return true;
+  if (ledger.some((e) => e.id && e.disposition === 'open')) return false;
+  const closed = new Set(ledger.filter((e) => CLOSED.includes(e.disposition)).map((e) => e.id));
+  return closed.size >= critical;
+}
+
+// The verify verdict raised to the highest class among the claim lines; never lowered.
+function raisedVerify(verdict, lines, cands, statusIdx) {
+  const classes = cands.filter((i) => !statusIdx.has(i)).flatMap((i) => {
+    const m = new RegExp(`class\\s*:\\s*(${VERIFY_CLASSES.join('|')})\\b`, 'i').exec(strip(lines[i]));
+    return m ? [CLASS_VERDICT[m[1].toLowerCase()]] : [];
+  });
+  return classes.reduce((v, c) => (VERIFY_RANK[c] > VERIFY_RANK[v] ? c : v), verdict);
+}
+
+// The verdict after the content check: the declared one, or the stricter one it contradicts.
+function checkedVerdict(technique, verdict, lines, cands, statusIdx, counts) {
+  if (technique === 'verify') return raisedVerify(verdict, lines, cands, statusIdx);
+  if (technique === 'code-review' && verdict === 'clean') {
+    const critical = Number(/^critical: (\d+)/.exec(counts[0].text)[1]);
+    return cleanStands(critical, criticalLedger(lines, cands)) ? verdict : 'issues_found';
+  }
+  return verdict;
+}
+
 const reask = (text, problem) => ({ action: 'reask', verdict: null, problem, report: text, fields: null, body: null });
 
 const isNone = (v) => v === undefined || /^(none\.?)?$/i.test(v.trim());
@@ -198,13 +252,15 @@ function checkReport(text, technique) {
   const anyInvalid = statusLines.some((c) => !tokens.includes(c.token));
   if (valid.size > 1 || (valid.size === 1 && anyInvalid)) return reask(original, 'conflicting');
   if (valid.size === 0) return reask(original, 'unknown-token');
-  const verdict = [...valid][0];
+  const declared = [...valid][0];
 
   let counts = [];
   if (technique === 'code-review') {
     counts = cands.map((i) => ({ i, text: countsOf(lines[i]) })).filter((c) => c.text !== null);
     if (counts.length !== 1) return reask(original, 'counts');
   }
+
+  const verdict = checkedVerdict(technique, declared, lines, cands, new Set(statusLines.map((c) => c.i)), counts);
 
   // Blank lines that led the original are not content: drop them with the status lines.
   const lead = lines.findIndex((l) => l.trim() !== '');
@@ -224,7 +280,7 @@ function checkReport(text, technique) {
     if (family === 'plan' && verdict === 'ready') body = text;
   }
 
-  const exact = cleanLayout && statusLines.length === 1 && statusLines[0].i === 0 && lines[0] === `status: ${verdict}`
+  const exact = cleanLayout && statusLines.length === 1 && statusLines[0].i === 0 && lines[0] === `status: ${verdict}` && verdict === declared
     && (counts.length === 0 || (counts[0].i === 1 && lines[1] === counts[0].text));
   if (exact) return { action: 'accept', verdict, problem: null, report: original, fields, body };
 
@@ -271,4 +327,4 @@ function main(argv, io = {}) {
 // exitCode, not process.exit(): exiting at once truncates piped stdout at 64 KB.
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { checkReport, parseArgs, main, TOKENS, CONTRACTS, FAMILY_OF };
+module.exports = { checkReport, parseArgs, main, TOKENS, CONTRACTS, FAMILY_OF, VERIFY_CLASSES };
