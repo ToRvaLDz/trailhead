@@ -638,6 +638,16 @@ for (const command of [
 ]) {
   ok(`#316 deny (-f / --file value is a file): ${command}`, !!detectSecretRead('Bash', { command }));
 }
+// #316: the rest of the ticket's wrapper list, which lib/unmodelled.js does not skip.
+for (const command of [
+  "stdbuf -oL bash -c 'cat .env'",
+  "time bash -c 'cat .env'",
+  "setsid bash -c 'cat .env'",
+  "doas bash -c 'cat .env'",
+]) {
+  const r = detectSecretRead('Bash', { command });
+  ok(`#316 deny (wrapper + nested shell, unmodelled): ${command}`, !!r && !!r.unmodelled);
+}
 // #316: with -f the pattern/script comes from a file, so the first positional is a FILE.
 for (const command of [
   'grep -f pats .env',
