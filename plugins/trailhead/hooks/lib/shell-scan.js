@@ -633,6 +633,23 @@ const SEARCH_VERB_CONFIG = {
   awk: { patternFirst: true, valueFlags: new Set(['-f', '-v']), patternFlags: new Set() },
 };
 
+// #316: the -f / --file operand of a flag token, or null when the token is not one.
+// Forms: `-f V`, `-fV`, a short cluster whose FIRST value-taking letter is `f`
+// (`-if.env`; after another value letter the rest is that flag's value, so
+// `-ef.env` is a pattern), `--file V`, `--file=V`. `consumed` = extra tokens used.
+function fileFlagOperand(t, next, config) {
+  if (t === '--file') return { value: next, consumed: 1 };
+  if (t.startsWith('--file=')) return { value: t.slice('--file='.length), consumed: 0 };
+  if (t.startsWith('--')) return null;
+  for (let i = 1; i < t.length; i++) {
+    if (!config.valueFlags.has(`-${t[i]}`)) continue;
+    if (t[i] !== 'f') return null;
+    const rest = t.slice(i + 1);
+    return rest ? { value: rest, consumed: 0 } : { value: next, consumed: 1 };
+  }
+  return null;
+}
+
 // Walk a verb's argument tokens (verb itself already stripped), skipping
 // flags (and their separate-token values), an explicit `--` end-of-options
 // marker (which must not itself swallow the next real positional), and the
@@ -647,6 +664,13 @@ function scanArgsSkippingPattern(args, config, isMatch) {
     const t = args[j];
     if (!afterDashDash && t === '--') { afterDashDash = true; continue; }
     if (!afterDashDash && t.startsWith('-') && t !== '-') {
+      // #316: the value of -f / --file is a FILE the verb reads, so it is tested.
+      const file = fileFlagOperand(t, args[j + 1], config);
+      if (file) {
+        if (file.value !== undefined && file.value !== '' && isMatch(file.value)) return file.value;
+        j += file.consumed;
+        continue;
+      }
       if (config.valueFlags.has(t)) {
         j++; // consume its separate-token value
         if (config.patternFlags && config.patternFlags.has(t)) patternConsumed = true;
