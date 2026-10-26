@@ -13,9 +13,12 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
   e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);
-const files = walk(SKILLS).filter((f) => f.endsWith('.md'));
+// Radici doc che il motore legge: skill, agent e comandi
+const DOC_ROOTS = ['skills', 'agents', 'commands'].map((d) => path.join(root, 'plugins/trailhead', d));
+const files = DOC_ROOTS.flatMap(walk).filter((f) => f.endsWith('.md'));
 
-const BARE = /(?<!\$\{CLAUDE_CONFIG_DIR:-)~\/\.claude\/trailhead\/templates/g;
+// Ogni grafia nuda della home: ~ o $HOME (la forma buona ha `}` dopo .claude, quindi non combacia)
+const BARE = /(?:~|\$HOME)\/\.claude\/trailhead\/templates/g;
 const GOOD = '${CLAUDE_CONFIG_DIR:-~/.claude}/trailhead/templates/';
 const CODEX = '~/.codex/skills/trailhead/templates/';
 
