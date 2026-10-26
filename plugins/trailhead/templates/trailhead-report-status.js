@@ -154,27 +154,27 @@ function countsOf(line) {
   return m ? `critical: ${m[1]} · warning: ${m[2]} · info: ${m[3]}` : null;
 }
 
-const DISPOSITION_RE = /\b(fixed|deferred|accepted|open|reclassified)\b/i;
+// A ledger line: `C<n>`, an optional separator, then the disposition word right away
+// (a bare `open` must end the line or be followed by punctuation: `C1 open redirect` is prose).
+const LEDGER_RE = /^C(\d+)\s*[:\-–)]?\s*(fixed|deferred|accepted|reclassified|open(?=\s*(?:$|[:.,;(→])))(?![-\w])/i;
 const CLOSED = frozen(['fixed', 'deferred', 'accepted']);
 // Verify verdicts by strictness; unmet and partial claims both mean gaps_found.
 const VERIFY_RANK = Object.freeze({ met: 0, inconclusive: 1, gaps_found: 2 });
 const CLASS_VERDICT = Object.freeze({ met: 'met', unmet: 'gaps_found', partial: 'gaps_found', inconclusive: 'inconclusive' });
 
-// Critical ledger lines in the candidate lines: [{ id, disposition }] (disposition may be null).
+// Critical ledger lines in the candidate lines: [{ id, disposition }]. A `C<n>` line whose
+// disposition does not follow the id (finding prose) is not a ledger line and is ignored.
 function criticalLedger(lines, cands) {
   return cands.flatMap((i) => {
-    const s = strip(lines[i]);
-    const m = /^C(\d+)\b(.*)$/i.exec(s);
-    if (!m) return [];
-    const d = DISPOSITION_RE.exec(m[2]);
-    return [{ id: `C${m[1]}`, disposition: d ? d[1].toLowerCase() : null }];
+    const m = LEDGER_RE.exec(strip(lines[i]));
+    return m ? [{ id: `C${m[1]}`, disposition: m[2].toLowerCase() }] : [];
   });
 }
 
 // Does a `clean` verdict with `critical` Criticals stand against its ledger?
 function cleanStands(critical, ledger) {
   if (critical === 0) return true;
-  if (ledger.some((e) => e.id && e.disposition === 'open')) return false;
+  if (ledger.some((e) => e.disposition === 'open')) return false;
   const closed = new Set(ledger.filter((e) => CLOSED.includes(e.disposition)).map((e) => e.id));
   return closed.size >= critical;
 }
@@ -182,7 +182,7 @@ function cleanStands(critical, ledger) {
 // The verify verdict raised to the highest class among the claim lines; never lowered.
 function raisedVerify(verdict, lines, cands, statusIdx) {
   const classes = cands.filter((i) => !statusIdx.has(i)).flatMap((i) => {
-    const m = new RegExp(`class\\s*:\\s*(${VERIFY_CLASSES.join('|')})\\b`, 'i').exec(strip(lines[i]));
+    const m = new RegExp(`(?:^|[\\s,;(])class\\s*:\\s*(${VERIFY_CLASSES.join('|')})\\b(?![-\\w])`, 'i').exec(strip(lines[i]));
     return m ? [CLASS_VERDICT[m[1].toLowerCase()]] : [];
   });
   return classes.reduce((v, c) => (VERIFY_RANK[c] > VERIFY_RANK[v] ? c : v), verdict);

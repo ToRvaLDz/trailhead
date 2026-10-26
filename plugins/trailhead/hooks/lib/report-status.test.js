@@ -140,6 +140,12 @@ const rows = [
     ['normalise', 'issues_found', null, `status: issues_found\n${K1}\n\`\`\`\nC1 fixed (a)\n\`\`\`\n`]],
   ['clean, critical 2, a repeated C1 line counts once', C, `status: clean\n${K2}\nC1 fixed (a)\nc1 fixed (b)\n`,
     ['normalise', 'issues_found', null, `status: issues_found\n${K2}\nC1 fixed (a)\nc1 fixed (b)\n`]],
+  ['finding prose with open after a closed ledger line stays clean', C, `status: clean\n${K1}\nC1: fixed (abc)\nC1 file.js:3 handler leaves the socket open\n`, ['accept', 'clean', null]],
+  ['open redirect prose with a fixed ledger stays clean', C, `status: clean\n${K1}\nC1 fixed (abc)\nC1 open redirect in login.js:9\n`, ['accept', 'clean', null]],
+  ['a lone fixed-size prose line does not close the Critical', C, `status: clean\n${K1}\nC1 fixed-size buffer overflow in x.js:3: open\n`,
+    ['normalise', 'issues_found', null, `status: issues_found\n${K1}\nC1 fixed-size buffer overflow in x.js:3: open\n`]],
+  ['bold id and en-dash separator ledger line', C, `status: clean\n${K1}\n- **C1** – fixed (abc)\n`, ['accept', 'clean', null]],
+  ['verify subclass is not a class line', V, 'status: met\n- a, subclass: unmet\n', ['accept', 'met', null]],
   ['clean, critical 0, warnings open never gate', C, `status: clean\n${K}\nW1 open\n`, ['accept', 'clean', null]],
   ['issues_found is never changed', C, `status: issues_found\n${K1}\nC1 fixed (a)\n`, ['accept', 'issues_found', null]],
 
