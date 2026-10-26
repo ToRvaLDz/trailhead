@@ -638,6 +638,15 @@ for (const command of [
 ]) {
   ok(`#316 deny (-f / --file value is a file): ${command}`, !!detectSecretRead('Bash', { command }));
 }
+// #316: with -f the pattern/script comes from a file, so the first positional is a FILE.
+for (const command of [
+  'grep -f pats .env',
+  'grep --file=pats .env',
+  'sed -f script .env',
+  'awk -f prog .env',
+]) {
+  ok(`#316 deny (positional after -f is a file): ${command}`, !!detectSecretRead('Bash', { command }));
+}
 for (const command of [
   "timeout 5 bash -c 'echo hi'",
   'nice -n 5 ls',
