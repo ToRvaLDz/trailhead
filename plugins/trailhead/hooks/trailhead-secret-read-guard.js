@@ -672,6 +672,10 @@ const WRAPPED_SHELL_UNMODELLED = (sample) => ({
   sample,
 });
 
+// #316: wrappers this gate also knows that lib/unmodelled.js does not skip. A word list
+// only: the gate never walks a wrapper's options, so no option values are needed here.
+const EXTRA_WRAPPER_WORDS = new Set(['stdbuf', 'time', 'setsid', 'doas']);
+
 // #316: a statement whose command word (after NAME=value prefixes) is a known wrapper
 // (lib/unmodelled.js) and that carries a nested shell word or `eval` later on. The
 // wrapper's own options are not walked: any such word fails closed. Null when not.
@@ -683,7 +687,9 @@ function wrappedNestedShell(tokens) {
     return null; // a missing lib only switches this gate off, like unmodelledSecretPiece
   }
   const first = skipEnvPrefix(tokens);
-  if (first >= tokens.length || !lib.isWrapperWord(unquoteWord(tokens[first]))) return null;
+  if (first >= tokens.length) return null;
+  const word = unquoteWord(tokens[first]);
+  if (!lib.isWrapperWord(word) && !EXTRA_WRAPPER_WORDS.has(word)) return null;
   const nested = tokens.slice(first + 1).some((t) => {
     const w = basename(unquoteWord(t));
     return w === 'eval' || SHELL_DASH_C_VERBS.has(w);
