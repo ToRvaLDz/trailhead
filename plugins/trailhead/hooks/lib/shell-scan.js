@@ -668,6 +668,7 @@ function scanArgsSkippingPattern(args, config, isMatch) {
       const file = fileFlagOperand(t, args[j + 1], config);
       if (file) {
         if (file.value !== undefined && file.value !== '' && isMatch(file.value)) return file.value;
+        patternConsumed = true; // the pattern/script comes from that file, so positionals are FILEs
         j += file.consumed;
         continue;
       }
