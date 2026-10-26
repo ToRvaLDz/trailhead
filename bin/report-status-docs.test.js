@@ -48,7 +48,7 @@ ok('the checker command with its technique flag and a report file',
 ok('the three templates dirs, in order',
   (() => {
     const a = para.indexOf('${CLAUDE_PLUGIN_ROOT}/templates/');
-    const b = para.indexOf('~/.claude/trailhead/templates/');
+    const b = para.indexOf('${CLAUDE_CONFIG_DIR:-~/.claude}/trailhead/templates/');
     const c = para.indexOf('~/.codex/skills/trailhead/templates/');
     return a !== -1 && b > a && c > b;
   })());
