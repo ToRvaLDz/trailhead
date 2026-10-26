@@ -62,6 +62,11 @@ const WRAPPER_VALUE_FLAGS = {
   nohup: [],
 };
 
+// Is `word` (as written, quotes allowed) a command wrapper from the list above? #316
+function isWrapperWord(word) {
+  return Object.prototype.hasOwnProperty.call(WRAPPER_VALUE_FLAGS, dequote(word));
+}
+
 // Index just past a wrapper's own flags (and assignments), from the wrapper at toks[k].
 function skipWrapper(toks, k) {
   const w = dequote(toks[k]);
@@ -342,4 +347,4 @@ function unmodelledReason(guard, what, hit, redact) {
     `interpret with certainty, so it cannot verify ${what}. Rewrite it in a simple form: ${hit.hint}.`;
 }
 
-module.exports = { UNMODELLED, findUnmodelled, firstRelevant, unmodelledReason };
+module.exports = { UNMODELLED, findUnmodelled, firstRelevant, unmodelledReason, isWrapperWord };

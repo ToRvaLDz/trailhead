@@ -663,6 +663,34 @@ const GIT_CONFIG_PARAMETERS_UNMODELLED = (sample) => ({
   sample,
 });
 
+// #316: the unmodelled-hit shape for a nested shell / eval behind a command wrapper
+// (`nice bash -c '...'`), whose inner text the guard does not follow.
+const WRAPPED_SHELL_UNMODELLED = (sample) => ({
+  id: 'wrapped-nested-shell',
+  label: 'a command wrapper in front of a nested shell (`bash -c`) or eval',
+  hint: 'run the inner command directly, without the wrapper and the nested shell',
+  sample,
+});
+
+// #316: a statement whose command word (after NAME=value prefixes) is a known wrapper
+// (lib/unmodelled.js) and that carries a nested shell word or `eval` later on. The
+// wrapper's own options are not walked: any such word fails closed. Null when not.
+function wrappedNestedShell(tokens) {
+  let lib;
+  try {
+    lib = require('./lib/unmodelled.js');
+  } catch {
+    return null; // a missing lib only switches this gate off, like unmodelledSecretPiece
+  }
+  const first = skipEnvPrefix(tokens);
+  if (first >= tokens.length || !lib.isWrapperWord(unquoteWord(tokens[first]))) return null;
+  const nested = tokens.slice(first + 1).some((t) => {
+    const w = basename(unquoteWord(t));
+    return w === 'eval' || SHELL_DASH_C_VERBS.has(w);
+  });
+  return nested ? tokens.join(' ') : null;
+}
+
 // Scan a single top-level statement for a secret path. Recurses into a
 // bash -c/eval quoted sub-command first (finding #1), routes grep/rg/ag/sed/
 // awk through the shared pattern-skipping walk (finding #4), and falls back
@@ -701,7 +729,12 @@ function scanStatementForSecretPath(stmt) {
   // standalone docker-compose/podman-compose binaries) get --env-file's value
   // exempted; every other verb keeps today's behaviour unchanged.
   const exempt = ENV_FILE_EXEMPT_VERBS.has(bin) ? ENV_FILE_EXEMPT_FLAGS : NO_EXEMPT_FLAGS;
-  return scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
+  const plain = scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
+  if (plain) return plain;
+  // #316: only when a secret-looking piece sits in the statement (`timeout 5 bash -c 'echo hi'` stays allowed).
+  const wrapped = wrappedNestedShell(tokens);
+  const piece = wrapped && crudeSecretPiece(wrapped);
+  return piece ? { path: piece, unmodelled: WRAPPED_SHELL_UNMODELLED(wrapped) } : null;
 }
 
 // #214: substitution bodies are scanned off an explicit work-list (no
