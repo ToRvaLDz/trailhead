@@ -612,4 +612,53 @@ ok('#276 hook exits 2 on bash -c "cat \\\\.env"', runHook('Bash', { command: 'ba
 
 ok('#276 hook exits 2 on cat \\.env', runHook('Bash', { command: 'cat \\.env' }).code === 2);
 
+// #316: a wrapper in front of a nested shell must not hide the inner command, and the
+// value of grep/sed/awk -f / --file is a FILE operand (a pattern/script file), not a skipped value.
+for (const command of [
+  "nice bash -c 'cat .env'",
+  "timeout 5 bash -c 'cat .env'",
+  "nice -n 5 bash -c 'cat .env'",
+  "env -i bash -c 'cat .env'",
+  "nohup bash -c 'cat .env'",
+  "sudo bash -c 'cat .env'",
+  "sudo -u root bash -c 'cat .env'",
+]) {
+  const r = detectSecretRead('Bash', { command });
+  ok(`#316 deny (wrapper + nested shell, unmodelled): ${command}`, !!r && !!r.unmodelled);
+  ok(`#316 hook exits 2 UNMODELLED: ${command}`, (() => { const h = runHook('Bash', { command }); return h.code === 2 && JSON.parse(h.out).code === 'SECRET_READ_UNMODELLED_CONSTRUCT'; })());
+}
+for (const command of [
+  'grep -f .env pat f',
+  'grep -f.env pat f',
+  'grep -if.env pat f',
+  'grep --file=.env pat f',
+  'grep --file .env pat f',
+  'sed -f .env x',
+  'awk -f .env x',
+]) {
+  ok(`#316 deny (-f / --file value is a file): ${command}`, !!detectSecretRead('Bash', { command }));
+}
+for (const command of [
+  "timeout 5 bash -c 'echo hi'",
+  'nice -n 5 ls',
+  'grep -f patterns.txt x f',
+  'grep -e foo f',
+  'grep -ef.env x',
+]) {
+  ok(`#316 allow: ${command}`, !detectSecretRead('Bash', { command }));
+}
+for (const command of [
+  'cat .env',
+  "bash -c 'cat .env'",
+  "sh -c 'cat .env'",
+  "eval 'cat .env'",
+  'grep x .env',
+  'stdbuf -oL cat .env',
+  'exec cat .env',
+  'sudo -u root cat .env',
+  "nice eval 'cat .env'",
+]) {
+  ok(`#316 deny (unchanged): ${command}`, !!detectSecretRead('Bash', { command }));
+}
+
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);
