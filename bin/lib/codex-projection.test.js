@@ -448,6 +448,20 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   ok('convertToCodex maps the ~ config-dir expansion to CODEX_HOME', a === '${CODEX_HOME:-~/.codex}/trailhead/templates/x');
   ok('convertToCodex maps the $HOME config-dir expansion to CODEX_HOME', b === '${CODEX_HOME:-$HOME/.codex}/hooks/y');
   ok('convertToCodex leaves no CLAUDE_CONFIG_DIR behind', !/CLAUDE_CONFIG_DIR/.test(a + b));
+  const c = convertToCodex('config dir = `$CLAUDE_CONFIG_DIR` or `~/.claude`; `${CLAUDE_CONFIG_DIR}/x`');
+  ok('convertToCodex maps the bare config-dir forms to CODEX_HOME',
+    c === 'config dir = `$CODEX_HOME` or `~/.codex`; `${CODEX_HOME}/x`');
+  ok('convertToCodex leaves a longer variable name untouched',
+    convertToCodex('$CLAUDE_CONFIG_DIRX') === '$CLAUDE_CONFIG_DIRX');
+
+  // Ogni .md reale proiettato non deve contenere CLAUDE_CONFIG_DIR.
+  const root = path.join(__dirname, '../../plugins/trailhead');
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.md') ? [path.join(d, e.name)] : []);
+  const files = ['skills', 'agents', 'commands'].flatMap((n) => walk(path.join(root, n)));
+  const leaks = files.filter((f) => /CLAUDE_CONFIG_DIR/.test(convertToCodex(fs.readFileSync(f, 'utf8'))));
+  ok('real plugin .md files were found', files.length > 0);
+  ok('no projected plugin .md keeps CLAUDE_CONFIG_DIR: ' + leaks.join(', '), leaks.length === 0);
 }
 
 // #248: the shared boundary blocks survive the Codex projection of every real agent.

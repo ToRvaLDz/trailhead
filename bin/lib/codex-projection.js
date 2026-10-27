@@ -72,6 +72,9 @@ function convertToCodex(md) {
   // 3a. Espansione della config dir: CLAUDE_CONFIG_DIR -> CODEX_HOME per intero,
   // prima dei path nudi (altrimenti resta CLAUDE_CONFIG_DIR con fallback ~/.codex).
   out = out.replace(/\$\{CLAUDE_CONFIG_DIR:-(~|\$HOME)\/\.claude\}/g, '${CODEX_HOME:-$1/.codex}');
+  // Forme nude rimaste in prosa: $CLAUDE_CONFIG_DIR e ${CLAUDE_CONFIG_DIR} -> CODEX_HOME.
+  out = out.replace(/\$\{CLAUDE_CONFIG_DIR\}/g, '${CODEX_HOME}');
+  out = out.replace(/\$CLAUDE_CONFIG_DIR\b/g, '$CODEX_HOME');
 
   // 3b. Paths: anchored forms first, then the bare form.
   out = out.replace(/\$HOME\/\.claude\b/g, '$HOME/.codex');
