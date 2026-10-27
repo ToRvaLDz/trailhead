@@ -441,6 +441,15 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
     autoRef.includes('--auto true --auto-done <n>'));
 }
 
+// #319: l'espansione CLAUDE_CONFIG_DIR diventa CODEX_HOME, mai un ibrido che punta alla config di Claude.
+{
+  const a = convertToCodex('${CLAUDE_CONFIG_DIR:-~/.claude}/trailhead/templates/x');
+  const b = convertToCodex('${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/y');
+  ok('convertToCodex maps the ~ config-dir expansion to CODEX_HOME', a === '${CODEX_HOME:-~/.codex}/trailhead/templates/x');
+  ok('convertToCodex maps the $HOME config-dir expansion to CODEX_HOME', b === '${CODEX_HOME:-$HOME/.codex}/hooks/y');
+  ok('convertToCodex leaves no CLAUDE_CONFIG_DIR behind', !/CLAUDE_CONFIG_DIR/.test(a + b));
+}
+
 // #248: the shared boundary blocks survive the Codex projection of every real agent.
 {
   const { parseSource } = require('../../scripts/sync-agent-blocks.js');
