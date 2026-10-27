@@ -2,6 +2,23 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.16.1 (2026-10-27)
+
+### Why
+A fix release. trailhead now honours a custom config directory everywhere (`CLAUDE_CONFIG_DIR` on Claude Code, the Codex home on Codex), Codex users get commands in their own form from runtime notices, and the secret-read guard and the report checker close gaps found in real use.
+
+### Changed
+- **Charting turns phrasable areas into tickets.** An area that can already be phrased as a ticket is charted as one instead of staying fog, and fog that becomes specifiable graduates in one batch.
+- **A decision opens its build tickets before it closes.** The resolution names every ticket that carries the work (`Builds:`), and the audit flags a decision that built nothing without saying why.
+- **Docs.** The README (en, it) and the site name the global config location per host, the Codex form of the model review offer and its ack location, and the secret-read guard's wider coverage; the auto docs separate the intro from the comparison with `work`.
+
+### Fixed
+- **Model review offer on Codex (#267).** The pinned model review named `/trailhead:config`, which does not exist on Codex; it now renders `$trailhead config` there and reads and acknowledges the global config under the Codex home. A static test fails on any new Claude command literal in runtime code that ships to Codex.
+- **`CLAUDE_CONFIG_DIR` honoured everywhere (#318, #319, #320).** Template lookups on npm installs, the statusline install and its credential read, and the Codex projection of config-dir prose no longer assume `~/.claude`.
+- **Secret-read guard (#316).** A nested shell (`bash -c`) or `eval` behind a command wrapper (`env`, `nice`, `timeout`, `nohup`, `sudo`, `stdbuf`, `time`, `setsid`, `doas`) next to a secret-looking path is blocked, and the `-f`/`--file` value of `grep`, `sed` and `awk` is checked as a file.
+- **Report checker fails closed (#317).** A review reported `clean` or `met` while listing open findings, or with a Critical ledger line it cannot parse, is no longer accepted.
+- **Map panel (#314, #315).** A closed ticket no longer shows as held with its dependents blocked, and a read in flight is no longer dropped when the pin moves within the same repo.
+
 ## 0.16.0 (2026-10-22)
 
 ### Why
