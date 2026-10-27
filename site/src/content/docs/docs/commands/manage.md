@@ -32,7 +32,7 @@ Guided menu setup, or get and set trailhead config.
 
 - `.trailhead/config.json` (project scope) or `~/.claude/trailhead/config.json` (global scope).
 - The way-of-working keys (`git`, `release`, `isolation`) go into the repo's `trailhead:conventions` issue header instead, because they are shared repo conventions. If that issue does not exist yet, it offers to create a minimal one.
-- If you enable the statusline: the script copied to `~/.claude/statusline-trailhead.sh` and the `statusLine` entry in `~/.claude/settings.json` (a global setting). An existing statusline is never replaced silently.
+- If you enable the statusline: the script copied to `statusline-trailhead.sh` in your Claude config directory (`$CLAUDE_CONFIG_DIR`, default `~/.claude`) and the `statusLine` entry in that directory's `settings.json` (a global setting). An existing statusline is never replaced silently.
 
 **Example**
 

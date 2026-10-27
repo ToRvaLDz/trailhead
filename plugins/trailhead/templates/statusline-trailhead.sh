@@ -25,7 +25,7 @@
 # (il render non aspetta la rete). Disabilita con TRAILHEAD_STATUSLINE_USAGE=0.
 #
 # Uso:
-#   - standalone: settings.json -> statusLine.command = "bash ~/.claude/statusline-trailhead.sh"
+#   - standalone: settings.json -> statusLine.command = "bash <config dir>/statusline-trailhead.sh" (config dir = $CLAUDE_CONFIG_DIR, default ~/.claude)
 #   - widget singolo (ccstatusline custom command): "--ticket-only" | "--context-only" | "--usage-only"
 
 set -uo pipefail

@@ -41,4 +41,12 @@ for (const rel of [
 const cfg = fs.readFileSync(path.join(SKILLS, '_shared/configuration-reference.md'), 'utf8');
 ok('configuration-reference: statusline lookup uses config dir', cfg.includes(GOOD + 'statusline-trailhead.sh'));
 
+// #319: l'install della statusline va nella config dir, non in ~/.claude nudo
+const stl = cfg.split('\n').find((l) => l.includes('On **Enable**, install it')) || '';
+ok('configuration-reference: statusline install line found', stl.length > 0);
+ok('configuration-reference: statusline target and settings use config dir',
+  stl.includes('${CLAUDE_CONFIG_DIR:-~/.claude}/statusline-trailhead.sh') && stl.includes('${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json'));
+ok('configuration-reference: statusline install has no bare ~/.claude target or $HOME command',
+  !/(?<!:-)~\/\.claude\/(settings\.json|statusline-trailhead\.sh)/.test(stl) && !stl.includes('$HOME/.claude'));
+
 console.log(`config-dir-templates-docs.test.js: ${passed} checks passed`);
