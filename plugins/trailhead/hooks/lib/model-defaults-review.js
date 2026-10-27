@@ -17,6 +17,25 @@ const DATA_FILE = path.join(__dirname, 'model-defaults.json');
 const HOSTS = ['claude', 'codex'];
 const TIERS = ['strong', 'standard', 'fast'];
 
+// Host: la lib viene copiata byte-per-byte su Codex (sotto
+// <codexHome>/skills/trailhead/hooks/lib), quindi l'host si deduce dal path
+// installato, senza env (stessa idea di trailhead-check-update.js). Un
+// argomento `host` esplicito sovrascrive la rilevazione (test, host futuri).
+const CODEX_LIB_RE = /[\\/]skills[\\/]trailhead[\\/]hooks[\\/]lib$/;
+
+function detectHost(dir = __dirname) {
+  return CODEX_LIB_RE.test(dir) ? 'codex' : 'claude';
+}
+
+function normalizeHost(host) {
+  return HOSTS.includes(host) ? host : detectHost();
+}
+
+// Forma del comando per host: `/trailhead:<verb>` su Claude, `$trailhead <verb>` su Codex.
+function commandForm(host, verb) {
+  return normalizeHost(host) === 'codex' ? `$trailhead ${verb}` : `/trailhead:${verb}`;
+}
+
 function isPlainObject(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
@@ -187,7 +206,7 @@ function effectiveModels(layers) {
   return { config: { models: outModels }, sources };
 }
 
-function reviewOffer({ config, data, ack, sources }) {
+function reviewOffer({ config, data, ack, sources, host }) {
   const current = currentEntry(data);
   if (!current) return null;
   const stale = stalePins(config, data).map((s) => {
@@ -196,7 +215,7 @@ function reviewOffer({ config, data, ack, sources }) {
   });
   if (!stale.length) return null;
   if (ack && !semverLt(ack, current.since)) return null;
-  return { since: current.since, stale, notice: reviewNotice(stale, current.since) };
+  return { since: current.since, stale, notice: reviewNotice(stale, current.since, host) };
 }
 
 function sourceSuffix(source) {
@@ -205,7 +224,7 @@ function sourceSuffix(source) {
   return ` (new default; from ${layerName}, ${source.file})`;
 }
 
-function reviewNotice(stale, since) {
+function reviewNotice(stale, since, host) {
   const lines = stale.map((s) => `- ${s.key}: ${s.from} -> ${s.to}${sourceSuffix(s.source)}`);
   return [
     `trailhead's default models changed in ${since}. The following pinned model(s) are older than the new default:`,
@@ -214,7 +233,7 @@ function reviewNotice(stale, since) {
     'Offer the user, once, without blocking their current request, three choices:',
     '1) update those keys to the new defaults (edit each key in the config file it comes from, with exactly the values above; keep any codex effort unchanged),',
     '2) keep them as they are (nothing to do; trailhead will not ask again for these defaults once acknowledged),',
-    '3) open /trailhead:config to pick per key.',
+    `3) open ${commandForm(host, 'config')} to pick per key.`,
     'This offer reappears every time it is checked until acknowledged: run the ack instruction below only after the user has picked one of the three choices above.',
   ].join('\n');
 }
@@ -232,24 +251,31 @@ const ACK_FILE = path.join('.trailhead', 'model-defaults-ack');
 const CONFIG_FILE = path.join('.trailhead', 'config.json');
 
 // Dir base della config globale: stessa risoluzione di trailhead-check-update.js.
-function globalConfigDir() {
+// Su Codex e' <codexHome>, ricavato dal path installato della lib (4 livelli
+// sopra __dirname: <codexHome>/skills/trailhead/hooks/lib); con host forzato
+// fuori da un'installazione Codex ripiega su CODEX_HOME o ~/.codex.
+function globalConfigDir(host) {
+  if (normalizeHost(host) === 'codex') {
+    if (detectHost() === 'codex') return path.resolve(__dirname, '..', '..', '..', '..');
+    return process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+  }
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 }
 
-function globalConfigFile() {
-  return path.join(globalConfigDir(), 'trailhead', 'config.json');
+function globalConfigFile(host) {
+  return path.join(globalConfigDir(host), 'trailhead', 'config.json');
 }
 
 // L'ack globale vive accanto al config.json globale, senza nidificare
 // ".trailhead" (che e' una convenzione solo di progetto).
-function globalAckFile() {
-  return path.join(globalConfigDir(), 'trailhead', 'model-defaults-ack');
+function globalAckFile(host) {
+  return path.join(globalConfigDir(host), 'trailhead', 'model-defaults-ack');
 }
 
 // Mancante o malformato -> {}: non deve mai bloccare la review di progetto.
-function loadGlobalConfig() {
+function loadGlobalConfig(host) {
   try {
-    const raw = JSON.parse(fs.readFileSync(globalConfigFile(), 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(globalConfigFile(host), 'utf8'));
     return isPlainObject(raw) ? raw : {};
   } catch {
     return {};
@@ -296,13 +322,13 @@ function writeAck(root, since) {
 // non arriva un ack esplicito via ack(cwd). Valuta i pin EFFETTIVI: la
 // config globale unita sotto quella di progetto (progetto vince chiave per
 // chiave); senza un progetto sopra cwd, valuta la sola config globale.
-function check(cwd) {
+function check(cwd, { host } = {}) {
   try {
     const resolvedCwd = path.resolve(cwd || '.');
     const root = findProjectRoot(cwd);
     const data = loadData();
-    const globalFile = globalConfigFile();
-    const globalLayer = { layer: 'global', file: globalFile, config: loadGlobalConfig() };
+    const globalFile = globalConfigFile(host);
+    const globalLayer = { layer: 'global', file: globalFile, config: loadGlobalConfig(host) };
 
     if (root) {
       let projectConfig;
@@ -318,7 +344,7 @@ function check(cwd) {
       };
       const { config, sources } = effectiveModels([globalLayer, projectLayer]);
       const ack = readAck(root);
-      const offer = reviewOffer({ config, data, ack, sources });
+      const offer = reviewOffer({ config, data, ack, sources, host });
       if (!offer) return null;
       return `${offer.notice}\n${ackInstruction(root)}`;
     }
@@ -326,8 +352,8 @@ function check(cwd) {
     // Nessun progetto sopra cwd: valuta la sola config globale, se esiste.
     if (!fs.existsSync(globalFile)) return null;
     const { config, sources } = effectiveModels([globalLayer]);
-    const ack = readAckFile(globalAckFile());
-    const offer = reviewOffer({ config, data, ack, sources });
+    const ack = readAckFile(globalAckFile(host));
+    const offer = reviewOffer({ config, data, ack, sources, host });
     if (!offer) return null;
     return `${offer.notice}\n${ackInstruction(resolvedCwd)}`;
   } catch {
@@ -341,7 +367,7 @@ function check(cwd) {
 // globale -> ack globale. True se un target e' stato trovato e la scrittura
 // tentata (un fallimento silenzioso non e' riportato, comportamento
 // invariato); false se nessun target esiste. Non lancia mai eccezioni.
-function ack(cwd) {
+function ack(cwd, { host } = {}) {
   try {
     const root = findProjectRoot(cwd);
     const data = loadData();
@@ -351,8 +377,8 @@ function ack(cwd) {
       writeAck(root, current.since);
       return true;
     }
-    if (fs.existsSync(globalConfigFile())) {
-      writeAckFile(globalAckFile(), current.since);
+    if (fs.existsSync(globalConfigFile(host))) {
+      writeAckFile(globalAckFile(host), current.since);
       return true;
     }
     return false;
@@ -370,6 +396,8 @@ module.exports = {
   effectiveModels,
   reviewOffer,
   reviewNotice,
+  detectHost,
+  commandForm,
   findProjectRoot,
   globalConfigDir,
   globalConfigFile,

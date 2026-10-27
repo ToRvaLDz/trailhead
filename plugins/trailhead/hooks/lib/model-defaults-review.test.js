@@ -480,6 +480,56 @@ ok('stalePins: a non-object models.codex yields no codex pins (not an exception)
     ackOut === '' && fs.existsSync(path.join(globalDir, 'trailhead', 'model-defaults-ack')));
 }
 
+// --- host-aware command form e global config (Codex) --------------------
+{
+  const stale = [{ key: 'models.plan', from: 'claude-opus-4-8', to: 'claude-opus-5-5' }];
+  const codexNotice = reviewNotice(stale, cur.since, 'codex');
+  const claudeNotice = reviewNotice(stale, cur.since, 'claude');
+  ok('reviewNotice(codex) names $trailhead config', codexNotice.includes('open $trailhead config'));
+  ok('reviewNotice(codex) never names the Claude slash form', !codexNotice.includes('/trailhead:'));
+  ok('reviewNotice(claude) names /trailhead:config', claudeNotice.includes('open /trailhead:config'));
+  ok('reviewNotice default host is claude outside an installed Codex path',
+    reviewNotice(stale, cur.since).includes('/trailhead:config'));
+}
+
+{
+  // Lib copiata sotto un finto <codexHome>/skills/trailhead/hooks/lib/: l'host
+  // si deduce dal path, senza env, e la config globale e' <codexHome>/trailhead/.
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-codexhome-'));
+  const libDir = path.join(codexHome, 'skills', 'trailhead', 'hooks', 'lib');
+  fs.mkdirSync(libDir, { recursive: true });
+  for (const f of ['model-defaults-review.js', 'model-defaults.json']) {
+    fs.copyFileSync(path.join(__dirname, f), path.join(libDir, f));
+  }
+  fs.mkdirSync(path.join(codexHome, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(codexHome, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-opus-4-8' } }));
+  const noProjDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-codex-noproj-'));
+  const copied = path.join(libDir, 'model-defaults-review.js');
+
+  const out = execFileSync('node', [copied, 'check', noProjDir], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_CONFIG_DIR: BASE_CONFIG_DIR, CODEX_HOME: '' },
+  });
+  ok('Codex path: check() honours <codexHome>/trailhead/config.json', out.includes('models.plan: claude-opus-4-8 -> claude-opus-5-5'));
+  ok('Codex path: the notice offers $trailhead config', out.includes('open $trailhead config'));
+  ok('Codex path: the notice never names /trailhead:', !out.includes('/trailhead:'));
+  ok('Codex path: the notice tags the Codex global config path',
+    out.includes(path.join(codexHome, 'trailhead', 'config.json')));
+
+  execFileSync('node', [copied, 'ack', noProjDir], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_CONFIG_DIR: BASE_CONFIG_DIR, CODEX_HOME: '' },
+  });
+  ok('Codex path: the global ack lands under <codexHome>/trailhead/',
+    fs.existsSync(path.join(codexHome, 'trailhead', 'model-defaults-ack')));
+
+  const mod = require(copied);
+  ok('Codex path: globalConfigDir resolves to the codexHome', mod.globalConfigDir() === codexHome);
+  ok('Codex path: check() is silenced after the Codex global ack', mod.check(noProjDir) === null);
+  ok('Claude behaviour unchanged: globalConfigDir still follows CLAUDE_CONFIG_DIR',
+    globalConfigDir() === BASE_CONFIG_DIR);
+}
+
 console.log(`model-defaults-review.test.js: ${passed} assertions passed`);
 
 if (PRIOR_CLAUDE_CONFIG_DIR === undefined) {
