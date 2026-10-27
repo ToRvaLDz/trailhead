@@ -42,6 +42,11 @@ export type PaneTicket = {
   uatOf: UatParent | null
 }
 
+// Where one of my tickets lives: an open map by number, or the whiteboard.
+export type TicketScope = { kind: 'map'; number: number } | { kind: 'whiteboard' }
+// A ticket assigned to the gh login, tagged with its scope (the In progress group lists it outside that scope).
+export type MyTicket = PaneTicket & { scope: TicketScope }
+
 // A map's sub-issue counts: `open` still to do, `total` all of them.
 export type MapCounts = { open: number; total: number }
 // One open map of the repo, as the maps list shows it; `counts` null = unknown, drawn name-only.
@@ -113,6 +118,8 @@ declare module 'claude-code' {
       // The pane shows the dashboard (maps index + whiteboard) instead of a map.
       isDashboard: boolean
       dashboardPane: DashboardPaneData
+      // My open tickets across every map and the whiteboard (the last good read), for every view's In progress.
+      myTickets: readonly MyTicket[]
       pendingWork: number | null
       // Whether the pending press waits for the turn to end or has been sent.
       pendingPhase: 'queued' | 'starting' | null

@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapsRead, MapSummary, OpenTotal, PaneTicket, RepoPin, UatParent, WorkState } from '../../types'
+import type { BurndownHistory, DashboardPaneData, MapCounts, MapPaneData, MapsRead, MapSummary, MyTicket, OpenTotal, PaneTicket, RepoPin, TicketScope, UatParent, WorkState } from '../../types'
 import {
   ageLabel,
   axisStart,
@@ -48,6 +48,7 @@ import {
   whiteboardRowLayout,
   withLabel,
 } from './map-pane-view'
+import { elsewhereInProgress, myTicketsFromRows, parseLogin, scopeLine } from './my-tickets'
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { isMainTurnRunning } from './turn-state'
 import { createdIssueNumber, isWhiteboardCreate, nextFollow, whiteboardHint } from './whiteboard-follow'
@@ -79,6 +80,9 @@ const TICKETS_QUERY = `query($owner:String!,$repo:String!,$label:String!,$after:
 // most UAT_MAX_PAGES pages). The scope is filtered by the caller: GraphQL's `labels` is any-of.
 const UAT_QUERY = `query($owner:String!,$repo:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:["trailhead:uat"],orderBy:{field:CREATED_AT,direction:DESC}){nodes{number body labels(first:50){nodes{name}}}pageInfo{hasNextPage endCursor}}}}`
 const UAT_MAX_PAGES = 10
+// The gh account's login, then its open tickets on any map or the whiteboard (paged like TICKETS_QUERY).
+const LOGIN_QUERY = 'query{viewer{login}}'
+const MINE_QUERY = `query($owner:String!,$repo:String!,$login:String!,$after:String){repository(owner:$owner,name:$repo){issues(first:${PAGE_SIZE},after:$after,states:OPEN,labels:["trailhead:ticket"],filterBy:{assignee:$login},orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title url labels(first:50){nodes{name}}assignees(first:10){nodes{login}}}pageInfo{hasNextPage endCursor}}}}`
 const DASHBOARD_FIELDS = 'number,url'
 // Same colours as the band.
 const ACCENT = '#7aa2f7'
@@ -123,6 +127,8 @@ export const viewedMap = atom({ plugin: 'trailhead', key: 'viewedMap' } as const
 export const isDashboard = atom({ plugin: 'trailhead', key: 'isDashboard' } as const, false)
 export const dashboardPane = atom({ plugin: 'trailhead', key: 'dashboardPane' } as const, EMPTY_DASHBOARD)
 // The ticket whose `work` or `resume` press is queued; one at a time.
+// My open tickets across every map and the whiteboard (the last good read), for every view's In progress group.
+export const myTickets = atom({ plugin: 'trailhead', key: 'myTickets' } as const, [] as readonly MyTicket[])
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Whether that press waits for the running turn to end (cancellable) or was sent to the host.
 export const pendingPhase = atom({ plugin: 'trailhead', key: 'pendingPhase' } as const, null as 'queued' | 'starting' | null)
@@ -249,6 +255,40 @@ const readOpen = async ($: Dollar, pin: RepoPin, label: string, also?: string): 
 const readOpenFallback = ($: Dollar, pin: RepoPin, label: string, also?: string) =>
   gh($, pin, ['issue', 'list', ...(also === undefined ? [] : ['--label', also]), '--label', label, '--state', 'open', '--limit', String(LIST_LIMIT), '--json', TICKET_FIELDS])
 
+// The gh login per host, read once: the account does not change under a running session.
+const loginByHost = new Map<string, string>()
+const readLogin = async ($: Dollar, pin: RepoPin): Promise<string | null> => {
+  const known = loginByHost.get(pin.host)
+  if (known !== undefined) return known
+  const out = await gh($, pin, ['api', 'graphql', '-f', `query=${LOGIN_QUERY}`])
+  const login = out.ok ? parseLogin(out.stdout) : null
+  if (login !== null) loginByHost.set(pin.host, login)
+  return login
+}
+
+// My open tickets in the repo, on any open map or the whiteboard. Fail-closed like the UAT read: a login or a page
+// that fails or is unreadable makes the read null, and the last good list stays; never a partial list.
+const readMine = async ($: Dollar, pin: RepoPin): Promise<readonly MyTicket[] | null> => {
+  const login = await readLogin($, pin)
+  if (login === null) return null
+  const rows: unknown[] = []
+  let cursor: string | null = null
+  while (rows.length < LIST_LIMIT) {
+    const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `query=${MINE_QUERY}`, '-f', `login=${login}`]
+    const out = await gh($, pin, cursor === null ? args : [...args, '-f', `after=${cursor}`])
+    const page = out.ok ? parseIssuesPage(out.stdout) : null
+    if (page === null) return null
+    rows.push(...page.rows)
+    if (!page.hasNextPage) break
+    cursor = page.endCursor
+  }
+  return myTicketsFromRows(rows)
+}
+
+const keepMine = async ($: Dollar, mine: readonly MyTicket[] | null) => {
+  if (mine !== null && !sameValue(await read($, myTickets), mine)) await update($, myTickets, () => mine)
+}
+
 // The pending UAT tickets of one scope (a map label, or the whiteboard) with their bodies, for the parent each
 // one tests. Read through GraphQL (the search index lags a write by seconds, so a follow-up just opened would
 // show without its parent line), all open `trailhead:uat` tickets, the scope filtered here. Fail-closed: a page
@@ -341,12 +381,13 @@ async function fetchMap($: Dollar, pin: RepoPin, token: number, moves: number, w
     await setPane($, { ...EMPTY, maps: before.maps, whiteboard: before.whiteboard, openTotal: before.openTotal, isLoading: true })
   }
 
-  const [view, list, historyRead, mapsRead, uatParents] = await readList($, pin, target, before.openTotal)
+  const [[view, list, historyRead, mapsRead, uatParents], mine] = await Promise.all([readList($, pin, target, before.openTotal), readMine($, pin)])
   const maps = mapsRead.maps ?? before.maps
   const { whiteboard, openTotal } = mapsRead
   await dropClosedView($, mapsRead.maps)
   const now = await $.clock.now()
   if (await isStale()) return
+  await keepMine($, mine)
 
   const kept = isSameMap ? before : EMPTY
   const failure = !view.ok ? view.reason : !list.ok ? list.reason : null
@@ -381,14 +422,16 @@ async function fetchDashboard($: Dollar, pin: RepoPin, token: number, moves: num
   if (before.fetchedAt === null && !before.isLoading && before.error === null) {
     await update($, dashboardPane, () => ({ ...before, isLoading: true }))
   }
-  const [list, index, mapsRead, uatParents] = await Promise.all([
+  const [list, index, mapsRead, uatParents, mine] = await Promise.all([
     readOpen($, pin, 'trailhead:whiteboard', 'trailhead:ticket'),
     gh($, pin, ['issue', 'list', '--label', 'trailhead:dashboard', '--state', 'open', '--limit', '10', '--json', DASHBOARD_FIELDS]),
     readMaps($, pin, keptTotal),
     readUat($, pin, 'trailhead:whiteboard'),
+    readMine($, pin),
   ])
   const now = await $.clock.now()
   if (await isStale()) return
+  await keepMine($, mine)
   const shown = await read($, mapPane)
   await setPane($, { ...shown, maps: mapsRead.maps ?? shown.maps, whiteboard: mapsRead.whiteboard, openTotal: mapsRead.openTotal })
   await dropClosedView($, mapsRead.maps)
@@ -420,6 +463,7 @@ export async function onPinMove($: Dollar, pin: RepoPin | null): Promise<void> {
   if (!isOtherRepo) return
   await update($, mapPane, () => EMPTY)
   await update($, dashboardPane, () => EMPTY_DASHBOARD)
+  await update($, myTickets, () => [])
   await update($, activeMap, () => null)
   await update($, viewedMap, () => null)
   await update($, isDashboard, () => false)
@@ -961,6 +1005,7 @@ export function registerMapPane(on: On) {
     const play = await read($, workState)
     const orphaned = await read($, isOrphaned)
     const own = await read($, ownTicket)
+    const mine = await read($, myTickets)
     const pin = await read($, repoPin)
     const pending = await read($, pendingWork)
     const phase = await read($, pendingPhase)
@@ -1039,7 +1084,7 @@ export function registerMapPane(on: On) {
 
     // This session's own ticket survives a work-state file another session took over; without one, the file decides.
     const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
-    const row = (t: PaneTicket, hasMarkColumn: boolean) => {
+    const row = (t: PaneTicket, hasMarkColumn: boolean, scope: string | null = null) => {
       const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: phase, columns: cols })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isDim ? dim : {}
@@ -1079,18 +1124,20 @@ export function registerMapPane(on: On) {
         </Box>
       )
       const parent = uatParentLine(t, cols)
-      return parent === null ? (
+      return parent === null && scope === null ? (
         line
       ) : (
         <Box key={`entry-${t.number}`} flexDirection="column">
           {line}
-          {text(`uat-of-${t.number}`, dim, parent)}
+          {parent === null ? null : text(`uat-of-${t.number}`, dim, parent)}
+          {scope === null ? null : text(`scope-of-${t.number}`, dim, scope)}
         </Box>
       )
     }
-    const group = (key: string, name: string, rows: readonly PaneTicket[]) => {
-      if (rows.length === 0) return null
-      const hasMarkColumn = rows.some(isInPlay)
+    // `elsewhere`: my tickets of other scopes, listed after the shown scope's with the line naming where each is.
+    const group = (key: string, name: string, rows: readonly PaneTicket[], elsewhere: readonly MyTicket[] = []) => {
+      if (rows.length + elsewhere.length === 0) return null
+      const hasMarkColumn = [...rows, ...elsewhere].some(isInPlay)
       return (
         <Box
           key={`group-${key}`}
@@ -1098,17 +1145,18 @@ export function registerMapPane(on: On) {
           marginTop={gap}
           {...(e.surface === 'desktop' ? { rowGap: DESKTOP_ROW_GAP } : {})}
         >
-          {text(`head-${key}`, bold, `${name} · ${rows.length}`)}
+          {text(`head-${key}`, bold, `${name} · ${rows.length + elsewhere.length}`)}
           {rows.map(t => row(t, hasMarkColumn))}
+          {elsewhere.map(t => row(t, hasMarkColumn, scopeLine(t, data.maps, cols)))}
         </Box>
       )
     }
-    const ticketGroups = (tickets: readonly PaneTicket[]) => {
+    const ticketGroups = (tickets: readonly PaneTicket[], here: TicketScope) => {
       const groups = groupTickets(tickets)
       return [
         group('needs-you', 'Needs you', groups.needsYou),
         group('frontier', 'Frontier', groups.frontier),
-        group('in-progress', 'In progress', groups.inProgress),
+        group('in-progress', 'In progress', groups.inProgress, elsewhereInProgress(mine, here, tickets)),
         group('uat', 'UAT', groups.uat),
         group('paused', 'Paused', groups.paused),
         group('blocked', 'Blocked', groups.blocked),
@@ -1201,7 +1249,7 @@ export function registerMapPane(on: On) {
             {text('head-whiteboard', bold, whiteboardHeading(isLoaded ? board.tickets : null, board.isCapped))}
           </Box>
           {!isLoaded && board.error === null ? text('loading', dim, 'Loading dashboard…') : null}
-          {ticketGroups(board.tickets)}
+          {ticketGroups(board.tickets, { kind: 'whiteboard' })}
           {isEmpty ? text('no-tickets', dim, 'No open whiteboard tickets.') : null}
           {notes(board)}
           <Box key="spacer" flexGrow={1} />
@@ -1274,7 +1322,7 @@ export function registerMapPane(on: On) {
         {whiteboardRow}
         {totalLine}
         {mapsGroup}
-        {ticketGroups(tickets)}
+        {ticketGroups(tickets, { kind: 'map', number: target })}
         {isCurrent && data.error === null && tickets.length === 0 ? (
           <Box key="no-tickets" marginTop={gap}>
             <Text {...dim}>No open tickets. Fog may remain: /trailhead:map</Text>

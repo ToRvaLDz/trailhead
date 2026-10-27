@@ -100,7 +100,13 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `In progress · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
   (a link to the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket
   in play in this session is marked `▸` in the accent and says `this session` in place of its holder;
-  blocked rows are dim. The `ownTicket` atom keeps that mark when another session's work state takes
+  blocked rows are dim. `In progress` is global for you: after the shown scope's own claimed tickets it lists your
+  open in-progress tickets (assigned to the `gh` login) of every other open map and of the whiteboard, each with a dim
+  `on map #<n> <title>` or `on whiteboard` line under it, in the map view and the Dashboard view alike (never a
+  ticket the view already lists; paused, blocked, UAT and needs-you ones stay in their own scope's groups). The login is
+  read once per host (`viewer{login}`), the tickets by one paged `gh api graphql` read of the open `trailhead:ticket`
+  issues with `filterBy:{assignee:<login>}`, in the same refresh as the view's reads; a failed or unreadable read keeps
+  the last list (the `myTickets` atom) and sets no footer error. The `ownTicket` atom keeps that mark when another session's work state takes
   over the shared file (a state stamped with another session leaves it; a missing file clears it only
   when the last state read was this session's, i.e. its own Resolve); with no own ticket the work
   state decides, as before. A ticket carrying `trailhead:paused` (set by pause, cleared by resume or a

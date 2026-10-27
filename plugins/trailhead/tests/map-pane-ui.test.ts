@@ -101,6 +101,9 @@ const ticketsCall = (label: string, after?: string) => [
 const ticketsListCall = (label: string) => ['gh', 'issue', 'list', '--label', label, '--state', 'open', '--limit', '200', '--json', 'number,title,labels,assignees,url']
 const isTicketsRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes(`query=${TICKETS_QUERY}`)
 // The maps read only: the ticket reads are GraphQL too, but answered and failed on their own.
+// The login and my-tickets reads (any map, the whiteboard): answered apart from the pane's own reads, recorded in `mineCalls`.
+const isLoginRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.includes('query=query{viewer{login}}')
+const isMineRead = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && argv.some(a => a.startsWith('login='))
 const isGraphql = (argv: readonly string[]) => argv[1] === 'api' && argv[2] === 'graphql' && !isTicketsRead(argv) && !isUatRead(argv) && !isCountRead(argv)
 // The open-ticket total: one aliased `totalCount` per open map (`m<n>`) plus the whiteboard (`wb`), in one call.
 const countQuery = (maps: number[]) =>
@@ -137,7 +140,7 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'pendingPhase', 'paneAutoOpened', 'ownTicket', 'repoPin']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'pendingPhase', 'paneAutoOpened', 'ownTicket', 'repoPin', 'myTickets']
 
 const PANE_PROPS = {
   title: 'Map',
@@ -179,6 +182,9 @@ const rig = (on: On, engine?: any) => {
     // The UAT read's answer: one row per open UAT ticket, `{ number, body, labels }` (the scope label rides
     // in `labels`); null makes the read fail. `uatErrors` answers a reply with `errors`, `uatBroken` non-JSON.
     uat: [] as unknown[] | null,
+    // My open tickets on any map or the whiteboard (the `issue()` shape); null makes the read fail.
+    mine: [] as unknown[] | null,
+    mineCalls: [] as (readonly string[])[],
     uatErrors: false,
     uatBroken: false,
     dashboard: DASHBOARD as unknown[],
@@ -394,6 +400,14 @@ const rig = (on: On, engine?: any) => {
       const host = e.argv[4] ?? ''
       r.authCalls.push(host)
       const out = r.authHosts.includes(host) ? { exitCode: 0, stdout: '', stderr: '' } : { exitCode: 1, stdout: '', stderr: `You are not logged into any accounts on ${host}` }
+      return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
+    }
+    if (isLoginRead(e.argv) || isMineRead(e.argv)) {
+      r.mineCalls.push([...e.argv])
+      const body = isLoginRead(e.argv)
+        ? { data: { viewer: { login: 'me' } } }
+        : { data: { repository: { issues: { nodes: (r.mine ?? []).map(flatNode), pageInfo: { hasNextPage: false, endCursor: null } } } } }
+      const out = r.mine === null && isMineRead(e.argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : { exitCode: 0, stdout: JSON.stringify(body), stderr: '' }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
     r.calls.push([...e.argv])
@@ -2756,6 +2770,57 @@ for (const surface of SURFACES) {
     await ui.press({ key: 'open-whiteboard' })
     await settle(r)
   }
+
+  // My tickets in play on other maps and the whiteboard, under every view's In progress.
+  const MINE = [
+    issue(150, 'My whiteboard fix', [...WB, 'trailhead:build'], ['me']),
+    issue(160, 'My other map ticket', ['trailhead:ticket', 'trailhead:build', 'trailhead:map-14'], ['me']),
+    issue(161, 'My paused one', ['trailhead:ticket', 'trailhead:build', 'trailhead:map-14', 'trailhead:paused'], ['me']),
+    issue(212, 'Native gh-backed tools', ['trailhead:ticket', 'trailhead:build', 'trailhead:map-198'], ['me']),
+  ]
+
+  test(`the map's In progress adds my tickets of the other maps and the whiteboard, each saying where [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.mine = MINE
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(r.mineCalls[0]).toEqual(['gh', 'api', 'graphql', '-f', 'query=query{viewer{login}}'])
+    expect(r.mineCalls.some(argv => argv.includes('login=me'))).toBe(true)
+    expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 4')
+    // the map's own first, then mine elsewhere; a paused one and one the map already lists are not added
+    expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-150', 'row-160', 'row-211', 'row-213'])
+    expect(await textOf(ui, 'scope-of-150')).toBe('on whiteboard')
+    expect(await textOf(ui, 'scope-of-160')).toBe('on map #14 older map')
+    expect((await ui.find({ key: 'scope-of-160' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    expect(await textOf(ui, 'holder-160')).toBe('@me')
+    expect(await hasKey(ui, 'scope-of-212')).toBe(false)
+    expect(await hasKey(ui, 'row-161')).toBe(false)
+  })
+
+  test(`the dashboard's In progress adds my tickets of every map [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.mine = MINE
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await textOf(ui, 'scope-of-160')).toBe('on map #14 older map')
+    expect(await textOf(ui, 'scope-of-212')).toBe('on map #198 trailhead mod')
+    // a whiteboard ticket of mine belongs to this view's own list, never a second time with a scope line
+    expect(await hasKey(ui, 'scope-of-150')).toBe(false)
+  })
+
+  test(`a failed read of my tickets keeps the last ones and sets no error [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.mine = MINE
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect(await hasKey(ui, 'row-160')).toBe(true)
+    r.mine = null
+    await r.clock.advance(TIMER)
+    await settle(r)
+    expect(await hasKey(ui, 'row-160')).toBe(true)
+    expect(await textOf(ui, 'age')).toBe('updated just now')
+  })
 
   test(`the Whiteboard row shows the maps index and the whiteboard tickets [${surface}]`, async ($, on) => {
     const r = rig(on, $)
