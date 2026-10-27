@@ -65,6 +65,8 @@ const HOSTS = Object.freeze({
     label: 'Claude Code',
     configDirEnv: 'CLAUDE_CONFIG_DIR',
     configDirDefault: '.claude',
+    // Prefisso con cui l'host invoca un verbo trailhead (vedi commandForm).
+    commandPrefix: '/trailhead:',
     axes: Object.freeze({
       commandSurface: 'slash-file',
       subagentToolkit: 'full',
@@ -93,6 +95,7 @@ const HOSTS = Object.freeze({
     label: 'Codex',
     configDirEnv: 'CODEX_HOME',
     configDirDefault: '.codex',
+    commandPrefix: '$trailhead ',
     axes: Object.freeze({
       commandSurface: 'skill',
       subagentToolkit: 'full',
@@ -166,6 +169,15 @@ function configDirFor(host, opts = {}) {
 //   '/trailhead'      -> 'trailhead'
 function hyphenateCommand(name) {
   return String(name).trim().replace(/^\//, '').replace(/:/g, '-');
+}
+
+// --- Helper: commandForm ------------------------------------------------------
+// Forma di invocazione di un verbo per l'host: la scrittura da usare in ogni
+// testo runtime, mai un literal `/trailhead:<verb>` hardcoded.
+//   commandForm('claude', 'update') -> '/trailhead:update'
+//   commandForm('codex', 'update')  -> '$trailhead update'
+function commandForm(host, verb) {
+  return `${resolveHost(host).commandPrefix}${verb}`;
 }
 
 // --- Helper: emitsAgentToml ---------------------------------------------------
@@ -275,7 +287,7 @@ function updateNotice(host, cache) {
   const installed = String(cache.installed || '').trim();
   const ver = latest ? ` ${latest}` : '';
   const from = installed ? ` (you have ${installed})` : '';
-  return `Heads up: trailhead${ver} is available${from}. Run /trailhead:update to install it.`;
+  return `Heads up: trailhead${ver} is available${from}. Run ${commandForm(host, 'update')} to install it.`;
 }
 
 // --- Codex version floor gate (decision #27) --------------------------------
@@ -390,6 +402,7 @@ module.exports = {
   getHost,
   configDirFor,
   hyphenateCommand,
+  commandForm,
   emitsAgentToml,
   degradations,
   modelsCollapseNotice,

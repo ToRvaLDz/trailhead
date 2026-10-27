@@ -8,6 +8,7 @@ const {
   getHost,
   configDirFor,
   hyphenateCommand,
+  commandForm,
   emitsAgentToml,
   degradations,
   modelsCollapseNotice,
@@ -126,6 +127,11 @@ ok('modelsCollapseNotice: codex namespace with only empty/nullish values does no
   const msg = modelsCollapseNotice('codex', { models: { plan: 'claude-opus-5', codex: { plan: '' } } });
   return typeof msg === 'string' && msg.includes('plan') && !msg.includes('codex)');
 })());
+
+// --- commandForm ---
+ok('commandForm(claude, update) is the slash form', commandForm('claude', 'update') === '/trailhead:update');
+ok('commandForm(codex, update) is the dollar form', commandForm('codex', 'update') === '$trailhead update');
+ok('commandForm throws on an unknown host', (() => { try { commandForm('nope', 'x'); return false; } catch { return true; } })());
 
 // --- updateNotice ---
 // Both hosts now have a hook bus (hookBus !== 'none'), so updateNotice never
