@@ -36,8 +36,8 @@ const ALLOWLIST = [
   },
   {
     file: 'bin/lib/codex-projection.js',
-    contains: '',
-    reason: 'e\' il riscrittore Claude->Codex: nomina la forma Claude per riscriverla o vietarla',
+    contains: 'Never \\`/trailhead:<verb>\\`',
+    reason: 'testo del SKILL.md Codex: nomina la forma Claude proprio per vietarla all\'agente',
   },
   {
     file: 'bin/lib/host-descriptor.js',
@@ -51,10 +51,10 @@ const ALLOWLIST = [
   },
 ];
 
-// `/trailhead:` seguito da un verbo, oppure `/trailhead` nudo (non parte di un
-// path: non preceduto da parola, `.`, `~`, `\`, `/`, `-` e non seguito da
-// parola, `:`, `/`, `\`, `-`).
-const COMMAND_RE = /(?<![\w.~\\/-])\/trailhead(?::\w|(?![\w:/\\-]))/g;
+// `/trailhead:` (anche seguito da `${`, `*`, `<verb>` o concatenato) oppure
+// `/trailhead` nudo. Non conta dentro un path: non preceduto da parola, `.`,
+// `~`, `\`, `/`, `-` e non seguito da parola, `:`, `/`, `\`, `-`.
+const COMMAND_RE = /(?<![\w.~\\/-])\/trailhead(?::|(?![\w:/\\-]))/g;
 
 function listJs(dir, skip) {
   const out = [];
@@ -70,26 +70,76 @@ function listJs(dir, skip) {
   return out;
 }
 
-function isCommentLine(line) {
-  const t = line.trim();
-  return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
+// Scanner minimale a stati sull'intero file: marca i caratteri che stanno
+// dentro stringhe ('...', "...") e template (`...`, anche su piu' righe, con i
+// loro ${...}); commenti e literal regex sono saltati. Non e' un parser JS
+// completo: una regex e' riconosciuta dal carattere significativo precedente.
+const REGEX_PREV = new Set(['', '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^']);
+function literalMask(text) {
+  const mask = new Uint8Array(text.length);
+  let i = 0;
+  let prev = '';
+  while (i < text.length) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (c === '/' && n === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+    } else if (c === '/' && n === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end === -1 ? text.length : end + 2;
+    } else if (c === '"' || c === "'" || c === '`') {
+      mask[i] = 1;
+      i++;
+      while (i < text.length && text[i] !== c) {
+        if (text[i] === '\\') { mask[i] = 1; i++; }
+        if (c !== '`' && text[i] === '\n') break;
+        mask[i] = 1;
+        i++;
+      }
+      if (i < text.length) mask[i] = 1;
+      i++;
+      prev = c;
+    } else if (c === '/' && (REGEX_PREV.has(prev) || prev === 'return')) {
+      i++;
+      let inClass = false;
+      while (i < text.length && text[i] !== '\n' && (inClass || text[i] !== '/')) {
+        if (text[i] === '\\') i++;
+        else if (text[i] === '[') inClass = true;
+        else if (text[i] === ']') inClass = false;
+        i++;
+      }
+      i++;
+      prev = ')';
+    } else {
+      if (!/\s/.test(c)) {
+        const word = /[A-Za-z_$]/.test(c) ? text.slice(i).match(/^[\w$]+/)[0] : c;
+        prev = word === 'return' ? 'return' : word.length > 1 ? 'a' : c;
+        i += word.length;
+        continue;
+      }
+      i++;
+    }
+  }
+  return mask;
 }
 
-// Una occorrenza conta solo se c'e' un apice/virgolette/backtick prima.
-function insideLiteral(line, index) {
-  return /['"`]/.test(line.slice(0, index));
-}
+const used = new Set();
 
 function findViolations(rel, text) {
   const out = [];
-  text.split('\n').forEach((line, i) => {
-    if (isCommentLine(line)) return;
-    for (const m of line.matchAll(COMMAND_RE)) {
-      if (!insideLiteral(line, m.index)) continue;
-      const allowed = ALLOWLIST.some((a) => a.file === rel && line.includes(a.contains));
-      if (!allowed) out.push(`${rel}:${i + 1}: ${line.trim()}`);
-    }
-  });
+  const mask = literalMask(text);
+  const lines = text.split('\n');
+  const starts = [];
+  let off = 0;
+  for (const l of lines) { starts.push(off); off += l.length + 1; }
+  for (const m of text.matchAll(COMMAND_RE)) {
+    if (!mask[m.index]) continue;
+    let ln = starts.findIndex((st, k) => k === starts.length - 1 || starts[k + 1] > m.index);
+    const line = lines[ln];
+    const idx = ALLOWLIST.findIndex((a) => a.file === rel && line.includes(a.contains));
+    if (idx >= 0) { used.add(idx); continue; }
+    out.push(`${rel}:${ln + 1}: ${line.trim()}`);
+  }
   return out;
 }
 
@@ -104,6 +154,14 @@ ok('detector flags a bare /trailhead in a literal',
 ok('detector ignores comment lines', findViolations('x.js', '// run /trailhead:update').length === 0);
 ok('detector ignores path segments',
   findViolations('x.js', "path.join('skills/trailhead/hooks', 'refs/heads/trailhead/t1')").length === 0);
+ok('detector flags a concatenated literal', findViolations('x.js', "const c = '/trailhead:' + v;").length === 1);
+ok('detector flags a template literal with interpolation', findViolations('x.js', 'const c = `/trailhead:${v}`;').length === 1);
+ok('detector flags a literal on a later line of a multi-line template',
+  findViolations('x.js', 'const t = `first line\nrun /trailhead:config now`;').length === 1);
+ok('detector flags the glob and placeholder forms',
+  findViolations('x.js', "a('/trailhead:*'); b('/trailhead:<verb>');").length === 2);
+ok('detector ignores a regex literal with an escaped slash',
+  findViolations('x.js', "const R = /^refs\\/heads\\/trailhead\\/t(\\d+)$/; const q = /['\"]/;").length === 0);
 ok('detector ignores the host-neutral helper form',
   findViolations('x.js', 'const c = commandForm(host, "config");').length === 0);
 
@@ -118,6 +176,9 @@ ok('scan covers hook libs, templates and bin', files.length > 20);
 const violations = files.flatMap((rel) => findViolations(rel, fs.readFileSync(path.join(ROOT, rel), 'utf8')));
 assert.deepStrictEqual(violations, [],
   `literal di comando Claude in codice runtime (usa commandForm):\n${violations.join('\n')}`);
+passed++;
+const unused = ALLOWLIST.filter((_, i) => !used.has(i)).map((a) => `${a.file}: ${a.contains}`);
+assert.deepStrictEqual(unused, [], `voci di allowlist mai usate (da rimuovere):\n${unused.join('\n')}`);
 passed++;
 
 console.log(`runtime-command-literals.test.js: ${passed} assertions passed`);
