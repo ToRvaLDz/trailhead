@@ -156,5 +156,6 @@ function usageReached({ withCreds }) {
 ok('usage block reached with creds under CLAUDE_CONFIG_DIR', usageReached({ withCreds: true }));
 ok('usage block skipped without creds', !usageReached({ withCreds: false }));
 
-fs.rmSync(root, { recursive: true, force: true });
+// retry: il python in background puo' ancora scrivere nella cache mentre si pulisce
+fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 console.log(`statusline-context.test.js: ${passed} assertions passed`);
