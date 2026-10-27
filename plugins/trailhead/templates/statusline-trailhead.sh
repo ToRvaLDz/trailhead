@@ -20,7 +20,7 @@
 #
 # Usage: % REALE del piano via l'API OAuth di Anthropic (come ccstatusline):
 # GET https://api.anthropic.com/api/oauth/usage con il Bearer preso da
-# ~/.claude/.credentials.json (claudeAiOauth.accessToken). Mostra la finestra
+# ${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json (claudeAiOauth.accessToken). Mostra la finestra
 # 5h e la settimana (7 giorni) piu' il reset. Cache ~60s, chiamata in background
 # (il render non aspetta la rete). Disabilita con TRAILHEAD_STATUSLINE_USAGE=0.
 #
@@ -277,7 +277,7 @@ print(f"[{bar}] {round(tok/1000)}k/{round(limit/1000)}k ({pct}%)")
 # Retry-After (default 300s); altri errori 30s. Timeout 5s (USAGE_API_TIMEOUT lo cambia).
 # Chiamata in background: il render non attende mai. Off con TRAILHEAD_STATUSLINE_USAGE=0.
 USAGE_RAW=""
-CREDS="$HOME/.claude/.credentials.json"
+CREDS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json"
 if [ "${TRAILHEAD_STATUSLINE_USAGE:-1}" != "0" ] && [ -f "$CREDS" ]; then
   CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/trailhead-statusline"
   mkdir -p "$CACHE" 2>/dev/null

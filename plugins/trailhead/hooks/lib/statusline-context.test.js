@@ -136,5 +136,25 @@ eq('edge threshold', pct(1000, edge), 100);
 // finestra minuscola: soglia mai sotto 1
 eq('tiny window guard', pct(5, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '10' } }), 100);
 
+// --- credenziali: il blocco usage legge .credentials.json da CLAUDE_CONFIG_DIR (#320) ---
+// Segnale osservabile: la dir cache viene creata solo se il guard sulle credenziali passa.
+function usageReached({ withCreds }) {
+  const credCfg = path.join(root, withCreds ? 'cfg-creds' : 'cfg-nocreds');
+  const cache = path.join(root, withCreds ? 'cache-creds' : 'cache-nocreds');
+  fs.mkdirSync(credCfg, { recursive: true });
+  fs.mkdirSync(cache, { recursive: true });
+  if (withCreds) {
+    fs.writeFileSync(path.join(credCfg, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'dummy' } }));
+  }
+  const env = { ...process.env, NO_COLOR: '1', HOME: home, CLAUDE_CONFIG_DIR: credCfg, XDG_CACHE_HOME: cache,
+    USAGE_API_TIMEOUT: '1', HTTPS_PROXY: 'http://127.0.0.1:9', https_proxy: 'http://127.0.0.1:9' };
+  delete env.TRAILHEAD_STATUSLINE_USAGE;
+  const input = { model: { id: 'claude-opus-5-5', display_name: 'Test' }, workspace: { project_dir: proj, current_dir: proj } };
+  spawnSync('bash', [script, '--context-only'], { input: JSON.stringify(input), env, encoding: 'utf8' });
+  return fs.existsSync(path.join(cache, 'trailhead-statusline'));
+}
+ok('usage block reached with creds under CLAUDE_CONFIG_DIR', usageReached({ withCreds: true }));
+ok('usage block skipped without creds', !usageReached({ withCreds: false }));
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`statusline-context.test.js: ${passed} assertions passed`);
