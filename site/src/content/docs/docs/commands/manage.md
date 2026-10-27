@@ -18,7 +18,7 @@ Guided menu setup, or get and set trailhead config.
 **Arguments**
 
 - none: runs the guided, menu-driven setup.
-- `get`: prints the effective merged config, read-only: project `.trailhead/config.json` over global `~/.claude/trailhead/config.json` over the built-in defaults, showing which source wins each key.
+- `get`: prints the effective merged config, read-only: project `.trailhead/config.json` over the global `trailhead/config.json` in your config directory (`$CLAUDE_CONFIG_DIR`, default `~/.claude`; `$CODEX_HOME` on Codex) over the built-in defaults, showing which source wins each key.
 - `set <key> <value>`: writes one key directly, to the project file, or to the global file with `--global`.
 
 **What it does**
@@ -30,7 +30,7 @@ Guided menu setup, or get and set trailhead config.
 
 **What it writes**
 
-- `.trailhead/config.json` (project scope) or `~/.claude/trailhead/config.json` (global scope).
+- `.trailhead/config.json` (project scope) or `trailhead/config.json` in your config directory (global scope).
 - The way-of-working keys (`git`, `release`, `isolation`) go into the repo's `trailhead:conventions` issue header instead, because they are shared repo conventions. If that issue does not exist yet, it offers to create a minimal one.
 - If you enable the statusline: the script copied to `statusline-trailhead.sh` in your Claude config directory (`$CLAUDE_CONFIG_DIR`, default `~/.claude`) and the `statusLine` entry in that directory's `settings.json` (a global setting). An existing statusline is never replaced silently.
 

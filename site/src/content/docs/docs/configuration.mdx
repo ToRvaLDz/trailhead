@@ -8,7 +8,7 @@ import { Aside } from '@astrojs/starlight/components';
 Three layers, nearest wins, key by key (a key unset at one layer inherits the next):
 
 - **Project**: a `.trailhead/config.json` file at the repo root: overrides for this project, committed so a team shares one config. Config lives in a plain file, never in the map issue; it's yours to change at any time.
-- **Global**: `~/.claude/trailhead/config.json`: your standing defaults across every project.
+- **Global**: `trailhead/config.json` in your host's config directory: `$CLAUDE_CONFIG_DIR` (default `~/.claude`) on Claude Code, `$CODEX_HOME` (default `~/.codex`) on Codex. Your standing defaults across every project.
 - **Defaults**: the built-in values.
 
 ## Guided setup
@@ -83,7 +83,7 @@ Balanced is the default profile. On Claude, a `models.*` key you leave unset res
 
 On Codex, picking a profile seeds `models.codex.*` instead. Re-run the installer afterwards (the same `--host=codex` install command) so the pins are re-projected into `~/.codex/agents/trailhead-*.toml`; the menu updates the config, the installer regenerates those files. The Claude `models.*` keys cannot run on Codex and are ignored there (they stay in your config untouched for when you work on Claude Code).
 
-Example config file (the same shape works for the project `.trailhead/config.json` and the global `~/.claude/trailhead/config.json`):
+Example config file (the same shape works for the project `.trailhead/config.json` and the global `trailhead/config.json` in your config directory):
 
 ```json
 { "ticket": { "language": "en" }, "models": { "plan": "claude-opus-5-5", "execute": "claude-sonnet-5-5" }, "tdd": "seams", "acceptance": { "browser": "auto" } }
@@ -96,9 +96,9 @@ When a release moves a tier's default (for example fast went from Haiku 4.5 to `
 - **When it triggers.** A pinned `models.*` or `models.codex.*` id is older than the new default of the tier it belonged to. Unset keys already follow the new default and are never flagged; ids trailhead does not recognise (custom ones) are never flagged either.
 - **Where you see it.** At the start of a session, from the SessionStart hook (see [Hooks](/docs/hooks#session-start-update-check)) and again when a trailhead skill loads its config, once per session either way. On hosts without a hook bus the same check runs inline at session start.
 - **What it lists.** Each stale pin as `key: old -> new`, naming the config file it actually came from. The review looks at your effective config: the global file merged under the project file, the project winning key by key, so a stale pin inherited from the global file is flagged even in a project that pins nothing itself.
-- **Three choices.** Update (write the new ids; a Codex effort is left as it was), keep (change nothing; you are not asked again for these defaults), or open `/trailhead:config` to pick per key.
+- **Three choices.** Update (write the new ids; a Codex effort is left as it was), keep (change nothing; you are not asked again for these defaults), or open `/trailhead:config` (`$trailhead config` on Codex) to pick per key.
 
-The check itself is read-only: showing the notice never records anything, so it keeps coming back until you actually answer one of the three choices. Only then is the answer recorded in `.trailhead/model-defaults-ack`, a gitignored file. If no project is found above the working directory, the review runs on the global config alone and its acknowledgement is stored next to it, in the `trailhead/model-defaults-ack` file under your Claude config directory.
+The check itself is read-only: showing the notice never records anything, so it keeps coming back until you actually answer one of the three choices. Only then is the answer recorded in `.trailhead/model-defaults-ack`, a gitignored file. If no project is found above the working directory, the review runs on the global config alone and its acknowledgement is stored next to it, in the `trailhead/model-defaults-ack` file under your config directory (`$CLAUDE_CONFIG_DIR`, default `~/.claude`, on Claude Code; the Codex home the skill is installed in on Codex).
 
 ## Design mockups
 
