@@ -250,7 +250,8 @@ function ackInstruction(root) {
 const ACK_FILE = path.join('.trailhead', 'model-defaults-ack');
 const CONFIG_FILE = path.join('.trailhead', 'config.json');
 
-// Dir base della config globale: stessa risoluzione di trailhead-check-update.js.
+// Dir base della config globale. Claude: CLAUDE_CONFIG_DIR o ~/.claude (come
+// trailhead-check-update.js).
 // Su Codex e' <codexHome>, ricavato dal path installato della lib (4 livelli
 // sopra __dirname: <codexHome>/skills/trailhead/hooks/lib); con host forzato
 // fuori da un'installazione Codex ripiega su CODEX_HOME o ~/.codex.
