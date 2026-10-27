@@ -133,6 +133,18 @@ ok('commandForm(claude, update) is the slash form', commandForm('claude', 'updat
 ok('commandForm(codex, update) is the dollar form', commandForm('codex', 'update') === '$trailhead update');
 ok('commandForm throws on an unknown host', (() => { try { commandForm('nope', 'x'); return false; } catch { return true; } })());
 
+// Drift guard: la lib degli hook ha la propria copia di commandForm (non puo'
+// richiedere bin/ una volta installata); le due devono restare identiche.
+{
+  const lib = require('../../plugins/trailhead/hooks/lib/model-defaults-review.js');
+  for (const host of ['claude', 'codex']) {
+    for (const verb of ['config', 'update']) {
+      ok(`commandForm drift: hook lib matches host-descriptor (${host}, ${verb})`,
+        lib.commandForm(host, verb) === commandForm(host, verb));
+    }
+  }
+}
+
 // --- updateNotice ---
 // Both hosts now have a hook bus (hookBus !== 'none'), so updateNotice never
 // fires for either: the SessionStart hook + (on Codex) its stdout
