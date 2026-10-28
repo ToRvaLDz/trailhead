@@ -77,7 +77,7 @@ A ticket whose next step needs you is parked at once and the run continues:
 - a safety-rail action, a stale-base stop, a failing UAT setup, or an error while looking up the UAT follow-up;
 - a plan review whose blocking concerns survive the rounds (quoted in full).
 
-Parking leaves a `NEEDS YOU` comment saying what you must do, unassigns the run and adds the `trailhead:needs-you` label. The ticket stays on your frontier and map, and `/trailhead:work` still offers it, but runs skip it until you clear it (a `work` or `quick` claim clears it, or remove the label by hand). The map panel shows these tickets in a `Needs you` group at the top.
+Parking leaves a `NEEDS YOU` comment saying what you must do, unassigns the run and adds the `trailhead:needs-you` label. The ticket stays on your frontier and map, and `/trailhead:work` still offers it, but runs skip it until you clear it (a `work` or `quick` claim clears it, or remove the label by hand). The map panel shows these tickets in a `Needs you` group, right after your tickets in progress.
 
 The **safety rail** (always on, hardcoded) covers a release, `git push`, opening a PR, a delete or force, and any other outward-facing action: the ticket is marked needs-you and the run continues. Local commits and the local slot merge are not rail actions.
 

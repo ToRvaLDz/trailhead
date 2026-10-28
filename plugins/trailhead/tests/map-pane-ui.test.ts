@@ -510,7 +510,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 2')
     expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 2')
     expect((await ui.find({ key: 'head-frontier' }))?.children[0]).toMatchObject({ props: { bold: true } })
-    expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-211', 'row-213'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-209', 'row-210', 'row-214', 'row-211', 'row-213'])
 
     expect(await textOf(ui, 'ticket-209')).toBe('#209 Burn-down view of the map')
     expect(await textOf(ui, 'type-209')).toBe(' build')
@@ -564,10 +564,10 @@ for (const surface of SURFACES) {
 
     expect(await textOf(ui, 'head-uat')).toBe('UAT · 3')
     expect((await ui.find({ key: 'head-uat' }))?.children[0]).toMatchObject({ props: { bold: true } })
-    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-frontier', 'group-in-progress', 'group-uat', 'group-paused', 'group-blocked'])
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-in-progress', 'group-frontier', 'group-uat', 'group-paused', 'group-blocked'])
     // each ticket once: a UAT row is in no other group, a paused UAT stays under Paused
     expect(await keysOf(ui, 'row-')).toEqual([
-      'row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-240', 'row-241', 'row-242', 'row-243', 'row-211', 'row-213',
+      'row-208', 'row-212', 'row-209', 'row-210', 'row-214', 'row-240', 'row-241', 'row-242', 'row-243', 'row-211', 'row-213',
     ])
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
     expect(await textOf(ui, 'head-paused')).toBe('Paused · 1')
@@ -668,7 +668,7 @@ for (const surface of SURFACES) {
     expect(r.calls.filter(isUatRead)).toContainEqual(uatCall())
     expect(r.calls.filter(isUatSearch)).toEqual([])
     expect(await textOf(ui, 'head-uat')).toBe('UAT · 1')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-306', 'row-303'])
     expect(await textOf(ui, 'uat-of-306')).toBe('tests Loose parent #290')
   })
 
@@ -689,8 +689,8 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 2')
     expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 2')
     // a paused ticket appears in one group only: Frontier, In progress, Paused, Blocked in order
-    expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-230', 'row-231', 'row-232', 'row-211', 'row-213'])
-    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-frontier', 'group-in-progress', 'group-paused', 'group-blocked'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-209', 'row-210', 'row-214', 'row-230', 'row-231', 'row-232', 'row-211', 'row-213'])
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-in-progress', 'group-frontier', 'group-paused', 'group-blocked'])
     for (const n of [230, 231, 232]) {
       expect(await hasKey(ui, `resume-${n}`)).toBe(true)
       expect(await hasKey(ui, `work-${n}`)).toBe(false)
@@ -706,12 +706,12 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
     expect(await textOf(ui, 'head-paused')).toBe('Paused · 1')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-305', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-305', 'row-303'])
     expect(await hasKey(ui, 'work-305')).toBe(false)
     expect(await hasKey(ui, 'resume-305')).toBe(true)
   })
 
-  test(`needs-you tickets sit in their own group first, once each, with a work button unless held [${surface}]`, async ($, on) => {
+  test(`needs-you tickets sit in their own group right after In progress, once each, with a work button unless held [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.tickets = [
       ...TICKETS,
@@ -727,9 +727,9 @@ for (const surface of SURFACES) {
 
     expect(await textOf(ui, 'head-needs-you')).toBe('Needs you · 6')
     expect((await ui.find({ key: 'head-needs-you' }))?.children[0]).toMatchObject({ props: { bold: true } })
-    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-needs-you', 'group-frontier', 'group-in-progress', 'group-blocked'])
-    // each ticket once, ahead of the frontier rows; the other counts leave them out
-    expect(await keysOf(ui, 'row-')).toEqual(['row-250', 'row-251', 'row-252', 'row-253', 'row-254', 'row-255', 'row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-211', 'row-213'])
+    expect(await keysOf(ui, 'group-')).toEqual(['group-maps', 'group-in-progress', 'group-needs-you', 'group-frontier', 'group-blocked'])
+    // each ticket once, after my in-progress rows and ahead of the frontier rows; the other counts leave them out
+    expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-250', 'row-251', 'row-252', 'row-253', 'row-254', 'row-255', 'row-209', 'row-210', 'row-214', 'row-211', 'row-213'])
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
     expect(await hasKey(ui, 'head-paused')).toBe(false)
     expect(await hasKey(ui, 'head-uat')).toBe(false)
@@ -752,16 +752,16 @@ for (const surface of SURFACES) {
     expect(r.runs).toEqual([{ command: 'clear', args: '' }, { command: 'trailhead:work', args: '251' }])
   })
 
-  test(`the dashboard view puts a needs-you whiteboard ticket first in its own group [${surface}]`, async ($, on) => {
+  test(`the dashboard view puts a needs-you whiteboard ticket in its own group right after In progress [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.whiteboard = [...WHITEBOARD, issue(307, 'Loose needs you', [...WB, 'trailhead:task', 'trailhead:needs-you', 'trailhead:paused'])]
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
     expect(await textOf(ui, 'head-needs-you')).toBe('Needs you · 1')
-    // first ticket group, right after the maps group
-    expect((await keysOf(ui, 'group-')).slice(0, 2)).toEqual(['group-maps', 'group-needs-you'])
-    expect((await keysOf(ui, 'row-'))[0]).toBe('row-307')
+    // right after the maps group and In progress
+    expect((await keysOf(ui, 'group-')).slice(0, 3)).toEqual(['group-maps', 'group-in-progress', 'group-needs-you'])
+    expect((await keysOf(ui, 'row-')).slice(0, 2)).toEqual(['row-302', 'row-307'])
     expect(await hasKey(ui, 'head-paused')).toBe(false)
     expect(await hasKey(ui, 'work-307')).toBe(true)
     expect(await hasKey(ui, 'resume-307')).toBe(false)
@@ -1384,7 +1384,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-303'])
   })
 
   test(`a write that reads at once is followed by one more read at the floor's end [${surface}]`, async ($, on) => {
@@ -2294,7 +2294,7 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await textOf(ui, 'viewing-text')).toBe('viewing #14 · active #198')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   test(`the refresh button obeys the same floor [${surface}]`, async ($, on) => {
@@ -2566,7 +2566,7 @@ for (const surface of SURFACES) {
 
     expect(await textOf(ui, 'map')).toBe('#14 older map')
     expect(await textOf(ui, 'destination')).toBe('An older destination.')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
     expect(await textOf(ui, 'holder-141')).toBe('@carol')
     expect(await textOf(ui, 'burndown-counts')).toBe('open 2 · done 0 · removed 0 · peak 2')
     // the ticket in play belongs to the other map: nothing here is marked
@@ -2741,7 +2741,7 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(await hasKey(ui, 'ticket-300')).toBe(false)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   test(`with no active map the open maps are listed and one can be viewed [${surface}]`, async ($, on) => {
@@ -2788,7 +2788,7 @@ for (const surface of SURFACES) {
     expect(r.mineCalls.some(argv => argv.includes('login=me'))).toBe(true)
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 4')
     // the map's own first, then mine elsewhere; a paused one and one the map already lists are not added
-    expect(await keysOf(ui, 'row-')).toEqual(['row-209', 'row-210', 'row-214', 'row-208', 'row-212', 'row-150', 'row-160', 'row-211', 'row-213'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-150', 'row-160', 'row-209', 'row-210', 'row-214', 'row-211', 'row-213'])
     expect(await textOf(ui, 'scope-of-150')).toBe('on whiteboard')
     expect(await textOf(ui, 'scope-of-160')).toBe('on map #14 older map')
     expect((await ui.find({ key: 'scope-of-160' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
@@ -2857,7 +2857,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 1')
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 1')
     expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 1')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-303'])
     expect(await textOf(ui, 'holder-302')).toBe('@alice')
     expect(await hasKey(ui, 'work-301')).toBe(true)
     expect(await textOf(ui, 'unverified')).toBe('1 unverified ticket hidden (quarantined)')
@@ -3212,7 +3212,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     await pressDashboard(ui, r)
     expect(await textOf(ui, 'head-whiteboard')).toBe('Whiteboard · 4 open · 2 assigned')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-306', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-306', 'row-303'])
     expect(await textOf(ui, 'holder-302')).toBe('@alice')
     expect(await hasKey(ui, 'resume-306')).toBe(true)
     expect(await hasKey(ui, 'row-305')).toBe(false)
@@ -3241,7 +3241,7 @@ for (const surface of SURFACES) {
     await pressDashboard(ui, r)
     await pressMap(ui, r, 14)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
 
     await pressDashboard(ui, r)
     await pressMap(ui, r, 198)
@@ -3293,7 +3293,7 @@ for (const surface of SURFACES) {
     const ui = await openAndMount($, r)
     expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
     await pressDashboard(ui, r)
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-303'])
     await ui.press({ key: 'to-map' })
     await settle(r)
     expect(await textOf(ui, 'empty')).toBe('No active map. Run /trailhead:map to pick one.')
@@ -3307,7 +3307,7 @@ for (const surface of SURFACES) {
     await $.command.run({ command: 'clear', args: '' } as never)
     await settle(r)
     expect(await textOf(ui, 'dashboard-title')).toBe('Dashboard')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-301', 'row-302', 'row-303'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-302', 'row-301', 'row-303'])
   })
   test(`the pane keeps its repo when the session cwd moves out of it [${surface}]`, async ($, on) => {
     const r = rig(on, $)
@@ -3346,7 +3346,7 @@ for (const surface of SURFACES) {
     await completeTurn($)
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
     expect(r.calls).toContainEqual(MAPS_CALL)
     expect(r.cwds.every(cwd => cwd === ROOT_OTHER)).toBe(true)
     // The toplevel is read where the session now is, not at its project root, which a shell `cd` leaves behind.
@@ -3434,7 +3434,7 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'go', turnId: 'race-1' })
     release()
     await settle(r)
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   test(`a refresh in flight when the pin moves to another checkout of the same repo is read again [${surface}]`, async ($, on) => {
@@ -3466,7 +3466,7 @@ for (const surface of SURFACES) {
     await r.clock.advance(FLOOR)
     await settle(r)
     // The dropped read is repeated: the pane shows the new tracker state, not the old list.
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   test(`a same-repo pin move landing inside the stale check is read again [${surface}]`, async ($, on) => {
@@ -3498,7 +3498,7 @@ for (const surface of SURFACES) {
     await settle(r)
     await r.clock.advance(FLOOR)
     await settle(r)
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   test(`a dashboard read in flight when the pin moves to another checkout of the same repo is read again [${surface}]`, async ($, on) => {
@@ -3627,7 +3627,7 @@ for (const surface of SURFACES) {
     expect(await keysOf(ui, 'row-')).not.toContain('row-209')
     await settle(r)
     expect(await textOf(ui, 'map')).toBe('#14 older map')
-    expect(await keysOf(ui, 'row-')).toEqual(['row-140', 'row-141'])
+    expect(await keysOf(ui, 'row-')).toEqual(['row-141', 'row-140'])
   })
 
   // The panel follows the whiteboard ticket this session takes (#306).

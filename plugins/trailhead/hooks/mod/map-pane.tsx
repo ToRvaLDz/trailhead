@@ -1153,10 +1153,11 @@ export function registerMapPane(on: On) {
     }
     const ticketGroups = (tickets: readonly PaneTicket[], here: TicketScope) => {
       const groups = groupTickets(tickets)
+      // In progress first, right under the maps list: what I already hold comes before what to pick up.
       return [
+        group('in-progress', 'In progress', groups.inProgress, elsewhereInProgress(mine, here, tickets)),
         group('needs-you', 'Needs you', groups.needsYou),
         group('frontier', 'Frontier', groups.frontier),
-        group('in-progress', 'In progress', groups.inProgress, elsewhereInProgress(mine, here, tickets)),
         group('uat', 'UAT', groups.uat),
         group('paused', 'Paused', groups.paused),
         group('blocked', 'Blocked', groups.blocked),

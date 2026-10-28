@@ -96,8 +96,8 @@ command file (`commands/panel.md`), because a command registered by a mod cannot
 only where no mod does (it says the panel is not available). Claude Code only: the Codex
 projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex-projection.js`).
 
-- **What it shows**: the map as a link with its destination (dim), then `Needs you · n`, `Frontier · n`,
-  `In progress · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
+- **What it shows**: the map as a link with its destination (dim), then `In progress · n` (first, right under
+  the maps list), `Needs you · n`, `Frontier · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
   (a link to the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket
   in play in this session is marked `▸` in the accent and says `this session` in place of its holder;
   blocked rows are dim. `In progress` is global for you: after the shown scope's own claimed tickets it lists your
@@ -114,7 +114,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   button in place of its holder (it runs like `work`, with `/trailhead:resume <n>`, which checks the
   claim); the label wins over `trailhead:blocked` and an assignee.
   A ticket carrying `trailhead:needs-you` (an autonomous run parked it for the human; a `work`/`quick` claim
-  clears it) shows once, under `Needs you`, above Frontier. The label wins over paused, UAT, blocked and an
+  clears it) shows once, under `Needs you`, between In progress and Frontier. The label wins over paused, UAT, blocked and an
   assignee. Any assignee is shown as its holder, never a button, even on a paused or blocked row. A blocked
   row with no assignee is dim with no button. Any other row gets a `work` button, never `resume`, even when
   paused: the claim clears the mark and resume would not. A
@@ -191,7 +191,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   shown before (the view is kept), a `Maps · n` group with every open map pressable (a press leaves the
   dashboard and views that map, the active one marked `●`), and a `Whiteboard · <n> open · <m> assigned` section (counted
   over the listed tickets; `200+ open` when the list is capped): the open
-  `trailhead:ticket` + `trailhead:whiteboard` tickets as Needs you / Frontier / In progress / UAT / Paused / Blocked, with the same rows,
+  `trailhead:ticket` + `trailhead:whiteboard` tickets as In progress / Needs you / Frontier / UAT / Paused / Blocked, with the same rows,
   holders and `work` buttons (the work verb takes a whiteboard ticket as is). Unverified ones are counted only.
   Its reads replace the map's in a refresh: the whiteboard list (the GraphQL open read above), `gh issue list --label trailhead:dashboard
   --json number,url` and the maps list; a failed list keeps the last one with the footer reason, a failed index
