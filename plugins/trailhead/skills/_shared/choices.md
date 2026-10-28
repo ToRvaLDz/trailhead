@@ -62,7 +62,7 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 
 **Menu call-sites (an `AskUserQuestion` trailhead authors): links live in the prose.** A picker renders its question and options as plain text, so nothing in it is clickable. When a question is about something the user has to open first (a mockup to approve or pick from, a published page, a PR, a ticket comment), write its clickable link(s) in the reply text **immediately before** the menu, in that same message, never only earlier in the conversation, never as a name in place of the URL, and never inside the picker. If there is no link to show yet, do not ask. For mockups the full rule is "Surface the mockup" in `techniques/prototype.md`, enforced by the mockup-link hooks (Claude Code and Codex); the Claude Code guard also accepts a link carried by the approval question itself, but the prose stays the preferred form.
 
-**Prose / conversational call-sites (grilling, or any choice put in words rather than a menu).** There is no cap: **state the applicable affordance(s) in words** in the same message that puts the choice (for example append "Oppure: scegli tu, propongo io / scelgo dopo se dipende da un prerequisito."). Grilling stays human-decides, so delegate is not offered there; **defer is offered in prose when the decision is genuinely blocked on a prerequisite.** The one grilling step put as a menu is the accept / amend / reject ask of the **Holistic review before the final confirmation** (Grilling technique), without delegate and without defer.
+**Prose / conversational call-sites (grilling, or any choice put in words rather than a menu).** There is no cap: **state the applicable affordance(s) in words** in the same message that puts the choice (for example append "Oppure: scegli tu, propongo io / scelgo dopo se dipende da un prerequisito."). Grilling stays human-decides, so delegate is not offered there; **defer is offered in prose when the decision is genuinely blocked on a prerequisite.** The one grilling step put as a menu is the apply / amend / keep ask of the **Holistic review before the final confirmation** (Grilling technique), without delegate and without defer.
 
 `(Recommended)` on a real option is a separate, static hint that may coexist with the affordances; it is not the delegate option.
 
@@ -71,7 +71,7 @@ Worked examples: 2 real options + delegate + defer = 4 -> all in the menu; 3 rea
 | Call-site | Delegate | Defer |
 |---|---|---|
 | `decision` ticket converge (grilling) | No (human decides) | Yes, if blocked on a prerequisite |
-| Grilling holistic review (accept / amend / reject) | No (the set is the human's) | No |
+| Grilling holistic review (apply / amend / keep) | No (the set is the human's) | No |
 | `build`/`quick` Discuss "stop and ask" | Yes | Yes |
 | Effort skip offer (consolidated) | Yes | No (now-or-never process choice) |
 | `/trailhead config` menus | Yes | No (no substrate) |

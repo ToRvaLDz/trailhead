@@ -37,8 +37,12 @@ for (const frag of [
   'contradictions, gaps, choices that break each other or the destination',
   'by question number',
   'say so in one line and go straight to the confirmation',
-  'accept, amend or reject',
-  'reject keeps the choices as they were',
+  'Every non-working combination carries its fix',
+  'say why in one line and name where it goes',
+  'Accepting a combination as a risk is never the proposed fix',
+  'apply, amend or keep',
+  'apply (the first option, recommended) applies every proposed amendment and fix',
+  'keep leaves the choices as they were',
   'consciously accepted risk',
   'reopens that branch',
   'the review runs again on the new set',
@@ -60,7 +64,7 @@ const pointer = (name, text, startsWith) => {
   const l = text.split('\n').find((x) => x.startsWith(startsWith));
   ok(`${name} found`, !!l);
   ok(`${name} references the anchor`, l.includes(ANCHOR));
-  ok(`${name} does not restate the rule`, !l.includes('accepted risk') && !l.includes('reject keeps'));
+  ok(`${name} does not restate the rule`, !l.includes('accepted risk') && !l.includes('keep leaves'));
 };
 pointer('chart SKILL standalone grill', read('trailhead-chart/SKILL.md'), 'Run a standalone **Grilling**');
 const engines = read('trailhead-work/references/ticket-engines.md');
