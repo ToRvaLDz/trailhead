@@ -215,6 +215,8 @@ const rig = (on: On, engine?: any) => {
     calls: [] as (readonly string[])[],
     panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[],
     isPlaced: true,
+    // Why `ui.open` leaves the pane unplaced (the SDK's `reason`).
+    reason: 'terminal too narrow',
     logs: [] as string[],
     toasts: [] as string[],
     // What a Bash call prints on stdout (the created issue's URL for a `gh issue create`).
@@ -427,7 +429,7 @@ const rig = (on: On, engine?: any) => {
       ...r.panes.filter(p => p.id !== e.id),
       { id: e.id, title: e.title ?? e.id, isShown: true, isFocused: false, isPlaced: r.isPlaced },
     ]
-    return { value: r.isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: 'terminal too narrow' } }
+    return { value: r.isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: r.reason } }
   })
   on('ui.close', (_$, e) => {
     r.panes = r.panes.filter(p => p.id !== e.id)
@@ -2390,6 +2392,20 @@ for (const surface of SURFACES) {
     expect(fetches(r)).toBe(0)
     // a pane waiting undrawn can still be closed
     expect((await panel($)).text).toBe('Map panel closed.')
+  })
+
+  // #321: nessuna superficie collegata (inizio sessione) non è un errore: il pannello resta aperto in attesa.
+  test(`/trailhead:panel with no surface attached keeps the pane pending and says so plainly [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    r.reason = 'no-surface: no surface is attached ($.session.surfaces() is empty)'
+    await $.session.start(START)
+    const pending = 'Map panel will open as soon as the screen is ready.'
+    expect((await panel($)).text).toBe(pending)
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
+    // a second command while still pending is idempotent: it never closes the pane
+    expect((await panel($)).text).toBe(pending)
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
   })
 
   test(`/trailhead:panel shows a pane the auto-open left undrawn instead of closing it [${surface}]`, async ($, on) => {
