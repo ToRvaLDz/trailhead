@@ -85,6 +85,39 @@ for (const [label, res] of [
   ok('both rejected: names both', n.includes('GH_TOKEN') && n.includes('GITHUB_TOKEN') && n.includes('GH_TOKEN= GITHUB_TOKEN= gh'));
   ok('both rejected: no token values', !n.includes('bad'));
 }
+// W1: token rifiutato (401 confermato), login salvato assente (exit 4) -> variante iii
+{
+  const NOLOGIN = { status: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' };
+  const run = (env) => (env.GITHUB_TOKEN ? AUTH_ERR : NOLOGIN);
+  const n = check({ env: { GITHUB_TOKEN: 'bad' }, run });
+  ok('bad token + no stored login (exit 4): nothing works', typeof n === 'string' && n.includes('no working `gh` login'));
+  const run2 = (env) => (env.GITHUB_TOKEN ? AUTH_ERR : { status: 1, stdout: '', stderr: 'please run: gh auth login' });
+  ok('bad token + "gh auth login" in stderr: nothing works', /no working/.test(check({ env: { GITHUB_TOKEN: 'bad' }, run: run2 })));
+  // il primo probe (prima di un 401) non usa questa regola: exit 4 senza rifiuto -> null
+  ok('first probe exit 4: null', check({ env: { GITHUB_TOKEN: 'x' }, run: () => NOLOGIN }) === null);
+}
+// W1: token rifiutato, probe del login salvato in errore di rete -> null
+{
+  const run = (env) => (env.GITHUB_TOKEN ? AUTH_ERR : { status: 1, stdout: '', stderr: 'error connecting to api.github.com' });
+  ok('bad token + stored network error: null', check({ env: { GITHUB_TOKEN: 'bad' }, run }) === null);
+  const run2 = (env) => (env.GITHUB_TOKEN ? AUTH_ERR : { status: null, stdout: '', stderr: '', error: new Error('t') });
+  ok('bad token + stored timeout: null', check({ env: { GITHUB_TOKEN: 'bad' }, run: run2 }) === null);
+}
+// I1: budget totale condiviso fra i probe
+{
+  const mk = (step) => {
+    let t = 1000;
+    const timeouts = [];
+    const run = (env, timeoutMs) => { timeouts.push(timeoutMs); t += step; return env.GH_TOKEN || env.GITHUB_TOKEN ? AUTH_ERR : GOOD; };
+    return { run, now: () => t, timeouts };
+  };
+  const a = mk(2000);
+  const n = check({ env: { GH_TOKEN: 'b1', GITHUB_TOKEN: 'b2' }, run: a.run, now: a.now });
+  ok('budget: timeouts decrease and stay bounded', a.timeouts.length === 3 && a.timeouts[0] <= 5000 && a.timeouts[1] < a.timeouts[0] && a.timeouts[2] < a.timeouts[1] && a.timeouts[2] > 0);
+  ok('budget: notice still produced within budget', typeof n === 'string');
+  const b = mk(3000);
+  ok('budget exhausted: null', check({ env: { GH_TOKEN: 'b1', GITHUB_TOKEN: 'b2' }, run: b.run, now: b.now }) === null && b.timeouts.length === 2);
+}
 // source
 for (const source of ['resume', 'compact']) {
   const run = model({ GITHUB_TOKEN: false, stored: true });

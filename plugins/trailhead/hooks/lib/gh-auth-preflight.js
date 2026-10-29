@@ -10,10 +10,13 @@ const TOKEN_VARS = ['GH_TOKEN', 'GITHUB_TOKEN'];
 // SessionStart scatta di nuovo su resume e compact: li saltiamo (una volta sola).
 const SKIP_SOURCES = new Set(['resume', 'compact']);
 
-function defaultRun(env) {
+// Budget totale condiviso da tutti i probe: SessionStart non resta bloccato oltre.
+const BUDGET_MS = 5000;
+
+function defaultRun(env, timeoutMs = BUDGET_MS) {
   try {
     return spawnSync('gh', ['api', 'user', '-q', '.login'], {
-      env, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8',
+      env, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8',
     });
   } catch (error) {
     return { status: null, stdout: '', stderr: '', error };
@@ -34,6 +37,12 @@ function isAuthFailure(r) {
   return /HTTP 401|Bad credentials/.test(String(r.stderr || '')) || /"status":\s*"401"/.test(String(r.stdout || ''));
 }
 
+// gh non loggato: exit 4 o invito a "gh auth login" (non un errore di rete).
+function isNotLoggedIn(r) {
+  if (!r || r.error) return false;
+  return r.status === 4 || /gh auth login/.test(String(r.stderr || ''));
+}
+
 function notice(rejected, working) {
   const vars = rejected.join(' and ');
   const unset = rejected.map((v) => `${v}=`).join(' ');
@@ -47,7 +56,7 @@ function notice(rejected, working) {
     + `until then run \`gh\` as \`${unset} gh ...\`.`;
 }
 
-function check({ env, run, source } = {}) {
+function check({ env, run, source, now } = {}) {
   try {
     if (SKIP_SOURCES.has(source)) return null;
     const base = env || process.env;
@@ -55,14 +64,20 @@ function check({ env, run, source } = {}) {
     const runner = run || defaultRun;
     let cur = { ...base };
     const rejected = [];
+    const clock = now || Date.now;
+    const start = clock();
     for (;;) {
-      const r = runner(cur);
+      const remaining = BUDGET_MS - (clock() - start);
+      if (remaining <= 0) return null;
+      const r = runner(cur, remaining);
       if (isSuccess(r)) {
         return rejected.length ? notice(rejected, activeVar(cur) || 'stored') : null;
       }
-      if (!isAuthFailure(r)) return null;
       const active = activeVar(cur);
-      if (!active) return rejected.length ? notice(rejected, null) : null;
+      // dopo un 401 confermato, senza altre variabili da togliere, anche "non
+      // loggato" vale "nessun login funzionante"; rete/timeout restano silenziosi
+      if (!active && rejected.length && (isAuthFailure(r) || isNotLoggedIn(r))) return notice(rejected, null);
+      if (!isAuthFailure(r) || !active) return null;
       rejected.push(active);
       cur = { ...cur, [active]: '' };
     }
