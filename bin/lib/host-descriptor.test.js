@@ -105,6 +105,12 @@ ok('modelsCollapseNotice(codex, models set) names the set keys', (() => {
   const msg = modelsCollapseNotice('codex', { models: { plan: 'x', execute: 'y' } });
   return typeof msg === 'string' && msg.includes('plan') && msg.includes('execute') && msg.includes('Codex');
 })());
+ok('modelsCollapseNotice(codex, models.grill set) names grill', (() => {
+  const msg = modelsCollapseNotice('codex', { models: { grill: 'claude-opus-5-5' } });
+  return typeof msg === 'string' && msg.includes('(grill)') && msg.includes('models.codex');
+})());
+ok('modelsCollapseNotice is null once models.codex.grill is set',
+  modelsCollapseNotice('codex', { models: { grill: 'claude-opus-5-5', codex: { grill: 'gpt-5.6-sol' } } }) === null);
 ok('modelsCollapseNotice(codex, undefined config) is null',
   modelsCollapseNotice('codex') === null);
 ok('modelsCollapseNotice(claude, models set) is null (Claude honours the keys)',
