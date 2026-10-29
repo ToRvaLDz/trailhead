@@ -74,6 +74,7 @@ eq('decode of empty', decodeIn(''), null);
   eq('invalid base64url in the repo part', decodeIn(`${b('/r')}.!!`), null);
   eq('empty repo part', decodeIn(`${b('/r')}.`), null);
   eq('empty path part', decodeIn(`.${b('github.com/o/r')}`), null);
+  eq('a dotless host is a valid repo part', decodeIn(`${b('/r')}.${b('gitea/owner/name')}`), { path: '/r', repo: 'gitea/owner/name' });
   eq('repo part without a host is malformed', decodeIn(`${b('/r')}.${b('owner/name')}`), null);
   eq('repo part that is not host/path is malformed', decodeIn(`${b('/r')}.${b('justone')}`), null);
 }
@@ -199,6 +200,19 @@ fs.mkdirSync(plain);
   eq('an existing path ignores the repo', run(tokenOf(main, REPO), other, [roots]).out.path, main);
   eq('no relocatedFrom on a plain move', 'relocatedFrom' in run(tokenOf(main, REPO), other, [roots]).out, false);
   eq('a malformed two-part token is invalid', run(`${tokenOf(gone)}.!!`, other, [roots]).out.status, 'invalid');
+}
+
+// Dotless hosts (gitea, localhost): the repo part is read by shape, never by a dot heuristic.
+{
+  const exists = run(tokenOf(main, 'gitea/owner/name'), other, [fresh('dotless-unused')]);
+  eq('dotless-host token with an existing path moves', [exists.out.status, exists.out.path], ['move', main]);
+  eq('dotless-host token with an existing path is here in it', run(tokenOf(main, 'localhost/o/n'), main, [fresh('dotless-unused2')]).out.status, 'here');
+  const roots = fresh('dotless-roots');
+  const g = makeRepo(path.join(roots, 'n'), 'git@gitea:owner/name.git');
+  const gone = path.join(tmp, 'dotless-gone', 'n');
+  const r = run(tokenOf(gone, 'gitea/owner/name'), other, [roots]);
+  eq('dotless-host relocation moves with relocatedFrom', [r.out.status, r.out.path, r.out.relocatedFrom], ['move', g, gone]);
+  eq('another dotless host does not match', run(tokenOf(gone, 'forge/owner/name'), other, [roots]).out.status, 'invalid');
 }
 
 // --- 4. protocol contract: the move comes before anything else -----------------------

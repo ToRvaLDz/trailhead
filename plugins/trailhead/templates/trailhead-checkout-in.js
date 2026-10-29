@@ -29,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { findCheckouts, parseRepoArg } = require('./trailhead-checkout-find.js');
+const { findCheckouts, parseRepoShape } = require('./trailhead-checkout-find.js');
 
 const PREFIX = '--in=';
 
@@ -56,8 +56,8 @@ function decodeIn(token) {
   if (p === null) return null;
   if (parts.length === 1) return { path: p, repo: null };
   const repo = decodePart(parts[1]);
-  // The repo part is `host/owner/name`: a bare `owner/name` is not what the mod hands over.
-  if (repo === null || parseRepoArg(repo) === null || parseRepoArg(repo).host === null) return null;
+  // The repo part is `host/owner/name` by shape (the host may be dotless, e.g. `gitea`).
+  if (repo === null || parseRepoShape(repo) === null) return null;
   return { path: p, repo };
 }
 
@@ -92,7 +92,7 @@ function resolveRoot(p, canon, cwd) {
 
 // The path is gone: look the repo up by its remote (only when the token names it).
 function relocate(old, repo, cwd, opts) {
-  const found = findCheckouts(repo, opts.roots ? { roots: opts.roots } : { cwd });
+  const found = findCheckouts(parseRepoShape(repo), opts.roots ? { roots: opts.roots } : { cwd });
   if (found.status === 'found') {
     const root = resolveRoot(found.path, found.path, cwd);
     return { ...root, relocatedFrom: old };

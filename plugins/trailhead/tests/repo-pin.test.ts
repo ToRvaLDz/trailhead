@@ -131,3 +131,8 @@ test('checkoutArg carries host and a nested slug in the repo part', () => {
   const arg = checkoutArg({ root: '/w/p', host: 'gitlab.com', slug: 'g/sub/r' })
   expect(fromBase64url(arg.split('.')[1])).toBe('gitlab.com/g/sub/r')
 })
+
+test('checkoutArg carries a dotless host in the repo part', () => {
+  const arg = checkoutArg({ root: '/w/p', host: 'gitea', slug: 'owner/name' })
+  expect(fromBase64url(arg.split('.')[1])).toBe('gitea/owner/name')
+})

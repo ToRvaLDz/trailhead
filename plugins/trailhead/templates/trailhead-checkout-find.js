@@ -74,6 +74,15 @@ function parseRepoArg(arg) {
   return { host: null, path: parts.join('/') };
 }
 
+// The repo identity the panel token carries: `host/owner/name` by shape (3+ non-empty
+// segments, the first is the host, whatever it looks like: `gitea`, `localhost`).
+function parseRepoShape(text) {
+  if (typeof text !== 'string') return null;
+  const parts = text.split('/');
+  if (parts.length < 3 || parts.some((p) => p === '')) return null;
+  return { host: parts[0].toLowerCase(), path: parts.slice(1).join('/') };
+}
+
 const stripPort = (h) => h.replace(/:\d+$/, '');
 
 // Whether a remote URL is the wanted repo. Host: case-insensitive; a wanted host with
@@ -242,6 +251,6 @@ function main(argv) {
   return 0;
 }
 
-module.exports = { parseRemote, parseRepoArg, matches, findCheckouts };
+module.exports = { parseRemote, parseRepoArg, parseRepoShape, matches, findCheckouts };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

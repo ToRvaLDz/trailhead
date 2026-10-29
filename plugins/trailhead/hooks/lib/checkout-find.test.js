@@ -17,7 +17,7 @@ const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-c
 // require() must print nothing and must not exit.
 const probe = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(scriptPath)}); process.stdout.write('alive')`], { encoding: 'utf8' });
 assert.strictEqual(probe.stdout, 'alive', 'require prints nothing and does not exit');
-const { parseRemote, matches, findCheckouts } = require(scriptPath);
+const { parseRemote, parseRepoShape, matches, findCheckouts } = require(scriptPath);
 
 let passed = 1;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -44,6 +44,10 @@ ok('path case is exact off github', !matches('https://gitlab.com/O/r', 'gitlab.c
 ok('different repo rejects', !matches('https://github.com/o/other', 'github.com/o/r'));
 ok('wanted port must equal the remote port', matches('ssh://git@h.io:2222/o/r', 'h.io:2222/o/r') && !matches('ssh://git@h.io:2223/o/r', 'h.io:2222/o/r'));
 ok('port-less wanted host ignores the remote port', matches('ssh://git@h.io:2222/o/r', 'h.io/o/r'));
+eq('repo shape: a dotless host is a host', parseRepoShape('gitea/owner/name'), { host: 'gitea', path: 'owner/name' });
+eq('repo shape: two segments is no shape', parseRepoShape('owner/name'), null);
+ok('a parsed dotless host matches a scp remote', matches('git@gitea:owner/name.git', { host: 'gitea', path: 'owner/name' }));
+ok('a parsed dotless host rejects another host', !matches('git@forge:owner/name.git', { host: 'gitea', path: 'owner/name' }));
 ok('nested group matches', matches('git@gitlab.com:g/sub/r.git', 'gitlab.com/g/sub/r'));
 
 // --- 2. findCheckouts --------------------------------------------------------------
