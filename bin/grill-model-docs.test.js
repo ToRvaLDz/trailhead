@@ -72,6 +72,12 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: Codex semantics', has('unset `models.codex.grill` inherits the session model', 'equal to the session model'));
   ok('B: the protocol bullets above stay the agent\'s protocol', grilling.indexOf('Holistic review before the final confirmation') < at);
 
+  ok('B: grilling.md states that trailhead-grill output is always the report',
+    has('When it runs as `trailhead-grill`, its output is always the report', 'never asks the user live and never shows a menu'));
+  const agent = fs.readFileSync(path.join(root, 'plugins', 'trailhead', 'agents', 'trailhead-grill.md'), 'utf8');
+  ok('B: the agent follows the round bullets and its return contract, not the orchestrator section',
+    agent.includes('round bullets') && agent.includes('Return contract') && !agent.includes('Who runs a round'));
+
   const dispatch = techniques.split('\n')[4] || '';
   ok('B: techniques.md dispatch list maps Grilling to trailhead-grill', /Grilling → `trailhead-grill`/.test(dispatch));
   ok('B: techniques.md read-only list includes trailhead-grill', /\*\*read-only\*\*[^)]*`trailhead-grill`/.test(dispatch));
