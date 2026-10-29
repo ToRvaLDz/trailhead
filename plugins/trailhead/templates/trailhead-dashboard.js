@@ -16,7 +16,9 @@
 // dashboard issue it creates, pins and labels nothing (the label ensure is skipped
 // too) and prints `skipped: no dashboard issue (update-only)`, exit 0. A capture
 // uses it so it cannot open a second issue; the check lives here, in the helper,
-// so there is no check-then-call race.
+// so there is no check-then-call race. That is all it forbids: it never creates the
+// dashboard. With a dashboard present it is a normal refresh (the label ensure and
+// the re-pin run as usual, both idempotent).
 //
 // Singleton labels (dashboard, codebase, conventions): more than one open issue
 // aborts before any write, naming every duplicate by title and number.
