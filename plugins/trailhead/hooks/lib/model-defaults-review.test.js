@@ -295,6 +295,18 @@ ok('claude-haiku-5-5 itself is not stale',
       `models.codebase-map: claude-haiku-4-5-20251001 -> claude-haiku-5-5 (new default; from the project config, ${cfgPath})`));
 }
 
+// --- #323: i pin grill sono valutati come ogni altra chiave (caratterizzazione) ---
+{
+  const config = { models: { grill: 'claude-opus-5', codex: { grill: { model: 'gpt-5.5-sol', effort: 'high' } } } };
+  const stale = stalePins(config, data);
+  ok('stale models.grill pin is flagged and updated to the strong default',
+    stale.some((s) => s.key === 'models.grill' && s.from === 'claude-opus-5' && s.to === 'claude-opus-5-5'));
+  const next = applyUpdate({ models: { grill: 'claude-opus-5' } }, stalePins({ models: { grill: 'claude-opus-5' } }, data));
+  ok('applyUpdate rewrites models.grill', next.models.grill === 'claude-opus-5-5');
+  const codexStale = stalePins({ models: { codex: { grill: { model: 'gpt-5.6-terra', effort: 'high' } } } }, data);
+  ok('models.codex.grill at the current default is not flagged', codexStale.length === 0);
+}
+
 // --- effectiveModels (pure merge, no mutation) --------------------------------
 {
   const globalModels = { plan: 'g-plan', execute: 'g-exec', codex: { plan: { model: 'g-gpt', effort: 'high' } } };
