@@ -296,6 +296,16 @@ ok('codexAgentTomlPlan: models.codex.grill pins trailhead-grill.toml; unset leav
     unset && !/^model = /m.test(unset.content);
 })());
 
+ok('codexAgentTomlPlan: an unset models.codex.grill follows models.codex.plan; a set grill wins', (() => {
+  const find = (m) => codexAgentTomlPlan('/c', m, STUB_AGENT_DEFS).writes.find((w) => w.name === 'trailhead-grill');
+  const follow = find({ plan: { model: 'gpt-5.6-sol', effort: 'high' } });
+  const own = find({ plan: 'gpt-5.6-sol', grill: 'gpt-5.6-terra' });
+  const none = find({ execute: 'gpt-5.6-sol' });
+  const plan = codexAgentTomlPlan('/c', { plan: 'gpt-5.6-sol' }, STUB_AGENT_DEFS).writes.find((w) => w.name === 'trailhead-plan');
+  return follow.content.includes('model = "gpt-5.6-sol"') && follow.content.includes('model_reasoning_effort = "high"') &&
+    own.content.includes('model = "gpt-5.6-terra"') && !/^model = /m.test(none.content) && plan.content.includes('model = "gpt-5.6-sol"');
+})());
+
 ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase-map now pins on codebase-map', (() => {
   const plan = codexAgentTomlPlan('/c', { fix: 'gpt-5.6-terra', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));

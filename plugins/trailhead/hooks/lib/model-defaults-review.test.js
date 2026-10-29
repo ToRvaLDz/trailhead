@@ -307,6 +307,20 @@ ok('claude-haiku-5-5 itself is not stale',
   ok('models.codex.grill at the current default is not flagged', codexStale.length === 0);
 }
 
+// --- #323: una config senza grill (chiave nata dopo) non genera nulla per grill ---
+{
+  const sevenOld = { plan: 'claude-opus-5-5', execute: 'claude-sonnet-5-5', research: 'claude-sonnet-5-5', review: 'claude-sonnet-5-5',
+    debug: 'claude-sonnet-5-5', verify: 'claude-sonnet-5-5', 'codebase-map': 'claude-haiku-5-5',
+    codex: { plan: { model: 'gpt-5.6-sol', effort: 'high' }, execute: 'gpt-5.6-terra' } };
+  const cfg = { models: sevenOld };
+  ok('seven old keys and no grill: no stale pin names grill', stalePins(cfg, data).every((s) => !/grill/.test(s.key)));
+  ok('seven old keys at current defaults: the review offers nothing', reviewOffer({ config: cfg, data, ack: null }) === null);
+  const stale = { models: { ...sevenOld, plan: 'claude-opus-5' } };
+  const offer = reviewOffer({ config: stale, data, ack: null });
+  ok('a stale plan pin is flagged but the notice never mentions grill', offer !== null && !offer.notice.includes('grill'));
+  ok('applyUpdate does not invent a grill key', !('grill' in applyUpdate(stale, stalePins(stale, data)).models));
+}
+
 // --- effectiveModels (pure merge, no mutation) --------------------------------
 {
   const globalModels = { plan: 'g-plan', execute: 'g-exec', codex: { plan: { model: 'g-gpt', effort: 'high' } } };

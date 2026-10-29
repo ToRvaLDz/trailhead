@@ -60,6 +60,29 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
     claude({ models: { codex: { grill: 'gpt-5.6-sol' } } }).model === OPUS);
 }
 
+// --- #323: grill non impostato segue plan ---
+{
+  const g = claude({ sessionModel: OPUS, models: { plan: SONNET } });
+  ok('grill unset follows plan: plan sonnet in an opus session -> dispatch sonnet',
+    g.route === 'dispatch' && g.agent === 'trailhead-grill' && g.model === SONNET && g.alias === 'sonnet');
+  const bal = claude({ sessionModel: SONNET, models: {} });
+  ok('grill unset + plan unset in a sonnet session -> dispatch opus (plan Balanced default)', bal.route === 'dispatch' && bal.model === OPUS && bal.alias === 'opus');
+  ok('grill unset + plan equal to the session -> inline', claude({ sessionModel: SONNET, models: { plan: SONNET } }).route === 'inline');
+  const own = claude({ sessionModel: OPUS, models: { plan: SONNET, grill: 'claude-haiku-5-5' } });
+  ok('grill set overrides plan', own.route === 'dispatch' && own.model === 'claude-haiku-5-5');
+  ok('plan inherit session + grill unset -> inline', claude({ models: { plan: 'inherit session' } }).route === 'inline');
+  ok('grill inherit session wins over plan', claude({ models: { plan: OPUS, grill: 'inherit session' } }).route === 'inline');
+  for (const unset of [null, '']) {
+    ok(`grill ${JSON.stringify(unset)} follows plan`, claude({ sessionModel: OPUS, models: { plan: SONNET, grill: unset } }).model === SONNET);
+  }
+  const old = { plan: SONNET, execute: SONNET, research: SONNET, review: SONNET, debug: SONNET, verify: SONNET, 'codebase-map': 'claude-haiku-5-5' };
+  const legacy = claude({ sessionModel: OPUS, models: old });
+  ok('a config with the seven old keys and no grill grills on the plan id', legacy.route === 'dispatch' && legacy.model === SONNET);
+  ok('other keys do not follow plan', route({ key: 'research', host: 'claude', models: { plan: SONNET }, sessionModel: SONNET, subagents: true, tierIds: TIERS }).route === 'inline');
+  const noSub = claude({ sessionModel: OPUS, subagents: false, models: { plan: SONNET } });
+  ok('no subagents: suggests the plan id', noSub.route === 'inline' && noSub.suggest === SONNET);
+}
+
 // --- Codex ---------------------------------------------------------------------
 {
   ok('codex: key unset -> inline', codex({}).route === 'inline');
@@ -79,6 +102,20 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
   ok('codex: an object pin without a model stays inline', codex({ models: { codex: { grill: { effort: 'high' } } } }).route === 'inline');
   ok('codex: execute dispatches the projected trailhead-execute',
     route({ key: 'execute', host: 'codex', models: { codex: { execute: 'gpt-5.6-sol' } }, sessionModel: 'gpt-5.6-terra', subagents: true, tierIds: TIERS }).agent === 'trailhead-execute');
+}
+
+{
+  const cx = (extra) => codex({ ...extra });
+  const planPin = { codex: { plan: 'gpt-5.6-sol' } };
+  const d = cx({ models: planPin });
+  ok('codex: grill unset + codex.plan pinned -> dispatch trailhead-grill on the plan pin', d.route === 'dispatch' && d.agent === 'trailhead-grill' && d.model === 'gpt-5.6-sol');
+  ok('codex: grill unset + codex.plan equal to the session -> inline', cx({ sessionModel: 'gpt-5.6-sol', models: planPin }).route === 'inline');
+  ok('codex: plan pin with effort follows the same effort rules',
+    cx({ sessionModel: 'gpt-5.6-sol', models: { codex: { plan: { model: 'gpt-5.6-sol', effort: 'high' } } } }).route === 'dispatch' &&
+    cx({ sessionModel: 'gpt-5.6-sol', sessionEffort: 'high', models: { codex: { plan: { model: 'gpt-5.6-sol', effort: 'high' } } } }).route === 'inline');
+  ok('codex: grill set overrides plan', cx({ sessionModel: 'gpt-5.6-sol', models: { codex: { plan: 'gpt-5.6-terra', grill: 'gpt-5.6-sol' } } }).route === 'inline');
+  ok('codex: grill inherit session wins over plan', cx({ models: { codex: { plan: 'gpt-5.6-sol', grill: 'inherit session' } } }).route === 'inline');
+  ok('codex: grill unset + plan unset -> inline', cx({ models: { codex: {} } }).route === 'inline');
 }
 
 // --- agent mapping -------------------------------------------------------------

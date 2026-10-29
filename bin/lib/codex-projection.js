@@ -256,8 +256,10 @@ function codexAgentTomlPlan(codexHome, codexModels, agentDefs) {
 
     let model = null;
     let effort = null;
-    if (MODEL_KEYS.has(key) && models[key] != null) {
-      const raw = models[key];
+    // grill non impostato segue models.codex.plan (come model-route.js).
+    const pinKey = key === 'grill' && (models.grill == null || (typeof models.grill === 'string' && models.grill.trim() === '')) ? 'plan' : key;
+    if (MODEL_KEYS.has(key) && models[pinKey] != null) {
+      const raw = models[pinKey];
       if (typeof raw === 'string') {
         if (raw.trim() !== '') model = raw;
       } else if (typeof raw === 'object') {

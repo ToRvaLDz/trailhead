@@ -3,6 +3,8 @@
 // (inline nella sessione oppure dispatch a un subagent), per host. #323.
 // Funzione pura route() piu' una CLI che carica la config effettiva (globale
 // poi progetto, uniti da effectiveModels di model-defaults-review.js).
+// Per la chiave grill, un valore non impostato segue models.plan (e su Codex
+// models.codex.plan): non ha un default Balanced proprio. #323.
 // Oggi lo usa solo Grilling (techniques/grilling.md, "Who runs a round");
 // le altre chiavi seguono ancora la regola in prosa.
 //
@@ -79,10 +81,18 @@ const stripSuffix = (id) => (typeof id === 'string' ? id.replace(/\[[^\]]*\]\s*$
 const isUnset = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 const result = (fields) => ({ route: 'inline', agent: null, model: null, alias: null, suggest: null, warning: null, ...fields });
 
+// Grill non impostato segue plan (valore risolto di models.plan, o il default
+// Balanced di plan): ritorna { raw, tierKey } per la chiave data.
+function resolveRaw(source, key) {
+  const own = source ? source[key] : undefined;
+  if (key === 'grill' && isUnset(own)) return { raw: source ? source.plan : undefined, tierKey: 'plan' };
+  return { raw: own, tierKey: key };
+}
+
 function routeClaude({ key, models, sessionModel, subagents, tierIds }) {
-  const raw = models ? models[key] : undefined;
+  const { raw, tierKey } = resolveRaw(models, key);
   if (typeof raw === 'string' && raw.trim() === INLINE_VALUE) return result({});
-  const id = stripSuffix(isUnset(raw) ? (tierIds || {})[BALANCED[key]] : raw);
+  const id = stripSuffix(isUnset(raw) ? (tierIds || {})[BALANCED[tierKey]] : raw);
   if (typeof id !== 'string' || id.trim() === '') return result({ warning: 'unknown-id' });
   const sameAsSession = sessionModel !== UNKNOWN_SESSION && id === sessionModel;
 
@@ -97,7 +107,7 @@ function routeClaude({ key, models, sessionModel, subagents, tierIds }) {
 
 function routeCodex({ key, models, sessionModel, sessionEffort, subagents }) {
   const codexModels = models && models.codex && typeof models.codex === 'object' && !Array.isArray(models.codex) ? models.codex : {};
-  const raw = codexModels[key];
+  const { raw } = resolveRaw(codexModels, key);
   if (isUnset(raw) || raw === INLINE_VALUE) return result({});
   let pin = typeof raw === 'object' ? raw : { model: raw };
   if (typeof pin.model !== 'string' || pin.model.trim() === '') return result({});
