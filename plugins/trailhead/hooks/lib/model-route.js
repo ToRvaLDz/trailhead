@@ -5,8 +5,9 @@
 // poi progetto, uniti da effectiveModels di model-defaults-review.js).
 // Per la chiave grill, un valore non impostato segue models.plan (e su Codex
 // models.codex.plan): non ha un default Balanced proprio. #323.
-// Oggi lo usa solo Grilling (techniques/grilling.md, "Who runs a round");
-// le altre chiavi seguono ancora la regola in prosa.
+// E' il router di ogni step del motore (plan, execute, fix via execute, review,
+// verify, research, debug, codebase-map, grill): il paragrafo canonico e'
+// "Route every step through model-route.js" in skills/_shared/techniques.md. #325.
 //
 // CLI:
 //   node model-route.js <key> --session <id completo|unknown> [--session-effort <e>]
