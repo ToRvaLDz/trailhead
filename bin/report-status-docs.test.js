@@ -35,16 +35,18 @@ ok('the paragraph sits next to "Reviews never block the session"',
   start !== -1 && neverBlock !== -1 && Math.abs(start - neverBlock) < 2500 && start > neverBlock);
 const para = start === -1 ? '' : techniques.slice(start, techniques.indexOf('\n| Technique |', start));
 const lc = para.toLowerCase();
+ok('an inline grill round writes no report, so it is not checked',
+  para.includes('An inline `grill` round writes no report') && lc.includes('only a dispatched `trailhead-grill` report is checked'));
 ok('the paragraph section was found and is bounded', para.length > 1000 && !para.includes('| **Grilling**'));
 
 ok('it MUST run on every engine-agent report, the two reviews included', /MUST run on every/.test(para)
   && para.includes('Code review') && para.includes('Goal-backward verification'));
 ok('it names every technique it covers',
-  ['plan', 'executor', 'fix', 'debug', 'research', 'codebase-map'].every((t) => para.includes(t)) && lc.includes('every engine-agent report'));
+  ['plan', 'executor', 'fix', 'debug', 'research', 'codebase-map', 'grill'].every((t) => para.includes(t)) && lc.includes('every engine-agent report'));
 ok('the checker line carries fields and body', para.includes('{"action","verdict","problem","report","fields","body"}'));
 ok('it covers subagent, inline and the lean inline pass', lc.includes('subagent') && lc.includes('inline') && lc.includes('lean inline pass'));
 ok('the checker command with its technique flag and a report file',
-  para.includes('node <templates>/trailhead-report-status.js --technique <verify|code-review|plan|executor|fix|debug|research|codebase-map> --file <that dir>/report.md'));
+  para.includes('node <templates>/trailhead-report-status.js --technique <verify|code-review|plan|executor|fix|debug|research|codebase-map|grill> --file <that dir>/report.md'));
 ok('the three templates dirs, in order',
   (() => {
     const a = para.indexOf('${CLAUDE_PLUGIN_ROOT}/templates/');

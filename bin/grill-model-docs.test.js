@@ -46,4 +46,36 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('A: configuration.md lists grill in the subagent list', /`research`, `review`, `debug`, `verify`, `codebase-map`, `grill`/.test(cfg));
 }
 
+// --- Parte B: grilling.md "Who runs a round" e techniques.md ---------------------------
+{
+  const grilling = read('_shared/techniques/grilling.md');
+  const techniques = read('_shared/techniques.md');
+  const at = grilling.indexOf('\n## Who runs a round');
+  ok('B: grilling.md has a Who runs a round section', at !== -1);
+  const sec = at === -1 ? '' : grilling.slice(at);
+  const has = (...needles) => needles.every((n) => sec.includes(n));
+  ok('B: the route call, with --session-effort and unknown',
+    has('model-route.js grill --session', '--session-effort', 'unknown', '--no-subagents', '--host codex'));
+  ok('B: the helper is found with the same two-path lookup as model-defaults-review.js',
+    has('../../hooks/lib/', '../trailhead/hooks/lib/', 'model-defaults-review.js'));
+  ok('B: use its agent and alias verbatim', has('use its `agent` and `alias` verbatim'));
+  ok('B: route inline with the suggest line', has('`route: inline`', '`suggest`', 'suggesting the user switch the session'));
+  ok('B: an unregistered agent runs inline', has('not registered', 'inline'));
+  ok('B: the report is checked with --technique grill', has('--technique grill'));
+  ok('B: the relay never answers on the user\'s behalf', has('relay', 'Never answer on the user\'s behalf', 'never proceed on silence'));
+  ok('B: re-dispatch with the full state', has('re-dispatch with the full state'));
+  ok('B: the orchestrator holds the review cap', has('The orchestrator caps reviews at two', 'accepted risk'));
+  ok('B: the apply/amend/keep menu is the orchestrator\'s', has('apply', 'amend', 'keep', 'AskUserQuestion'));
+  ok('B: the family-not-version note', has('the family of the resolved id, not its exact version'));
+  ok('B: an inline round writes no report', has('An inline round writes no report'));
+  ok('B: Codex semantics', has('unset `models.codex.grill` inherits the session model', 'equal to the session model'));
+  ok('B: the protocol bullets above stay the agent\'s protocol', grilling.indexOf('Holistic review before the final confirmation') < at);
+
+  const dispatch = techniques.split('\n')[4] || '';
+  ok('B: techniques.md dispatch list maps Grilling to trailhead-grill', /Grilling → `trailhead-grill`/.test(dispatch));
+  ok('B: techniques.md read-only list includes trailhead-grill', /\*\*read-only\*\*[^)]*`trailhead-grill`/.test(dispatch));
+  const row = techniques.split('\n').find((l) => l.startsWith('| **Grilling** |')) || '';
+  ok('B: the Grilling index row names models.grill', row.includes('`models.grill`'));
+}
+
 console.log(`grill-model-docs.test.js: ${passed} checks passed`);
