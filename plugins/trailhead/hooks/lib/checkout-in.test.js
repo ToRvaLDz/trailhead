@@ -5,7 +5,8 @@
 // Layers covered:
 //   1. The pure token helpers: encode / decode round-trip.
 //   2. The CLI against real temp git repos: invalid, here, move, the `cd` field.
-//   3. The protocol contract: the work skill moves before it loads or preflights.
+//   3. The remote fallback (#329): a missing path plus a repo in the token.
+//   4. The protocol contract: the work skill moves before it loads or preflights.
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -26,17 +27,20 @@ const sh = (cwd, ...args) => {
   assert.strictEqual(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
   return r.stdout;
 };
-function makeRepo(dir) {
+function makeRepo(dir, origin) {
   fs.mkdirSync(dir, { recursive: true });
   sh(dir, 'init', '-q', '-b', 'main');
   sh(dir, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init');
+  if (origin) sh(dir, 'remote', 'add', 'origin', origin);
   return fs.realpathSync(dir);
 }
-const run = (inArg, cwd) => {
-  const r = spawnSync(process.execPath, [scriptPath, '--in', inArg, '--cwd', cwd], { encoding: 'utf8' });
+const run = (inArg, cwd, roots) => {
+  const extra = roots ? ['--roots', roots.join(':')] : [];
+  const r = spawnSync(process.execPath, [scriptPath, '--in', inArg, '--cwd', cwd, ...extra], { encoding: 'utf8' });
   return { code: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout.trim()) : null, err: r.stderr };
 };
-const tokenOf = (p) => encodeIn(p).slice('--in='.length);
+const fresh = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recursive: true }); return fs.realpathSync(d); };
+const tokenOf = (p, repo) => encodeIn(p, repo).slice('--in='.length);
 
 // --- 1. pure helpers ---------------------------------------------------------------
 const odd = [
@@ -51,10 +55,28 @@ const odd = [
 for (const p of odd) {
   const enc = encodeIn(p);
   ok(`token shape ${p}`, /^--in=[A-Za-z0-9_-]+$/.test(enc));
-  eq(`round-trip ${p}`, decodeIn(enc.slice(5)), p);
+  eq(`round-trip ${p}`, decodeIn(enc.slice(5)), { path: p, repo: null });
 }
 eq('decode of garbage', decodeIn('!!!'), null);
 eq('decode of empty', decodeIn(''), null);
+
+// Two-part token: path + host/owner/name.
+{
+  const enc = encodeIn('/w/with space/r', 'github.com/o/r');
+  ok('two-part shape', /^--in=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(enc));
+  eq('two-part round-trip', decodeIn(enc.slice(5)), { path: '/w/with space/r', repo: 'github.com/o/r' });
+  eq('encodeIn without a repo stays one part', encodeIn('/r'), `--in=${Buffer.from('/r').toString('base64url')}`);
+  // An old helper (#312) only accepts [A-Za-z0-9_-]+: a two-part token is invalid there, so the rollout fails closed.
+  ok('an old helper shape check rejects a two-part token', !/^[A-Za-z0-9_-]+$/.test(enc.slice(5)));
+  const b = (s) => Buffer.from(s).toString('base64url');
+  eq('extra separator is malformed', decodeIn(`${b('/r')}.${b('github.com/o/r')}.${b('x')}`), null);
+  eq('invalid base64url in the path part', decodeIn(`!!.${b('github.com/o/r')}`), null);
+  eq('invalid base64url in the repo part', decodeIn(`${b('/r')}.!!`), null);
+  eq('empty repo part', decodeIn(`${b('/r')}.`), null);
+  eq('empty path part', decodeIn(`.${b('github.com/o/r')}`), null);
+  eq('repo part without a host is malformed', decodeIn(`${b('/r')}.${b('owner/name')}`), null);
+  eq('repo part that is not host/path is malformed', decodeIn(`${b('/r')}.${b('justone')}`), null);
+}
 
 // --- 2. CLI ------------------------------------------------------------------------
 const main = makeRepo(path.join(tmp, 'main repo'));
@@ -145,7 +167,41 @@ fs.mkdirSync(plain);
   }
 }
 
-// --- 3. protocol contract: the move comes before anything else -----------------------
+// --- 3. remote fallback (#329): roots are always explicit, the real home is never scanned ---
+{
+  const REPO = 'github.com/o/r';
+  const gone = path.join(tmp, 'moved-away', 'r');
+  const roots = fresh('relocate-roots');
+  const found = makeRepo(path.join(roots, 'r'), 'git@github.com:o/r.git');
+  makeRepo(path.join(roots, 'unrelated'), 'https://github.com/o/other');
+
+  const mv = run(tokenOf(gone, REPO), other, [roots]);
+  eq('missing path + repo moves to the matching repo', [mv.code, mv.out.status, mv.out.path, mv.out.relocatedFrom], [0, 'move', found, gone]);
+  ok('the relocated move carries a cd', mv.out.cd === `cd -- '${found}'`);
+  const here = run(tokenOf(gone, REPO), found, [roots]);
+  eq('here when cwd is the found repo', [here.out.status, here.out.path, here.out.relocatedFrom], ['here', found, gone]);
+
+  const two = fresh('relocate-two');
+  const t1 = makeRepo(path.join(two, 'a'), 'https://github.com/o/r');
+  const t2 = makeRepo(path.join(two, 'b'), 'https://github.com/o/r');
+  const ch = run(tokenOf(gone, REPO), other, [two]);
+  eq('two matches -> choose', [ch.out.status, ch.out.path], ['choose', gone]);
+  eq('choose lists both candidates', ch.out.candidates, [{ path: t1, kind: 'main' }, { path: t2, kind: 'main' }]);
+  ok('choose has a reason and no cd', typeof ch.out.reason === 'string' && ch.out.reason.length > 0 && !('cd' in ch.out));
+
+  const none = run(tokenOf(gone, 'github.com/x/y'), other, [roots]);
+  eq('no match -> invalid', none.out.status, 'invalid');
+  ok('invalid names the repo', none.out.reason.includes('github.com/x/y'));
+  eq('one-part token with a missing path stays invalid', run(tokenOf(gone), other, [roots]).out.status, 'invalid');
+  fs.mkdirSync(path.join(found, 'sub'));
+  eq('an existing non-root path with a repo is invalid, no relocation', run(tokenOf(path.join(found, 'sub'), REPO), other, [roots]).out.status, 'invalid');
+  eq('a relative path with a repo is invalid without a search', run(tokenOf('rel/r', REPO), other, [roots]).out.status, 'invalid');
+  eq('an existing path ignores the repo', run(tokenOf(main, REPO), other, [roots]).out.path, main);
+  eq('no relocatedFrom on a plain move', 'relocatedFrom' in run(tokenOf(main, REPO), other, [roots]).out, false);
+  eq('a malformed two-part token is invalid', run(`${tokenOf(gone)}.!!`, other, [roots]).out.status, 'invalid');
+}
+
+// --- 4. protocol contract: the move comes before anything else -----------------------
 {
   const skill = fs.readFileSync(skillPath, 'utf8');
   const move = skill.indexOf('## Move into the handed checkout');
