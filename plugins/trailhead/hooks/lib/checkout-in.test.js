@@ -222,6 +222,12 @@ fs.mkdirSync(plain);
   ok('stops when the post-check is not here', /could not move/.test(section));
   ok('stops when the helper is missing', /missing[^.]*stop|stop[^.]*missing/i.test(section));
   ok('never moves by hand', /by hand/.test(section));
+  ok('has a choose branch that asks', /`choose`/.test(section) && /AskUserQuestion/.test(section));
+  ok('choose never picks by hand', /never pick one by hand/.test(section));
+  ok('choose re-checks for here', /original `--in` token/.test(section) && /could not move/.test(section));
+  ok('relocatedFrom gets a result-oriented line', /`relocatedFrom`[^.]*moved/.test(section));
+  const subs = fs.readFileSync(path.resolve(__dirname, '..', '..', 'skills', '_shared', 'substrate-commands.md'), 'utf8');
+  ok('substrate documents the finder', /## Find a checkout by its remote/.test(subs) && subs.includes('trailhead-checkout-find.js'));
   ok('Routing points at the move section', /Routing[\s\S]*Move into the handed checkout/.test(skill.slice(skill.indexOf('## Routing'))));
 }
 

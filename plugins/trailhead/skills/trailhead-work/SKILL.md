@@ -9,14 +9,16 @@ argument-hint: "[work|quick|pause|resume|split|auto] [ticket | \"text\" | note]"
 
 ## Move into the handed checkout (`--in=`)
 
-The panel starts `work` and `resume` from wherever the session stands and cannot move it, so it appends the pinned checkout to the args as a last word `--in=<token>` (base64url of the checkout root). When the args of `work` or `resume` end with such a word, this section runs first, before the load, the Preflight and anything else; with no such word it does not apply. `quick` never gets one.
+The panel starts `work` and `resume` from wherever the session stands and cannot move it, so it appends the pinned checkout to the args as a last word `--in=<token>` (base64url of the checkout root, plus the repo identity when the panel knows it). When the args of `work` or `resume` end with such a word, this section runs first, before the load, the Preflight and anything else; with no such word it does not apply. `quick` never gets one.
 
 1. Drop the `--in=<token>` word from the args: the verb, and its ticket number if any, are what is left.
 2. Run `node <templates>/trailhead-checkout-in.js --in <token> --cwd "$PWD"`. `<templates>` is the first of `${CLAUDE_PLUGIN_ROOT}/templates/`, `${CLAUDE_CONFIG_DIR:-~/.claude}/trailhead/templates/`, `~/.codex/skills/trailhead/templates/` that contains the script (the same lookup as `trailhead-work-state.js`: try all three in order, skipping the first when `CLAUDE_PLUGIN_ROOT` is unset or empty). It prints one JSON line with a `status`. If the script is missing (none of the three has it: an outdated install), stop and report that the checkout could not be reached and the install needs an update: nothing is claimed, and never move by hand.
-3. `invalid` -> stop and report its `reason` in one line; never move, never look for another checkout.
+3. `invalid` -> stop and report its `reason` in one line; never move, never look for another checkout by hand.
 4. `here` -> the session is already in the checkout: no move, carry on with the args from step 1.
 5. `move` -> run the helper's `cd` field verbatim as its own Bash call (a lone `cd` is what moves the session; never join it to a read or another command, and never edit the quoting). A failed `cd` stops the verb with a report. Then re-run the helper with the new `$PWD` and require `here`; anything else means the session could not move: stop and report that, with nothing claimed.
-6. After a move, say in one result-oriented line which checkout the session is now working in, then continue with **Load first** and, for an explicit ticket number, the Preflight.
+6. `choose` -> the handed path is gone and several checkouts of the repo match its remote (`candidates`, each with a `kind` of `main` or `linked`). Ask with AskUserQuestion, one option per candidate path (say which is a linked worktree), never pick one by hand. Then run `cd -- '<chosen path>'` (single-quote-escaped like the helper's own `cd` field) as its own Bash call and re-run the helper with the new `$PWD` and the original `--in` token; if it does not answer `here`, stop and report that the session could not move. A failed `cd` stops the verb.
+7. When the result carries `relocatedFrom` (the checkout was found again by its remote after it moved), say in one result-oriented line that the checkout moved and which one the session now works in; that line replaces the generic one of step 8.
+8. After a move, say in one result-oriented line which checkout the session is now working in, then continue with **Load first** and, for an explicit ticket number, the Preflight.
 
 ## Load first, in order
 
