@@ -47,7 +47,10 @@ for (const rel of referrers) {
 
 // Capture e UAT seguono la stessa regola
 const capture = read(`${SK}/trailhead-capture/references/capture.md`);
-ok('capture: a mid-ticket capture follows surfaced-scope.md', /\*\*A capture fired mid-ticket\*\*[^\n]*surfaced-scope\.md/.test(capture));
+// #330: capture.md no longer links the full core; it states the routing inline and
+// capture-core.md carries drift markers on the surfaced-scope.md rules it restates.
+ok('capture: a mid-ticket capture states the surfaced-scope routing inline', /\*\*A capture fired mid-ticket\*\*[^\n]*the current map[^\n]*Surfaced from:/.test(capture));
+ok('capture-core: surfaced-scope.md rules are drift-stamped', /<!-- core: surfaced-scope\.md \|/.test(read(`${SK}/_shared/capture-core.md`)));
 const uat = read(`${SK}/_shared/techniques/acceptance-testing.md`);
 ok('uat: the failing-step follow-up lands per surfaced-scope.md', /On a failing step[^\n]*surfaced-scope\.md/.test(uat));
 

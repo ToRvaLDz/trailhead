@@ -239,7 +239,9 @@ ok('codex: trailhead-work/../_shared/substrate.md resolves', fs.existsSync(path.
 ok('codex: _shared/load-first.md projected', fs.existsSync(path.join(codexDir, 'skills', '_shared', 'load-first.md')));
 for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
   ok(`codex: ${cl}/../_shared/load-first.md resolves as a sibling`, fs.existsSync(path.join(codexDir, 'skills', cl, '..', '_shared', 'load-first.md')));
-  ok(`codex: ${cl} SKILL.md references ../_shared/load-first.md`, fs.readFileSync(path.join(codexDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('../_shared/load-first.md'));
+  // #330: the capture cluster loads the compact capture-core.md instead.
+  const want = cl === 'trailhead-capture' ? '../_shared/capture-core.md' : '../_shared/load-first.md';
+  ok(`codex: ${cl} SKILL.md references ${want}`, fs.readFileSync(path.join(codexDir, 'skills', cl, 'SKILL.md'), 'utf8').includes(want));
 }
 // Source-level anti-drift: the shared core-list signature line lives ONLY in
 // _shared/load-first.md, never duplicated back into a cluster SKILL.md.
@@ -298,7 +300,8 @@ ok('source: load-first.md references ../_shared/ticket-language.md', loadFirstSo
 const ticketLangAutoSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-work', 'references', 'auto.md'), 'utf8');
 const ticketLangCaptureSource = fs.readFileSync(path.join(sourceSkillsDir, 'trailhead-capture', 'references', 'capture.md'), 'utf8');
 ok('source: auto.md references ticket-language.md', ticketLangAutoSource.includes('ticket-language.md'));
-ok('source: capture.md references ticket-language.md', ticketLangCaptureSource.includes('ticket-language.md'));
+// #330: capture.md points at the compact capture-core.md, which is drift-stamped against ticket-language.md.
+ok('source: capture.md references capture-core.md for the ticket language', ticketLangCaptureSource.includes('ticket language rule in `capture-core.md`') && /<!-- core: ticket-language\.md \|/.test(fs.readFileSync(path.join(sourceSkillsDir, '_shared', 'capture-core.md'), 'utf8')));
 // Source-level anti-drift: the substantive decoupling clause lives in EXACTLY
 // one file across the whole skills tree, _shared/ticket-language.md. A global
 // single-occurrence scan (not an enumerated per-file list) so any future doc
@@ -1126,7 +1129,8 @@ ok('claude: cluster ../_shared/ reference resolves', fs.existsSync(path.join(cla
 ok('claude: skills/_shared/load-first.md exists', fs.existsSync(path.join(claudeDir, 'skills', '_shared', 'load-first.md')));
 ok('claude: trailhead-work/../_shared/load-first.md resolves', fs.existsSync(path.join(claudeDir, 'skills', 'trailhead-work', '..', '_shared', 'load-first.md')));
 for (const cl of ['trailhead', 'trailhead-chart', 'trailhead-work', 'trailhead-view', 'trailhead-capture', 'trailhead-manage']) {
-  ok(`claude: ${cl} SKILL.md references ../_shared/load-first.md`, fs.readFileSync(path.join(claudeDir, 'skills', cl, 'SKILL.md'), 'utf8').includes('../_shared/load-first.md'));
+  const want = cl === 'trailhead-capture' ? '../_shared/capture-core.md' : '../_shared/load-first.md';
+  ok(`claude: ${cl} SKILL.md references ${want}`, fs.readFileSync(path.join(claudeDir, 'skills', cl, 'SKILL.md'), 'utf8').includes(want));
 }
 
 // #146: single-sourced ticket-language directive, projected on Claude too.
