@@ -186,6 +186,21 @@ function labelGuardNotice(cwd) {
   }
 }
 
+// Preflight dell'auth di gh (#328): un GH_TOKEN/GITHUB_TOKEN non valido che
+// oscura il login gh funzionante fa fallire ogni chiamata gh; lo segnaliamo
+// una volta, all'avvio (la lib salta resume e compact). Come reviewNotice: il
+// require e' nel try, ogni errore -> null.
+function authNotice(input) {
+  try {
+    return require('./lib/gh-auth-preflight.js').check({
+      env: process.env,
+      source: input && typeof input.source === 'string' ? input.source : undefined,
+    }) || null;
+  } catch {
+    return null;
+  }
+}
+
 // Legge il JSON di SessionStart da stdin in modo asincrono, con timeout, come
 // gli altri hook: una lettura sincrona di fd 0 si bloccherebbe per sempre su
 // un TTY o su una pipe mai chiusa. Su TTY o input assente si prosegue con {}.
@@ -212,11 +227,12 @@ function readInput(done) {
 function main(input) {
   const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
 
+  const auth = authNotice(input);
   const review = reviewNotice(cwd);
   const guard = labelGuardNotice(cwd);
   const update = updateNotice();
 
-  const parts = [review, guard, update].filter(Boolean);
+  const parts = [auth, review, guard, update].filter(Boolean);
   if (!parts.length) return;
 
   process.stdout.write(JSON.stringify({
