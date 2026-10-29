@@ -1,7 +1,10 @@
 # Debug (scientific method)
+
+**First, route it.** Run `node <hooks>/lib/model-route.js debug --session <your full model id> <project root>` and obey its `route`. Your full model id is in your system prompt or environment ("The exact model ID is ..."); pass `unknown` only if it is truly absent. Obey it exactly: never decide inline versus dispatch by hand, never read the config yourself to decide. On `route: dispatch` spawn the `agent` it returns with model `alias` (`agent_type=<agent>` on Codex) and use its report; on `route: inline` run the protocol below in the session. Finding `<hooks>`, the flags and the two exceptions are in **Route every step through model-route.js** in `../techniques.md`. (If you are the `trailhead-debug` agent, skip this gate: you are the dispatched step.)
+
 A bug is a science problem: observe, hypothesize, test, confirm, verify. Never patch on a hunch: an unconfirmed fix is a guess that recurs. Treat the issue as persistent debug state: log every hypothesis, test, and eliminated cause as comments, so a context reset never restarts the investigation.
 
-When run as a subagent, dispatch the **`trailhead-debug`** agent (full tools: it adds instrumentation and regression tests, so it needs Write), passing `config.models.debug` as the model override; **never** an external-plugin debugger agent that another installed tool registered.
+When run as a subagent (`route: dispatch`), it is the **`trailhead-debug`** agent (full tools: it adds instrumentation and regression tests, so it needs Write), with the route's `alias` as the model override; **never** an external-plugin debugger agent that another installed tool registered.
 
 **Report.** The agent returns an investigating report (`Return contract` in its definition): `answer:` the confirmed cause stated as a falsifiable hypothesis, `evidence:` the falsification test and its result, `open questions:` what stays unsettled. It never commits or creates a branch: the orchestrator turns the report into the `DIAGNOSIS`.
 
