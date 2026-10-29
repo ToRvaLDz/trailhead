@@ -403,6 +403,7 @@ module.exports = {
   globalConfigDir,
   globalConfigFile,
   globalAckFile,
+  loadGlobalConfig,
   readAckFile,
   writeAckFile,
   readAck,

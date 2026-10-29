@@ -60,6 +60,11 @@ const MODEL_DEFAULTS_LIB_CANDIDATES = [
   '../trailhead/hooks/lib/model-defaults-review.js',
 ];
 function assertModelDefaultsLibLayout(label, sharedDir) {
+  // #323: model-route.js is resolved with the same two-path lookup (grilling.md).
+  const routeResolved = MODEL_DEFAULTS_LIB_CANDIDATES
+    .map((c) => path.join(sharedDir, c.replace('model-defaults-review.js', 'model-route.js')))
+    .find((p) => fs.existsSync(p));
+  ok(`${label}: documented model-route.js lib path resolves`, !!routeResolved);
   const resolved = MODEL_DEFAULTS_LIB_CANDIDATES
     .map((c) => path.join(sharedDir, c))
     .find((p) => fs.existsSync(p));
@@ -941,6 +946,8 @@ ok('codex: skills/trailhead/hooks/lib/body-sources.js exists (secret-guard requi
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'body-sources.js')));
 ok('codex: skills/trailhead/hooks/lib/unmodelled.js exists (guards require target, #227)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'unmodelled.js')));
+ok('codex: skills/trailhead/hooks/lib/model-route.js exists (grilling routing helper, #323)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-route.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'model-defaults-review.js')));
 ok('codex: skills/trailhead/hooks/lib/model-defaults.json exists (#186)',
@@ -1128,6 +1135,8 @@ ok('claude: hooks/lib/body-sources.js exists (secret-guard require target, #210)
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'body-sources.js')));
 ok('claude: hooks/lib/unmodelled.js exists (guards require target, #227)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'unmodelled.js')));
+ok('claude: hooks/lib/model-route.js exists (grilling routing helper, #323)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-route.js')));
 ok('claude: hooks/lib/model-defaults-review.js exists (check-update require target, #186)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'model-defaults-review.js')));
 ok('claude: hooks/lib/model-defaults.json exists (#186)',
