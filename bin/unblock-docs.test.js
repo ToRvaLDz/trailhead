@@ -22,7 +22,10 @@ const resolveLine = (section) => {
 };
 const unblockClause = (line) => {
   const i = line.indexOf('**Unblock dependents');
-  return i < 0 ? '' : line.slice(i, i + 1200);
+  if (i < 0) return '';
+  // the clause ends at the next bold step (the handoff), not at a fixed window
+  const end = line.indexOf('**Session handoff**', i);
+  return line.slice(i, end < 0 ? undefined : end);
 };
 
 for (const section of ['## `build`', '## `bug`']) {
@@ -32,6 +35,9 @@ for (const section of ['## `build`', '## `bug`']) {
   ok(`engines ${section}: names the helper`, clause.includes(HELPER));
   ok(`engines ${section}: applies to map and whiteboard tickets alike`, /whiteboard/.test(clause) && /map/.test(clause));
   ok(`engines ${section}: keeps the by-hand fallback`, clause.includes('--remove-label "trailhead:blocked"'));
+  ok(`engines ${section}: independent of the map-only Decisions so far update`, /independent of the map-only `Decisions so far` update/.test(clause));
+  ok(`engines ${section}: runs right after the close`, /^\*\*Unblock dependents[^*]*\*\*\s*Right after the close/.test(clause) && line.indexOf('gh issue close') < line.indexOf('**Unblock dependents'));
+  ok(`engines ${section}: fallback names the blocked_by endpoint`, clause.includes('dependencies/blocked_by'));
 }
 
 const step5 = (/^5\. Record the resolution.*$/m.exec(work) || [''])[0];

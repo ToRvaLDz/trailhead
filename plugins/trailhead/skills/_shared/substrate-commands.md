@@ -68,7 +68,7 @@ Wire all three in the same pass; a ticket carrying only one or two has drifted. 
 
 Same-blocker rule: all three must name the SAME blocker ticket, never a superseded parent, a split-origin, or a by-role placeholder ("child A"). Write the prose line and the native dependency from the same id, in the same pass, so they cannot point at different tickets.
 
-Unblock: remove the label from every dependent the moment its last blocker closes, for map and whiteboard tickets alike. Default path: `node <templates>/trailhead-unblock.js --issue <n> --repo <owner/name>` (`<n>` is the ticket just closed). By hand, when the helper is missing or errors, per dependent:
+Unblock: remove the label from every dependent the moment its last blocker closes, for map and whiteboard tickets alike. Default path: `node <templates>/trailhead-unblock.js --issue <n> --repo <owner/name>` (`<n>` is the ticket just closed). By hand, when the helper is missing or errors: for each open dependent carrying `trailhead:blocked` in `gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocking`, read `gh api repos/{owner}/{repo}/issues/<dep>/dependencies/blocked_by`, and when every blocker there is closed:
 ```bash
 gh issue edit <dep> --remove-label "trailhead:blocked"
 ```
