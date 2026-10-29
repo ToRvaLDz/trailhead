@@ -988,8 +988,15 @@ const noPinFixTomlPath = path.join(codexAgentsDirPath, 'trailhead-fix.toml');
 const noPinMapTomlPath = path.join(codexAgentsDirPath, 'trailhead-codebase-map.toml');
 ok('codex: trailhead-fix.toml is projected with no models.codex.* set', fs.existsSync(noPinFixTomlPath));
 ok('codex: trailhead-codebase-map.toml is projected with no models.codex.* set', fs.existsSync(noPinMapTomlPath));
-ok('codex: trailhead-fix.toml is pin-less (no model = line) with no models.codex.* set',
-  fs.existsSync(noPinFixTomlPath) && !/^model = /m.test(fs.readFileSync(noPinFixTomlPath, 'utf8')));
+// #325: fix non ha chiave propria, porta lo stesso pin di execute (la config del
+// repo puo' impostarlo, quindi si confrontano le due righe model, qualunque sia).
+const modelLine325 = (f) => (fs.readFileSync(f, 'utf8').match(/^model = .*$/m) || [''])[0];
+const effortLine325 = (f) => (fs.readFileSync(f, 'utf8').match(/^model_reasoning_effort = .*$/m) || [''])[0];
+const executeTomlPath325 = path.join(codexAgentsDirPath, 'trailhead-execute.toml');
+ok('codex: trailhead-fix.toml carries the same model pin as trailhead-execute.toml (fix tracks execute, #325)',
+  fs.existsSync(noPinFixTomlPath) && fs.existsSync(executeTomlPath325) &&
+  modelLine325(noPinFixTomlPath) === modelLine325(executeTomlPath325) &&
+  effortLine325(noPinFixTomlPath) === effortLine325(executeTomlPath325));
 
 assertModelDefaultsLibLayout('codex copy', path.join(codexDir, 'skills', '_shared'));
 
