@@ -1011,7 +1011,7 @@ ok('codex copy: templates is a regular dir (not a symlink)',
 assertModelDefaultsLibLayout('codex symlink', path.join(codexSymDir, 'skills', '_shared'));
 
 // --- codex agent TOML projection (#38, #88) -------------------------------------
-// With NO models.codex.* set, a codex install still projects all 8 agents
+// With NO models.codex.* set, a codex install still projects all 9 agents
 // uniformly, pin-less (uniform projection, #88), never zero. Install from an
 // isolated cwd whose .trailhead/config.json sets no models.codex.*, not
 // repoRoot (whose own config now pins models.codex.*, so it would project
@@ -1024,11 +1024,11 @@ fs.writeFileSync(
 );
 const unsetCodexHomeDir = mktmp();
 runInstaller([`--codex`, `--dir=${unsetCodexHomeDir}`], { cwd: unsetProjectDir });
-ok('codex: all 8 trailhead-*.toml exist under agents/ even with models.codex.* unset', (() => {
+ok('codex: all 9 trailhead-*.toml exist under agents/ even with models.codex.* unset', (() => {
   const dir = path.join(unsetCodexHomeDir, 'agents');
   if (!fs.existsSync(dir)) return false;
   const tomls = fs.readdirSync(dir).filter((f) => /^trailhead-.*\.toml$/.test(f));
-  return tomls.length === 8;
+  return tomls.length === 9;
 })());
 ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (() => {
   const dir = path.join(unsetCodexHomeDir, 'agents');
@@ -1037,7 +1037,7 @@ ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (()
 })());
 
 // #250: the reviewing block (single source scripts/agent-blocks.md) is projected
-// verbatim into the two reviewing agents' TOMLs and into none of the other six.
+// verbatim into the two reviewing agents' TOMLs and into none of the other seven.
 {
   const sync250 = require(path.join(repoRoot, 'scripts', 'sync-agent-blocks.js'));
   const reviewingBlock250 = sync250.parseSource(fs.readFileSync(path.join(repoRoot, 'scripts', 'agent-blocks.md'), 'utf8')).reviewing;
@@ -1045,7 +1045,7 @@ ok('codex: every trailhead-*.toml is pin-less when models.codex.* is unset', (()
   const agentsDir250 = path.join(unsetCodexHomeDir, 'agents');
   const reviewingNames250 = new Set(['trailhead-verify', 'trailhead-review']); // the code-review agent projects as trailhead-review.toml
   const tomls250 = fs.readdirSync(agentsDir250).filter((f) => /^trailhead-.*\.toml$/.test(f));
-  ok('#250: all 8 TOMLs are checked', tomls250.length === 8);
+  ok('#250: all 9 TOMLs are checked', tomls250.length === 9);
   for (const f of tomls250) {
     const name = f.replace(/\.toml$/, '');
     const text = fs.readFileSync(path.join(agentsDir250, f), 'utf8');
@@ -1185,7 +1185,7 @@ ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFile
 // falls back to running inline on the session model, so the per-technique
 // config.models.* split silently never applies.
 const claudeAgentsDir = path.join(claudeDir, 'agents');
-const expectedAgents = ['trailhead-plan', 'trailhead-executor', 'trailhead-research', 'trailhead-code-review', 'trailhead-debug', 'trailhead-fix', 'trailhead-codebase-map'];
+const expectedAgents = ['trailhead-plan', 'trailhead-executor', 'trailhead-research', 'trailhead-code-review', 'trailhead-debug', 'trailhead-fix', 'trailhead-codebase-map', 'trailhead-grill'];
 for (const a of expectedAgents) {
   ok(`claude: agents/${a}.md placed`, fs.existsSync(path.join(claudeAgentsDir, `${a}.md`)));
 }

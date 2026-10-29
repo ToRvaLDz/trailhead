@@ -217,6 +217,9 @@ const frows = [
   ['codebase-map needs_input with questions', 'codebase-map', 'status: needs_input\nanswer: partial\nevidence: a.js:1\nopen questions: which root?\n', ['accept', 'needs_input', null, null, null]],
   ['plan ready, body is the rest', 'plan', 'status: ready\n\n## Steps\n1. a\n2. b\n\nVerification: x\n', ['accept', 'ready', null, {}, '## Steps\n1. a\n2. b\n\nVerification: x']],
   ['plan needs_input', 'plan', 'status: needs_input\nquestions:\n1. Which db?\n2. Keep v1?\n', ['accept', 'needs_input', null, { questions: '1. Which db?\n2. Keep v1?' }, null]],
+  ['grilling question round', 'grill', 'status: question\nsettled: none\nfrontier: Q1, Q2\nquestion: 1. Which db?\nrecommended: A\nWeak point: it costs more.\namendments: none\nconflicts: none\n', ['accept', 'question', null,
+    { settled: 'none', frontier: 'Q1, Q2', question: '1. Which db?', recommended: 'A\nWeak point: it costs more.', amendments: 'none', conflicts: 'none' }, null]],
+  ['grilling review round', 'grill', 'status: review\nsettled: Q1 A, because x\nfrontier: none\namendments: Q1: tighten the wording\nconflicts: Q1 vs Q2: reconcile them. Weak point: none\n', ['accept', 'review', null, null, null]],
   // --- normalise: layout, fields intact ---
   ['bold label and token, bullets', EX, '**Status:** DONE\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- blockers: none\n', ['normalise', 'done', null,
     { commits: 'abc1234 feat: x', tests: 'ok', deviations: 'none', blockers: 'none' }, null,
@@ -253,6 +256,14 @@ const frows = [
     'A feature about statuses:\n```\nstatus: pending\n```\nDone.']],
   ['a blockquoted status line inside an answer is ignored', 'research', 'status: found\nanswer: see\n> status: pending\nevidence: e\nopen questions: none\n', ['accept', 'found', null, null, null]],
   ['prose after the last field becomes its value, so a done report reasks', EX, fullImpl('done', 'none', 'Note: hi\n'), ['reask', null, 'fields']],
+  ['grilling question without recommended', 'grill', 'status: question\nsettled: none\nfrontier: Q1\nquestion: 1. Which db?\namendments: none\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling question with an empty question', 'grill', 'status: question\nsettled: none\nfrontier: Q1\nquestion: none\nrecommended: A\namendments: none\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling question with conflicts', 'grill', 'status: question\nsettled: none\nfrontier: Q1\nquestion: 1. Which db?\nrecommended: A\namendments: none\nconflicts: Q1 vs Q2\n', ['reask', null, 'fields']],
+  ['grilling question with amendments', 'grill', 'status: question\nsettled: none\nfrontier: Q1\nquestion: 1. Which db?\nrecommended: A\namendments: Q1: x\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling review with a frontier', 'grill', 'status: review\nsettled: Q1 A\nfrontier: Q2\namendments: none\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling review with a question', 'grill', 'status: review\nsettled: Q1 A\nfrontier: none\nquestion: 2. More?\namendments: none\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling review without amendments', 'grill', 'status: review\nsettled: Q1 A\nfrontier: none\nconflicts: none\n', ['reask', null, 'fields']],
+  ['grilling: ready is an unknown token', 'grill', 'status: ready\nsettled: none\nfrontier: none\namendments: none\nconflicts: none\n', ['reask', null, 'unknown-token']],
   ['the same label twice', EX, fullImpl('done', 'none', 'tests: again\n'), ['reask', null, 'fields']],
 ];
 for (const [name, technique, input, expected] of frows) {
@@ -289,6 +300,13 @@ for (const [name, technique, input, expected] of frows) {
   ok('a report with an unterminated fence still parses its leading fields', checkReport('status: found\nanswer: a\nevidence: e\nopen questions: none\n```\nx', 'research').action === 'accept');
 }
 
+{
+  const r = checkReport('status: review\nsettled: Q1 A\nfrontier: none\namendments: none\nconflicts: none\n', 'grill');
+  ok('grill: Weak point is not a field label and body is null', r.body === null && !('weak point' in r.fields));
+  const q = checkReport('status: question\nsettled: none\nfrontier: Q1\nquestion: 1. Which?\nrecommended: A\nWeak point: x\nWeak point: y\namendments: none\nconflicts: none\n', 'grill');
+  ok('grill: two Weak point lines do not trigger a reask', q.action === 'accept' && q.body === null);
+}
+
 // --- misuse ---------------------------------------------------------------------
 ok('checkReport: unknown technique throws', (() => { try { checkReport('status: met', 'bogus'); } catch (e) { return true; } return false; })());
 ok('checkReport: missing technique throws', (() => { try { checkReport('status: met'); } catch (e) { return true; } return false; })());
@@ -317,7 +335,7 @@ ok('vocabulary: code-review tokens equal the ones code-review.md defines',
     const [lhs, rhs] = l.split('=>');
     return { when: [...lhs.matchAll(/`([^`]+)`/g)].map((m) => m[1]), field: /`([^`]+)`/.exec(rhs)[1], rule: /(non-empty|none)\.$/.exec(rhs)[1] };
   });
-  for (const family of ['implementing', 'investigating', 'plan']) {
+  for (const family of ['implementing', 'investigating', 'plan', 'grilling']) {
     const block = blocks[family];
     ok(`contracts: source defines the ${family} block`, typeof block === 'string');
     ok(`contracts: ${family} tokens equal the source`, JSON.stringify(CONTRACTS[family].tokens) === JSON.stringify(words(block, 'statuses')));

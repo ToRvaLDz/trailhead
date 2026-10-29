@@ -470,16 +470,16 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   const shared = parseSource(fs.readFileSync(path.join(__dirname, '../../scripts/agent-blocks.md'), 'utf8'));
   const agentsDir = path.join(__dirname, '../../plugins/trailhead/agents');
   const files = fs.readdirSync(agentsDir).filter((f) => /^trailhead-.*\.md$/.test(f));
-  ok('projection boundaries: found the eight real agents', files.length === 8);
+  ok('projection boundaries: found the nine real agents', files.length === 9);
   ok('projection boundaries: source has common and implementing blocks', !!shared.common && !!shared.implementing);
   // #249: every agent's projected TOML carries exactly its family block, whole.
   const familyOf = {
     'trailhead-verify': 'reviewing', 'trailhead-code-review': 'reviewing',
     'trailhead-executor': 'implementing', 'trailhead-fix': 'implementing',
     'trailhead-debug': 'investigating', 'trailhead-research': 'investigating', 'trailhead-codebase-map': 'investigating',
-    'trailhead-plan': 'plan',
+    'trailhead-plan': 'plan', 'trailhead-grill': 'grilling',
   };
-  const families = ['reviewing', 'implementing', 'investigating', 'plan'];
+  const families = ['reviewing', 'implementing', 'investigating', 'plan', 'grilling'];
   ok('projection boundaries: source has every family block', families.every((f) => !!shared[f]));
   for (const f of files) {
     const name = f.slice(0, -3);

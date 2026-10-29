@@ -20,7 +20,7 @@ const path = require('path');
 const SOURCE_PATH = path.join(__dirname, 'agent-blocks.md');
 const AGENTS_DIR = path.resolve(__dirname, '..', 'plugins', 'trailhead', 'agents');
 
-const FAMILY_NAMES = Object.freeze(['reviewing', 'implementing', 'investigating', 'plan']);
+const FAMILY_NAMES = Object.freeze(['reviewing', 'implementing', 'investigating', 'plan', 'grilling']);
 
 // Agent name -> family. A family with no block in the source gets `common` only.
 const FAMILIES = Object.freeze({
@@ -32,6 +32,7 @@ const FAMILIES = Object.freeze({
   'trailhead-research': 'investigating',
   'trailhead-codebase-map': 'investigating',
   'trailhead-plan': 'plan',
+  'trailhead-grill': 'grilling',
 });
 
 const openMarker = (name) => `<!-- trailhead:agent-block ${name} -->`;

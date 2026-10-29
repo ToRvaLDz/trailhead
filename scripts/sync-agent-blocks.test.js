@@ -114,7 +114,8 @@ ok('family mapping matches the design',
   FAMILIES['trailhead-verify'] === 'reviewing' && FAMILIES['trailhead-code-review'] === 'reviewing' &&
   FAMILIES['trailhead-executor'] === 'implementing' && FAMILIES['trailhead-fix'] === 'implementing' &&
   FAMILIES['trailhead-debug'] === 'investigating' && FAMILIES['trailhead-research'] === 'investigating' &&
-  FAMILIES['trailhead-codebase-map'] === 'investigating' && FAMILIES['trailhead-plan'] === 'plan');
+  FAMILIES['trailhead-codebase-map'] === 'investigating' && FAMILIES['trailhead-plan'] === 'plan' &&
+  FAMILIES['trailhead-grill'] === 'grilling');
 
 // --- the real source and agents ------------------------------------------------
 ok('source defines the common block', typeof blocks.common === 'string' && blocks.common.length > 0);
@@ -207,6 +208,14 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     execute.includes('the orchestrator creates the branch before the spawn and opens the PR'));
 }
 
+// --- the grill agent: no write tools (read-only by tool list on Claude Code) ---
+{
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.existsSync(path.join(agentsDir, 'trailhead-grill.md')) ? readAgent('trailhead-grill') : '');
+  const toolsLine = fm ? (fm[1].split('\n').find((l) => l.startsWith('tools:')) || '') : '';
+  ok('trailhead-grill: has a tools line', toolsLine.length > 0);
+  ok('trailhead-grill: tools line has no Bash, Edit, Write or AskUserQuestion', !/\b(Bash|Edit|Write|AskUserQuestion)\b/.test(toolsLine));
+}
+
 // --- the return contracts of the implementing, investigating and plan blocks (#249) ---
 {
   // Backticked words of the block bullet `- <prefix>:`; null when the bullet is absent.
@@ -219,6 +228,8 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
       optional: ['fidelity', 'surfaced scope'] },
     investigating: { statuses: ['found', 'inconclusive', 'needs_input'], required: ['answer', 'evidence', 'open questions'], optional: [] },
     plan: { statuses: ['ready', 'needs_input'], required: [], optional: ['questions'] },
+    grilling: { statuses: ['question', 'review'], required: ['settled', 'frontier', 'amendments', 'conflicts'],
+      optional: ['question', 'recommended', 'areas', 'facts'] },
   };
   for (const [family, want] of Object.entries(contracts)) {
     const block = blocks[family] || '';
@@ -251,6 +262,18 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
       '- invariant: `ready` => `body` non-empty.',
       '- invariant: `needs_input` => `questions` non-empty.',
     ]));
+  ok('grilling block: question/review invariants',
+    JSON.stringify(inv('grilling')) === JSON.stringify([
+      '- invariant: `question` => `question` non-empty.',
+      '- invariant: `question` => `recommended` non-empty.',
+      '- invariant: `question` => `amendments` none.',
+      '- invariant: `question` => `conflicts` none.',
+      '- invariant: `review` => `frontier` none.',
+      '- invariant: `review` => `question` none.',
+    ]));
+  const grillBlock = blocks.grilling || '';
+  ok('grilling block: never answers on the user\'s behalf', grillBlock.includes('never answer on their behalf'));
+  ok('grilling block: read-only, never commits', grillBlock.includes('Read-only') && grillBlock.includes('Never commit'));
   ok('implementing block: a blank line between Commits and Return contract', (blocks.implementing || '').includes('trailer.\n\n**Return contract.**'));
   const impl = blocks.implementing || '';
   for (const needle of ['`<sha> <subject>`', 'exact install command', 'infeasible', 'foreign change', '`fidelity`', 'mockup was passed',

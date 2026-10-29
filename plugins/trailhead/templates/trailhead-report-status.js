@@ -3,20 +3,20 @@
 // trailhead report status check (self-contained, ships in templates/ so it reaches
 // every install channel). Checks the leading `status:` line of an engine-agent
 // report (Code review, Goal-backward verification #250; executor, fix, plan, debug,
-// research, codebase-map #249) before the engine branches on it, and returns the
+// research, codebase-map #249; grill #323) before the engine branches on it, and returns the
 // report's fields.
 //
 // CLI:
 //   node trailhead-report-status.js --technique <technique> [--file <path>]
 // <technique> is verify | code-review | executor | fix | plan | debug | research |
-// codebase-map. Reads the report from --file, or from stdin when there is none.
+// codebase-map | grill. Reads the report from --file, or from stdin when there is none.
 // Prints exactly one JSON line {"action","verdict","problem","report","fields","body"}:
 //   action   accept | normalise | reask
 //   verdict  the canonical token, or null on reask
 //   problem  null | missing | unknown-token | conflicting | counts | fields (null iff not reask)
 //   report   the original text on accept and reask; the normalised text on normalise
 //   fields   label -> trimmed value for the report's fields (executor, fix, plan, debug,
-//            research, codebase-map); {} for verify and code-review; null on reask
+//            research, codebase-map, grill); {} for verify and code-review; null on reask
 //   body     plan with `ready` only: the normalised report without its status line, the
 //            PLAN to post verbatim; null otherwise
 // Exit 0 for all three actions; exit 2 on a usage error (missing or unknown
@@ -89,6 +89,19 @@ const CONTRACTS = Object.freeze({
       Object.freeze({ when: frozen(['needs_input']), field: 'questions', rule: 'non-empty' }),
     ]),
   }),
+  grilling: Object.freeze({
+    tokens: frozen(['question', 'review']),
+    required: frozen(['settled', 'frontier', 'amendments', 'conflicts']),
+    optional: frozen(['question', 'recommended', 'areas', 'facts']),
+    invariants: Object.freeze([
+      Object.freeze({ when: frozen(['question']), field: 'question', rule: 'non-empty' }),
+      Object.freeze({ when: frozen(['question']), field: 'recommended', rule: 'non-empty' }),
+      Object.freeze({ when: frozen(['question']), field: 'amendments', rule: 'none' }),
+      Object.freeze({ when: frozen(['question']), field: 'conflicts', rule: 'none' }),
+      Object.freeze({ when: frozen(['review']), field: 'frontier', rule: 'none' }),
+      Object.freeze({ when: frozen(['review']), field: 'question', rule: 'none' }),
+    ]),
+  }),
 });
 
 // Technique -> field family.
@@ -99,6 +112,7 @@ const FAMILY_OF = Object.freeze({
   research: 'investigating',
   'codebase-map': 'investigating',
   plan: 'plan',
+  grill: 'grilling',
 });
 
 // Technique -> its closed set of status tokens.
