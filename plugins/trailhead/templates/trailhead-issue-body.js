@@ -116,18 +116,41 @@ function bodyLines(text) {
   return t === '' ? [] : t.split('\n');
 }
 
-// A list entry: a top-level `- ` line plus the indented lines that follow it.
+// A list entry: a top-level bullet (`- `, `* `, `+ `) or ordered item (`1. `, `1) `)
+// plus the indented lines that follow it. Ordered entries carry their number and
+// delimiter (null for a bullet); an indented `1.` is a continuation, not an entry.
 function listEntries(lines, sec) {
   const entries = [];
   const end = contentEnd(lines, sec);
   for (let i = sec.from; i < end; i++) {
-    if (!/^[-*+][ \t]/.test(lines[i])) continue;
+    const m = /^(?:[-*+]|(\d+)([.)]))[ \t]/.exec(lines[i]);
+    if (!m) continue;
     let j = i + 1;
     while (j < end && /^[ \t]+\S/.test(lines[j])) j++;
-    entries.push({ start: i, end: j, text: lines.slice(i, j).join('\n') });
+    entries.push({
+      start: i,
+      end: j,
+      text: lines.slice(i, j).join('\n'),
+      num: m[1] === undefined ? null : Number(m[1]),
+      delim: m[2] || null,
+    });
     i = j - 1;
   }
   return entries;
+}
+
+// After removing entry `h`, the following consecutive ordered entries with the same
+// delimiter are renumbered from h's own number. Returns a new lines array.
+function renumberAfter(lines, entries, h) {
+  if (h.num === null) return lines;
+  const after = entries.filter((e) => e.start > h.start);
+  const run = [];
+  for (const e of after) {
+    if (e.num === null || e.delim !== h.delim || (run.length && e.start !== run[run.length - 1].end)) break;
+    run.push(e);
+  }
+  const fixed = new Map(run.map((e, k) => [e.start, `${h.num + k}${h.delim}${lines[e.start].replace(/^\d+[.)]/, '')}`]));
+  return lines.map((l, i) => (fixed.has(i) ? fixed.get(i) : l));
 }
 
 // The non-blank content lines of a section, or null when the section is missing.
@@ -179,13 +202,15 @@ function applyOp(body, op) {
   }
 
   if (op.kind === 'remove') {
-    const hits = listEntries(lines, sec).filter((e) => e.text.includes(op.match));
+    const entries = listEntries(lines, sec);
+    const hits = entries.filter((e) => e.text.includes(op.match));
     if (hits.length === 0) {
       return { body: String(body), changed: false, summary: `no entry matching "${op.match}" in ${label}, nothing written` };
     }
     if (hits.length > 1) return { error: `ambiguous: ${hits.length} entries in ${label} contain "${op.match}"` };
     const h = hits[0];
-    const next = [...lines.slice(0, h.start), ...lines.slice(h.end)];
+    const renumbered = renumberAfter(lines, entries, h);
+    const next = [...renumbered.slice(0, h.start), ...renumbered.slice(h.end)];
     return { body: joinBody({ ...parts, lines: next }), changed: true, summary: `removed 1 entry from ${label}` };
   }
 

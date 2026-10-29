@@ -126,6 +126,42 @@ const EMPTY_DECISIONS = ['Intro line for the map, long enough.', '', '## Decisio
   ok('remove: missing section is an error', typeof miss.error === 'string');
 }
 
+// --- applyOp: remove on numbered lists ---------------------------------------
+{
+  const rm = (body, match) => applyOp(body, { kind: 'remove', section: 'Not yet specified', match });
+  const sec = (...l) => ['Intro line for the map, long enough.', '', '## Not yet specified', ...l, ''].join('\n');
+  const repro = rm('## Not yet specified\n1. **Repo to checkout resolution**: x\n2. **Other**: y\n', 'Repo to checkout resolution');
+  ok('remove numbered: ticket repro removes the entry and renumbers', repro.changed === true && repro.body === '## Not yet specified\n1. **Other**: y\n');
+  ok('remove numbered: summary unchanged', repro.summary === 'removed 1 entry from "Not yet specified"');
+  const mid = rm(sec('1. a', '2. b', '3. c'), 'b');
+  ok('remove numbered: following items renumbered', mid.body === sec('1. a', '2. c'));
+  const last = rm(sec('1. a', '2. b'), 'b');
+  ok('remove numbered: removing the last entry renumbers nothing', last.body === sec('1. a'));
+  const start = rm(sec('3. a', '4. b', '5. c'), 'a');
+  ok('remove numbered: start number preserved', start.body === sec('3. b', '4. c'));
+  const paren = rm(sec('1) a', '2) b', '3) c'), 'a');
+  ok('remove numbered: ) delimiter handled and kept', paren.body === sec('1) b', '2) c'));
+  const cont = rm(sec('1. a', '   detail of a', '2. b', '   detail of b', '3. c'), 'detail of a');
+  ok('remove numbered: 3-space continuation removed with its entry', cont.body === sec('1. b', '   detail of b', '2. c'));
+  const nested = rm(sec('1. a', '   1. nested', '2. b'), 'a');
+  ok('remove numbered: an indented number is a continuation, not an entry', nested.body === sec('1. b'));
+  const amb = rm(sec('1. a x', '2. b x'), 'x');
+  ok('remove numbered: more than one match is ambiguous', typeof amb.error === 'string' && /ambiguous/.test(amb.error));
+  const body = sec('1. a', '2. b');
+  const none = rm(body, 'zzz');
+  ok('remove numbered: zero matches is a no-op', !none.error && none.changed === false && none.body === body);
+  const mixed = rm(sec('- bullet', '1. a', '2. b', '3. c'), 'a');
+  ok('remove numbered: bullet before the hit untouched, run after renumbered', mixed.body === sec('- bullet', '1. b', '2. c'));
+  const stop = rm(sec('1. a', '2. b', '- bullet', '3. c'), 'a');
+  ok('remove numbered: renumbering stops at a bullet', stop.body === sec('1. b', '- bullet', '3. c'));
+  const delim = rm(sec('1. a', '2. b', '3) c', '4) d'), 'a');
+  ok('remove numbered: renumbering stops at a different delimiter', delim.body === sec('1. b', '3) c', '4) d'));
+  const dec = rm(sec('1.5 x', '2. y'), 'y');
+  ok('remove numbered: 1.5 is not an item', dec.changed === true && dec.body === sec('1.5 x'));
+  const bullet = rm(sec('- a', '- b'), 'a');
+  ok('remove bullet: unchanged behaviour in a bullet section', bullet.body === sec('- b'));
+}
+
 // --- fake tracker ------------------------------------------------------------
 function makeTracker(init = {}) {
   const t = {
@@ -396,6 +432,9 @@ function writeTmp(text) {
   const t3 = makeTracker();
   const r3 = runMain(['remove', '--issue', '7', '--section', 'Decisions so far', '--match', '#'], t3);
   ok('remove ambiguous: exit 1, nothing written', r3.code === 1 && /ambiguous/.test(r3.out) && t3.writes.length === 0);
+  const tn = makeTracker({ body: '## Not yet specified\n1. **Repo to checkout resolution**: x\n2. **Other**: y\n' });
+  const rn = runMain(['remove', '--issue', '7', '--section', 'Not yet specified', '--match', 'Repo to checkout resolution'], tn);
+  ok('remove numbered via main: entry removed and rest renumbered', rn.code === 0 && /removed 1 entry/.test(rn.out) && tn.writes.length === 1 && tn.writes[0] === '## Not yet specified\n1. **Other**: y\n');
   const t4 = makeTracker();
   const r4 = runMain(['replace', '--issue', '7', '--section', 'Not yet specified', '--file', writeTmp('- only this\n')], t4);
   ok('replace via main: summary and write', r4.code === 0 && /replaced "Not yet specified"/.test(r4.out) && t4.writes[0].includes('- only this'));
