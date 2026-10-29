@@ -110,6 +110,7 @@ const onFrontier = (issue, destLabel) => issue.labels.includes('trailhead:ticket
 {
   const o = parseArgs(base('bug', ['--map', '5', '--unverified', '--dedupe-key', 'a.b:c-1', '--no-dashboard']));
   ok('parseArgs: full bug', !o.error && o.type === 'bug' && o.map === 5 && o.unverified && o.dedupeKey === 'a.b:c-1' && o.noDashboard && o.repo === 'o/r' && o.body === 'Details here');
+  ok('parseArgs: --unverified rejected for idea', /--unverified is only for ticket types/.test(parseArgs(base('idea', ['--unverified'])).error || ''));
   ok('parseArgs: seed with trigger', parseArgs(base('seed', ['--trigger', 'when X'])).trigger === 'when X');
   ok('parseArgs: --of with bug', parseArgs(base('bug', ['--of', '12'])).of === 12);
   ok('parseArgs: --body-file -', parseArgs(['--type', 'todo', '--title', 't', '--body-file', '-', '--repo', 'o/r']).bodyFile === '-');

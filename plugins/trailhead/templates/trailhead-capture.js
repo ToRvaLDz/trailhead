@@ -9,8 +9,8 @@
 //        (--body <b> | --body-file <path|->) --repo <owner/name> \
 //        [--map <n> | --of <n>] [--trigger <text>] [--unverified] \
 //        [--dedupe-key <key>] [--no-dashboard]
-//   --trigger is required for seed and rejected otherwise. --of is only for bug and is
-//   exclusive with --map (the ticket inherits the origin's map or the whiteboard).
+//   --trigger is required for seed and rejected otherwise. --unverified is rejected for idea.
+//   --of is only for bug and is exclusive with --map (the ticket inherits the origin's map or the whiteboard).
 //   --dedupe-key matches ^[A-Za-z0-9._:-]{1,100}$ and makes the run idempotent.
 //
 // Flow (nothing is created on any pre-check failure): trust check, destination, dedupe,
@@ -124,6 +124,7 @@ function parseArgs(argv) {
   if (o.type === 'seed' && (o.trigger === null || !o.trigger.trim())) return { error: 'usage: seed requires a non-empty --trigger' };
   if (o.type !== 'seed' && o.trigger !== null) return { error: 'usage: --trigger is only for --type seed' };
   if (o.of !== null && o.type !== 'bug') return { error: 'usage: --of is only for --type bug' };
+  if (o.unverified && o.type === 'idea') return { error: 'usage: --unverified is only for ticket types (fog is already off the frontier)' };
   if (o.of !== null && o.map !== null) return { error: 'usage: --of and --map are mutually exclusive' };
   return o;
 }
