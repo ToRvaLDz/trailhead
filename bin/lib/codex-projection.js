@@ -194,8 +194,8 @@ function codexTechniqueKey(name) {
 // The 8 pinnable technique keys, mirroring the models.codex.* namespace. The
 // other committed agent (fix) has no pin key and is always
 // projected pin-less (session model).
-// Riconoscimento condiviso di "inherit session" (stesso del router, hooks/lib).
-const { isInheritSession } = require('../../plugins/trailhead/hooks/lib/model-defaults-review.js');
+// Riconoscimento condiviso di "inherit session" (stesso del router, hooks/lib); modulo senza dipendenze, la proiezione resta pura.
+const { isInheritSession } = require('../../plugins/trailhead/hooks/lib/inherit-session.js');
 const MODEL_KEYS = new Set(['plan', 'execute', 'research', 'review', 'debug', 'verify', 'codebase-map', 'grill']);
 
 // --- codexAgentToml ---------------------------------------------------------

@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const mdr = require('./model-defaults-review.js');
+const { isInheritSession } = require('./inherit-session.js');
 
 const UNKNOWN_SESSION = 'unknown'; // valore riservato: non e' mai uguale a un id
 const HOSTS = ['claude', 'codex'];
@@ -89,7 +90,7 @@ function resolveRaw(source, key) {
 
 function routeClaude({ key, models, sessionModel, subagents, tierIds }) {
   const { raw, tierKey } = resolveRaw(models, key);
-  if (mdr.isInheritSession(raw)) return result({});
+  if (isInheritSession(raw)) return result({});
   const id = stripSuffix(isUnset(raw) ? (tierIds || {})[BALANCED[tierKey]] : raw);
   if (typeof id !== 'string' || id.trim() === '') return result({ warning: 'unknown-id' });
   const sameAsSession = sessionModel !== UNKNOWN_SESSION && id === sessionModel;
@@ -106,7 +107,7 @@ function routeClaude({ key, models, sessionModel, subagents, tierIds }) {
 function routeCodex({ key, models, sessionModel, sessionEffort, subagents }) {
   const codexModels = models && models.codex && typeof models.codex === 'object' && !Array.isArray(models.codex) ? models.codex : {};
   const { raw } = resolveRaw(codexModels, key);
-  if (isUnset(raw) || mdr.isInheritSession(raw)) return result({});
+  if (isUnset(raw) || isInheritSession(raw)) return result({});
   let pin = typeof raw === 'object' ? raw : { model: raw };
   if (typeof pin.model !== 'string' || pin.model.trim() === '') return result({});
   pin = { ...pin, model: stripSuffix(pin.model) };

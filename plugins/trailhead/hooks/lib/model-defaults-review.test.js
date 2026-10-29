@@ -323,6 +323,18 @@ ok('claude-haiku-5-5 itself is not stale',
   ok('applyUpdate does not invent a grill key', !('grill' in applyUpdate(stale, stalePins(stale, data)).models));
 }
 
+{
+  const mod = require('./inherit-session.js');
+  const src = fs.readFileSync(path.join(__dirname, 'inherit-session.js'), 'utf8');
+  ok('inherit-session.js is dependency-free (no require)', !/require\(/.test(src));
+  ok('model-defaults-review re-exports the same isInheritSession', mod.isInheritSession === isInheritSession);
+  const projSrc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'bin', 'lib', 'codex-projection.js'), 'utf8');
+  ok('codex-projection requires the dependency-free module, not model-defaults-review',
+    projSrc.includes("hooks/lib/inherit-session.js") && !projSrc.includes('model-defaults-review'));
+  ok('isSkippable semantics: an inherit session pin is never flagged stale',
+    stalePins({ models: { plan: ' Inherit Session ' } }, data).length === 0);
+}
+
 // --- #323: isInheritSession e' l'unico riconoscimento di "inherit session" ---
 ok('isInheritSession: bare string, trimmed, any case',
   isInheritSession('inherit session') && isInheritSession('  Inherit Session ') && isInheritSession('INHERIT SESSION'));
@@ -549,7 +561,7 @@ ok('stalePins: a non-object models.codex yields no codex pins (not an exception)
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-codexhome-'));
   const libDir = path.join(codexHome, 'skills', 'trailhead', 'hooks', 'lib');
   fs.mkdirSync(libDir, { recursive: true });
-  for (const f of ['model-defaults-review.js', 'model-defaults.json']) {
+  for (const f of ['model-defaults-review.js', 'model-defaults.json', 'inherit-session.js']) {
     fs.copyFileSync(path.join(__dirname, f), path.join(libDir, f));
   }
   fs.mkdirSync(path.join(codexHome, 'trailhead'), { recursive: true });
