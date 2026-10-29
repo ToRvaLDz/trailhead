@@ -16,6 +16,7 @@ const path = require('path');
 const DATA_FILE = path.join(__dirname, 'model-defaults.json');
 const HOSTS = ['claude', 'codex'];
 const TIERS = ['strong', 'standard', 'fast'];
+const INHERIT_SESSION = 'inherit session';
 
 // Host: la lib viene copiata byte-per-byte su Codex (sotto
 // <codexHome>/skills/trailhead/hooks/lib), quindi l'host si deduce dal path
@@ -94,7 +95,7 @@ function findTier(data, host, id, current) {
 }
 
 function isSkippable(id) {
-  return !id || typeof id !== 'string' || id.trim() === '' || id === 'inherit session';
+  return !id || typeof id !== 'string' || id.trim() === '' || id === INHERIT_SESSION;
 }
 
 // Valuta un singolo pin (id) per un host e ritorna { from, to } se stale,
@@ -204,6 +205,14 @@ function effectiveModels(layers) {
   const outModels = { ...models };
   if (codex !== undefined) outModels.codex = codex;
   return { config: { models: outModels }, sources };
+}
+
+// "inherit session" (stringa nuda o campo `model` di un pin a oggetto), senza
+// badare a spazi e maiuscole: l'unico riconoscimento, condiviso da routing e
+// proiezione Codex. #323.
+function isInheritSession(v) {
+  const id = isPlainObject(v) ? v.model : v;
+  return typeof id === 'string' && id.trim().toLowerCase() === INHERIT_SESSION;
 }
 
 // Un valore "impostato" per il fallback di grill: non null/undefined/stringa vuota.
@@ -413,6 +422,7 @@ module.exports = {
   semverLt,
   effectiveModels,
   withImplicitGrill,
+  isInheritSession,
   reviewOffer,
   reviewNotice,
   detectHost,

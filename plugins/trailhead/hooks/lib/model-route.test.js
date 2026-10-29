@@ -115,6 +115,11 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
     cx({ sessionModel: 'gpt-5.6-sol', sessionEffort: 'high', models: { codex: { plan: { model: 'gpt-5.6-sol', effort: 'high' } } } }).route === 'inline');
   ok('codex: grill set overrides plan', cx({ sessionModel: 'gpt-5.6-sol', models: { codex: { plan: 'gpt-5.6-terra', grill: 'gpt-5.6-sol' } } }).route === 'inline');
   ok('codex: grill inherit session wins over plan', cx({ models: { codex: { plan: 'gpt-5.6-sol', grill: 'inherit session' } } }).route === 'inline');
+  for (const [label, pinv] of [['object form', { model: 'inherit session', effort: 'high' }], ['case variant', ' Inherit Session '], ['bare string', 'inherit session']]) {
+    ok(`codex: plan ${label} of inherit session + grill unset -> inline`, cx({ models: { codex: { plan: pinv } } }).route === 'inline');
+    ok(`codex: grill ${label} of inherit session wins over a plan pin -> inline`, cx({ models: { codex: { plan: 'gpt-5.6-sol', grill: pinv } } }).route === 'inline');
+  }
+  ok('claude: a case variant of inherit session routes inline', claude({ models: { grill: ' Inherit Session ' } }).route === 'inline' && claude({ models: { plan: 'INHERIT SESSION' } }).route === 'inline');
   ok('codex: grill unset + plan unset -> inline', cx({ models: { codex: {} } }).route === 'inline');
 }
 

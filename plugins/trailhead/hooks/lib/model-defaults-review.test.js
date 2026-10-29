@@ -35,6 +35,7 @@ const {
   readAckFile,
   writeAckFile,
   withImplicitGrill,
+  isInheritSession,
 } = require('./model-defaults-review.js');
 
 const LIB_PATH = path.join(__dirname, 'model-defaults-review.js');
@@ -321,6 +322,13 @@ ok('claude-haiku-5-5 itself is not stale',
   ok('a stale plan pin is flagged but the notice never mentions grill', offer !== null && !offer.notice.includes('grill'));
   ok('applyUpdate does not invent a grill key', !('grill' in applyUpdate(stale, stalePins(stale, data)).models));
 }
+
+// --- #323: isInheritSession e' l'unico riconoscimento di "inherit session" ---
+ok('isInheritSession: bare string, trimmed, any case',
+  isInheritSession('inherit session') && isInheritSession('  Inherit Session ') && isInheritSession('INHERIT SESSION'));
+ok('isInheritSession: the model field of an object pin', isInheritSession({ model: 'inherit session', effort: 'high' }) && isInheritSession({ model: ' Inherit Session' }));
+ok('isInheritSession: real ids and non-strings are not inherit',
+  !isInheritSession('gpt-5.6-sol') && !isInheritSession({ model: 'gpt-5.6-sol' }) && !isInheritSession(null) && !isInheritSession(undefined) && !isInheritSession({}) && !isInheritSession(3));
 
 // --- #323: una layer che imposta plan ma non grill imposta grill = plan ---
 {
