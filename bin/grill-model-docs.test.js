@@ -34,15 +34,27 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   };
   ok('A: grill column reads High strong, Balanced strong, Low standard',
     col('High') === 'strong' && col('Balanced') === 'strong' && col('Low') === 'standard');
-  ok('A: eight keys instead of seven', ref.includes('all eight keys') && ref.includes('its eight model keys') && !/\bseven\b/.test(ref));
+  ok('A: a profile writes no grill entry, so grill keeps following plan',
+    ref.includes('a profile writes **no `grill` entry**') && ref.includes('keeps following `plan`'));
+  ok('A: the key rows say an unset grill follows plan',
+    rowStart('| `models.{').includes('unset `grill` follows `plan`') && rowStart('| `models.codex.{').includes('unset `grill` follows `models.codex.plan`'));
+  ok('A: Models bullet says unset grill is the same model as plan', lines.some((l) => /^- `grill`:/.test(l) && l.includes('Unset, it uses the same model as `plan`')));
+  ok('A: the unset-default paragraph names the grill exception',
+    ref.includes('the one exception is `grill`: unset, it follows the resolved `models.plan`'));
+  ok('A: Manual path offers grill with "same as plan (Recommended)" first, leaving the key unset',
+    ref.includes('**same as plan (Recommended)** as the first option') && ref.includes('leaves `models.grill` unset') &&
+    ref.includes('leaves `models.codex.grill` unset'));
+  ok('A: existing configs without grill need no action or notice',
+    ref.includes('An existing config with no `grill` key grills on its `plan` model with no action and no notice'));
   const advanced = lines.filter((l) => l.includes('behind an "Advanced" option') || l.includes('behind Advanced'));
   ok('A: Advanced lists name grill for Claude and Codex', advanced.length === 2 && advanced.every((l) => l.includes('`grill`')));
   const everything = lines.find((l) => l.startsWith('**Everything else runs in the main session')) || '';
   ok('A: Everything else paragraph no longer lists grilling', everything.length > 0 && !/grilling/i.test(everything.split("That's deliberate")[0]));
   ok('A: Codex sentence (unset inherits, profile or pin brings strong, equal pin runs inline)',
-    /unset `models\.codex\.grill` inherits the session model/.test(ref) &&
-    ref.includes('a profile or a pin brings the strong tier') && ref.includes('equal pin runs inline'));
+    /unset `models\.codex\.grill` follows `models\.codex\.plan` when that is pinned/.test(ref) &&
+    ref.includes('else inherits the session model') && ref.includes('an equal pin (same model as the session'));
   ok('A: a spawn gets the family, not the exact version', ref.includes('A dispatched grill is guaranteed the family of the resolved id, not its exact version'));
+  ok('A: configuration.md names the grill exception to the Balanced default', cfg.includes('except `grill`, which follows `plan`'));
   ok('A: configuration.md lists grill in the subagent list', /`research`, `review`, `debug`, `verify`, `codebase-map`, `grill`/.test(cfg));
 }
 
@@ -59,6 +71,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: the helper is found with the same two-path lookup as model-defaults-review.js',
     has('../../hooks/lib/', '../trailhead/hooks/lib/', 'model-defaults-review.js'));
   ok('B: a context-window suffix on the session id is documented as ignored', has('a trailing `[...]` suffix such as `[1m]` is ignored'));
+  ok('B: an unset models.grill follows models.plan', has('`models.grill` unset follows `models.plan`'));
   ok('B: use its agent and alias verbatim', has('use its `agent` and `alias` verbatim'));
   ok('B: route inline with the suggest line', has('`route: inline`', '`suggest`', 'suggesting the user switch the session'));
   ok('B: an unregistered agent runs inline', has('not registered', 'inline'));
@@ -69,7 +82,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: the apply/amend/keep menu is the orchestrator\'s', has('apply', 'amend', 'keep', 'AskUserQuestion'));
   ok('B: the family-not-version note', has('the family of the resolved id, not its exact version'));
   ok('B: an inline round writes no report', has('An inline round writes no report'));
-  ok('B: Codex semantics', has('unset `models.codex.grill` inherits the session model', 'equal to the session model'));
+  ok('B: Codex semantics', has('unset `models.codex.grill` follows `models.codex.plan` when that is pinned', 'else inherits the session model', 'equal to the session model'));
   ok('B: the protocol bullets above stay the agent\'s protocol', grilling.indexOf('Holistic review before the final confirmation') < at);
 
   ok('B: grilling.md states that trailhead-grill output is always the report',
@@ -119,7 +132,8 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
     ok(`D: ${file} Models bullets carry a grill bullet`, lines.some((l) => /^- `grill`/.test(l) && l.includes('trailhead-grill')));
     ok(`D: ${file} no longer says grilling runs on the session model`,
       !/charting, grilling/.test(text));
-    ok(`D: ${file} carries the Codex note`, text.includes('models.codex.grill') && /inherit/.test(lines.find((l) => l.includes('models.codex.grill') && !l.startsWith('|')) || ''));
+    ok(`D: ${file} says grill follows plan when unset`, lines.some((l) => /^- `grill`/.test(l) && l.includes('`plan`') && /unset|non impostat/.test(l)));
+  ok(`D: ${file} carries the Codex note`, text.includes('models.codex.grill') && /models\.codex\.plan/.test(lines.find((l) => l.includes('models.codex.grill') && !l.startsWith('|')) || ''));
   }
 }
 

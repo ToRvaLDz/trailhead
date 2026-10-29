@@ -468,9 +468,9 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 
 - `plan` ed `execute` sono i passi del motore build/bug. Execute è anch'esso un subagent, e committa su `main`.
 - `research`, `review`, `debug`, `verify` (il controllo goal-backward in Verify), e il fan-out della codebase-map girano ciascuno sulla propria chiave.
-- `grill` esegue i round di grilling sul subagent read-only `trailhead-grill` (tier forte di default su Claude); la sessione ti fa comunque ogni domanda e tiene le risposte.
+- `grill` esegue i round di grilling sul subagent read-only `trailhead-grill`; se non impostata, usa lo stesso modello di `plan`, e una config esistente senza chiave `grill` fa grilling sul suo modello `plan`. La sessione ti fa comunque ogni domanda e tiene le risposte.
 
-Scegli `plan` ed `execute` separatamente, ciascuno per **id completo versionato** (mai un `opus` o `sonnet` nudo). Una chiave non impostata usa il default del profilo Balanced, e una uguale al modello della sessione gira semplicemente inline; imposta `inherit session` per usare il modello della sessione. Su Codex, un `models.codex.grill` non impostato eredita il modello della sessione come ogni chiave `models.codex.*`; un profilo in `/trailhead:config` (riesegui l'installer) o un pin porta il tier forte, e un pin uguale al modello della sessione gira inline.
+Scegli `plan` ed `execute` separatamente, ciascuno per **id completo versionato** (mai un `opus` o `sonnet` nudo). Una chiave non impostata usa il default del profilo Balanced, e una uguale al modello della sessione gira semplicemente inline; imposta `inherit session` per usare il modello della sessione. Su Codex, un `models.codex.grill` non impostato segue `models.codex.plan` quando è pinnato (riesegui l'installer per proiettarlo), altrimenti eredita il modello della sessione; un pin uguale al modello della sessione gira inline. Un profilo non scrive mai una voce `grill`, quindi continua a seguire `plan`.
 
 La **sessione principale resta l'orchestratore**. Tiene i momenti interattivi (il Discuss di un build, e l'acceptance/UAT del Verify) e fa charting e scrittura dei ticket sul proprio modello; per il grilling inoltra ogni domanda di `trailhead-grill` e te la pone lei stessa. Nessuna chiave governa la qualità dei ticket, quindi esegui le sessioni di charting sul tuo modello forte.
 

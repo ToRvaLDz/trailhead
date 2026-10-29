@@ -54,7 +54,7 @@ Each key runs its activity as a subagent on the model you name, so the whole per
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
 - `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and `codebase-map` (the codebase-map reader fan-out) each run on their own key.
-- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent (strong tier by default on Claude); the session still asks you each question. On Codex an unset `models.codex.grill` inherits the session model: a profile or a pin brings the strong tier, and a pin equal to the session model runs inline.
+- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent; unset, it uses the same model as `plan`, so an existing config with no `grill` key grills on its `plan` model. The session still asks you each question. On Codex an unset `models.codex.grill` follows `models.codex.plan` when that is pinned, else inherits the session model; a pin equal to the session model runs inline. A profile never writes a `grill` entry, so it keeps following `plan`.
 
 The main session stays the orchestrator. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting and ticket-writing on its own model; for grilling it relays each question from `trailhead-grill` and asks you itself. No key governs ticket quality, so run charting sessions on your strong model.
 
@@ -72,7 +72,7 @@ Claude keys take an id only. Codex keys take a bare OpenAI model id or a `{model
 
 ### Profiles
 
-A profile assigns a tier to each of the eight keys. In `/trailhead:config`, picking High, Balanced or Low applies it whole (no further per-key questions); Manual asks each key yourself, and `plan` and `execute` are always two separate questions. The idea behind all three is smart at every level: research is never the strongest tier, and execute and debug are never the fastest.
+A profile assigns a tier to each of the eight keys (a profile writes no `grill` entry: `grill` keeps following `plan`). In `/trailhead:config`, picking High, Balanced or Low applies it whole (no further per-key questions); Manual asks each key yourself, and `plan` and `execute` are always two separate questions. The idea behind all three is smart at every level: research is never the strongest tier, and execute and debug are never the fastest.
 
 | Profile | plan | execute | research | review | debug | verify | codebase-map | grill |
 |---|---|---|---|---|---|---|---|---|

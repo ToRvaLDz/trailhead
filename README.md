@@ -468,9 +468,9 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
 - `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and the codebase-map fan-out each run on their own key.
-- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent (strong tier by default on Claude); the session still asks you each question and keeps the answers.
+- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent; unset, it uses the same model as `plan`, and an existing config with no `grill` key simply grills on its `plan` model. The session still asks you each question and keeps the answers.
 
-Choose `plan` and `execute` separately, each by **full versioned id** (never a bare `opus` or `sonnet`). A key left unset uses its Balanced-profile default, and one equal to the session model simply runs inline; set `inherit session` to use the session model. On Codex, an unset `models.codex.grill` inherits the session model like every `models.codex.*` key; a profile in `/trailhead:config` (re-run the installer) or a pin brings the strong tier, and a pin equal to the session model runs inline.
+Choose `plan` and `execute` separately, each by **full versioned id** (never a bare `opus` or `sonnet`). A key left unset uses its Balanced-profile default, and one equal to the session model simply runs inline; set `inherit session` to use the session model. On Codex, an unset `models.codex.grill` follows `models.codex.plan` when that is pinned (re-run the installer to project it), else inherits the session model; a pin equal to the session model runs inline. A profile never writes a `grill` entry, so it keeps following `plan`.
 
 The **main session stays the orchestrator**. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting and ticket-writing on its own model; for grilling it relays each question from `trailhead-grill` and asks you itself. No key governs ticket quality, so run charting sessions on your strong model.
 
