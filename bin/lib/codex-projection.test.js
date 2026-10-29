@@ -96,6 +96,8 @@ ok('codexSkillAdapterHeader §D pins the exact agent_type dispatch call shape',
   header.includes('spawn_agent(agent_type="trailhead-<technique>"'));
 ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
   header.includes('base multi_agent v1') && header.includes('inherit the one session model'));
+ok('codexSkillAdapterHeader §D says all 9 committed agents, names trailhead-grill, and runs an unpinned grill inline',
+  header.includes('all 9 committed') && header.includes('trailhead-grill') && /unpinned or session-equal grill runs inline/.test(header));
 ok('codexSkillAdapterHeader §D warns against a single blocking wait_agent with a poll loop',
   header.includes('bounded wait') && header.includes('poll'));
 ok('codexSkillAdapterHeader §D offers a background-job fallback for a stalling review',
@@ -261,8 +263,8 @@ ok('codexAgentToml escapes a " and \\ in name/description so the TOML stays vali
 })());
 
 // --- codexAgentTomlPlan ---
-// 7-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
-// sources: 6 keyed techniques (plan/execute/research/review/debug/codebase-map,
+// 8-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
+// sources: 7 keyed techniques (plan/execute/research/review/debug/codebase-map/grill,
 // whose filenames derive from trailhead-executor -> execute and
 // trailhead-code-review -> review) + 1 always-keyless agent (fix).
 const STUB_AGENT_DEFS = [
@@ -273,17 +275,25 @@ const STUB_AGENT_DEFS = [
   { name: 'trailhead-debug', description: 'debug desc', tools: 'Read', body: 'Debug body.' },
   { name: 'trailhead-fix', description: 'fix desc', tools: 'Read, Write', body: 'Fix body.' },
   { name: 'trailhead-codebase-map', description: 'map desc', tools: 'Read', body: 'Map body.' },
+  { name: 'trailhead-grill', description: 'grill desc', tools: 'Read', body: 'Grill body.' },
 ];
 
-ok('codexAgentTomlPlan: 7 agentDefs -> 7 writes with only the pinned key carrying a model', (() => {
+ok('codexAgentTomlPlan: 8 agentDefs -> 8 writes with only the pinned key carrying a model', (() => {
   const plan = codexAgentTomlPlan('/c', { execute: 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
-  if (plan.writes.length !== 7) return false;
+  if (plan.writes.length !== 8) return false;
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
   const execute = byName['trailhead-execute'];
   if (!execute || execute.path !== '/c/agents/trailhead-execute.toml') return false;
   if (!execute.content.includes('model = "gpt-5.6-terra"')) return false;
   const others = plan.writes.filter((w) => w.name !== 'trailhead-execute');
-  return others.length === 6 && others.every((w) => !/^model = /m.test(w.content));
+  return others.length === 7 && others.every((w) => !/^model = /m.test(w.content));
+})());
+
+ok('codexAgentTomlPlan: models.codex.grill pins trailhead-grill.toml; unset leaves it pin-less', (() => {
+  const pinned = codexAgentTomlPlan('/c', { grill: 'gpt-5.6-sol' }, STUB_AGENT_DEFS).writes.find((w) => w.name === 'trailhead-grill');
+  const unset = codexAgentTomlPlan('/c', {}, STUB_AGENT_DEFS).writes.find((w) => w.name === 'trailhead-grill');
+  return pinned && pinned.path === '/c/agents/trailhead-grill.toml' && pinned.content.includes('model = "gpt-5.6-sol"') &&
+    unset && !/^model = /m.test(unset.content);
 })());
 
 ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase-map now pins on codebase-map', (() => {
@@ -296,14 +306,14 @@ ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase
     map.path === '/c/agents/trailhead-codebase-map.toml' && map.content.includes('model = "gpt-5.6-terra"');
 })());
 
-ok('codexAgentTomlPlan: empty models object -> 7 pin-less writes (not zero)', (() => {
+ok('codexAgentTomlPlan: empty models object -> 8 pin-less writes (not zero)', (() => {
   const plan = codexAgentTomlPlan('/c', {}, STUB_AGENT_DEFS);
-  return plan.writes.length === 7 && plan.writes.every((w) => !/^model = /m.test(w.content));
+  return plan.writes.length === 8 && plan.writes.every((w) => !/^model = /m.test(w.content));
 })());
 
-ok('codexAgentTomlPlan: null models -> 7 pin-less writes (not zero)', (() => {
+ok('codexAgentTomlPlan: null models -> 8 pin-less writes (not zero)', (() => {
   const plan = codexAgentTomlPlan('/c', null, STUB_AGENT_DEFS);
-  return plan.writes.length === 7 && plan.writes.every((w) => !/^model = /m.test(w.content));
+  return plan.writes.length === 8 && plan.writes.every((w) => !/^model = /m.test(w.content));
 })());
 
 ok('codexAgentTomlPlan: object model value on the execute key carries model + model_reasoning_effort', (() => {
@@ -315,7 +325,7 @@ ok('codexAgentTomlPlan: object model value on the execute key carries model + mo
 ok('codexAgentTomlPlan: a keyed key whose object value has no model stays pin-less', (() => {
   const plan = codexAgentTomlPlan('/c', { execute: { effort: 'high' } }, STUB_AGENT_DEFS);
   const execute = plan.writes.find((w) => w.name === 'trailhead-execute');
-  return plan.writes.length === 7 && !/^model = /m.test(execute.content) && !execute.content.includes('model_reasoning_effort');
+  return plan.writes.length === 8 && !/^model = /m.test(execute.content) && !execute.content.includes('model_reasoning_effort');
 })());
 
 ok('codexAgentTomlPlan: description is routed through convertToCodex (host paths rewritten)', (() => {

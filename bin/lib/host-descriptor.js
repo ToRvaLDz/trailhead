@@ -196,7 +196,7 @@ function degradations(host) {
 
   if (descriptor.axes.subagentToolkit === 'none') {
     entries.push({
-      from: 'subagent fan-out (research, codebase-map, review, plan, execute)',
+      from: 'subagent fan-out (research, codebase-map, review, plan, execute, grill)',
       to: 'inline sequential execution in the main session',
     });
   }
