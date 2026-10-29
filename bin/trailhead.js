@@ -693,7 +693,7 @@ function installCodex(configDir, { useSymlink }) {
   // trailhead-<technique>.toml under the real ~/.codex/agents/ dir, uniformly.
   // A keyed technique (plan/execute/research/review/debug/verify/codebase-map/grill)
   // carries its models.codex.<key> pin (merged project + global config) when
-  // set, else is pin-less; the 1 keyless agent (fix) is always pin-less.
+  // set, else is pin-less; fix tracks the models.codex.execute pin.
   // Sweep only trailhead's own files first, so a stale pin from a prior
   // install (or a removed technique) never lingers, without touching the
   // user's other custom-agent TOMLs.

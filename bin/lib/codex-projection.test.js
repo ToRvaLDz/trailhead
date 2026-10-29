@@ -266,7 +266,7 @@ ok('codexAgentToml escapes a " and \\ in name/description so the TOML stays vali
 // 8-entry stub agentDefs mirroring the real plugins/trailhead/agents/*.md
 // sources: 7 keyed techniques (plan/execute/research/review/debug/codebase-map/grill,
 // whose filenames derive from trailhead-executor -> execute and
-// trailhead-code-review -> review) + 1 always-keyless agent (fix).
+// trailhead-code-review -> review) + fix, which tracks the execute pin.
 const STUB_AGENT_DEFS = [
   { name: 'trailhead-plan', description: 'plan desc', tools: 'Read', body: 'Plan body.' },
   { name: 'trailhead-executor', description: 'execute desc', tools: 'Read, Write', body: 'Execute body.' },
@@ -278,15 +278,17 @@ const STUB_AGENT_DEFS = [
   { name: 'trailhead-grill', description: 'grill desc', tools: 'Read', body: 'Grill body.' },
 ];
 
-ok('codexAgentTomlPlan: 8 agentDefs -> 8 writes with only the pinned key carrying a model', (() => {
+ok('codexAgentTomlPlan: 8 agentDefs -> 8 writes with only execute (and fix, which tracks it) carrying a model', (() => {
   const plan = codexAgentTomlPlan('/c', { execute: 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
   if (plan.writes.length !== 8) return false;
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
   const execute = byName['trailhead-execute'];
   if (!execute || execute.path !== '/c/agents/trailhead-execute.toml') return false;
   if (!execute.content.includes('model = "gpt-5.6-terra"')) return false;
-  const others = plan.writes.filter((w) => w.name !== 'trailhead-execute');
-  return others.length === 7 && others.every((w) => !/^model = /m.test(w.content));
+  const fix = byName['trailhead-fix'];
+  if (!fix || !fix.content.includes('model = "gpt-5.6-terra"')) return false;
+  const others = plan.writes.filter((w) => w.name !== 'trailhead-execute' && w.name !== 'trailhead-fix');
+  return others.length === 6 && others.every((w) => !/^model = /m.test(w.content));
 })());
 
 ok('codexAgentTomlPlan: models.codex.grill pins trailhead-grill.toml; unset leaves it pin-less', (() => {
@@ -318,14 +320,21 @@ ok('codexAgentTomlPlan: a literal inherit session is pin-less for every key, and
     !find(c, 'trailhead-research').content.includes('model_reasoning_effort');
 })());
 
-ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase-map now pins on codebase-map', (() => {
-  const plan = codexAgentTomlPlan('/c', { fix: 'gpt-5.6-terra', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
+ok('codexAgentTomlPlan: trailhead-fix carries the execute pin (not a fix key); trailhead-codebase-map pins on codebase-map', (() => {
+  const plan = codexAgentTomlPlan('/c', { execute: { model: 'gpt-5.6-sol', effort: 'high' }, fix: 'gpt-5.6-luna', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));
   const fix = byName['trailhead-fix'];
   const map = byName['trailhead-codebase-map'];
   return fix && map &&
-    fix.path === '/c/agents/trailhead-fix.toml' && !/^model = /m.test(fix.content) &&
+    fix.path === '/c/agents/trailhead-fix.toml' && fix.content.includes('model = "gpt-5.6-sol"') &&
+    fix.content.includes('model_reasoning_effort = "high"') && !fix.content.includes('gpt-5.6-luna') &&
     map.path === '/c/agents/trailhead-codebase-map.toml' && map.content.includes('model = "gpt-5.6-terra"');
+})());
+
+ok('codexAgentTomlPlan: trailhead-fix is pin-less when execute is unset or inherit session', (() => {
+  const find = (m) => codexAgentTomlPlan('/c', m, STUB_AGENT_DEFS).writes.find((w) => w.name === 'trailhead-fix');
+  return ![{}, { plan: 'gpt-5.6-sol' }, { execute: 'inherit session' }, { execute: { model: ' Inherit Session ', effort: 'high' } }]
+    .some((m) => /^model = /m.test(find(m).content) || find(m).content.includes('model_reasoning_effort'));
 })());
 
 ok('codexAgentTomlPlan: empty models object -> 8 pin-less writes (not zero)', (() => {
