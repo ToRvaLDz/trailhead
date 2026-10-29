@@ -132,6 +132,7 @@ function listEntries(lines, sec) {
       end: j,
       text: lines.slice(i, j).join('\n'),
       num: m[1] === undefined ? null : Number(m[1]),
+      numText: m[1] === undefined ? '' : m[1],
       delim: m[2] || null,
     });
     i = j - 1;
@@ -139,18 +140,44 @@ function listEntries(lines, sec) {
   return entries;
 }
 
-// After removing entry `h`, the following consecutive ordered entries with the same
-// delimiter are renumbered from h's own number. Returns a new lines array.
+// After removing entry `h`, the following ordered entries with the same delimiter are
+// renumbered from h's own number. Entries separated only by blank lines (a loose list)
+// stay in the run; a paragraph, a bullet or another delimiter ends it. A list that
+// repeats one number (`1. 1. 1.`) is left alone, and zero padding is kept.
+// Returns a new lines array.
 function renumberAfter(lines, entries, h) {
   if (h.num === null) return lines;
-  const after = entries.filter((e) => e.start > h.start);
   const run = [];
-  for (const e of after) {
-    if (e.num === null || e.delim !== h.delim || (run.length && e.start !== run[run.length - 1].end)) break;
+  let prev = h;
+  for (const e of entries.filter((x) => x.start > h.start)) {
+    const gap = lines.slice(prev.end, e.start);
+    if (e.num === null || e.delim !== h.delim || !gap.every(isBlank)) break;
     run.push(e);
+    prev = e;
   }
-  const fixed = new Map(run.map((e, k) => [e.start, `${h.num + k}${h.delim}${lines[e.start].replace(/^\d+[.)]/, '')}`]));
+  if ([h, ...run].every((e) => e.num === h.num)) return lines;
+  const padded = (t) => /^0\d/.test(t);
+  const fixed = new Map(run.map((e, k) => {
+    const width = Math.max(...[h, e].filter((x) => padded(x.numText)).map((x) => x.numText.length), 0);
+    const num = String(h.num + k).padStart(width, '0');
+    return [e.start, `${num}${h.delim}${lines[e.start].replace(/^\d+[.)]/, '')}`];
+  }));
   return lines.map((l, i) => (fixed.has(i) ? fixed.get(i) : l));
+}
+
+// The line range [from, to) to drop for entry `h`: the entry plus, in a loose list, one
+// adjoining run of blank lines so no double blank or stray leading blank is left.
+function removalRange(lines, entries, h) {
+  const k = entries.indexOf(h);
+  const prev = entries[k - 1];
+  const next = entries[k + 1];
+  const blankGap = (from, to) => to > from && lines.slice(from, to).every(isBlank);
+  const blankAfter = next && blankGap(h.end, next.start);
+  const blankBefore = prev && blankGap(prev.end, h.start);
+  const tightBefore = prev && prev.end === h.start;
+  if (blankAfter && !tightBefore) return [h.start, next.start];
+  if (blankBefore && !next) return [prev.end, h.end];
+  return [h.start, h.end];
 }
 
 // The non-blank content lines of a section, or null when the section is missing.
@@ -210,7 +237,8 @@ function applyOp(body, op) {
     if (hits.length > 1) return { error: `ambiguous: ${hits.length} entries in ${label} contain "${op.match}"` };
     const h = hits[0];
     const renumbered = renumberAfter(lines, entries, h);
-    const next = [...renumbered.slice(0, h.start), ...renumbered.slice(h.end)];
+    const [from, to] = removalRange(lines, entries, h);
+    const next = [...renumbered.slice(0, from), ...renumbered.slice(to)];
     return { body: joinBody({ ...parts, lines: next }), changed: true, summary: `removed 1 entry from ${label}` };
   }
 

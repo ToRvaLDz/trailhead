@@ -160,6 +160,39 @@ const EMPTY_DECISIONS = ['Intro line for the map, long enough.', '', '## Decisio
   ok('remove numbered: 1.5 is not an item', dec.changed === true && dec.body === sec('1.5 x'));
   const bullet = rm(sec('- a', '- b'), 'a');
   ok('remove bullet: unchanged behaviour in a bullet section', bullet.body === sec('- b'));
+
+  // loose lists (blank lines between items)
+  const loose = sec('1. a', '', '2. b', '', '3. c', '', '4. d');
+  ok('remove loose: first item, numbering continues and no blank under the heading', rm(loose, 'a').body === sec('1. b', '', '2. c', '', '3. d'));
+  ok('remove loose: middle item, no double blank', rm(loose, 'b').body === sec('1. a', '', '2. c', '', '3. d'));
+  ok('remove loose: last item, no double blank', rm(loose, 'd').body === sec('1. a', '', '2. b', '', '3. c'));
+  const spaced = sec('', '1. a', '', '2. b', '', '3. c');
+  ok('remove loose: first item keeps the blank after the heading', rm(spaced, 'a').body === sec('', '1. b', '', '2. c'));
+  const half = rm(sec('1. a', '2. b', '', '3. c', '4. d'), 'a');
+  ok('remove loose: a run split by a blank line is renumbered across it', half.body === sec('1. b', '', '2. c', '3. d'));
+  ok('remove loose: tight neighbour before a blank keeps its spacing', rm(sec('1. a', '2. b', '', '3. c'), 'b').body === sec('1. a', '', '2. c'));
+
+  // CRLF
+  const crlf = rm(sec('1. a', '2. b', '3. c').replace(/\n/g, '\r\n'), 'a');
+  ok('remove numbered: CRLF preserved and renumbered', crlf.body === sec('1. b', '2. c').replace(/\n/g, '\r\n'));
+
+  // width changes
+  const wide = rm(sec('9. a', '10. b', '11. c'), 'a');
+  ok('remove numbered: renumbering across a width change', wide.body === sec('9. b', '10. c'));
+  const ten = rm(sec(...Array.from({ length: 10 }, (_, k) => `${k + 1}. item${k + 1}`)), '1. item1');
+  ok('remove numbered: a list reaching 10 items renumbered', ten.body === sec(...Array.from({ length: 9 }, (_, k) => `${k + 1}. item${k + 2}`)));
+
+  // run boundaries
+  const para = rm(sec('1. a', '2. b', '', 'A paragraph.', '3. c'), 'a');
+  ok('remove numbered: a paragraph ends the run, later numbering untouched', para.body === sec('1. b', '', 'A paragraph.', '3. c'));
+  const para2 = rm(sec('1. a', '', '2. b', '', 'A paragraph.', '', '3. c'), 'a');
+  ok('remove numbered: a paragraph after blank lines ends the run', para2.body === sec('1. b', '', 'A paragraph.', '', '3. c'));
+
+  // numbering style
+  const padded = rm(sec('09. a', '10. b', '11. c'), 'a');
+  ok('remove numbered: zero padding width kept', padded.body === sec('09. b', '10. c'));
+  const lazy = rm(sec('1. a', '1. b', '1. c'), 'a');
+  ok('remove numbered: an all-same-number list is not renumbered', lazy.body === sec('1. b', '1. c'));
 }
 
 // --- fake tracker ------------------------------------------------------------
