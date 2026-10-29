@@ -22,8 +22,8 @@ gh issue edit <blocked> --add-label "trailhead:blocked"
 gh issue list --label "trailhead:ticket" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused -label:trailhead:whiteboard"
 # the whiteboard frontier: map-less loose tickets, its own query
 gh issue list --label "trailhead:ticket" --label "trailhead:whiteboard" --state open --search "no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused"
-# unblock a ticket once its last blocker closes (label only; native edge auto-reflects)
-gh issue edit <n> --remove-label "trailhead:blocked"
+# unblock the dependents of a just-closed ticket (default: node <templates>/trailhead-unblock.js --issue <n> --repo <owner/name>; by hand per dependent: label only, native edge auto-reflects)
+gh issue edit <dep> --remove-label "trailhead:blocked"
 # claim
 gh issue edit <n> --add-assignee @me
 # resolve
@@ -68,9 +68,9 @@ Wire all three in the same pass; a ticket carrying only one or two has drifted. 
 
 Same-blocker rule: all three must name the SAME blocker ticket, never a superseded parent, a split-origin, or a by-role placeholder ("child A"). Write the prose line and the native dependency from the same id, in the same pass, so they cannot point at different tickets.
 
-Unblock: remove the label the moment the last blocker closes:
+Unblock: remove the label from every dependent the moment its last blocker closes, for map and whiteboard tickets alike. Default path: `node <templates>/trailhead-unblock.js --issue <n> --repo <owner/name>` (`<n>` is the ticket just closed). By hand, when the helper is missing or errors, per dependent:
 ```bash
-gh issue edit <n> --remove-label "trailhead:blocked"
+gh issue edit <dep> --remove-label "trailhead:blocked"
 ```
 The native edge needs no cleanup; GitHub auto-reflects a closed blocker on its own.
 

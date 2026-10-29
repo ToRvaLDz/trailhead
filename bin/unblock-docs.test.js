@@ -35,7 +35,7 @@ for (const section of ['## `build`', '## `bug`']) {
 }
 
 const step5 = (/^5\. Record the resolution.*$/m.exec(work) || [''])[0];
-ok('SKILL.md step 5: unblock is its own sentence naming the helper', /\.\s+(Then )?\*\*unblock dependents/i.test(step5) && step5.includes('trailhead-unblock.js'));
+ok('SKILL.md step 5: unblock is its own sentence naming the helper', /\.\s+Unblocking is a separate step[^]*\*\*unblock dependents\*\*/.test(step5) && step5.includes('trailhead-unblock.js'));
 ok('SKILL.md step 5: holds for whiteboard tickets too', /whiteboard/.test(step5));
 
 const bullet = (/^- \*\*No map narrative book-keeping\.\*\*.*$/m.exec(work) || [''])[0];
@@ -44,7 +44,7 @@ ok('SKILL.md quick bullet: unblocking is among the steps that still hold', /Ever
 ok('SKILL.md quick bullet: no map-only exception', !bullet.includes('Exception, `quick <n>` on a *map* ticket'));
 
 ok('substrate-commands.md: unblock block names the helper as default', /Unblock:[\s\S]{0,400}trailhead-unblock\.js --issue <n> --repo <owner\/name>/.test(commands));
-ok('substrate-commands.md: keeps the raw gh command as fallback', /Unblock:[\s\S]{0,700}gh issue edit <n> --remove-label "trailhead:blocked"/.test(commands));
+ok('substrate-commands.md: keeps the raw gh command as fallback', /Unblock:[\s\S]{0,700}gh issue edit <(?:n|dep)> --remove-label "trailhead:blocked"/.test(commands));
 ok('substrate-commands.md: cookbook comment names the helper', /# unblock[^\n]*trailhead-unblock\.js/.test(commands));
 ok('no em-dash', ![engines, work, commands].some((s) => s.includes(String.fromCharCode(0x2014))));
 console.log(`unblock-docs.test.js: ${passed} checks passed`);
