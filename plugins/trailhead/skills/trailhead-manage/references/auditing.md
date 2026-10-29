@@ -52,7 +52,7 @@ Run in this order, so the cost guard counts only what the cheap passes leave ove
 
 ## 5. Verify the closed set
 
-Dispatch each agent-bound ticket to a **`trailhead-verify`** agent (see `../../_shared/techniques.md` for dispatch, the `config.models.verify` model override, and the inline fallback), in parallel **batches of 5**, background and polled: reviews never block the session. The verification protocol is `../../_shared/techniques/verify.md`; this audit states its own brief on top of it, and `verify.md` itself is unchanged.
+The audit routes `verify` once per run through `model-route.js` (the **Route every step through model-route.js** paragraph in `../../_shared/techniques.md`) and reuses that route for every batch. Dispatch each agent-bound ticket to a **`trailhead-verify`** agent (see `../../_shared/techniques.md` for dispatch, the `config.models.verify` model override, and the inline fallback), in parallel **batches of 5**, background and polled: reviews never block the session. The verification protocol is `../../_shared/techniques/verify.md`; this audit states its own brief on top of it, and `verify.md` itself is unchanged.
 
 **Audit-mode brief**, handed to each agent:
 - Work goal-backward against the **current HEAD code** (read it with `git show HEAD:<file>`, never the working tree, so every range it returns is a HEAD range) and the ticket's own Question / Outcome / PLAN criteria.

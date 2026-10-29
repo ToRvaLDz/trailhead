@@ -110,6 +110,23 @@ for (const [file, key, agent] of [
   ok('B: auto.md spawns with no model override on an inline route', line.includes('`route: inline`') && line.includes('no model override'));
 }
 
+// --- Parte B3: rifiniture della review di #325 --------------------------------------
+{
+  const cr = read('_shared/techniques/code-review.md');
+  ok('B: code-review.md no longer says a lean skip is the only inline review', !cr.includes('only inline review'));
+  ok('B: code-review.md says the review runs inline on route: inline', cr.includes('in the session on `route: inline`'));
+  const audit = read('trailhead-manage/references/auditing.md');
+  ok('B: auditing.md routes verify once per run through model-route.js',
+    audit.includes('routes `verify` once per run through `model-route.js`') && audit.includes('Route every step through model-route.js'));
+  const agent = fs.readFileSync(path.join(root, 'plugins', 'trailhead', 'agents', 'trailhead-codebase-map.md'), 'utf8');
+  ok('B: the codebase-map agent no longer claims it has no model key', !agent.includes('no dedicated model key') && agent.includes('config.models.codebase-map'));
+  const cfg = read('_shared/configuration.md');
+  const ref = read('_shared/configuration-reference.md');
+  ok('B: configuration docs say every key routes through model-route.js',
+    !cfg.includes('every model key runs as a subagent') && !ref.includes('Every model key runs as a subagent') &&
+    cfg.includes('every model key routes through `model-route.js`') && ref.includes('Every model key routes through `model-route.js`'));
+}
+
 // --- Parte C: la config descrive l'helper, non una decisione a mano -------------------
 {
   const cfg = read('_shared/configuration.md');
