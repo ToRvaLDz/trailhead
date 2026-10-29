@@ -1399,6 +1399,21 @@ const pinConfigTomlPath = path.join(pinCodexHomeDir, 'config.toml');
 ok('codex: config.toml enables multi_agent_v2 when a models.codex.* pin is projected',
   fs.existsSync(pinConfigTomlPath) && fs.readFileSync(pinConfigTomlPath, 'utf8').includes('multi_agent_v2 = true'));
 
+// #323: a project layer that sets plan but not grill grills on that plan, even when
+// the global layer pins grill (the implicit-grill rule applies per layer, before the merge).
+{
+  const pd = mktmp();
+  fs.mkdirSync(path.join(pd, '.trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(pd, '.trailhead', 'config.json'), JSON.stringify({ models: { codex: { plan: 'gpt-5.6-sol' } } }));
+  const ch = mktmp();
+  fs.mkdirSync(path.join(ch, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(ch, 'trailhead', 'config.json'), JSON.stringify({ models: { codex: { grill: 'gpt-5.6-luna' } } }));
+  runInstaller([`--codex`, `--dir=${ch}`], { cwd: pd });
+  const grillToml = fs.readFileSync(path.join(ch, 'agents', 'trailhead-grill.toml'), 'utf8');
+  ok('codex: project plan with no project grill beats a global grill pin in trailhead-grill.toml',
+    grillToml.includes('model = "gpt-5.6-sol"') && !grillToml.includes('gpt-5.6-luna'));
+}
+
 // Uninstall must sweep the projected TOML too, without a --dir= cwd dependency.
 runInstaller([`--codex`, `--dir=${pinCodexHomeDir}`, '--uninstall']);
 ok('codex uninstall: trailhead-execute.toml is gone', !fs.existsSync(pinnedTomlPath));

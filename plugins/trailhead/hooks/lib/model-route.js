@@ -49,8 +49,8 @@ const AGENT_OF = Object.freeze({
   }),
 });
 
-// Riga Balanced della tabella dei profili (configuration-reference.md); il
-// test la tiene allineata alla tabella.
+// Riga Balanced della tabella dei profili (configuration-reference.md), senza
+// grill (un grill non impostato segue plan); il test la tiene allineata.
 const BALANCED = Object.freeze({
   plan: 'strong',
   execute: 'standard',
@@ -59,7 +59,6 @@ const BALANCED = Object.freeze({
   debug: 'standard',
   verify: 'standard',
   'codebase-map': 'fast',
-  grill: 'strong',
 });
 
 // Famiglia (alias accettato da Agent su Claude Code) dell'id, o null.
@@ -161,13 +160,15 @@ function parseArgs(argv) {
 
 // Config effettiva: globale poi progetto (il progetto vince chiave per chiave).
 function effectiveConfig(host, dir) {
-  const layers = [{ layer: 'global', file: mdr.globalConfigFile(host), config: mdr.loadGlobalConfig(host) }];
+  // Ogni layer: plan senza grill implica grill = plan, prima del merge (#323).
+  const implied = (config) => (config && config.models ? { ...config, models: mdr.withImplicitGrill(config.models) } : config);
+  const layers = [{ layer: 'global', file: mdr.globalConfigFile(host), config: implied(mdr.loadGlobalConfig(host)) }];
   const projectRoot = mdr.findProjectRoot(dir);
   if (projectRoot) {
     const file = path.join(projectRoot, '.trailhead', 'config.json');
     try {
       const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-      layers.push({ layer: 'project', file, config: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {} });
+      layers.push({ layer: 'project', file, config: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? implied(parsed) : {} });
     } catch {
       /* config di progetto illeggibile: vale come assente */
     }

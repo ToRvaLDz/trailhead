@@ -151,7 +151,12 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
   const header = cells(ref.find((l) => l.startsWith('| profile |')));
   const row = cells(ref.find((l) => l.startsWith('| **Balanced** |')));
   const parsed = Object.fromEntries(header.slice(1).map((k, i) => [k, row[i + 1]]));
-  ok('BALANCED equals the Balanced row of the profile table', JSON.stringify(BALANCED) === JSON.stringify(parsed) && BALANCED.grill === 'strong');
+  const { grill: tableGrill, ...tableRest } = parsed;
+  ok('BALANCED equals the Balanced row of the profile table, minus grill', JSON.stringify(BALANCED) === JSON.stringify(tableRest) && !('grill' in BALANCED));
+  ok('the grill column mirrors the plan column in every profile', ['High', 'Balanced', 'Low'].every((name) => {
+    const r = cells(ref.find((l) => l.startsWith(`| **${name}** |`)));
+    return r[header.indexOf('grill')] === r[header.indexOf('plan')];
+  }) && tableGrill === parsed.plan);
 }
 
 // --- CLI -----------------------------------------------------------------------
@@ -193,6 +198,28 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
     const x = run(args);
     ok(`cli: ${name} exits 2 with nothing on stdout`, x.status === 2 && x.stdout === '' && x.stderr.length > 0);
   }
+  // implicit grill per layer (project plan beats a global grill)
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { grill: 'claude-haiku-5-5' } }));
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-sonnet-5' } }));
+  const lp = JSON.parse(run(['grill', '--session', OPUS, proj]).stdout);
+  ok('cli: project plan + no project grill beats a global grill', lp.route === 'dispatch' && lp.model === 'claude-sonnet-5');
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-sonnet-5', grill: 'claude-opus-5' } }));
+  ok('cli: a project grill always wins', JSON.parse(run(['grill', '--session', SONNET, proj]).stdout).model === 'claude-opus-5');
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { plan: 'claude-sonnet-5' } }));
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: {} }));
+  ok('cli: global plan + no grill anywhere -> global plan', JSON.parse(run(['grill', '--session', OPUS, proj]).stdout).model === 'claude-sonnet-5');
+  fs.writeFileSync(path.join(globalDir, 'trailhead', 'config.json'), JSON.stringify({ models: { grill: 'claude-haiku-5-5', plan: 'claude-opus-5' } }));
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: { plan: 'inherit session' } }));
+  ok('cli: project plan inherit session + global grill -> inline', JSON.parse(run(['grill', '--session', SONNET, proj]).stdout).route === 'inline');
+  // codex
+  const codexHome = path.join(tmp, 'codex');
+  fs.mkdirSync(path.join(codexHome, 'trailhead'), { recursive: true });
+  fs.writeFileSync(path.join(codexHome, 'trailhead', 'config.json'), JSON.stringify({ models: { codex: { grill: 'gpt-5.6-luna' } } }));
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: { codex: { plan: 'gpt-5.6-sol' } } }));
+  const cxl = JSON.parse(run(['grill', '--session', 'gpt-5.6-terra', '--host', 'codex', proj]).stdout);
+  ok('cli codex: project codex.plan + no project grill beats a global codex.grill', cxl.route === 'dispatch' && cxl.model === 'gpt-5.6-sol');
+  fs.writeFileSync(path.join(proj, '.trailhead', 'config.json'), JSON.stringify({ models: {} }));
+  ok('cli codex: only a global grill pin -> that pin', JSON.parse(run(['grill', '--session', 'gpt-5.6-terra', '--host', 'codex', proj]).stdout).model === 'gpt-5.6-luna');
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 

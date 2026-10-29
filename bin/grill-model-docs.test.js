@@ -44,6 +44,8 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('A: Manual path offers grill with "same as plan (Recommended)" first, leaving the key unset',
     ref.includes('**same as plan (Recommended)** as the first option') && ref.includes('leaves `models.grill` unset') &&
     ref.includes('leaves `models.codex.grill` unset'));
+  ok('A: a layer that sets plan but not grill implies grill = plan before the merge',
+    ref.includes('a config layer that sets `plan` but not `grill` implicitly sets `grill` to that `plan` for that layer, before the project-over-global merge'));
   ok('A: existing configs without grill need no action or notice',
     ref.includes('An existing config with no `grill` key grills on its `plan` model with no action and no notice'));
   const advanced = lines.filter((l) => l.includes('behind an "Advanced" option') || l.includes('behind Advanced'));
@@ -71,6 +73,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: the helper is found with the same two-path lookup as model-defaults-review.js',
     has('../../hooks/lib/', '../trailhead/hooks/lib/', 'model-defaults-review.js'));
   ok('B: a context-window suffix on the session id is documented as ignored', has('a trailing `[...]` suffix such as `[1m]` is ignored'));
+  ok('B: the per-layer implicit grill rule', has('a config layer that sets `plan` but not `grill` implicitly sets `grill` to that `plan` for that layer, before the project-over-global merge'));
   ok('B: an unset models.grill follows models.plan', has('`models.grill` unset follows `models.plan`'));
   ok('B: use its agent and alias verbatim', has('use its `agent` and `alias` verbatim'));
   ok('B: route inline with the suggest line', has('`route: inline`', '`suggest`', 'suggesting the user switch the session'));

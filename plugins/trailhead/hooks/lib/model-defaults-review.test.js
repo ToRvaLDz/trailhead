@@ -34,6 +34,7 @@ const {
   globalAckFile,
   readAckFile,
   writeAckFile,
+  withImplicitGrill,
 } = require('./model-defaults-review.js');
 
 const LIB_PATH = path.join(__dirname, 'model-defaults-review.js');
@@ -319,6 +320,22 @@ ok('claude-haiku-5-5 itself is not stale',
   const offer = reviewOffer({ config: stale, data, ack: null });
   ok('a stale plan pin is flagged but the notice never mentions grill', offer !== null && !offer.notice.includes('grill'));
   ok('applyUpdate does not invent a grill key', !('grill' in applyUpdate(stale, stalePins(stale, data)).models));
+}
+
+// --- #323: una layer che imposta plan ma non grill imposta grill = plan ---
+{
+  const src = { plan: 'p', codex: { plan: 'cp' }, execute: 'e' };
+  const out = withImplicitGrill(src);
+  ok('withImplicitGrill: plan without grill implies grill (claude and codex)', out.grill === 'p' && out.codex.grill === 'cp');
+  ok('withImplicitGrill: does not mutate the input', !('grill' in src) && !('grill' in src.codex));
+  ok('withImplicitGrill: an explicit grill is kept', withImplicitGrill({ plan: 'p', grill: 'g' }).grill === 'g');
+  ok('withImplicitGrill: null or blank grill counts as unset', withImplicitGrill({ plan: 'p', grill: null }).grill === 'p' && withImplicitGrill({ plan: 'p', grill: ' ' }).grill === 'p');
+  ok('withImplicitGrill: no plan, no implied grill', !('grill' in withImplicitGrill({ execute: 'e' })));
+  ok('withImplicitGrill: a blank plan implies nothing', !('grill' in withImplicitGrill({ plan: '' })));
+  ok('withImplicitGrill: inherit session plan implies an inherit grill', withImplicitGrill({ plan: 'inherit session' }).grill === 'inherit session');
+  ok('withImplicitGrill: non-objects pass through', withImplicitGrill(null) === null && withImplicitGrill('x') === 'x');
+  const stale = { models: { plan: 'claude-opus-5' } };
+  ok('the pinned model review does not use the implicit grill', stalePins(stale, data).every((s) => s.key !== 'models.grill'));
 }
 
 // --- effectiveModels (pure merge, no mutation) --------------------------------

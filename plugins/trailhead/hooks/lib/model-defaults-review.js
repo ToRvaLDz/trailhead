@@ -206,6 +206,23 @@ function effectiveModels(layers) {
   return { config: { models: outModels }, sources };
 }
 
+// Un valore "impostato" per il fallback di grill: non null/undefined/stringa vuota.
+const isSetValue = (v) => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+
+// #323: una layer di config che imposta plan ma non grill imposta implicitamente
+// grill = plan per quella layer, PRIMA del merge progetto-su-globale (cosi' un
+// progetto che ha scelto i suoi modelli fa grilling sul suo plan, anche se il
+// globale fissa un grill). Vale per models.* e per models.codex.*. Funzione
+// pura: non muta l'input; usata solo dal routing e dalla proiezione Codex,
+// mai dalla review dei pin (un grill implicito non e' un pin dell'utente).
+function withImplicitGrill(models) {
+  if (!isPlainObject(models)) return models;
+  const imply = (obj) => (isSetValue(obj.plan) && !isSetValue(obj.grill) ? { ...obj, grill: obj.plan } : obj);
+  const out = imply(models);
+  if (isPlainObject(models.codex)) return { ...out, codex: imply(models.codex) };
+  return out;
+}
+
 function reviewOffer({ config, data, ack, sources, host }) {
   const current = currentEntry(data);
   if (!current) return null;
@@ -395,6 +412,7 @@ module.exports = {
   applyUpdate,
   semverLt,
   effectiveModels,
+  withImplicitGrill,
   reviewOffer,
   reviewNotice,
   detectHost,

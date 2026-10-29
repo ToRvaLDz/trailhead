@@ -160,7 +160,9 @@ function readCodexModels(codexHome) {
     const globalCfg = readJSON(path.join(codexHome, 'trailhead', 'config.json')) || {};
     const globalCodex = globalCfg.models && typeof globalCfg.models === 'object' && typeof globalCfg.models.codex === 'object' && globalCfg.models.codex ? globalCfg.models.codex : {};
     const projectCodex = projectCfg.models && typeof projectCfg.models === 'object' && typeof projectCfg.models.codex === 'object' && projectCfg.models.codex ? projectCfg.models.codex : {};
-    return { ...globalCodex, ...projectCodex };
+    // #323: una layer con plan ma senza grill implica grill = plan, prima del merge.
+    const { withImplicitGrill } = require(path.join(SRC, 'hooks', 'lib', 'model-defaults-review.js'));
+    return { ...withImplicitGrill(globalCodex), ...withImplicitGrill(projectCodex) };
   } catch {
     return {};
   }
