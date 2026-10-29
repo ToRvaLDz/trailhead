@@ -24,3 +24,26 @@ Capture without breaking flow, but with the **tracker** as destination, not scat
 | **todo** | a frontier ticket | **now** | *I'm doing it* |
 
 Discriminator: not even work → `note`; maybe, once it's clear → `idea`; yes, when X happens → `seed`; yes, now → `todo`. The close pairs: `note` vs `idea`: raw text vs a work-candidate meant to graduate; `idea` vs `seed`: waiting on *clarity* vs waiting on a *condition*; `seed` vs `todo`: committed *later* vs committed *now*.
+
+## Scripted capture for automations
+
+For a run with no chat session (CI, cron, a bot), capture through the helper instead of hand-building labels: `node <templates>/trailhead-capture.js --type bug|todo|idea|seed --title <t> (--body <b> | --body-file <path|->) --repo <owner/name> [--map <n> | --of <n>] [--trigger <text>] [--unverified] [--dedupe-key <key>] [--no-dashboard]`. `--trigger` is required for `seed` and rejected otherwise; `--of` is only for `bug` and excludes `--map`; `--dedupe-key` matches `^[A-Za-z0-9._:-]{1,100}$`. Nothing is created when a pre-check fails.
+
+**Output and exit codes.** One JSON line on stdout, always:
+- `{"status":"created",...}`, exit 0: `issue`, `url`, `type`, `destination` (`map-<n>` or `whiteboard`), `labels`, `trust` (`ok`, `allowlisted` or `actions-token`), `edge` (map tickets), `dashboard`, `warnings`. Printed only once the labels are read back and the trust is verified.
+- `{"status":"existing",...}`, exit 0: the dedupe key matched an open issue, nothing was created.
+- `{"status":"partial",...}`, exit 3: the issue is created and labelled but the native sub-issue edge failed after one retry (for example the 100 sub-issue cap). The `trailhead:map-<n>` label keeps it on the map frontier; the warning names `/trailhead:prune`. The exit is non-zero so a caller checking only the status never mistakes it for success.
+- `{"status":"error","reason":...}`, exit 1 (`"trust":"insufficient"` on a trust failure, `issue` and `url` when an issue was created before the failure).
+- `{"status":"usage","reason":...}`, exit 2, the message also on stderr.
+
+**Trust.** The identity running the helper must be one the label guard Action never strips: write, maintain or admin access, or a login in the repository's own `TRAILHEAD_LABEL_ALLOWLIST` variable (the helper never consults its local environment). An identity `gh api user` cannot read (an Actions `GITHUB_TOKEN` or a GitHub App token) is verified after the create from the server-side record of who applied the labels: `github-actions[bot]` (its events trigger no workflow), an allowlisted or a write actor pass; anyone else, or unreadable events, exits 1 with `trust: insufficient` and no edge, leaving a plain inbox issue.
+
+**Shapes.** `bug` is `trailhead:ticket` + `trailhead:bug`, `todo` is `trailhead:ticket` + `trailhead:build`, `seed` adds `trailhead:seed` + `trailhead:blocked` and a `Trigger:` line with a `## Blocked by` section. `--map <n>` adds `trailhead:map-<n>`, the `Parent:` first line and the native edge; otherwise `trailhead:whiteboard`. `--unverified` adds `trailhead:unverified`. `--of <n>` inherits the origin's map or the whiteboard (else exit 1, `origin destination unresolved`) and adds a `Regression of:` line.
+
+**`idea` is parked fog, not a ticket.** It becomes a `trailhead:fog` issue (off the frontier, a clarification space) with no type label, no map label, no edge and no dashboard refresh; with `--map` its body opens with a `Parent:` line. It shows in the inbox's parked-fog list and the map render's fog count, but not in the map body's own `Not yet specified` list.
+
+**Dedupe.** With `--dedupe-key` the body carries `<!-- trailhead-dedupe: <key> -->` and a rerun returns `existing`. The search is the fast path; when it returns its 1000-result cap the helper scans every open issue instead. The one residual is search-index lag: a near-simultaneous run may not yet see an issue created seconds earlier.
+
+**Dashboard.** Only a whiteboard ticket refreshes the dashboard (`--update-only`, never opening one), unless `--no-dashboard`. A refresh failure leaves the status unchanged and reports `dashboard: "failed"`. Map tickets and fog report `not-applicable`.
+
+**Settle residual.** There is no settle window: the labelling actor is verified as one the guard never acts on before any edge and before `created` is printed, so no asynchronous strip can follow a `created`.
