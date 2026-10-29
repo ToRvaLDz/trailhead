@@ -306,6 +306,18 @@ ok('codexAgentTomlPlan: an unset models.codex.grill follows models.codex.plan; a
     own.content.includes('model = "gpt-5.6-terra"') && !/^model = /m.test(none.content) && plan.content.includes('model = "gpt-5.6-sol"');
 })());
 
+ok('codexAgentTomlPlan: a literal inherit session is pin-less for every key, and grill follows it', (() => {
+  const find = (m, n) => codexAgentTomlPlan('/c', m, STUB_AGENT_DEFS).writes.find((w) => w.name === n);
+  const pinned = (w) => /^model = /m.test(w.content);
+  const a = { plan: 'inherit session' };
+  const b = { plan: 'gpt-5.6-sol', grill: 'inherit session' };
+  const c = { execute: ' Inherit Session ', research: { model: 'inherit session', effort: 'high' } };
+  return !pinned(find(a, 'trailhead-plan')) && !pinned(find(a, 'trailhead-grill')) &&
+    !pinned(find(b, 'trailhead-grill')) && find(b, 'trailhead-plan').content.includes('model = "gpt-5.6-sol"') &&
+    !pinned(find(c, 'trailhead-execute')) && !pinned(find(c, 'trailhead-research')) &&
+    !find(c, 'trailhead-research').content.includes('model_reasoning_effort');
+})());
+
 ok('codexAgentTomlPlan: keyless trailhead-fix stays pin-less; trailhead-codebase-map now pins on codebase-map', (() => {
   const plan = codexAgentTomlPlan('/c', { fix: 'gpt-5.6-terra', 'codebase-map': 'gpt-5.6-terra' }, STUB_AGENT_DEFS);
   const byName = Object.fromEntries(plan.writes.map((w) => [w.name, w]));

@@ -260,11 +260,13 @@ function codexAgentTomlPlan(codexHome, codexModels, agentDefs) {
     const pinKey = key === 'grill' && (models.grill == null || (typeof models.grill === 'string' && models.grill.trim() === '')) ? 'plan' : key;
     if (MODEL_KEYS.has(key) && models[pinKey] != null) {
       const raw = models[pinKey];
+      // "inherit session" e' il default Codex documentato: nessun pin.
+      const isInherit = (v) => typeof v === 'string' && v.trim().toLowerCase() === 'inherit session';
       if (typeof raw === 'string') {
-        if (raw.trim() !== '') model = raw;
+        if (raw.trim() !== '' && !isInherit(raw)) model = raw;
       } else if (typeof raw === 'object') {
         const m = typeof raw.model === 'string' ? raw.model : '';
-        if (m.trim() !== '') {
+        if (m.trim() !== '' && !isInherit(m)) {
           model = m;
           effort = typeof raw.effort === 'string' ? raw.effort : null;
         }
