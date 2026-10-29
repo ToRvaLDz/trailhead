@@ -117,7 +117,8 @@ function bodyLines(text) {
 }
 
 // A list entry: a top-level bullet (`- `, `* `, `+ `) or ordered item (`1. `, `1) `)
-// plus the indented lines that follow it. Ordered entries carry their number and
+// plus the indented lines that follow it (a continuation paragraph may follow blank
+// lines; the entry's end excludes trailing blanks). Ordered entries carry their number and
 // delimiter (null for a bullet); an indented `1.` is a continuation, not an entry.
 function listEntries(lines, sec) {
   const entries = [];
@@ -126,7 +127,13 @@ function listEntries(lines, sec) {
     const m = /^(?:[-*+]|(\d+)([.)]))[ \t]/.exec(lines[i]);
     if (!m) continue;
     let j = i + 1;
-    while (j < end && /^[ \t]+\S/.test(lines[j])) j++;
+    for (;;) {
+      // Blank lines belong to the entry only when an indented line follows them.
+      let k = j;
+      while (k < end && isBlank(lines[k])) k++;
+      if (k >= end || !/^[ \t]+\S/.test(lines[k])) break;
+      j = k + 1;
+    }
     entries.push({
       start: i,
       end: j,
@@ -167,7 +174,7 @@ function renumberAfter(lines, entries, h) {
 
 // The line range [from, to) to drop for entry `h`: the entry plus, in a loose list, one
 // adjoining run of blank lines so no double blank or stray leading blank is left.
-function removalRange(lines, entries, h) {
+function removalRange(lines, entries, h, sec) {
   const k = entries.indexOf(h);
   const prev = entries[k - 1];
   const next = entries[k + 1];
@@ -177,6 +184,9 @@ function removalRange(lines, entries, h) {
   const tightBefore = prev && prev.end === h.start;
   if (blankAfter && !tightBefore) return [h.start, next.start];
   if (blankBefore && !next) return [prev.end, h.end];
+  // Sole entry of a spaced section before a heading: drop one trailing blank too.
+  const soleSpaced = !prev && !next && h.start > sec.from && isBlank(lines[h.start - 1]) && h.end < sec.to && isBlank(lines[h.end]);
+  if (soleSpaced && sec.to < lines.length) return [h.start, h.end + 1];
   return [h.start, h.end];
 }
 
@@ -237,7 +247,7 @@ function applyOp(body, op) {
     if (hits.length > 1) return { error: `ambiguous: ${hits.length} entries in ${label} contain "${op.match}"` };
     const h = hits[0];
     const renumbered = renumberAfter(lines, entries, h);
-    const [from, to] = removalRange(lines, entries, h);
+    const [from, to] = removalRange(lines, entries, h, sec);
     const next = [...renumbered.slice(0, from), ...renumbered.slice(to)];
     return { body: joinBody({ ...parts, lines: next }), changed: true, summary: `removed 1 entry from ${label}` };
   }

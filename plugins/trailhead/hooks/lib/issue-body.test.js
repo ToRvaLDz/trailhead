@@ -172,6 +172,18 @@ const EMPTY_DECISIONS = ['Intro line for the map, long enough.', '', '## Decisio
   ok('remove loose: a run split by a blank line is renumbered across it', half.body === sec('1. b', '', '2. c', '3. d'));
   ok('remove loose: tight neighbour before a blank keeps its spacing', rm(sec('1. a', '2. b', '', '3. c'), 'b').body === sec('1. a', '', '2. c'));
 
+  // loose items with an indented continuation paragraph
+  const para3 = '## Not yet specified\n\n1. a\n\n   cont para\n\n2. b\n\n3. c';
+  ok('remove loose: item with a continuation paragraph removed whole, rest renumbered', rm(para3, 'a').body === '## Not yet specified\n\n1. b\n\n2. c');
+  ok('remove loose: matching the continuation paragraph removes the whole item', rm(para3, 'cont para').body === '## Not yet specified\n\n1. b\n\n2. c');
+  ok('remove loose: the item after a continuation paragraph is removed cleanly', rm(para3, 'b').body === '## Not yet specified\n\n1. a\n\n   cont para\n\n2. c');
+  const bpara = '## Not yet specified\n\n- a\n\n  cont para\n\n- b\n';
+  ok('remove loose: bullet with a continuation paragraph removed whole', rm(bpara, 'cont para').body === '## Not yet specified\n\n- b\n');
+
+  // the only item of a spaced section before the next heading
+  ok('remove loose: sole numbered item leaves a single blank before the next heading', rm('## Not yet specified\n\n1. a\n\n## Next', 'a').body === '## Not yet specified\n\n## Next');
+  ok('remove loose: sole bullet leaves a single blank before the next heading', rm('## Not yet specified\n\n- a\n\n## Next', 'a').body === '## Not yet specified\n\n## Next');
+
   // CRLF
   const crlf = rm(sec('1. a', '2. b', '3. c').replace(/\n/g, '\r\n'), 'a');
   ok('remove numbered: CRLF preserved and renumbered', crlf.body === sec('1. b', '2. c').replace(/\n/g, '\r\n'));
