@@ -60,6 +60,8 @@ gh issue edit <blocked> --add-label "trailhead:blocked"
 
 Order for a map ticket: the create call (with the `Parent:` line in the body), then the sub-issue edge; read `total` first and, at 100 or more, skip the POST and offer `/trailhead:prune` (the label already attaches the ticket). A whiteboard ticket gets none of the three (no `Parent:`, no edge, no `trailhead:map-<n>`) and needs the whiteboard label ensured first. Where a blocker applies, wire the `## Blocked by` line, the dependency and the label from the same blocker. On a host without a hook bus, read the labels back right after creating and fix them in place with `--add-label` / `--remove-label`. `--add-label "trailhead:blocked"` is only for a ticket that becomes blocked later.
 <!-- core: substrate-commands.md | If it is >= 100, do NOT POST | b15e12da -->
+<!-- core: substrate-commands.md | **Blocker (three moves):** | 69e6ce27 -->
+<!-- core: substrate-commands.md | On a host without a hook bus (Codex) read the labels back | 76415f98 -->
 <!-- core: substrate.md | | Ticket | a child issue | a7e39e16 -->
 
 ## Ticket body
@@ -78,9 +80,13 @@ Title prefix by type (nothing else is added):
 <!-- core: ticket-anatomy.md | **Visual style.** | 97cc70c9 -->
 
 The body is lean: a `**Parent:** [<map name>](link)` line (map tickets only; a whiteboard ticket omits it), `## Question` (the work this ticket resolves), and `## Blocked by` (names and links, or "nothing (on the frontier)"). A ticket opened mid-ticket carries a `Surfaced from: <ticket name+link>` line and lands on a map or the whiteboard by the routing in `references/capture.md`, never on the whiteboard by default while a map is open.
-<!-- core: ticket-anatomy.md | <!-- map tickets only; a trailhead:whiteboard ticket omits the Parent line entirely --> | 410948e4 -->
+<!-- core: ticket-anatomy.md | omits the Parent line entirely | 410948e4 -->
 <!-- core: surfaced-scope.md | Tickets born this way carry | 6992f7b0 -->
 <!-- core: surfaced-scope.md | A surfaced ticket lands on a **map** or on the **whiteboard** | ba435ba2 -->
+<!-- core: surfaced-scope.md | 1. **The current map, when the topic is its own.** | ca9772cd -->
+<!-- core: surfaced-scope.md | 2. **Another open map, when the topic clearly is that map's.** | d1ab0994 -->
+<!-- core: surfaced-scope.md | 3. **Otherwise, ask.** | 68a73826 -->
+<!-- core: surfaced-scope.md | 4. **No map open | 9e869ed8 -->
 
 ## Map body writes
 
@@ -88,7 +94,10 @@ The body is lean: a `**Parent:** [<map name>](link)` line (map tickets only; a w
 
 ```bash
 node <templates>/trailhead-issue-body.js append --issue <map> --section "Not yet specified" --line "<text>"
+node <templates>/trailhead-issue-body.js append --issue <ticket> --section "Blocked by" --line "<blocker name+link>"
 ```
+
+A captured bug that blocks the ticket in play also goes into that ticket's `## Blocked by` with the second command above, then the native dependency and `trailhead:blocked` label from the blocker commands in "Labels and create commands" (dependency POST with `<blocked>` the ticket in play, `--add-label` on it).
 
 `<templates>` is the first of `${CLAUDE_PLUGIN_ROOT}/templates/` (skipped when unset or empty), `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/trailhead/templates/` and `~/.codex/skills/trailhead/templates/` that contains the script; pass node an absolute path. If no directory has it or it errors, re-read the map body right before editing, append the one line under the section, and write it back (never write an empty or whitespace-only body, abort on a failed read).
 <!-- core: substrate.md | **Fail-safe body rewrites.** | dc53895d -->

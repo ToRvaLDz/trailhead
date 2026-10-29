@@ -106,7 +106,7 @@ const mirrored = new Set(markers.map((m) => m.file));
 for (const f of ['principles.md', 'ticket-language.md', 'substrate.md', 'substrate-commands.md', 'load-first.md', 'ticket-anatomy.md', 'session-handoff.md', 'configuration.md']) {
   ok(`capture-core.md mirrors at least one rule of ${f}`, mirrored.has(f));
 }
-ok('capture-core.md stays compact', compact.split('\n').length >= 40 && compact.split('\n').length <= 110);
+ok('capture-core.md stays compact', compact.split('\n').length >= 40 && compact.split('\n').length <= 125);
 
 // --- fenced commands -------------------------------------------------------------
 function fencedLines(text) {

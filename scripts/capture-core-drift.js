@@ -8,7 +8,9 @@
 //                                                 marker whose source line changed or
 //                                                 whose anchor vanished
 //   node scripts/capture-core-drift.js --update   rewrite the hashes; run it only after
-//                                                 a human re-read the compact rule
+//                                                 a human re-read the compact rule; it
+//                                                 re-stamps EVERY marker, so run --check
+//                                                 first and re-read each reported rule
 //
 // Every rule the compact file restates carries a marker line of its own:
 //   <!-- core: <file> | <anchor> | <sha8> -->
