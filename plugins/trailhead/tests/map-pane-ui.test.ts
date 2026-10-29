@@ -15,13 +15,15 @@ const ROOT = '/repo'
 const ROOT_OTHER = '/other'
 // A linked worktree of ROOT: the repo's root is the main tree's, the checkout's own is this.
 const ROOT_TREE = '/repo-t5'
-// The checkout handed to a verb: base64url of the root, computed here by hand so the pane's own encoder is checked.
+// The checkout handed to a verb: base64url of the root, a `.`, then base64url of the pinned repo (`host/owner/name`),
+// computed here by hand so the pane's own encoder is checked.
 // The helper's decodeIn cannot be imported here (the CommonJS template does not load in this suite); the node suite
 // checks decodeIn against Buffer's base64url, and these tests pin the same alphabet.
-const IN = (root: string) => {
-  const b64 = btoa(Array.from(new TextEncoder().encode(root), byte => String.fromCharCode(byte)).join(''))
-  return `--in=${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
+const b64url = (text: string) => {
+  const b64 = btoa(Array.from(new TextEncoder().encode(text), byte => String.fromCharCode(byte)).join(''))
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
+const IN = (root: string) => `--in=${b64url(root)}.${b64url('github.com/o/r')}`
 
 const MAP = {
   title: 'trailhead mod',
@@ -1639,9 +1641,11 @@ for (const surface of SURFACES) {
     // The token the verb receives decodes (plain base64url, the helper's alphabet) to the pinned root; the suite has no Buffer.
     const [number, word] = r.runs[1].args.split(' ')
     expect(number).toBe('209')
-    expect(word).toMatch(/^--in=[A-Za-z0-9_-]+$/)
+    expect(word).toMatch(/^--in=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
     expect(word).toBe(IN(ROOT))
-    expect(atob(word.slice('--in='.length).replace(/-/g, '+').replace(/_/g, '/'))).toBe(ROOT)
+    const [rootPart, repoPart] = word.slice('--in='.length).split('.')
+    expect(atob(rootPart.replace(/-/g, '+').replace(/_/g, '/'))).toBe(ROOT)
+    expect(atob(repoPart.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(repoPart.length / 4) * 4, '='))).toBe('github.com/o/r')
     expect(await ui.find({ key: 'queued-209' })).toBeUndefined()
     expect(await ui.find({ key: 'work-209' })).toBeDefined()
   })

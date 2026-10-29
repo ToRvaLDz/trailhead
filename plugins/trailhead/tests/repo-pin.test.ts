@@ -112,12 +112,22 @@ test('repoFromGit keeps a repo with no origin remote unpinned, so the last pin s
   expect(nextPin(current, repo)).toBe(current)
 })
 
-test('checkoutArg hands the root over as one shell-safe word the helper decodes back', () => {
+const fromBase64url = (token: string): string => {
+  const bytes = Uint8Array.from(atob(token.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(token.length / 4) * 4, '=')), c => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+test('checkoutArg hands the root and the repo over as one shell-safe word the helper decodes back', () => {
   for (const root of ['/repo', '/with space/r', "/it's/r", '/-dash/r', '/uni\u00e8\u4e2d/r', '/a"b$c`d']) {
     const arg = checkoutArg({ ...GH, root })
-    expect(arg).toMatch(/^--in=[A-Za-z0-9_-]+$/)
-    const token = arg.slice('--in='.length)
-    const bytes = Uint8Array.from(atob(token.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(token.length / 4) * 4, '=')), c => c.charCodeAt(0))
-    expect(new TextDecoder().decode(bytes)).toBe(root)
+    expect(arg).toMatch(/^--in=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    const [path, repo] = arg.slice('--in='.length).split('.')
+    expect(fromBase64url(path)).toBe(root)
+    expect(fromBase64url(repo)).toBe('github.com/o/r')
   }
+})
+
+test('checkoutArg carries host and a nested slug in the repo part', () => {
+  const arg = checkoutArg({ root: '/w/p', host: 'gitlab.com', slug: 'g/sub/r' })
+  expect(fromBase64url(arg.split('.')[1])).toBe('gitlab.com/g/sub/r')
 })
