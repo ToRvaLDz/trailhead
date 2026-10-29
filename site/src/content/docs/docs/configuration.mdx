@@ -26,8 +26,8 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead writes its GitHub prose & commit descriptions in, decoupled from the language it converses in |
-| `models.{plan,execute,research,review,debug,verify,codebase-map}` | a full versioned model id (**the Balanced profile's tier default**) | which model runs each activity; `plan` and `execute` are always set separately. Set a key to `inherit session` to use the session model instead; see [Models](#models) |
-| `models.codex.{plan,execute,research,review,debug,verify,codebase-map}` | an OpenAI model id, or `{model, effort}` (**inherit session**) | the same per-activity split on Codex, which cannot run Claude ids; see [Models](#models) |
+| `models.{plan,execute,research,review,debug,verify,codebase-map,grill}` | a full versioned model id (**the Balanced profile's tier default**) | which model runs each activity; `plan` and `execute` are always set separately. Set a key to `inherit session` to use the session model instead; see [Models](#models) |
+| `models.codex.{plan,execute,research,review,debug,verify,codebase-map,grill}` | an OpenAI model id, or `{model, effort}` (**inherit session**) | the same per-activity split on Codex, which cannot run Claude ids; see [Models](#models) |
 | `design` | **`disk`** \| `artifacts` \| `stitch` | where UI mockups go: local throwaway HTML, a Design canvas **Artifact** on claude.ai (Claude Code only), or Google Stitch (cross-host, via the Stitch MCP). The legacy `claude.ai/design` value is read as `artifacts` |
 | `design.surface` | **`canvas`** \| `design-system` | `stitch` only: a Stitch project of screens (default) or a shared Stitch design system |
 | `design.system` | Design System Artifact URL | `artifacts` only: the design system installed on the mockup canvas (asked at the first screen if unset) |
@@ -54,8 +54,9 @@ Each key runs its activity as a subagent on the model you name, so the whole per
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
 - `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and `codebase-map` (the codebase-map reader fan-out) each run on their own key.
+- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent (strong tier by default on Claude); the session still asks you each question. On Codex an unset `models.codex.grill` inherits the session model: a profile or a pin brings the strong tier, and a pin equal to the session model runs inline.
 
-The main session stays the orchestrator. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting, grilling, and ticket-writing on its own model. No key governs ticket quality, so run charting sessions on your strong model.
+The main session stays the orchestrator. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting and ticket-writing on its own model; for grilling it relays each question from `trailhead-grill` and asks you itself. No key governs ticket quality, so run charting sessions on your strong model.
 
 ### Tiers and their defaults
 
@@ -71,13 +72,13 @@ Claude keys take an id only. Codex keys take a bare OpenAI model id or a `{model
 
 ### Profiles
 
-A profile assigns a tier to each of the seven keys. In `/trailhead:config`, picking High, Balanced or Low applies it whole (no further per-key questions); Manual asks each key yourself, and `plan` and `execute` are always two separate questions. The idea behind all three is smart at every level: research is never the strongest tier, and execute and debug are never the fastest.
+A profile assigns a tier to each of the eight keys. In `/trailhead:config`, picking High, Balanced or Low applies it whole (no further per-key questions); Manual asks each key yourself, and `plan` and `execute` are always two separate questions. The idea behind all three is smart at every level: research is never the strongest tier, and execute and debug are never the fastest.
 
-| Profile | plan | execute | research | review | debug | verify | codebase-map |
-|---|---|---|---|---|---|---|---|
-| High | strong | strong | standard | strong | strong | strong | standard |
-| Balanced (default) | strong | standard | standard | standard | standard | standard | fast |
-| Low | standard | standard | fast | fast | standard | fast | fast |
+| Profile | plan | execute | research | review | debug | verify | codebase-map | grill |
+|---|---|---|---|---|---|---|---|---|
+| High | strong | strong | standard | strong | strong | strong | standard | strong |
+| Balanced (default) | strong | standard | standard | standard | standard | standard | fast | strong |
+| Low | standard | standard | fast | fast | standard | fast | fast | standard |
 
 Balanced is the default profile. On Claude, a `models.*` key you leave unset resolves to its Balanced tier at load time, so a project with no config still gets sensible models without anyone choosing. A `models.codex.*` key is different: left unset, it inherits the session model, and only a profile or a pin gives it a Codex tier. To use the session model for a Claude key instead of its Balanced default, set it explicitly to `inherit session`. An unknown id is never fatal: trailhead warns and inherits the session model.
 

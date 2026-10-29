@@ -445,8 +445,8 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | Key | Values (default **bold**) | Effetto |
 |---|---|---|
 | `ticket.language` | un codice ISO 639-1 (**`en`**) | la lingua in cui trailhead **scrive** la sua prosa GitHub e le descrizioni dei commit, disaccoppiata dalla lingua in cui conversa |
-| `models.{plan,execute,research,review,debug,verify,codebase-map}` | un id modello completo **versionato** (**default del profilo Balanced**; `inherit session` è una scelta esplicita) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
-| `models.codex.{plan,execute,research,review,debug,verify,codebase-map}` | un id modello OpenAI, o `{model, effort}` (**inherit session**) | la stessa divisione per attività su Codex, indipendente da `models.*` (id Claude); riesegui l'installer per proiettarla in `~/.codex/agents/` |
+| `models.{plan,execute,research,review,debug,verify,codebase-map,grill}` | un id modello completo **versionato** (**default del profilo Balanced**; `inherit session` è una scelta esplicita) | quale modello esegue ogni attività; `plan` ed `execute` sono sempre impostati separatamente |
+| `models.codex.{plan,execute,research,review,debug,verify,codebase-map,grill}` | un id modello OpenAI, o `{model, effort}` (**inherit session**) | la stessa divisione per attività su Codex, indipendente da `models.*` (id Claude); riesegui l'installer per proiettarla in `~/.codex/agents/` |
 | `design` | **`disk`** \| `artifacts` \| `stitch` | dove vanno i mockup UI: HTML usa-e-getta locale, un canvas Design **Artifact** su claude.ai (solo Claude Code), o Google Stitch (cross-host, via l'MCP Stitch). Il vecchio valore `claude.ai/design` viene letto come `artifacts` |
 | `design.project` | URL del canvas Artifact / id del progetto Stitch | solo `artifacts` e `stitch`: il canvas o il progetto Stitch su cui finiscono i mockup; impostato alla prima schermata UI (scegli, incolla o crea), non a mano. Un vecchio progetto claude.ai/design non viene riutilizzato |
 | `design.surface` | **`canvas`** \| `design-system` | solo `stitch`: un progetto Stitch di schermate (default) o un design system Stitch condiviso |
@@ -468,10 +468,11 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 
 - `plan` ed `execute` sono i passi del motore build/bug. Execute è anch'esso un subagent, e committa su `main`.
 - `research`, `review`, `debug`, `verify` (il controllo goal-backward in Verify), e il fan-out della codebase-map girano ciascuno sulla propria chiave.
+- `grill` esegue i round di grilling sul subagent read-only `trailhead-grill` (tier forte di default su Claude); la sessione ti fa comunque ogni domanda e tiene le risposte.
 
-Scegli `plan` ed `execute` separatamente, ciascuno per **id completo versionato** (mai un `opus` o `sonnet` nudo). Una chiave non impostata usa il default del profilo Balanced, e una uguale al modello della sessione gira semplicemente inline; imposta `inherit session` per usare il modello della sessione.
+Scegli `plan` ed `execute` separatamente, ciascuno per **id completo versionato** (mai un `opus` o `sonnet` nudo). Una chiave non impostata usa il default del profilo Balanced, e una uguale al modello della sessione gira semplicemente inline; imposta `inherit session` per usare il modello della sessione. Su Codex, un `models.codex.grill` non impostato eredita il modello della sessione come ogni chiave `models.codex.*`; un profilo in `/trailhead:config` (riesegui l'installer) o un pin porta il tier forte, e un pin uguale al modello della sessione gira inline.
 
-La **sessione principale resta l'orchestratore**. Tiene i momenti interattivi (il Discuss di un build, e l'acceptance/UAT del Verify) e fa charting, grilling e scrittura dei ticket sul proprio modello. Nessuna chiave governa la qualità dei ticket, quindi esegui le sessioni di charting sul tuo modello forte.
+La **sessione principale resta l'orchestratore**. Tiene i momenti interattivi (il Discuss di un build, e l'acceptance/UAT del Verify) e fa charting e scrittura dei ticket sul proprio modello; per il grilling inoltra ogni domanda di `trailhead-grill` e te la pone lei stessa. Nessuna chiave governa la qualità dei ticket, quindi esegui le sessioni di charting sul tuo modello forte.
 
 Esempio di file di config (la stessa forma funziona per il `.trailhead/config.json` di progetto e il `trailhead/config.json` globale nella tua directory di config):
 

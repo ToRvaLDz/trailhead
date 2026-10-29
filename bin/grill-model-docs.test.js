@@ -99,4 +99,19 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   points('work SKILL.md quick Grill only if needed', lineWith(work, '- **Grill only if needed** (Discuss)'));
 }
 
+// --- Parte D: README e README.it.md ---------------------------------------------------
+{
+  for (const file of ['README.md', 'README.it.md']) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    const lines = text.split('\n');
+    const row = (prefix) => lines.find((l) => l.startsWith(prefix)) || '';
+    ok(`D: ${file} models.{...} row lists grill`, /^\| `models\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.{')));
+    ok(`D: ${file} models.codex.{...} row lists grill`, /^\| `models\.codex\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.codex.{')));
+    ok(`D: ${file} Models bullets carry a grill bullet`, lines.some((l) => /^- `grill`/.test(l) && l.includes('trailhead-grill')));
+    ok(`D: ${file} no longer says grilling runs on the session model`,
+      !/charting, grilling/.test(text));
+    ok(`D: ${file} carries the Codex note`, text.includes('models.codex.grill') && /inherit/.test(lines.find((l) => l.includes('models.codex.grill') && !l.startsWith('|')) || ''));
+  }
+}
+
 console.log(`grill-model-docs.test.js: ${passed} checks passed`);

@@ -445,8 +445,8 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | Key | Values (default **bold**) | Effect |
 |---|---|---|
 | `ticket.language` | an ISO 639-1 code (**`en`**) | the language trailhead **writes** its GitHub prose & commit descriptions in, decoupled from the language it converses in |
-| `models.{plan,execute,research,review,debug,verify,codebase-map}` | a full **versioned** model id (**Balanced-profile default**; `inherit session` is an explicit choice) | which model runs each activity; `plan` and `execute` are always set separately |
-| `models.codex.{plan,execute,research,review,debug,verify,codebase-map}` | an OpenAI model id, or `{model, effort}` (**inherit session**) | the same per-activity split on Codex, independent of `models.*` (Claude ids); re-run the installer to project it into `~/.codex/agents/` |
+| `models.{plan,execute,research,review,debug,verify,codebase-map,grill}` | a full **versioned** model id (**Balanced-profile default**; `inherit session` is an explicit choice) | which model runs each activity; `plan` and `execute` are always set separately |
+| `models.codex.{plan,execute,research,review,debug,verify,codebase-map,grill}` | an OpenAI model id, or `{model, effort}` (**inherit session**) | the same per-activity split on Codex, independent of `models.*` (Claude ids); re-run the installer to project it into `~/.codex/agents/` |
 | `design` | **`disk`** \| `artifacts` \| `stitch` | where UI mockups go: local throwaway HTML, a Design canvas **Artifact** on claude.ai (Claude Code only), or Google Stitch (cross-host, via the Stitch MCP). The legacy `claude.ai/design` value is read as `artifacts` |
 | `design.project` | canvas Artifact URL / Stitch project id | `artifacts` and `stitch` only: the canvas or Stitch project the mockups land on; set at the first UI screen (pick, paste or create), not by hand. A leftover claude.ai/design project is not reused |
 | `design.surface` | **`canvas`** \| `design-system` | `stitch` only: a Stitch project of screens (default) or a shared Stitch design system |
@@ -468,10 +468,11 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 
 - `plan` and `execute` are the build/bug engine's steps. Execute is a subagent too, and it commits to `main`.
 - `research`, `review`, `debug`, `verify` (the goal-backward Verify check), and the codebase-map fan-out each run on their own key.
+- `grill` runs the Grilling rounds on the read-only `trailhead-grill` subagent (strong tier by default on Claude); the session still asks you each question and keeps the answers.
 
-Choose `plan` and `execute` separately, each by **full versioned id** (never a bare `opus` or `sonnet`). A key left unset uses its Balanced-profile default, and one equal to the session model simply runs inline; set `inherit session` to use the session model.
+Choose `plan` and `execute` separately, each by **full versioned id** (never a bare `opus` or `sonnet`). A key left unset uses its Balanced-profile default, and one equal to the session model simply runs inline; set `inherit session` to use the session model. On Codex, an unset `models.codex.grill` inherits the session model like every `models.codex.*` key; a profile in `/trailhead:config` (re-run the installer) or a pin brings the strong tier, and a pin equal to the session model runs inline.
 
-The **main session stays the orchestrator**. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting, grilling, and ticket-writing on its own model. No key governs ticket quality, so run charting sessions on your strong model.
+The **main session stays the orchestrator**. It holds the interactive moments (a build's Discuss, and Verify's acceptance/UAT) and it does charting and ticket-writing on its own model; for grilling it relays each question from `trailhead-grill` and asks you itself. No key governs ticket quality, so run charting sessions on your strong model.
 
 Example config file (the same shape works for the project `.trailhead/config.json` and the global `trailhead/config.json` in your config directory):
 
