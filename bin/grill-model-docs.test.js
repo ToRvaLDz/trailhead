@@ -88,6 +88,8 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   points('chart SKILL.md Standalone grill', lineWith(standalone, 'Run a standalone **Grilling**'));
   const charting = read('trailhead-chart/references/charting.md');
   points('charting.md Mode 1 Name the destination', lineWith(charting, '1. **Name the destination.**'));
+  points('charting.md Mode 1 Map the frontier', lineWith(charting, '2. **Map the frontier.**'));
+  points('charting.md Mode 1-bis Map the frontier of the remainder', lineWith(charting, '4. **Map the frontier of the remainder**'));
   points('charting.md Mode 1-bis Name the destination of the remaining stretch', lineWith(charting, '2. **Name the destination of the remaining stretch.**'));
   const engines = read('trailhead-work/references/ticket-engines.md');
   points('ticket-engines.md build Discuss', lineWith(engines, '1. **Discuss**: **never auto-grill.**'));
