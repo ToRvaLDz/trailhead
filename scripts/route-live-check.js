@@ -27,11 +27,13 @@ const RUN_TIMEOUT_MS = 300000;
 const MAX_TURNS = '12';
 
 const ENGINES = 'trailhead-work/references/ticket-engines.md';
-// step -> chiave dell'helper, agent atteso, doc da seguire.
+// step -> chiave dell'helper, agent atteso, doc da seguire. helperAgent: l'agent
+// che l'helper nomina quando differisce da quello spawnato (fix spawna trailhead-fix
+// al posto dell'executor restituito).
 const STEPS = Object.freeze({
   plan: { key: 'plan', agent: 'trailhead-plan', doc: ENGINES, where: 'the build Plan step (step 2)' },
   execute: { key: 'execute', agent: 'trailhead-executor', doc: ENGINES, where: 'the build Execute step, its Dispatch bullet' },
-  fix: { key: 'execute', agent: 'trailhead-fix', doc: ENGINES, where: 'the bug Fix step, its Dispatch bullet' },
+  fix: { key: 'execute', agent: 'trailhead-fix', helperAgent: 'trailhead-executor', doc: ENGINES, where: 'the bug Fix step, its Dispatch bullet' },
   review: { key: 'review', agent: 'trailhead-code-review', doc: '_shared/techniques/code-review.md', where: 'the Code review technique' },
   verify: { key: 'verify', agent: 'trailhead-verify', doc: '_shared/techniques/verify.md', where: 'the Goal-backward verification technique' },
   research: { key: 'research', agent: 'trailhead-research', doc: '_shared/techniques/research.md', where: 'the Research technique' },
@@ -69,9 +71,30 @@ function buildPrompt(step, projectRoot, skillsDir) {
   ].join('\n');
 }
 
-// Parser puro dello stream-json: eventi in ordine di arrivo.
+// Testo di un tool_result: stringa oppure array di blocchi {type:'text', text}.
+function resultText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n');
+  return '';
+}
+
+// L'helper stampa una riga JSON: prende l'ultima riga che e' un oggetto con `route`.
+function helperJson(body) {
+  const lines = String(body).split('\n').map((l) => l.trim()).filter(Boolean).reverse();
+  for (const l of lines) {
+    try {
+      const o = JSON.parse(l);
+      if (o && typeof o === 'object' && typeof o.route === 'string') return o;
+    } catch { /* non JSON */ }
+  }
+  return null;
+}
+
+// Parser puro dello stream-json: eventi in ordine di arrivo. Le chiamate
+// all'helper sono correlate al loro tool_result per tool_use_id.
 function parseStream(text) {
   const out = { helperCalls: [], spawns: [], inlineMarkers: [], authError: false, resultError: null, order: 0 };
+  const byId = new Map();
   for (const raw of String(text).split('\n')) {
     const l = raw.trim();
     if (!l) continue;
@@ -84,7 +107,14 @@ function parseStream(text) {
         if (block.type === 'tool_use' && block.name === 'Bash') {
           const cmd = block.input && typeof block.input.command === 'string' ? block.input.command : '';
           const m = cmd.match(/\bnode\s+\S*model-route\.js\s+([a-z][a-z-]*)(?=\s|$)/);
-          if (m) out.helperCalls.push({ key: m[1], command: cmd, order });
+          if (m) {
+            // --session deve avere un valore non vuoto che sembri un id modello (non un flag ne' un path).
+            const sm = cmd.match(/--session\s+(\S+)/);
+            const session = sm && /^[A-Za-z0-9][\w.\-\[\]]*$/.test(sm[1]) ? sm[1] : null;
+            const call = { key: m[1], command: cmd, order, id: block.id || null, session, json: null, error: null, hasResult: false };
+            out.helperCalls.push(call);
+            if (call.id) byId.set(call.id, call);
+          }
         } else if (block.type === 'tool_use' && SPAWN_TOOLS.has(block.name)) {
           const inp = block.input || {};
           out.spawns.push({ tool: block.name, subagentType: inp.subagent_type || '', model: inp.model || null, order });
@@ -92,10 +122,20 @@ function parseStream(text) {
           for (const m of block.text.matchAll(/^\s*INLINE ([a-z-]+)\s*$/gm)) out.inlineMarkers.push(m[1]);
         }
       }
+    } else if (ev.type === 'user' && ev.message && Array.isArray(ev.message.content)) {
+      for (const block of ev.message.content) {
+        if (block.type !== 'tool_result') continue;
+        const call = byId.get(block.tool_use_id);
+        if (!call) continue;
+        const body = resultText(block.content);
+        call.hasResult = true;
+        call.json = helperJson(body);
+        if (!call.json) call.error = body.trim().slice(0, 300) || 'empty result';
+      }
     } else if (ev.type === 'result' && ev.is_error) {
       out.resultError = String(ev.result || ev.subtype || 'error');
       if (AUTH_RE.test(out.resultError)) out.authError = true;
-    } else if (ev.type === 'error' || (ev.error && AUTH_RE.test(String(ev.error)))) {
+    } else if (ev.type === 'error') {
       const msg = String(ev.error || ev.message || '');
       out.resultError = out.resultError || msg;
       if (AUTH_RE.test(msg)) out.authError = true;
@@ -114,13 +154,21 @@ function evaluate(step, config, parsed) {
     const seen = parsed.helperCalls.map((h) => h.key).join(',') || 'none';
     return { pass: false, reason: `no model-route.js ${s.key} call (helper keys seen: ${seen})` };
   }
+  if (!helper.session) return { pass: false, reason: 'the helper call has no --session value' };
+  if (!helper.hasResult) return { pass: false, reason: 'the helper call has no tool_result in the stream' };
+  if (!helper.json) return { pass: false, reason: `the helper failed or printed no JSON: ${helper.error}` };
+  const wantRoute = config === 'D' ? 'dispatch' : 'inline';
+  if (helper.json.route !== wantRoute) return { pass: false, reason: `helper route is ${helper.json.route}, expected ${wantRoute}` };
   const agentOk = (t) => t === s.agent || t.endsWith(`:${s.agent}`);
   if (config === 'D') {
+    const wantHelperAgent = s.helperAgent || s.agent;
+    if (helper.json.agent !== wantHelperAgent) return { pass: false, reason: `helper agent is ${helper.json.agent}, expected ${wantHelperAgent}` };
+    if (helper.json.alias !== c.alias) return { pass: false, reason: `helper alias is ${helper.json.alias}, expected ${c.alias}` };
     const sp = parsed.spawns.find((x) => agentOk(x.subagentType));
     if (!sp) return { pass: false, reason: `no spawn of ${s.agent} (spawns: ${parsed.spawns.map((x) => x.subagentType).join(',') || 'none'})` };
     if (sp.order < helper.order) return { pass: false, reason: 'the spawn came before the helper call' };
-    if (sp.model !== c.alias) return { pass: false, reason: `spawn model is ${sp.model}, expected ${c.alias}` };
-    return { pass: true, reason: `helper ${s.key}, spawn ${sp.subagentType} model ${sp.model}` };
+    if (sp.model !== helper.json.alias) return { pass: false, reason: `spawn model is ${sp.model}, helper alias is ${helper.json.alias}` };
+    return { pass: true, reason: `helper ${s.key} dispatch ${helper.json.agent}, spawn ${sp.subagentType} model ${sp.model}` };
   }
   if (parsed.spawns.length > 0) return { pass: false, reason: `unexpected spawn: ${parsed.spawns.map((x) => x.subagentType).join(',')}` };
   if (!parsed.inlineMarkers.includes(step)) return { pass: false, reason: `no INLINE ${step} marker` };
@@ -158,15 +206,17 @@ function runClaude(step, projectRoot) {
       '--permission-mode', 'bypassPermissions', '--max-turns', MAX_TURNS]);
     const child = spawn('claude', args, { cwd: projectRoot, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
     let buf = '';
+    let err = '';
     let killed = false;
     const timer = setTimeout(() => child.kill('SIGKILL'), RUN_TIMEOUT_MS);
     child.stdout.on('data', (d) => {
       buf += d;
       if (!killed && parseStream(buf).spawns.length > 0) { killed = true; child.kill('SIGTERM'); }
     });
-    child.stderr.on('data', (d) => { buf += `\n${JSON.stringify({ type: 'error', error: String(d) })}\n`; });
-    child.on('close', () => { clearTimeout(timer); resolve(buf); });
-    child.on('error', (e) => { clearTimeout(timer); resolve(`${JSON.stringify({ type: 'error', error: e.message })}\n`); });
+    // stderr resta fuori dallo stream parsato: si stampa solo su FAIL.
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('close', () => { clearTimeout(timer); resolve({ stdout: buf, stderr: err }); });
+    child.on('error', (e) => { clearTimeout(timer); resolve({ stdout: '', stderr: e.message }); });
   });
 }
 
@@ -194,10 +244,11 @@ async function main() {
     const dir = makeProject(CONFIGS[config].model);
     try {
       for (const step of opts.steps) {
-        const parsed = parseStream(await runClaude(step, dir));
-        const r = evaluate(step, config, parsed);
+        const run = await runClaude(step, dir);
+        const r = evaluate(step, config, parseStream(run.stdout));
         if (!r.pass) failed++;
         console.log(`${r.pass ? 'PASS' : 'FAIL'}  config ${config}  ${step}: ${r.reason}`);
+        if (!r.pass && run.stderr.trim()) console.log(`  stderr: ${run.stderr.trim().slice(0, 500)}`);
       }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
