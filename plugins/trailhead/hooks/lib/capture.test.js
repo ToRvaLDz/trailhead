@@ -341,7 +341,7 @@ for (const type of ['bug', 'todo', 'seed']) {
   ok('edge fails once then succeeds: created', r1.code === 0 && r1.json.status === 'created' && r1.json.edge === 'ok' && t1.edges.length === 1);
   const t2 = makeTracker({ edgeFail: 2 });
   const r2 = run(t2, base('bug', ['--map', '5']));
-  ok('edge fails twice: partial, exit 3, names prune', r2.code === 3 && r2.json.status === 'partial' && r2.json.edge === 'failed' && r2.json.issue === 100 && r2.json.warnings.some((w) => /\/trailhead:prune/.test(w)) && t2.edges.length === 0);
+  ok('edge fails twice: partial, exit 3, names prune', r2.code === 3 && r2.json.status === 'partial' && r2.json.edge === 'failed' && r2.json.issue === 100 && r2.json.warnings.some((w) => /trailhead prune command/.test(w)) && t2.edges.length === 0);
 }
 {
   const t = makeTracker({ issues: { 5: { state: 'OPEN', title: 'Map five', labels: ['trailhead:map'] }, 10: { state: 'CLOSED', title: 'Origin on 5', labels: ['trailhead:map-5'] }, 12: { state: 'CLOSED', title: 'Origin closed map', labels: ['trailhead:map-6'] }, 6: { state: 'CLOSED', title: 'm6', labels: ['trailhead:map'] } } });

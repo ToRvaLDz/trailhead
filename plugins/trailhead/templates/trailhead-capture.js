@@ -362,7 +362,7 @@ function main(argv, { gh, guard, stdout, stderr, sleep, dashboard, stdin } = {})
       edge = e.status === 0;
     }
     if (!edge) {
-      warnings.push(`native sub-issue edge to map #${dest.map.number} failed (e.g. the 100 sub-issue cap); the ticket keeps its trailhead:map-${dest.map.number} label so it stays on the frontier; run /trailhead:prune to repair`);
+      warnings.push(`native sub-issue edge to map #${dest.map.number} failed (e.g. the 100 sub-issue cap); the ticket keeps its trailhead:map-${dest.map.number} label so it stays on the frontier; repair it with the trailhead prune command`);
       result.status = 'partial';
       result.edge = 'failed';
     } else {
@@ -379,7 +379,7 @@ function main(argv, { gh, guard, stdout, stderr, sleep, dashboard, stdin } = {})
     let code = 1;
     try { code = dash.main(['--repo', repo, '--update-only'], { gh: run, stdout: sink, stderr: sink }); } catch { code = 1; }
     if (code === 0) result.dashboard = 'refreshed';
-    else { result.dashboard = 'failed'; warnings.push('the dashboard refresh failed; run /trailhead:dashboard to refresh it'); }
+    else { result.dashboard = 'failed'; warnings.push('the dashboard refresh failed; refresh it with the trailhead dashboard command'); }
   }
   result.warnings = warnings;
   emit(result);
