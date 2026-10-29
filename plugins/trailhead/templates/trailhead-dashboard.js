@@ -7,11 +7,16 @@
 // updatedAt check, post-write conflict check, secret scan). #253.
 //
 // CLI:
-//   node trailhead-dashboard.js [--repo <owner/name>] [--set-last-audit <ISO-8601 UTC>] [--dry-run]
+//   node trailhead-dashboard.js [--repo <owner/name>] [--set-last-audit <ISO-8601 UTC>] [--dry-run] [--update-only]
 // --set-last-audit replaces the `<!-- trailhead:last-audit ... -->` marker (the
 // audit's only writer path); without it the marker is copied verbatim from the
 // existing body. --dry-run gathers and reads through gh, computes and scans, but
 // writes, creates, pins and labels nothing; it prints the old and new byte sizes.
+// --update-only refreshes an existing dashboard and never opens one: with no open
+// dashboard issue it creates, pins and labels nothing (the label ensure is skipped
+// too) and prints `skipped: no dashboard issue (update-only)`, exit 0. A capture
+// uses it so it cannot open a second issue; the check lives here, in the helper,
+// so there is no check-then-call race.
 //
 // Singleton labels (dashboard, codebase, conventions): more than one open issue
 // aborts before any write, naming every duplicate by title and number.
@@ -23,6 +28,7 @@
 //
 // Prints exactly one line on stdout:
 //   dashboard #33: 4 maps, whiteboard 1, flags: map-14 exhausted, map-98 near cap 92/100 (body 21034 -> 2210 bytes)
+//   skipped: no dashboard issue (update-only)
 //   aborted: <reason>
 // Exit 0 on success, 1 on an abort or a conflict, 2 on a usage error (stderr).
 // A pin check or pin failure AFTER the body was written is not an abort: the line
@@ -266,10 +272,11 @@ function createDashboard(gh, repo, body, tmpdir) {
 // --- CLI ---------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const o = { repo: null, setLastAudit: null, dryRun: false };
+  const o = { repo: null, setLastAudit: null, dryRun: false, updateOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     if (flag === '--dry-run') { o.dryRun = true; continue; }
+    if (flag === '--update-only') { o.updateOnly = true; continue; }
     if (flag !== '--repo' && flag !== '--set-last-audit') return { error: `usage: unknown argument: ${flag}` };
     i++;
     if (i >= argv.length) return { error: `usage: ${flag} requires a value` };
@@ -304,6 +311,10 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
     const repo = o.repo || defaultRepo(run);
     if (!repo) return abort('cannot resolve the repository (pass --repo owner/name)');
     const singles = lookupSingletons(run, repo); // fail closed on duplicates, before any write
+    if (o.updateOnly && singles.dashboard === null) {
+      out.write('skipped: no dashboard issue (update-only)\n');
+      return 0;
+    }
     if (!o.dryRun) run(['label', 'create', LABEL, '--color', '5319E7', '--description', 'Pinned index of the trailhead surface', '-R', repo]); // idempotent, failure = already there
     const snap = gatherSnapshot(run, repo, singles);
     const marker = o.setLastAudit ? `<!-- trailhead:last-audit ${o.setLastAudit} -->` : null;

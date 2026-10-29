@@ -407,6 +407,25 @@ function runMain(argv, t, extra = {}) {
   ok('create: a secret in the generated body aborts the create', guardHit.code === 1 && ghost.created.length === 0);
 }
 
+// --- --update-only: never opens a dashboard of its own (#330) -----------------
+{
+  const t = makeTracker({ dash: null, pinned: [] });
+  const r = runMain(['--repo', 'o/r', '--update-only'], t);
+  ok('update-only: no dashboard -> skip line, exit 0', r.code === 0 && r.out === 'skipped: no dashboard issue (update-only)\n');
+  ok('update-only: no dashboard -> no create, pin, label or write call', t.created.length === 0 && t.pins.length === 0 && t.labels.length === 0 && t.writes.length === 0 && !t.calls.some((c) => /^label create|^issue create|^issue edit|graphql/.test(c)));
+}
+{
+  const t = makeTracker();
+  const r = runMain(['--repo', 'o/r', '--update-only'], t);
+  ok('update-only: a dashboard present is rewritten as usual', r.code === 0 && t.writes.length === 1 && /^dashboard #33: 3 maps/.test(r.out) && !/skipped/.test(r.out));
+  ok('update-only: a dashboard present keeps the label ensure and creates nothing', t.labels.includes('trailhead:dashboard') && t.created.length === 0);
+}
+{
+  const t = makeTracker({ dups: { 'trailhead:dashboard': [{ number: 90, title: 'dup' }] } });
+  const r = runMain(['--repo', 'o/r', '--update-only'], t);
+  ok('update-only: duplicate dashboards still abort, never skipped', r.code === 1 && /ambiguous singleton/.test(r.out) && t.writes.length === 0);
+}
+
 // --- I2: a pin-check failure after the write is not an abort ------------------
 {
   const t = makeTracker({ failOn: /pinnedIssues/ });
