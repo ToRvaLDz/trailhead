@@ -58,6 +58,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
     has('model-route.js grill --session', '--session-effort', 'unknown', '--no-subagents', '--host codex'));
   ok('B: the helper is found with the same two-path lookup as model-defaults-review.js',
     has('../../hooks/lib/', '../trailhead/hooks/lib/', 'model-defaults-review.js'));
+  ok('B: a context-window suffix on the session id is documented as ignored', has('a trailing `[...]` suffix such as `[1m]` is ignored'));
   ok('B: use its agent and alias verbatim', has('use its `agent` and `alias` verbatim'));
   ok('B: route inline with the suggest line', has('`route: inline`', '`suggest`', 'suggesting the user switch the session'));
   ok('B: an unregistered agent runs inline', has('not registered', 'inline'));

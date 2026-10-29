@@ -35,6 +35,11 @@ const codex = (extra) => route({ key: 'grill', host: 'codex', models: {}, sessio
   }
   const pinned = claude({ sessionModel: OPUS, models: { grill: 'claude-opus-5' } });
   ok('claude: a different opus version dispatches with the opus alias', pinned.route === 'dispatch' && pinned.alias === 'opus' && pinned.model === 'claude-opus-5');
+  ok('claude: a suffixed opus session + unset key -> inline', claude({ sessionModel: 'claude-opus-5-5[1m]' }).route === 'inline');
+  const sfx = claude({ sessionModel: 'claude-sonnet-5-5[1m]' });
+  ok('claude: a suffixed sonnet session + unset key -> dispatch opus', sfx.route === 'dispatch' && sfx.model === OPUS && sfx.alias === 'opus');
+  ok('claude: a suffixed configured id equals the plain session id', claude({ sessionModel: SONNET, models: { grill: `${SONNET}[1m]` } }).route === 'inline');
+  ok('claude: no subagents, suffixed session already on the model -> no suggestion', !claude({ subagents: false, sessionModel: 'claude-opus-5-5[1m]' }).suggest);
   const unk = claude({ models: { grill: 'my-custom-model' } });
   ok('claude: an unknown id that differs from the session -> inline with warning', unk.route === 'inline' && unk.warning === 'unknown-id');
   const unkEq = claude({ sessionModel: 'my-custom-model', models: { grill: 'my-custom-model' } });

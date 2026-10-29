@@ -72,13 +72,17 @@ function loadTierIds(host) {
   return (current && current[host]) || {};
 }
 
+// Toglie un suffisso finale `[...]` (es. la finestra di contesto `[1m]`): lo
+// stesso modello con o senza suffisso resta lo stesso modello.
+const stripSuffix = (id) => (typeof id === 'string' ? id.replace(/\[[^\]]*\]\s*$/, '').trim() : id);
+
 const isUnset = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 const result = (fields) => ({ route: 'inline', agent: null, model: null, alias: null, suggest: null, warning: null, ...fields });
 
 function routeClaude({ key, models, sessionModel, subagents, tierIds }) {
   const raw = models ? models[key] : undefined;
   if (typeof raw === 'string' && raw.trim() === INLINE_VALUE) return result({});
-  const id = isUnset(raw) ? (tierIds || {})[BALANCED[key]] : raw;
+  const id = stripSuffix(isUnset(raw) ? (tierIds || {})[BALANCED[key]] : raw);
   if (typeof id !== 'string' || id.trim() === '') return result({ warning: 'unknown-id' });
   const sameAsSession = sessionModel !== UNKNOWN_SESSION && id === sessionModel;
 
@@ -95,8 +99,9 @@ function routeCodex({ key, models, sessionModel, sessionEffort, subagents }) {
   const codexModels = models && models.codex && typeof models.codex === 'object' && !Array.isArray(models.codex) ? models.codex : {};
   const raw = codexModels[key];
   if (isUnset(raw) || raw === INLINE_VALUE) return result({});
-  const pin = typeof raw === 'object' ? raw : { model: raw };
+  let pin = typeof raw === 'object' ? raw : { model: raw };
   if (typeof pin.model !== 'string' || pin.model.trim() === '') return result({});
+  pin = { ...pin, model: stripSuffix(pin.model) };
 
   const sameModel = sessionModel !== UNKNOWN_SESSION && pin.model === sessionModel;
   if (subagents === false) return result({ model: pin.model, suggest: sameModel ? null : pin.model });
@@ -112,7 +117,7 @@ function routeCodex({ key, models, sessionModel, sessionEffort, subagents }) {
 function route({ key, host, models, sessionModel, sessionEffort, subagents, tierIds } = {}) {
   if (!HOSTS.includes(host)) throw new Error(`unknown host: ${host}`);
   if (!Object.prototype.hasOwnProperty.call(AGENT_OF[host], key)) throw new Error(`unknown key: ${key}`);
-  const args = { key, models, sessionModel, sessionEffort, subagents, tierIds };
+  const args = { key, models, sessionModel: stripSuffix(sessionModel), sessionEffort, subagents, tierIds };
   return host === 'codex' ? routeCodex(args) : routeClaude(args);
 }
 
