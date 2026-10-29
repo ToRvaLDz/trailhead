@@ -78,4 +78,25 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: the Grilling index row names models.grill', row.includes('`models.grill`'));
 }
 
+// --- Parte C: i punti d'ingresso puntano a "Who runs a round" per nome -----------------
+{
+  const POINTER = 'Who runs a round';
+  const lineWith = (text, needle) => text.split('\n').find((l) => l.includes(needle)) || '';
+  const points = (label, line) => ok(`C: ${label} points at ${POINTER}`, line.length > 0 && line.includes(POINTER) && line.includes('grilling.md'));
+  const chart = read('trailhead-chart/SKILL.md');
+  const standalone = chart.slice(chart.indexOf('## Standalone grill'));
+  points('chart SKILL.md Standalone grill', lineWith(standalone, 'Run a standalone **Grilling**'));
+  const charting = read('trailhead-chart/references/charting.md');
+  points('charting.md Mode 1 Name the destination', lineWith(charting, '1. **Name the destination.**'));
+  points('charting.md Mode 1-bis Name the destination of the remaining stretch', lineWith(charting, '2. **Name the destination of the remaining stretch.**'));
+  const engines = read('trailhead-work/references/ticket-engines.md');
+  points('ticket-engines.md build Discuss', lineWith(engines, '1. **Discuss**: **never auto-grill.**'));
+  points('ticket-engines.md Plan needs_input grill option', lineWith(engines, 'needs_input` -> ask the user the `questions:`'));
+  ok('C: the Plan needs_input pointer is about opting to grill the planner questions',
+    /opts? to grill/.test(lineWith(engines, 'needs_input` -> ask the user the `questions:`')));
+  points('ticket-engines.md decision Converge', lineWith(engines, '2. **Converge.**'));
+  const work = read('trailhead-work/SKILL.md');
+  points('work SKILL.md quick Grill only if needed', lineWith(work, '- **Grill only if needed** (Discuss)'));
+}
+
 console.log(`grill-model-docs.test.js: ${passed} checks passed`);
