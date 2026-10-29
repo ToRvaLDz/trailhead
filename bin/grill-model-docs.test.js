@@ -68,6 +68,18 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
   ok('B: grilling.md has a Who runs a round section', at !== -1);
   const sec = at === -1 ? '' : grilling.slice(at);
   const has = (...needles) => needles.every((n) => sec.includes(n));
+  const gateAt = grilling.indexOf('**First, before any question: route the round.**');
+  const firstBullet = grilling.indexOf('\n- **Map the decision as a tree.**');
+  ok('B: the routing gate exists and precedes the first round bullet', gateAt !== -1 && firstBullet !== -1 && gateAt < firstBullet);
+  const gate = gateAt === -1 ? '' : grilling.slice(gateAt, firstBullet);
+  ok('B: the gate runs model-route.js grill --session with the session full model id and obeys route',
+    gate.includes('model-route.js grill --session <your full model id> <project root>') && gate.includes('obey its `route`'));
+  ok('B: the gate says where the model id comes from and when to pass unknown',
+    gate.includes('system prompt or environment') && gate.includes('The exact model ID is') && gate.includes('pass `unknown` only if it is truly absent'));
+  ok('B: the gate forbids hand decisions', gate.includes('Never decide inline versus dispatch by hand') && gate.includes('never skip the helper') && gate.includes('never read the config yourself'));
+  ok('B: on dispatch the session does not write the questions and relays the report',
+    gate.includes('you do not write the questions yourself') && gate.includes('spawn `agent` with model `alias`') && gate.includes('relay its report'));
+  ok('B: the gate points at Who runs a round and exempts the dispatched agent', gate.includes('**Who runs a round**') && gate.includes('If you are the `trailhead-grill` agent, skip this gate'));
   ok('B: the route call, with --session-effort and unknown',
     has('model-route.js grill --session', '--session-effort', 'unknown', '--no-subagents', '--host codex'));
   ok('B: the helper is found with the same two-path lookup as model-defaults-review.js',
@@ -105,7 +117,7 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 {
   const POINTER = 'Who runs a round';
   const lineWith = (text, needle) => text.split('\n').find((l) => l.includes(needle)) || '';
-  const points = (label, line) => ok(`C: ${label} points at ${POINTER}`, line.length > 0 && line.includes(POINTER) && line.includes('grilling.md'));
+  const points = (label, line) => ok(`C: ${label} points at ${POINTER} with the imperative routing wording`, line.length > 0 && line.includes(POINTER) && line.includes('grilling.md') && line.includes('first run the routing step at the top of'));
   const chart = read('trailhead-chart/SKILL.md');
   const standalone = chart.slice(chart.indexOf('## Standalone grill'));
   points('chart SKILL.md Standalone grill', lineWith(standalone, 'Run a standalone **Grilling**'));
