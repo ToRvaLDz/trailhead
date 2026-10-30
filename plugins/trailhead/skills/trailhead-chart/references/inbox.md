@@ -4,10 +4,10 @@
 
 `/trailhead:inbox` presents **three sections**, each named for what it holds. **Present them to the user by these descriptive names, never as a bare letter or "section A/B/C"** (result-oriented output: no internal labels). The three:
 
-**Incoming issues to triage.** Open issues carrying **no** `trailhead:*` label (plus any `trailhead:unverified` from the trust guard):
+**Incoming issues to triage.** Open issues carrying **no** `trailhead:*` label (plus any `trailhead:unverified`, applied by a session under the Trust rule in `../../_shared/teamwork.md`; the guard Action strips labels instead):
 ```bash
 gh issue list --state open --json number,title,author,labels \
-  | jq '[.[] | select([.labels[].name] | any(startswith("trailhead:")) | not)]'
+  | jq '[.[] | select(([.labels[].name] | any(startswith("trailhead:")) | not) or ([.labels[].name] | any(. == "trailhead:unverified")))]'
 ```
 
 **Parked fog ready to graduate?** The open `trailhead:fog` issues, **most-recently-active first**: recent discussion is exactly where the fog has likely cleared, so you review those, not all of them:
@@ -26,4 +26,4 @@ For each issue in the first two sections (incoming issues, parked fog), propose 
 - **Duplicate.** In the proposal, name what each one covers (the issue and the existing ticket) and where they differ; only when the existing ticket covers all of it, link it and close. A partial overlap is not a duplicate: link the two and triage the issue by the other moves.
 - **Needs info.** Ask the reporter for a repro or specifics; leave it open.
 
-A rogue issue wearing a `trailhead:*` label it shouldn't (now `trailhead:unverified`) is triaged the same way: **adopt** (a maintainer applies the real labels + `Parent:`) or **reject** (strip the `trailhead:*` labels, leave it a normal inbound issue). Never adopt by trusting a label that was already there; you apply the labels on adoption.
+A rogue issue wearing a `trailhead:*` label it shouldn't (one whose label came from outside the trusted labellers of the Trust rule in `../../_shared/teamwork.md#trust--provenance`, so a label from the bot, an allowlisted login or a write+ collaborator is not rogue; now `trailhead:unverified`) is triaged the same way: **adopt** (a maintainer applies the real labels + `Parent:`) or **reject** (strip the `trailhead:*` labels, leave it a normal inbound issue). Never adopt by trusting a label that was already there; you apply the labels on adoption.
