@@ -29,10 +29,11 @@ const URL_BASE = 'https://github.com/o/r/issues';
 // issues: number -> { state, title, labels:[names] } for pre-existing issues (maps, origins).
 // Options: login (null = unreadable identity), perms {login: permission}, allowlist (undefined =
 // unreadable variable), labeller (actor of the labeled events), eventsFail, dropLabels (labels the
-// server loses), edgeFail (count of failing edge POSTs), dashFail, searchCap, open [{number,body}].
+// server loses), eventsLag (count of leading event reads that return an empty list), eventsPartial
+// (count of leading reads that show only the first label), edgeFail (count of failing edge POSTs), dashFail, searchCap, open [{number,body}].
 function makeTracker(init = {}) {
   const t = {
-    login: 'maint', perms: { maint: 'admin' }, allowlist: undefined, labeller: 'maint', eventsFail: false,
+    login: 'maint', perms: { maint: 'admin' }, allowlist: undefined, labeller: 'maint', eventsFail: false, eventsLag: 0, eventsPartial: 0, eventReads: 0,
     dropLabels: [], edgeFail: 0, dashFail: false, searchCap: false, open: [], permFail: false,
     issues: { 5: { state: 'OPEN', title: 'Map five', labels: ['trailhead:map'] }, 6: { state: 'CLOSED', title: 'Map six', labels: ['trailhead:map'] } },
     ...init, calls: [], created: [], edges: [], inputs: [], next: 100,
@@ -66,8 +67,11 @@ function makeTracker(init = {}) {
     }
     m = /^api --paginate repos\/o\/r\/issues\/(\d+)\/events/.exec(line);
     if (m) {
+      const read = t.eventReads++;
       if (t.eventsFail) return res('', 1);
       const made = t.created.find((c) => c.number === Number(m[1]));
+      if (read < t.eventsLag) return res('');
+      if (read < t.eventsLag + t.eventsPartial) return res(JSON.stringify({ label: made.labels[0], actor: t.labeller }) + '\n');
       return res(made.labels.map((l) => JSON.stringify({ label: l, actor: t.labeller })).join('\n') + '\n');
     }
     if (a === 'issue' && b === 'create') {
@@ -320,7 +324,21 @@ for (const type of ['bug', 'todo', 'seed']) {
   }
   const te = makeTracker({ login: null, eventsFail: true });
   const re = run(te, base('bug', ['--map', '5']));
-  ok('pending trust, events unreadable: error, no edge', re.code === 1 && re.json.trust === 'insufficient' && te.edges.length === 0);
+  ok('pending trust, events unreadable: error, no edge', re.code === 1 && re.json.trust === 'insufficient' && re.json.issue === 100 && /could not be read/.test(re.json.reason) && !/stripped/.test(re.json.reason) && te.edges.length === 0);
+  ok('events unreadable: retried on the backoff schedule', te.eventReads === 4);
+  const naps = [];
+  const tl = makeTracker({ login: null, labeller: 'github-actions[bot]', eventsLag: 2 });
+  const rl = run(tl, base('bug', ['--map', '5']), { sleep: (ms) => naps.push(ms) });
+  ok('pending trust, events empty at first: created as actions-token after naps', rl.code === 0 && rl.json.status === 'created' && rl.json.trust === 'actions-token' && tl.edges.length === 1 && naps.slice(0, 2).join() === '1000,2000');
+  const tp = makeTracker({ login: null, labeller: 'github-actions[bot]', eventsPartial: 2 });
+  const rp = run(tp, base('bug', ['--map', '5']));
+  ok('pending trust, partial events: created only once every label is visible', rp.code === 0 && rp.json.trust === 'actions-token' && tp.eventReads === 3);
+  const tn = makeTracker({ login: null, labeller: 'github-actions[bot]', eventsLag: 99 });
+  const rn = run(tn, base('bug', ['--map', '5']));
+  ok('pending trust, labels never visible: distinct reason naming labels, issue kept, no edge', rn.code === 1 && rn.json.trust === 'insufficient' && rn.json.issue === 100 && /no visible labeled event/.test(rn.json.reason) && /trailhead:bug/.test(rn.json.reason) && !/stripped/.test(rn.json.reason) && tn.edges.length === 0 && tn.eventReads === 4);
+  const tb = makeTracker({ login: null, labeller: 'stranger', perms: { stranger: 'read' }, allowlist: 'x' });
+  run(tb, base('bug', ['--map', '5']));
+  ok('bad actor fails at once, without retries', tb.eventReads === 1);
 }
 
 // --- main: read-back, dedupe, edge, --of, secrets ------------------------------------------

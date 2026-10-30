@@ -248,31 +248,54 @@ function findDuplicate(run, repo, key) {
   return found ? { issue: found.number, url: found.html_url } : null;
 }
 
-// Actor of each trailhead:* labeled event on the issue, or null when unreadable.
-function labelActors(run, repo, n) {
+// Waits between reads of the issue events right after create: the endpoint can briefly return a
+// successful but empty (or partial) list before the labeled events are visible.
+const EVENTS_BACKOFF_MS = [1000, 2000, 4000];
+
+// { label, actor } of each trailhead:* labeled event on the issue, or null when unreadable.
+function labelEvents(run, repo, n) {
   const r = run(['api', '--paginate', `repos/${repo}/issues/${n}/events`, '--jq', '.[] | select(.event == "labeled") | {label: .label.name, actor: .actor.login} | tojson']);
   const rows = jsonLines(r);
   if (!rows) return null;
-  return rows.filter((e) => String(e.label).startsWith('trailhead:')).map((e) => String(e.actor));
+  return rows.filter((e) => String(e.label).startsWith('trailhead:')).map((e) => ({ label: String(e.label), actor: String(e.actor) }));
 }
 
-// Post-create trust for an unreadable identity: every actor who applied a trailhead:* label must be
-// one the guard Action never strips. 'actions-token' | 'allowlisted' | 'ok', or { bad: actor | null }.
-function verifyActors(run, repo, n) {
-  const actors = labelActors(run, repo, n);
-  if (!actors || !actors.length) return { bad: null };
-  const allow = readAllowlist(run, repo);
-  let result = 'actions-token';
+// Decides one actor's trust: 'actions-token' | 'allowlisted' | 'ok' | null.
+function actorTrust(run, repo, actor, allow) {
+  if (actor === ACTIONS_BOT) return 'actions-token';
+  if (allow.includes(actor.toLowerCase())) return 'allowlisted';
+  return hasWrite(run, repo, actor) ? 'ok' : null;
+}
+
+// Post-create trust for an unreadable identity: re-reads the events (bounded backoff) until every
+// expected trailhead:* label shows a labeled event, then every actor who applied one must be one the
+// guard Action never strips. 'actions-token' | 'allowlisted' | 'ok', { bad: actor }, or { error }.
+function verifyActors(run, repo, n, expected, nap) {
+  let allow = null;
   const rank = { 'actions-token': 0, allowlisted: 1, ok: 2 };
-  for (const actor of new Set(actors)) {
-    let t = null;
-    if (actor === ACTIONS_BOT) t = 'actions-token';
-    else if (allow.includes(actor.toLowerCase())) t = 'allowlisted';
-    else if (hasWrite(run, repo, actor)) t = 'ok';
-    if (!t) return { bad: actor };
-    if (rank[t] > rank[result]) result = t;
+  const trusts = new Map();
+  let events = null;
+  for (let attempt = 0; attempt <= EVENTS_BACKOFF_MS.length; attempt++) {
+    if (attempt) nap(EVENTS_BACKOFF_MS[attempt - 1]);
+    events = labelEvents(run, repo, n);
+    if (!events) continue;
+    // A bad actor seen on any read fails at once.
+    for (const actor of new Set(events.map((e) => e.actor))) {
+      if (trusts.has(actor)) continue;
+      if (!allow) allow = readAllowlist(run, repo);
+      const t = actorTrust(run, repo, actor, allow);
+      if (!t) return { bad: actor };
+      trusts.set(actor, t);
+    }
+    if (expected.every((l) => events.some((e) => e.label === l))) {
+      let result = 'actions-token';
+      for (const t of trusts.values()) if (rank[t] > rank[result]) result = t;
+      return { trust: result };
+    }
   }
-  return { trust: result };
+  if (!events) return { error: 'the issue events could not be read, so who applied the labels is unverified' };
+  const unseen = expected.filter((l) => !events.some((e) => e.label === l));
+  return { error: `no visible labeled event for ${unseen.join(', ')}, so who applied the labels is unverified` };
 }
 
 function readBody(o, stdin) {
@@ -342,11 +365,10 @@ function main(argv, { gh, guard, stdout, stderr, sleep, dashboard, stdin } = {})
 
   // 7b. unreadable identity: verify who applied the labels
   if (trust === 'pending') {
-    const v = verifyActors(run, repo, issue);
-    if (!v.trust) {
-      const who = v.bad === null ? 'an unreadable actor' : v.bad;
-      return fail(`labels applied by ${who} will be stripped by the label guard`, { trust: 'insufficient', ...made });
-    }
+    const expected = built.labels.filter((l) => l.startsWith('trailhead:'));
+    const v = verifyActors(run, repo, issue, expected, nap);
+    if (v.error) return fail(v.error, { trust: 'insufficient', ...made });
+    if (!v.trust) return fail(`labels applied by ${v.bad} will be stripped by the label guard`, { trust: 'insufficient', ...made });
     trust = v.trust;
   }
 
