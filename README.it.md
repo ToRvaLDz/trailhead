@@ -407,8 +407,52 @@ Molte persone (e le loro sessioni di agente) condividono una mappa e la lavorano
 - **Dai scope ai ticket per path su un monorepo.** Un ticket può portare una riga `Scope:` che nomina il/i package/dir che tocca: scope disgiunti parallelizzano in sicurezza, e dà scope a build/test e ai commit del worktree limitandoli al package interessato. `/trailhead:adopt` rileva un monorepo e propone sia `isolation: worktree` sia la convenzione `Scope:`. Sotto `isolation: none`, `Scope:` **serializza** anche un'area condivisa: al momento del claim una sessione si trattiene se lo scope di un altro ticket in corso si sovrappone, così due ticket con scope sullo stesso submodule/package non possono girare insieme (è così che tieni due sessioni fuori da un'app legata a un path).
 - **I git submodule sono gestiti come repo separati.** Il lavoro che atterra dentro un submodule viene committato *dentro il submodule* (su un branch) e pubblicato prima che un bump del gitlink nel parent lo referenzi. Poiché i worktree del superproject condividono un unico git dir del submodule, un **repo con submodule risolve a `clone`** (sotto il default `auto`, o scalando un `worktree` esplicito), così ogni ticket ottiene uno stato del submodule indipendente; il clone provvede i suoi submodule al setup (`--recurse-submodules`) e il Verify controlla `git status` dentro ogni submodule toccato. Un ticket che copre due submodule resta atomico tramite un singolo commit del parent che bumpa entrambi i gitlink insieme; il suo `Scope:` li nomina entrambi, e lo stesso submodule conta come scope sovrapposto, quindi due ticket su di esso serializzano. `/trailhead:adopt` rileva `.gitmodules` e scrive la regola nelle conventions.
 - **Lo stato vive sui ticket** (claim, label, commenti; tutti conflict-free); il corpo della mappa è un indice ri-leggibile, non la fonte di verità. Il record durevole di una risoluzione è il commento del ticket stesso.
-- **Le label sono protette dagli esterni.** Le label `trailhead:*` guidano la mappa, quindi trailhead si fida di una issue etichettata solo quando un collaboratore con accesso in scrittura ha applicato la label e (per un ticket) porta un `Parent:` valido. Qualsiasi altra cosa è messa in quarantena come `trailhead:unverified`, fuori dalla frontier. GitHub già blocca gli utenti senza accesso in scrittura dall'applicare label; contro gli utenti di triage e le automazioni, trailhead può **installare per te la GitHub Action di label guard** (da `templates/trailhead-label-guard.yml`) nella `.github/workflows/` del tuo repo, dove rimuove alla fonte le label `trailhead:*` non autorizzate. Installare un workflow richiede un token con lo scope `workflow`, quindi trailhead esegue `gh auth refresh -s workflow` se il push viene rifiutato. Per le automazioni (CI, cron, bot) che aprono ticket senza una sessione di chat, `templates/trailhead-capture.js` cattura un bug, todo, seed o idea con tutte le label e si rifiuta di girare con un'identità che la guard strapperebbe.
+- **Le label sono protette dagli esterni.** Le label `trailhead:*` guidano la mappa, quindi trailhead si fida di una issue etichettata solo quando un collaboratore con accesso in scrittura ha applicato la label e (per un ticket) porta un `Parent:` valido. Qualsiasi altra cosa è messa in quarantena come `trailhead:unverified`, fuori dalla frontier. GitHub già blocca gli utenti senza accesso in scrittura dall'applicare label; contro gli utenti di triage e le automazioni, trailhead può **installare per te la GitHub Action di label guard** (da `templates/trailhead-label-guard.yml`) nella `.github/workflows/` del tuo repo, dove rimuove alla fonte le label `trailhead:*` non autorizzate. Installare un workflow richiede un token con lo scope `workflow`, quindi trailhead esegue `gh auth refresh -s workflow` se il push viene rifiutato. Per le automazioni (CI, cron, bot) che aprono ticket senza una sessione di chat, `templates/trailhead-capture.js` cattura un bug, todo, seed o idea con tutte le label e si rifiuta di girare con un'identità che la guard strapperebbe, e su GitHub la composite Action [`actions/capture`](#catturare-da-ci) lo incapsula in poche righe di workflow.
 - **Le issue aperte da altri vengono triage-ate, non fidate alla cieca.** `/trailhead:inbox` elenca le issue in ingresso (bug report, richieste, domande che non sono ancora trailhead ticket) e integra quelle valide **sul posto**: riformulandole come ticket, mantenendo l'autorialità di chi ha segnalato, e applicando le label all'adozione. Il resto viene instradato a fog, out-of-scope, duplicato, o needs-info.
+
+### Catturare da CI
+
+`ToRvaLDz/trailhead/actions/capture` è una composite Action sottile sopra l'helper di cattura: ogni regola (trust, destinazione, dedupe, secret scan, label, edge, dashboard) resta nell'helper. Fissa un tag di release (l'Action esce con la release successiva alla 0.16.1).
+
+```yaml
+permissions:
+  issues: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # ... i tuoi step di build e test ...
+      - if: failure()
+        uses: ToRvaLDz/trailhead/actions/capture@v0.17.0
+        with:
+          type: bug
+          title: "CI fallita su ${{ github.ref_name }}"
+          body: "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          dedupe-key: ci-${{ github.workflow }}-${{ github.ref_name }}
+```
+
+Una variante manuale funziona uguale: avvia il job con `workflow_dispatch` e passa `type`, `title` e `body` da `github.event.inputs`.
+
+| Input | Obbligatorio | Significato |
+|---|---|---|
+| `type` | sì | `bug`, `todo`, `idea` o `seed` |
+| `title` | sì | titolo della issue |
+| `body` / `body-file` | uno dei due | corpo della issue, o un percorso file (`-` per stdin); non entrambi |
+| `map` / `of` | no | archivia sotto la mappa `<n>`, o eredita la mappa del ticket d'origine `<n>` (solo bug); esclusivi |
+| `trigger` | solo seed | il testo di `Trigger:` |
+| `unverified` | no | `true` aggiunge `trailhead:unverified` (non per `idea`) |
+| `dedupe-key` | no | chiave di idempotenza |
+| `no-dashboard` | no | `true` salta l'aggiornamento della dashboard della whiteboard |
+| `repo` | no | `owner/name` di destinazione (default: questo repo) |
+| `token` | no | token per l'helper (default: `github.token`) |
+
+Output: `issue`, `url` e `status` (`created`, `existing`, `partial`, `error`).
+
+- Il token predefinito agisce come `github-actions[bot]`, di cui la label guard si fida; l'helper lo verifica dopo la creazione.
+- Un nuovo run con lo stesso `dedupe-key` restituisce `existing` e non crea nulla.
+- `partial` (exit 3, la issue esiste ma l'edge di sub-issue è fallito) ed `error` fanno fallire lo step; `status` viene comunque impostato.
+- Il runner richiede bash, node e gh, presenti sui runner ospitati da GitHub; i runner self-hosted devono fornirli.
 
 ## ✅ Tenere i ticket onesti
 

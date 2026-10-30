@@ -1,0 +1,116 @@
+name: 'trailhead capture'
+description: 'Capture a bug, todo, seed or idea as a trailhead ticket from a workflow, via the trailhead capture helper. The workflow needs `permissions: issues: write`.'
+branding:
+  icon: 'flag'
+  color: 'green'
+
+inputs:
+  type:
+    description: 'Ticket type: bug, todo, idea or seed.'
+    required: true
+  title:
+    description: 'Issue title.'
+    required: true
+  body:
+    description: 'Issue body. Exclusive with body-file (the helper rejects both).'
+    required: false
+    default: ''
+  body-file:
+    description: 'Path of a file holding the issue body, or - for stdin.'
+    required: false
+    default: ''
+  map:
+    description: 'Map issue number to file the ticket under.'
+    required: false
+    default: ''
+  of:
+    description: 'Origin ticket number for a bug (inherits its map or the whiteboard).'
+    required: false
+    default: ''
+  trigger:
+    description: 'Trigger text, required for a seed and rejected otherwise.'
+    required: false
+    default: ''
+  unverified:
+    description: 'Set to true to add the trailhead:unverified label (rejected for idea).'
+    required: false
+    default: 'false'
+  dedupe-key:
+    description: 'Idempotency key (A-Za-z0-9._:- up to 100 chars); a re-run with the same key returns existing.'
+    required: false
+    default: ''
+  no-dashboard:
+    description: 'Set to true to skip the whiteboard dashboard refresh.'
+    required: false
+    default: 'false'
+  repo:
+    description: 'Target repository as owner/name.'
+    required: false
+    default: ${{ github.repository }}
+  token:
+    description: 'GitHub token used by the helper (needs issues: write).'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  issue:
+    description: 'Number of the created or existing issue.'
+    value: ${{ steps.capture.outputs.issue }}
+  url:
+    description: 'URL of the created or existing issue.'
+    value: ${{ steps.capture.outputs.url }}
+  status:
+    description: 'Helper status: created, existing, partial, error or usage.'
+    value: ${{ steps.capture.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - id: capture
+      shell: bash
+      env:
+        INPUT_TYPE: ${{ inputs.type }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_BODY: ${{ inputs.body }}
+        INPUT_BODY_FILE: ${{ inputs.body-file }}
+        INPUT_MAP: ${{ inputs.map }}
+        INPUT_OF: ${{ inputs.of }}
+        INPUT_TRIGGER: ${{ inputs.trigger }}
+        INPUT_UNVERIFIED: ${{ inputs.unverified }}
+        INPUT_DEDUPE_KEY: ${{ inputs.dedupe-key }}
+        INPUT_NO_DASHBOARD: ${{ inputs.no-dashboard }}
+        INPUT_REPO: ${{ inputs.repo }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -uo pipefail
+        args=()
+        add() { if [ -n "${2:-}" ]; then args+=("$1" "$2"); fi; }
+        flag() { if [ "${2:-}" = "true" ]; then args+=("$1"); fi; }
+        add --type "${INPUT_TYPE:-}"
+        add --title "${INPUT_TITLE:-}"
+        add --body "${INPUT_BODY:-}"
+        add --body-file "${INPUT_BODY_FILE:-}"
+        add --repo "${INPUT_REPO:-}"
+        add --map "${INPUT_MAP:-}"
+        add --of "${INPUT_OF:-}"
+        add --trigger "${INPUT_TRIGGER:-}"
+        flag --unverified "${INPUT_UNVERIFIED:-}"
+        add --dedupe-key "${INPUT_DEDUPE_KEY:-}"
+        flag --no-dashboard "${INPUT_NO_DASHBOARD:-}"
+        out=$(node "$GITHUB_ACTION_PATH/../../plugins/trailhead/templates/trailhead-capture.js" "${args[@]}")
+        rc=$?
+        echo "$out"
+        parsed=0
+        CAPTURE_OUT="$out" node -e '
+          const lines = (process.env.CAPTURE_OUT || "").split("\n").filter((l) => l.trim());
+          const j = JSON.parse(lines[lines.length - 1]);
+          if (!j || typeof j !== "object") process.exit(1);
+          const v = (x) => (x === undefined || x === null ? "" : String(x).replace(/[\r\n]/g, " "));
+          require("fs").appendFileSync(process.env.GITHUB_OUTPUT,
+            "issue=" + v(j.issue) + "\nurl=" + v(j.url) + "\nstatus=" + v(j.status) + "\n");
+        ' || parsed=1
+        if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+        if [ "$parsed" -ne 0 ]; then
+          echo "capture helper printed no parsable JSON line" >&2
+          exit 1
+        fi

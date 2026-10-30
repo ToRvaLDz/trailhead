@@ -29,6 +29,8 @@ Discriminator: not even work → `note`; maybe, once it's clear → `idea`; yes,
 
 For a run with no chat session (CI, cron, a bot), capture through the helper instead of hand-building labels: `node <templates>/trailhead-capture.js --type bug|todo|idea|seed --title <t> (--body <b> | --body-file <path|->) --repo <owner/name> [--map <n> | --of <n>] [--trigger <text>] [--unverified] [--dedupe-key <key>] [--no-dashboard]`. `--trigger` is required for `seed` and rejected otherwise; `--of` is only for `bug` and excludes `--map`; `--unverified` is rejected for `idea` (fog is already off the frontier); `--dedupe-key` matches `^[A-Za-z0-9._:-]{1,100}$`. Nothing is created when a pre-check fails.
 
+For GitHub workflows, the composite Action `actions/capture` (`uses: ToRvaLDz/trailhead/actions/capture@<tag>`) is the ready-made wrapper: it maps its inputs 1:1 to these flags, runs this helper from the action checkout and exposes `issue`, `url` and `status` as outputs. It adds no logic of its own and needs `permissions: issues: write`.
+
 **Output and exit codes.** One JSON line on stdout, always:
 - `{"status":"created",...}`, exit 0: `issue`, `url`, `type`, `destination` (`map-<n>` or `whiteboard`; `none` for an `idea` without `--map`), `labels`, `trust` (`ok`, `allowlisted` or `actions-token`), `edge` (map tickets), `dashboard`, `warnings`. Printed only once the labels are read back and the trust is verified.
 - `{"status":"existing",...}`, exit 0: the dedupe key matched an open issue, nothing was created.
