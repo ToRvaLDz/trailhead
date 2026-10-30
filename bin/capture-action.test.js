@@ -91,7 +91,7 @@ function run(inputs, stub = {}) {
     ...inputs,
     ...stub,
   };
-  const r = spawnSync('bash', [path.join(tmp, 'run.sh')], { env, encoding: 'utf8' });
+  const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', path.join(tmp, 'run.sh')], { env, encoding: 'utf8' });
   const outputs = {};
   if (fs.existsSync(out)) {
     for (const l of fs.readFileSync(out, 'utf8').split('\n')) {

@@ -82,7 +82,8 @@ runs:
         INPUT_REPO: ${{ inputs.repo }}
         GH_TOKEN: ${{ inputs.token }}
       run: |
-        set -uo pipefail
+        # GitHub runs this step with errexit on; the helper exit code is handled below
+        set +e -uo pipefail
         args=()
         add() { if [ -n "${2:-}" ]; then args+=("$1" "$2"); fi; }
         flag() { if [ "${2:-}" = "true" ]; then args+=("$1"); fi; }
