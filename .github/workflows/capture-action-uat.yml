@@ -1,0 +1,20 @@
+# Temporary acceptance workflow for the capture Action at the release tag (#342). Removed after the run.
+name: capture-action-uat
+on:
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - id: cap
+        uses: ToRvaLDz/trailhead/actions/capture@v0.17.0
+        with:
+          type: bug
+          title: 'UAT: capture Action at v0.17.0 (#342)'
+          body: |
+            Acceptance run of the capture Action at the v0.17.0 tag for ticket #342.
+            Safe to close.
+          dedupe-key: uat-capture-action-342
+      - run: echo "status=${{ steps.cap.outputs.status }} issue=${{ steps.cap.outputs.issue }} url=${{ steps.cap.outputs.url }}"
