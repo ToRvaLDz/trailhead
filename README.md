@@ -429,7 +429,7 @@ jobs:
           type: bug
           title: "CI failed on ${{ github.ref_name }}"
           body: "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          dedupe-key: ci-${{ github.workflow }}-${{ github.ref_name }}
+          dedupe-key: ci-failure-${{ github.job }}
 ```
 
 A manual variant works the same way: trigger the job with `workflow_dispatch` and pass `type`, `title` and `body` from `github.event.inputs`.
@@ -442,16 +442,16 @@ A manual variant works the same way: trigger the job with `workflow_dispatch` an
 | `map` / `of` | no | file under map `<n>`, or inherit the map of origin ticket `<n>` (bug only); exclusive |
 | `trigger` | seed only | the `Trigger:` text |
 | `unverified` | no | `true` adds `trailhead:unverified` (not for `idea`) |
-| `dedupe-key` | no | idempotency key |
+| `dedupe-key` | no | idempotency key, 1 to 100 characters of `A-Za-z0-9._:-` (no spaces or `/`) |
 | `no-dashboard` | no | `true` skips the whiteboard dashboard refresh |
 | `repo` | no | target `owner/name` (default: this repo) |
 | `token` | no | token for the helper (default: `github.token`) |
 
-Outputs: `issue`, `url` and `status` (`created`, `existing`, `partial`, `error`).
+Outputs: `issue`, `url` and `status` (`created`, `existing`, `partial`, `error`, `usage`).
 
 - The default token acts as `github-actions[bot]`, which the label guard trusts; the helper verifies it after the create.
 - A re-run with the same `dedupe-key` returns `existing` and creates nothing.
-- `partial` (exit 3, the issue exists but the sub-issue edge failed) and `error` fail the step; `status` is still set.
+- `partial` (exit 3, the issue exists but the sub-issue edge failed), `error` and `usage` (exit 2, bad inputs) fail the step; `status` is still set.
 - The runner needs bash, node and gh, all present on GitHub-hosted runners; self-hosted runners must provide them.
 
 ## ✅ Keeping tickets honest

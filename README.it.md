@@ -429,7 +429,7 @@ jobs:
           type: bug
           title: "CI fallita su ${{ github.ref_name }}"
           body: "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          dedupe-key: ci-${{ github.workflow }}-${{ github.ref_name }}
+          dedupe-key: ci-failure-${{ github.job }}
 ```
 
 Una variante manuale funziona uguale: avvia il job con `workflow_dispatch` e passa `type`, `title` e `body` da `github.event.inputs`.
@@ -442,16 +442,16 @@ Una variante manuale funziona uguale: avvia il job con `workflow_dispatch` e pas
 | `map` / `of` | no | archivia sotto la mappa `<n>`, o eredita la mappa del ticket d'origine `<n>` (solo bug); esclusivi |
 | `trigger` | solo seed | il testo di `Trigger:` |
 | `unverified` | no | `true` aggiunge `trailhead:unverified` (non per `idea`) |
-| `dedupe-key` | no | chiave di idempotenza |
+| `dedupe-key` | no | chiave di idempotenza, da 1 a 100 caratteri `A-Za-z0-9._:-` (niente spazi né `/`) |
 | `no-dashboard` | no | `true` salta l'aggiornamento della dashboard della whiteboard |
 | `repo` | no | `owner/name` di destinazione (default: questo repo) |
 | `token` | no | token per l'helper (default: `github.token`) |
 
-Output: `issue`, `url` e `status` (`created`, `existing`, `partial`, `error`).
+Output: `issue`, `url` e `status` (`created`, `existing`, `partial`, `error`, `usage`).
 
 - Il token predefinito agisce come `github-actions[bot]`, di cui la label guard si fida; l'helper lo verifica dopo la creazione.
 - Un nuovo run con lo stesso `dedupe-key` restituisce `existing` e non crea nulla.
-- `partial` (exit 3, la issue esiste ma l'edge di sub-issue è fallito) ed `error` fanno fallire lo step; `status` viene comunque impostato.
+- `partial` (exit 3, la issue esiste ma l'edge di sub-issue è fallito), `error` e `usage` (exit 2, input errati) fanno fallire lo step; `status` viene comunque impostato.
 - Il runner richiede bash, node e gh, presenti sui runner ospitati da GitHub; i runner self-hosted devono fornirli.
 
 ## ✅ Tenere i ticket onesti
