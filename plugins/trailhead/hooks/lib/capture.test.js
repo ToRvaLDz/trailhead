@@ -30,10 +30,12 @@ const URL_BASE = 'https://github.com/o/r/issues';
 // Options: login (null = unreadable identity), perms {login: permission}, allowlist (undefined =
 // unreadable variable), labeller (actor of the labeled events), eventsFail, dropLabels (labels the
 // server loses), eventsLag (count of leading event reads that return an empty list), eventsPartial
-// (count of leading reads that show only the first label), edgeFail (count of failing edge POSTs), dashFail, searchCap, open [{number,body}].
+// (count of leading reads that show only the first label), lateLabeller (actor of the events
+// after the partial reads, default labeller), edgeFail (count of failing edge POSTs), dashFail,
+// searchCap, open [{number,body}].
 function makeTracker(init = {}) {
   const t = {
-    login: 'maint', perms: { maint: 'admin' }, allowlist: undefined, labeller: 'maint', eventsFail: false, eventsLag: 0, eventsPartial: 0, eventReads: 0,
+    login: 'maint', perms: { maint: 'admin' }, allowlist: undefined, labeller: 'maint', eventsFail: false, eventsLag: 0, eventsPartial: 0, lateLabeller: null, eventReads: 0,
     dropLabels: [], edgeFail: 0, dashFail: false, searchCap: false, open: [], permFail: false,
     issues: { 5: { state: 'OPEN', title: 'Map five', labels: ['trailhead:map'] }, 6: { state: 'CLOSED', title: 'Map six', labels: ['trailhead:map'] } },
     ...init, calls: [], created: [], edges: [], inputs: [], next: 100,
@@ -72,7 +74,8 @@ function makeTracker(init = {}) {
       const made = t.created.find((c) => c.number === Number(m[1]));
       if (read < t.eventsLag) return res('');
       if (read < t.eventsLag + t.eventsPartial) return res(JSON.stringify({ label: made.labels[0], actor: t.labeller }) + '\n');
-      return res(made.labels.map((l) => JSON.stringify({ label: l, actor: t.labeller })).join('\n') + '\n');
+      const late = t.lateLabeller || t.labeller;
+      return res(made.labels.map((l, i) => JSON.stringify({ label: l, actor: i === 0 ? t.labeller : late })).join('\n') + '\n');
     }
     if (a === 'issue' && b === 'create') {
       const n = t.next++;
@@ -337,8 +340,13 @@ for (const type of ['bug', 'todo', 'seed']) {
   const rn = run(tn, base('bug', ['--map', '5']));
   ok('pending trust, labels never visible: distinct reason naming labels, issue kept, no edge', rn.code === 1 && rn.json.trust === 'insufficient' && rn.json.issue === 100 && /no visible labeled event/.test(rn.json.reason) && /trailhead:bug/.test(rn.json.reason) && !/stripped/.test(rn.json.reason) && tn.edges.length === 0 && tn.eventReads === 4);
   const tb = makeTracker({ login: null, labeller: 'stranger', perms: { stranger: 'read' }, allowlist: 'x' });
-  run(tb, base('bug', ['--map', '5']));
-  ok('bad actor fails at once, without retries', tb.eventReads === 1);
+  const rb = run(tb, base('bug', ['--map', '5']));
+  ok('bad actor fails at once, without retries', rb.code === 1 && rb.json.trust === 'insufficient' && /stranger will be stripped/.test(rb.json.reason) && tb.edges.length === 0 && tb.eventReads === 1);
+  const tlb = makeTracker({ login: null, labeller: 'github-actions[bot]', lateLabeller: 'stranger', perms: { stranger: 'read' }, allowlist: 'x', eventsPartial: 1 });
+  const rlb = run(tlb, base('bug', ['--map', '5']));
+  ok('bad actor on a later read fails, though an earlier read was trusted', rlb.code === 1 && rlb.json.trust === 'insufficient' && /stranger will be stripped/.test(rlb.json.reason) && tlb.edges.length === 0 && tlb.eventReads === 2);
+  const empty = cap.verifyActors(() => ({ status: 0, stdout: '', stderr: '' }), 'o/r', 100, [], () => {});
+  ok('no expected trailhead:* label: fails closed, never trusts an empty events list', !empty.trust && /no trailhead:\* label to verify/.test(empty.error));
 }
 
 // --- main: read-back, dedupe, edge, --of, secrets ------------------------------------------

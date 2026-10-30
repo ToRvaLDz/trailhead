@@ -271,6 +271,8 @@ function actorTrust(run, repo, actor, allow) {
 // expected trailhead:* label shows a labeled event, then every actor who applied one must be one the
 // guard Action never strips. 'actions-token' | 'allowlisted' | 'ok', { bad: actor }, or { error }.
 function verifyActors(run, repo, n, expected, nap) {
+  // Nothing to wait for would pass with no actor checked: fail closed.
+  if (!expected.length) return { error: 'no trailhead:* label to verify, so who applied the labels is unverified' };
   let allow = null;
   const rank = { 'actions-token': 0, allowlisted: 1, ok: 2 };
   const trusts = new Map();
@@ -409,7 +411,7 @@ function main(argv, { gh, guard, stdout, stderr, sleep, dashboard, stdin } = {})
   return result.status === 'partial' ? 3 : 0;
 }
 
-module.exports = { main, parseArgs, buildIssue, parseAllowlist, checkTrust, resolveDestination, findDuplicate, loadGuard, secretProblem };
+module.exports = { main, parseArgs, buildIssue, parseAllowlist, checkTrust, verifyActors, resolveDestination, findDuplicate, loadGuard, secretProblem };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), {}));
