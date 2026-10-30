@@ -343,9 +343,9 @@ if (existsSync(configurationIndex)) {
     }
   }
   const profileRows = {
-    High: /^High strong strong standard strong strong strong standard$/,
-    Balanced: /^Balanced( \(default\))? strong standard standard standard standard standard fast$/,
-    Low: /^Low standard standard fast fast standard fast fast$/,
+    High: /^High strong strong standard strong strong strong standard strong$/,
+    Balanced: /^Balanced( \(default\))? strong standard standard standard standard standard fast strong$/,
+    Low: /^Low standard standard fast fast standard fast fast standard$/,
   };
   for (const [name, pattern] of Object.entries(profileRows)) {
     if (!hasRow(pattern)) {
