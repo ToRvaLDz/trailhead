@@ -1,0 +1,20 @@
+# Temporary acceptance workflow for the capture Action (#334). Removed after the run.
+name: capture-action-uat
+on:
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - id: cap
+        uses: ToRvaLDz/trailhead/actions/capture@main
+        with:
+          type: bug
+          title: 'UAT: capture Action smoke test (#334)'
+          body: |
+            Acceptance run of the capture Action for ticket #334.
+            Safe to close.
+          dedupe-key: uat-capture-action-334
+      - run: echo "status=${{ steps.cap.outputs.status }} issue=${{ steps.cap.outputs.issue }} url=${{ steps.cap.outputs.url }}"
