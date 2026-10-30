@@ -7,9 +7,10 @@
 // report's fields.
 //
 // CLI:
-//   node trailhead-report-status.js --technique <technique> [--file <path>]
+//   node trailhead-report-status.js --technique <technique> [--file <path> | --task-output <path>]
 // <technique> is verify | code-review | executor | fix | plan | debug | research |
-// codebase-map | grill. Reads the report from --file, or from stdin when there is none.
+// codebase-map | grill. Reads the report from --file, from the last assistant message
+// of a background agent's task .output with --task-output, or from stdin when neither.
 // Prints exactly one JSON line {"action","verdict","problem","report","fields","body"}:
 //   action   accept | normalise | reask
 //   verdict  the canonical token, or null on reask
@@ -310,14 +311,38 @@ function checkReport(text, technique) {
   return { action: 'normalise', verdict, problem: null, report: [...head, ...rest].join('\n'), fields, body };
 }
 
+// The report of a background agent, read from the host's task .output (JSONL, often a
+// symlink to the subagent transcript): the text of the last assistant message that has
+// any, its blocks joined in order. One message can span several lines sharing
+// message.id; lines that are not JSON are skipped. null when there is no assistant text.
+function reportFromTaskOutput(raw) {
+  const entries = raw.split('\n').flatMap((l) => {
+    if (!l.trim()) return [];
+    try { return [JSON.parse(l)]; } catch (_) { return []; }
+  });
+  const texts = (e) => {
+    const c = e && e.message && e.message.content;
+    if (typeof c === 'string') return [c];
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text) : [];
+  };
+  const assistant = entries.filter((e) => e && e.type === 'assistant' && e.message);
+  const last = [...assistant].reverse().find((e) => texts(e).length > 0);
+  if (!last) return null;
+  const id = last.message.id;
+  const parts = id === undefined ? texts(last) : assistant.filter((e) => e.message.id === id).flatMap(texts);
+  return parts.join('');
+}
+
+const VALUE_FLAGS = { '--technique': 'technique', '--file': 'file', '--task-output': 'taskOutput' };
+
 function parseArgs(argv) {
-  const opts = { technique: null, file: null };
+  const opts = { technique: null, file: null, taskOutput: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--technique' || a === '--file') {
+    if (Object.prototype.hasOwnProperty.call(VALUE_FLAGS, a)) {
       const v = argv[i + 1];
       if (v === undefined || v === '' || v.startsWith('--')) throw new Error(`${a} needs a value`);
-      opts[a === '--technique' ? 'technique' : 'file'] = v;
+      opts[VALUE_FLAGS[a]] = v;
       i++;
     } else {
       throw new Error(`unknown argument: ${a}`);
@@ -325,7 +350,16 @@ function parseArgs(argv) {
   }
   if (!opts.technique) throw new Error(`--technique <${Object.keys(TOKENS).join('|')}> is required`);
   if (!Object.prototype.hasOwnProperty.call(TOKENS, opts.technique)) throw new Error(`unknown technique: ${opts.technique}`);
+  if (opts.file !== null && opts.taskOutput !== null) throw new Error('--file and --task-output are mutually exclusive');
   return opts;
+}
+
+function readReport(opts, readFile, readStdin) {
+  if (opts.file !== null) return readFile(opts.file);
+  if (opts.taskOutput === null) return readStdin();
+  const report = reportFromTaskOutput(readFile(opts.taskOutput));
+  if (report === null) throw new Error(`no assistant report in ${opts.taskOutput}`);
+  return report;
 }
 
 function main(argv, io = {}) {
@@ -336,7 +370,7 @@ function main(argv, io = {}) {
   let result;
   try {
     const opts = parseArgs(argv);
-    const text = opts.file !== null ? readFile(opts.file) : readStdin();
+    const text = readReport(opts, readFile, readStdin);
     result = checkReport(text, opts.technique);
   } catch (e) {
     stderr.write(`${JSON.stringify({ error: e.message })}\n`);
@@ -349,4 +383,4 @@ function main(argv, io = {}) {
 // exitCode, not process.exit(): exiting at once truncates piped stdout at 64 KB.
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { checkReport, parseArgs, main, TOKENS, CONTRACTS, FAMILY_OF, VERIFY_CLASSES };
+module.exports = { checkReport, reportFromTaskOutput, parseArgs, main, TOKENS, CONTRACTS, FAMILY_OF, VERIFY_CLASSES };

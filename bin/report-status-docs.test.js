@@ -54,6 +54,12 @@ ok('the three templates dirs, in order',
     const c = para.indexOf('~/.codex/skills/trailhead/templates/');
     return a !== -1 && b > a && c > b;
   })());
+ok('a background agent is checked straight from its task output file, no temp dir',
+  para.includes('--task-output <that output file>') && lc.includes('once the agent has finished') && lc.includes('no temp dir, no copy and no cleanup'));
+ok('the temp-dir route is for any other report', lc.includes('any other report (inline, foreground, or a host without that file)'));
+ok('each step is its own Bash call, never bash -c, never chained',
+  lc.includes('its own bash call') && para.includes('never wrapped in `bash -c` / `sh -c`') && lc.includes('never chained')
+  && lc.includes('cannot statically check'));
 ok('the plugin root dir is skipped when unset', lc.includes('skipped when unset'));
 ok('a private temp dir from mktemp -d, once per report', para.includes('`mktemp -d`') && lc.includes('once') && lc.includes('0700'));
 ok('the raw report is written to report.md at the literal printed path with the Write tool',

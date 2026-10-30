@@ -429,7 +429,44 @@ const oneLine = (out) => { const lines = out.split('\n').filter(Boolean); return
   const jf = oneLine(f.out);
   ok('cli --file: a report over 64 KB arrives whole through a pipe', f.code === 0 && !!jf && jf.report === big);
 }
+// --- --task-output: the report read from a background agent's transcript ----------
+// The host's task .output is JSONL; one assistant message can span several lines
+// (same message.id), and tool_use, user and bookkeeping lines sit between them.
+const line = (o) => JSON.stringify(o);
+const asst = (id, content) => line({ type: 'assistant', message: { id, role: 'assistant', content } });
+const transcript = [
+  line({ type: 'user', message: { role: 'user', content: 'brief' } }),
+  asst('m1', [{ type: 'text', text: 'status: gaps_found\nearly draft' }]),
+  asst('m1', [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }]),
+  line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+  asst('m2', [{ type: 'text', text: 'status: met\n' }]),
+  asst('m2', [{ type: 'text', text: 'final body\n' }]),
+  line({ type: 'attachment', attachment: {} }),
+  'not json at all',
+  '',
+].join('\n');
+{
+  const { reportFromTaskOutput } = require(scriptPath);
+  ok('task output: the last assistant message, its text blocks joined in order',
+    reportFromTaskOutput(transcript) === 'status: met\nfinal body\n');
+  ok('task output: a trailing tool_use-only message is skipped for the last one with text',
+    reportFromTaskOutput(`${transcript}\n${asst('m3', [{ type: 'tool_use', id: 't2', name: 'Read', input: {} }])}`) === 'status: met\nfinal body\n');
+  ok('task output: string content counts as text', reportFromTaskOutput(asst('m9', 'status: met\nx')) === 'status: met\nx');
+  ok('task output: no assistant text is null', reportFromTaskOutput(line({ type: 'user', message: { content: 'hi' } })) === null);
+  const r = cli(['--technique', 'verify', '--task-output', file('agent.output', transcript)]);
+  const j = oneLine(r.out);
+  ok('cli --task-output: exit 0, the report checked as accept', r.code === 0 && !!j && j.action === 'accept' && j.verdict === 'met' && j.report === 'status: met\nfinal body\n');
+  const target = file('agent.jsonl', transcript);
+  const link = path.join(tmp, 'linked.output');
+  fs.symlinkSync(target, link);
+  const s = oneLine(cli(['--technique', 'verify', '--task-output', link]).out);
+  ok('cli --task-output: follows the host symlink to the transcript', !!s && s.verdict === 'met');
+}
 const usageErrors = [
+  ['--file and --task-output together', ['--technique', 'verify', '--file', file('g.md', 'status: met'), '--task-output', file('g.output', transcript)]],
+  ['--task-output without a value', ['--technique', 'verify', '--task-output']],
+  ['--task-output with no assistant text', ['--technique', 'verify', '--task-output', file('h.output', line({ type: 'user', message: { content: 'x' } }))]],
+  ['unreadable --task-output', ['--technique', 'verify', '--task-output', path.join(tmp, 'nope.output')]],
   ['no technique', ['--file', file('d.md', 'status: met')]],
   ['unknown technique', ['--technique', 'bogus', '--file', file('e.md', 'status: met')]],
   ['technique without a value', ['--technique']],
