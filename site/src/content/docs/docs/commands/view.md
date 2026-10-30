@@ -128,7 +128,7 @@ None.
 
    ![The panel viewing another map, with the viewing header and the back to active button](../../../../assets/screenshots/map-panel-viewing.png)
 
-3. Each Frontier row has a `work` button that clears the conversation (`/clear`) and then runs `/trailhead:work <n>`; while a turn is running it is queued behind it and the row shows `queued`.
+3. Each Frontier row has a `work` button that clears the conversation (`/clear`) and then runs `/trailhead:work <n>`; while a turn is running it is queued behind it and the row shows `queued`. The session first moves into the map's checkout; if that folder was moved or renamed, trailhead finds it again by its `origin` remote (asking you to pick when several checkouts match) and says which one it now works in.
 4. A Burn-down section at the bottom shows the map's open tickets over time, with the counts `open · done · removed · peak`: a chart on the terminal, a one-row sparkline on the desktop app. If the read fails it keeps the last curve and shows its age.
 
    ![The Burn-down section of the panel: the counts line and the chart](../../../../assets/screenshots/burndown.png)

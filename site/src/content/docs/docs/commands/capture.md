@@ -10,6 +10,7 @@ Rules shared by all five:
 - **Language.** A captured ticket is written in `ticket.language` (default `en`), whatever language you typed the capture in.
 - **Map or whiteboard.** A capture that produces a ticket (`todo`, `bug`, `seed`, and a sharp `idea`) goes to a map or to the whiteboard. With a map open, trailhead asks which (an exhausted-but-still-open map is a valid target; a closed one is not). With no map open it lands on the whiteboard without asking. `note` and a non-sharp `idea` stay as map fog.
 - **Dashboard.** When a capture creates a whiteboard ticket, the pinned dashboard is refreshed; a capture landing on a map is not (the map's native progress bar tracks it).
+- **From automations.** CI jobs, cron and bots capture without a chat session through the capture helper or, on GitHub, the [capture Action](/docs/teamwork#capture-from-ci).
 - **Confirmation line.** The capture is confirmed by the ticket's name and number and where it landed. If it points at working the ticket later, it leads with `/clear`, then `/trailhead:work <n>`, with `/trailhead:quick <n>` as the lighter alternative.
 
 ### /trailhead:todo

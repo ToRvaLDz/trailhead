@@ -2,6 +2,33 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.17.0 (2026-10-30)
+
+### Why
+This release lets automations open trailhead tickets: a scriptable capture helper and a composite GitHub Action give CI bots the same labels, trust check and dedupe a session gets. Grilling moves onto its own agent with a configurable model, every engine step is routed through one model helper, and a round of fixes from real usage keeps dependents, panels and moved checkouts in order.
+
+### Added
+- **Capture Action for CI bots (#334, #341).** `ToRvaLDz/trailhead/actions/capture@v0.17.0` opens a whiteboard or map ticket from a workflow (inputs map 1:1 to the helper flags, outputs `issue`, `url`, `status`), with a `dedupe-key` so a re-run returns the existing issue. Under `GITHUB_TOKEN` the post-create trust check retries the label events read and fails closed when no trailhead label can be verified.
+- **Scriptable capture helper (#332).** `templates/trailhead-capture.js` opens a `bug`, `todo`, `seed` or `idea` from a script with the full wiring: trust check, dedupe key, secret scan, label read-back and native sub-issue edge, with a one-line JSON result and exit codes.
+- **Trusted automation labellers (#333).** A session trusts tickets labelled by an automation or an allowlisted labeller, and the inbox triage lists the quarantined issues it did not trust.
+- **Grilling on its own agent (#323, #324).** Grilling rounds run on the new `trailhead-grill` agent with the session as orchestrator, on the `models.grill` model (unset follows `models.plan`; on Codex the projected agent is pinned via `models.codex.grill`).
+- **gh auth preflight (#328).** Session start flags an invalid `GITHUB_TOKEN`/`GH_TOKEN` shadowing the gh login, once, and reports a missing gh login after a 401.
+- **Moved checkouts found by remote (#329).** A panel `work` or `resume` press whose pinned checkout moved finds it again by its origin remote, asking when several checkouts match.
+- **Compact capture reference (#330).** Captures load a short reference instead of the full core; the dashboard helper gains `--update-only`, so a capture refreshes the dashboard but never creates one.
+- **My in-progress tickets in the panel.** The map panel's In progress group lists the tickets you hold on every open map and on the whiteboard, each naming where it lives, and sits first under the maps list.
+
+### Changed
+- **Every engine step routed through one helper (#325).** `model-route.js` decides inline vs dispatch for each engine step, and the Codex `trailhead-fix` agent is pinned on the execute model.
+- **Unset model keys use the Balanced default.** An unset `models.*` key no longer inherits the session model: a Sonnet session now plans on the Balanced default; inline runs only when the resolved model is the session's.
+- **Grilling review proposes a fix per conflict.** Every combination of choices that does not work together carries its fix (or a reason none exists); accepting a risk is never the proposed fix.
+
+### Fixed
+- **Dependents unblock at every resolve (#322).** Resolving a whiteboard ticket, or any ticket through `work` or `quick`, now unblocks its dependents.
+- **Map panel on a fresh session (#321).** The panel stays pending until a surface is attached instead of failing with no-surface.
+- **Numbered lists in issue bodies (#331).** Removing an entry from a numbered list renumbers the rest and keeps loose-list spacing, style and continuation paragraphs.
+- **Tickets surfaced mid-work.** They are routed to the current map, or to another open map when the topic is plainly its own, instead of silently falling back to the whiteboard.
+- **Background agent reports without a prompt.** `trailhead-report-status.js --task-output` reads the report from the agent transcript itself, so checking it no longer needs a `bash -c` script and its permission prompt.
+
 ## 0.16.1 (2026-10-27)
 
 ### Why

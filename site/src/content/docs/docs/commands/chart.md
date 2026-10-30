@@ -131,7 +131,7 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 
 **What it does**
 
-1. Shows three sections by name: incoming issues to triage (open issues with no `trailhead:*` label, plus anything the trust guard marked `trailhead:unverified`), parked fog ready to graduate (open `trailhead:fog` issues, most recently active first), and out-of-scope lines that are actually deferred.
+1. Shows three sections by name: incoming issues to triage (open issues with no `trailhead:*` label, plus quarantined issues a session's trust check labelled `trailhead:unverified`), parked fog ready to graduate (open `trailhead:fog` issues, most recently active first), and out-of-scope lines that are actually deferred.
 2. For each incoming issue it decides with you on judgement calls, and alone on clear ones: adopt as a ticket, park as fog, mark out of scope, mark duplicate, or ask the reporter for more information.
 3. For parked fog it asks whether to graduate it, keep it parked, or drop it.
 4. For out-of-scope lines that name a gate or a later feature, it asks how to re-route each (`seed`, `idea` or `todo`, and which map), wiring gate-first with a live trigger and moving the whole cluster together.
@@ -168,9 +168,10 @@ Run a standalone grilling session on a decision or topic.
 
 **What it does**
 
-1. Runs the Grilling technique plus Domain vocabulary on the topic or ticket, asking one pointed question at a time until the decision is sharp.
-2. Records the outcome where it belongs: the ticket's resolution, the map's Decisions so far, or a fresh `decision` ticket.
-3. If the decision unblocks or spawns follow-on tickets, it asks which destination to open them in (a thematically fitting open map, or the whiteboard). Only when no map is open do they go to the whiteboard without asking.
+1. Runs the Grilling technique plus Domain vocabulary on the topic or ticket, asking one pointed question at a time until the decision is sharp. Each round's thinking runs on the read-only `trailhead-grill` agent on `models.grill` (see [Models](/docs/configuration#models)); the session still asks you every question.
+2. Before the final confirmation, re-reads the settled choices as a whole and reports the amendments it would make and any combinations that do not work, each with a proposed fix.
+3. Records the outcome where it belongs: the ticket's resolution, the map's Decisions so far, or a fresh `decision` ticket.
+4. If the decision unblocks or spawns follow-on tickets, it asks which destination to open them in (a thematically fitting open map, or the whiteboard). Only when no map is open do they go to the whiteboard without asking.
 
 **What it writes**
 
