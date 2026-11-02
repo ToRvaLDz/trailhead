@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { RepoPin } from '../../types'
+import { parseWorktreeBranches } from './worktree-porcelain'
 import { sameValue } from './work-state-view'
 
 type RepoRead = { root: string; remote: string | null }
@@ -139,6 +140,85 @@ async function isServed($: EngineInterface, host: string, cwd: string): Promise<
   }
 }
 
+// The pinned checkout deleted under the session (a finished worktree, a removed clone): the pin moves to a live
+// checkout of the same repo (#347). Preferred in order: the main working tree, another worktree, the sibling
+// clone itself. Candidates are the repo's root as the host knows it and the folders beside the dead root; every
+// probe is `git -C <path>` from `/`, never a spawn in the dead directory. null when nothing is left.
+const MAX_SIBLINGS = 100
+const parentOf = (path: string): string => path.replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/'
+
+async function checkoutOf($: EngineInterface, path: string, key: string): Promise<string | null> {
+  try {
+    const run = (args: string[]) => $.process.run(['git', '-C', path, ...args], { cwd: '/', timeoutMs: 5_000 })
+    const top = await run(['rev-parse', '--show-toplevel'])
+    if (top.exitCode !== 0 || !top.stdout.trim().startsWith('/')) return null
+    const origin = await run(['remote', 'get-url', 'origin'])
+    const id = remoteId(origin.exitCode === 0 ? origin.stdout : null)
+    return id !== null && `${id.host}/${id.slug}` === key ? top.stdout.trim() : null
+  } catch {
+    return null
+  }
+}
+
+async function exists($: EngineInterface, path: string): Promise<boolean> {
+  try {
+    return await $.fs.exists(path)
+  } catch {
+    return true // unreadable: do not move the pin on a guess
+  }
+}
+
+async function siblingsOf($: EngineInterface, dir: string): Promise<string[]> {
+  try {
+    const entries = await $.fs.list(dir)
+    return entries.filter(e => e.kind === 'dir' && !e.name.startsWith('.')).slice(0, MAX_SIBLINGS).map(e => `${dir.replace(/\/+$/, '')}/${e.name}`)
+  } catch {
+    return []
+  }
+}
+
+async function liveCheckout($: EngineInterface, pin: RepoPin): Promise<string | null> {
+  const key = pinKey(pin)
+  const seeds: string[] = []
+  try {
+    const host = await $.session.repo()
+    if (host !== null && host.root !== pin.root) seeds.push(host.root)
+  } catch {
+    // The host read failed: the neighbours still answer.
+  }
+  seeds.push(...(await siblingsOf($, parentOf(pin.root))))
+  for (const seed of seeds) {
+    if (seed === pin.root || !(await exists($, seed))) continue
+    const top = await checkoutOf($, seed, key)
+    if (top === null) continue
+    // The seed's own worktree list names the main tree first, then the others.
+    const listed = await $.process.run(['git', '-C', top, 'worktree', 'list', '--porcelain'], { cwd: '/', timeoutMs: 5_000 }).catch(() => null)
+    const paths = listed !== null && listed.exitCode === 0 ? parseWorktreeBranches(listed.stdout).map(w => w.path) : []
+    for (const path of [...paths, top]) {
+      if (path === pin.root || !(await exists($, path))) continue
+      const checkout = path === top ? top : await checkoutOf($, path, key)
+      if (checkout !== null) return checkout
+    }
+  }
+  return null
+}
+
+// The pin as it stands, or the live checkout of its repo when its root is gone.
+// A search that found nothing is not repeated for the same dead root within RELOCATE_RETRY_MS (it spawns git per sibling).
+const RELOCATE_RETRY_MS = 60_000
+const missed = new Map<string, number>()
+
+export async function livePin($: EngineInterface, pin: RepoPin): Promise<RepoPin> {
+  if (await exists($, pin.root)) return pin
+  const now = await $.clock.now().catch(() => null)
+  const last = missed.get(pin.root)
+  if (now !== null && last !== undefined && now - last < RELOCATE_RETRY_MS) return pin
+  const root = await liveCheckout($, pin).catch(() => null)
+  if (root === null && now !== null) missed.set(pin.root, now)
+  else if (root !== null) missed.delete(pin.root)
+  return root === null ? pin : { ...pin, root }
+}
+
 // Checks the working copy now and pins what it finds; a failed read keeps the last pin. The host's
 // `session.repo()` can stay null for a repo created mid-session, so git in the cwd answers then (#299). A session
 // start begins from nothing: the pin of an earlier session is not this one's.
@@ -159,7 +239,9 @@ export async function refreshPin($: EngineInterface, init: { isStart?: boolean; 
   } catch {
     // Unreadable repo: keep the last pin.
   }
-  const pin = nextPin(current, repo, toplevel)
+  const next = nextPin(current, repo, toplevel)
+  // The pin, kept or freshly read (the host's memoized repo can keep naming a deleted root), may be gone.
+  const pin = next === null ? null : await livePin($, next)
   remembered = pin
   if (!sameValue(stored, pin)) {
     // Right before the atom changes, whoever moves it, so what was read for the old pin goes no later than the change.

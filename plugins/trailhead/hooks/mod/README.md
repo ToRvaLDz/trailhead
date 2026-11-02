@@ -141,7 +141,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   did not change the session, runs no work command. `trailhead:unverified` tickets are never listed,
   only counted in one dim line; `trailhead:whiteboard` tickets are dropped. The footer is a `refresh`
   button and `updated <age>`, or `⚠ <reason> · list from <age>` after a `gh` failure (the last good list is kept;
-  reasons: `gh not installed`, `gh not authenticated (run gh auth login)`,
+  reasons: `gh not installed`, `checkout not found: <path>` (the pinned folder is gone and no other checkout of the repo was found), `gh not authenticated (run gh auth login)`,
   `offline: cannot reach GitHub`, `gh failed (exit <n>)`), and a `close` button at the right edge that
   closes the panel. A status too long for the room beside the buttons moves to a row of its own under them. Titles come from GitHub and are untrusted:
   flattened, stripped of control, zero-width and bidi characters, only drawn. Other states: `Loading tickets…`
@@ -252,7 +252,9 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   from it), and `.trailhead/active-map` and `.trailhead/work-state.json` are read by absolute path under
   it, so a shell `cd` out of the repo changes nothing. A check outside any repo, or in one with no usable
   remote, keeps the pin; a move into another repo moves it, drops the reads in flight and empties what the
-  pane held for the old one. With nothing ever pinned the pane says
+  pane held for the old one. A pinned checkout deleted since (a finished worktree) moves the pin, silently, to a live checkout of
+  the same repo: the main working tree, else another `git worktree`, else a same-remote clone beside it (probes run as `git -C`
+  from `/`, retried at most once a minute). With nothing ever pinned the pane says
   `Not in a GitHub repository: open the session in a trailhead repo` and makes no `gh` call.
 - **When it refreshes**: only while the pane is open (a closed pane costs no `gh` call). Opening it,
   `session.start`, `turn.complete`, a Bash call that writes to the tracker, the `refresh` button, and a slow
