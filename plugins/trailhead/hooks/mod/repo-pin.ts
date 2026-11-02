@@ -203,26 +203,44 @@ async function liveCheckout($: EngineInterface, pin: RepoPin): Promise<string | 
   return null
 }
 
-// The pin as it stands, or the live checkout of its repo when its root is gone.
-// A search that found nothing is not repeated for the same dead root within RELOCATE_RETRY_MS (it spawns git per sibling).
+// The pin as it stands, or the live checkout of its repo when its root is gone. Both outcomes are cached per
+// repo and dead root, since the host's memoized repo keeps naming the dead root and every refresh asks again: a hit
+// is revalidated by one exists check, a miss is not searched again within RELOCATE_RETRY_MS (a search spawns git
+// per sibling). Reset at a session start.
 const RELOCATE_RETRY_MS = 60_000
 const missed = new Map<string, number>()
+const relocated = new Map<string, string>()
+const relocationKey = (pin: RepoPin): string => `${pinKey(pin)}|${pin.root}`
 
 export async function livePin($: EngineInterface, pin: RepoPin): Promise<RepoPin> {
   if (await exists($, pin.root)) return pin
+  const key = relocationKey(pin)
+  const known = relocated.get(key)
+  if (known !== undefined) {
+    if (await exists($, known)) return { ...pin, root: known }
+    relocated.delete(key)
+  }
   const now = await $.clock.now().catch(() => null)
-  const last = missed.get(pin.root)
+  const last = missed.get(key)
   if (now !== null && last !== undefined && now - last < RELOCATE_RETRY_MS) return pin
   const root = await liveCheckout($, pin).catch(() => null)
-  if (root === null && now !== null) missed.set(pin.root, now)
-  else if (root !== null) missed.delete(pin.root)
-  return root === null ? pin : { ...pin, root }
+  if (root === null) {
+    if (now !== null) missed.set(key, now)
+    return pin
+  }
+  missed.delete(key)
+  relocated.set(key, root)
+  return { ...pin, root }
 }
 
 // Checks the working copy now and pins what it finds; a failed read keeps the last pin. The host's
 // `session.repo()` can stay null for a repo created mid-session, so git in the cwd answers then (#299). A session
 // start begins from nothing: the pin of an earlier session is not this one's.
 export async function refreshPin($: EngineInterface, init: { isStart?: boolean; onMove?: (pin: RepoPin | null) => Promise<void> } = {}): Promise<RepoPin | null> {
+  if (init.isStart === true) {
+    missed.clear()
+    relocated.clear()
+  }
   const stored = await read($, repoPin)
   const current = init.isStart === true ? null : (stored ?? remembered)
   let repo: RepoRead | null = null
