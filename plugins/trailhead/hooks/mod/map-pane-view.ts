@@ -15,7 +15,8 @@ export type TicketGroups = {
   paused: readonly PaneTicket[]
   blocked: readonly PaneTicket[]
 }
-export type Failure = { error: unknown } | { exitCode: number; stderr: string }
+// `missingRoot`: the folder `gh` was to run in, when it no longer exists (a spawn there fails like a missing binary).
+export type Failure = { error: unknown; missingRoot?: string } | { exitCode: number; stderr: string }
 export type RefreshDecision = { run: true } | { run: false; waitMs: number }
 
 // The most rows one `gh issue list` is asked for.
@@ -429,6 +430,7 @@ const errorText = (err: unknown): string => {
 // One short line saying why `gh` gave nothing.
 export const failureReason = (failure: Failure): string => {
   if ('error' in failure) {
+    if (failure.missingRoot !== undefined) return `checkout not found: ${failure.missingRoot}`
     const text = errorText(failure.error)
     if (/ENOENT|not found/i.test(text)) return 'gh not installed'
     if (/timed? ?out/i.test(text)) return 'offline: cannot reach GitHub'

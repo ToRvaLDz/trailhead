@@ -278,6 +278,12 @@ test('groupTickets lists a needs-you ticket once, under Needs you, ascending, wh
   expect(groupTickets([t(1, 'frontier', { isNeedsYou: false })]).needsYou).toEqual([])
 })
 
+test('failureReason blames the folder, not gh, when the checkout is gone', () => {
+  const error = Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' })
+  expect(failureReason({ error, missingRoot: '/work/r-t5' })).toBe('checkout not found: /work/r-t5')
+  expect(failureReason({ error })).toBe('gh not installed')
+})
+
 test('failureReason names one short cause', () => {
   expect(failureReason({ error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) })).toBe('gh not installed')
   expect(failureReason({ error: new Error('spawn gh ENOENT') })).toBe('gh not installed')

@@ -218,7 +218,9 @@ async function gh($: Dollar, pin: RepoPin, args: readonly string[]): Promise<GhR
     const out = await $.process.run(['gh', ...args], { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
     return out.exitCode === 0 ? { ok: true, stdout: out.stdout } : { ok: false, reason: failureReason(out) }
   } catch (error) {
-    return { ok: false, reason: failureReason({ error }) }
+    // A deleted cwd fails the spawn as ENOENT, the same as a missing binary: look before blaming gh.
+    const missingRoot = (await $.fs.exists(pin.root).catch(() => true)) ? undefined : pin.root
+    return { ok: false, reason: failureReason({ error, missingRoot }) }
   }
 }
 

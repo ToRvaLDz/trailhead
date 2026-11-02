@@ -383,6 +383,9 @@ const rig = (on: On, engine?: any) => {
     return { value: undefined }
   })
   on('session.repo', () => (r.repoFails ? { deny: 'repo read failed' } : { value: r.repo }))
+  // A checkout in `gone` no longer exists on disk; nothing else is listed beside it.
+  on('fs.exists', (_$, e) => ({ value: !r.gone.includes(e.path) }))
+  on('fs.list', () => ({ value: [] }))
   on('session.root', () => ({ value: r.sessionRoot }))
   on('session.cwd', () => ({ value: r.cwd }))
   on('process.run', async (_$, e) => {
@@ -418,6 +421,8 @@ const rig = (on: On, engine?: any) => {
     r.cwds.push(e.init?.cwd)
     // `gh` needs a repo around it: without its own cwd it uses the session's, wherever a `cd` left it.
     const where = e.init?.cwd ?? r.cwd
+    // A spawn in a deleted directory fails the way a missing binary does.
+    if (r.gone.includes(where)) return { deny: 'spawn gh ENOENT' }
     if (where !== ROOT && where !== ROOT_OTHER && where !== ROOT_TREE) {
       return { value: { exitCode: 1, stdout: '', stderr: 'failed to run git: fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
     }
@@ -1123,6 +1128,17 @@ for (const surface of SURFACES) {
       /^⚠ gh not authenticated \(run gh auth login\) · list from /,
     )
     expect(await reasonFor(() => (r.gh = () => ({ exitCode: 1, stdout: '', stderr: 'boom' })))).toMatch(/^⚠ gh failed \(exit 1\) · list from /)
+  })
+
+  test(`a pinned checkout that is gone is named, not blamed on gh [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.gone = [ROOT]
+    await r.clock.advance(FLOOR)
+    await completeTurn($)
+    await settle(r)
+    expect(await textOf(ui, 'age')).toMatch(/^⚠ checkout not found: \/repo · list from /)
   })
 
   test(`a first fetch that fails shows the reason without a list [${surface}]`, async ($, on) => {
