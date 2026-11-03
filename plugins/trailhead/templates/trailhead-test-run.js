@@ -428,7 +428,14 @@ const describeHolder = (h, nowMs) => {
 };
 
 // One admission attempt. { admitted, holderFile } or { admitted: false, behind }.
-function tryAdmit(dirs, me, nowMs) {
+// True while `.gate` still carries our token (a reaper may have displaced it).
+function gateIsMine(g) {
+  const cur = readJson(g.gate);
+  return cur.ok && isObject(cur.value) && cur.value.token === g.token;
+}
+
+// hooks.afterHolderWrite (test-only) runs between the holder write and the gate re-check.
+function tryAdmit(dirs, me, nowMs, hooks = {}) {
   fs.mkdirSync(dirs.queue, { recursive: true });
   const gate = acquireGate(dirs, nowMs);
   if (!gate.held) return { admitted: false, behind: `queued behind the queue gate held by pid ${gate.pid === null ? '?' : gate.pid}` };
@@ -441,8 +448,17 @@ function tryAdmit(dirs, me, nowMs) {
       const blocker = same || live.slice().sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)))[0];
       return { admitted: false, behind: describeHolder(blocker, nowMs) };
     }
+    const displaced = { admitted: false, behind: 'queued behind the queue gate (displaced, retrying)' };
+    if (!gateIsMine(gate)) return displaced;
     const holderFile = path.join(dirs.queue, `holder-${process.pid}-${rand()}.json`);
     writeAtomic(holderFile, JSON.stringify({ pid: process.pid, pgid: null, limit: me.limit, key: me.key, repo: me.repo, tree: me.tree, command: me.command, startedAt: new Date(nowMs).toISOString() }));
+    if (hooks.afterHolderWrite) hooks.afterHolderWrite();
+    // A reaper race can displace our gate; then another process may have been
+    // admitted on a count that missed us, so withdraw (the gate is not ours to release).
+    if (!gateIsMine(gate)) {
+      rmQuiet(holderFile);
+      return displaced;
+    }
     return { admitted: true, holderFile };
   } finally {
     releaseGate(gate);
@@ -620,7 +636,17 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
     const run = launch(command, repo, logFd, env_, prio.args);
     activeGroup = run.pgid;
     if (signalled) teardown = teardown || teardownGroup(run.pgid, graceMs);
-    updateHolder(holderFile, { pgid: run.pgid });
+    try {
+      if (env_.TRAILHEAD_TEST_FAIL_PGID_UPDATE) throw new Error('injected pgid update failure');
+      updateHolder(holderFile, { pgid: run.pgid });
+    } catch (e) {
+      // Never leave a launched suite unrecorded: close the handshake pipe (the launcher
+      // exits 125 without running) and tear the group down before reporting the error.
+      run.child.stdin.destroy();
+      await teardownGroup(run.pgid, graceMs);
+      activeGroup = null;
+      throw e;
+    }
     if (env_.TRAILHEAD_TEST_CRASH_AT === 'before-go') process.exit(99);
     run.child.stdin.end('go\n');
 
@@ -671,7 +697,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
 
 module.exports = {
   shQuote, substituteFiles, cacheKey, pick, readConfig, niceArgs, priorityPrefix, parseArgs, hasDirtySubmodule,
-  snapshotTree, pidAlive, groupAlive, tryAdmit, liveHolders, acquireGate, releaseGate, readResult, main,
+  snapshotTree, pidAlive, groupAlive, tryAdmit, liveHolders, gateIsMine, acquireGate, releaseGate, readResult, main,
 };
 
 if (require.main === module) {

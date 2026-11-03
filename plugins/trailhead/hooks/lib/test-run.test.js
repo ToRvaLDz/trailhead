@@ -248,6 +248,46 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
     lib.releaseGate(r2);
   }
 
+  // --- W1 residual: a displaced gate owner withdraws its holder ---------------------------------------
+  {
+    const q = mktmp();
+    const dirs = { queue: q };
+    const gate = path.join(q, '.gate');
+    const otherText = JSON.stringify({ pid: process.pid, token: 'other-live-owner' });
+    const me = { key: 'k', limit: 1, repo: '/r', tree: 't', command: 'c' };
+    const r = lib.tryAdmit(dirs, me, Date.now(), {
+      afterHolderWrite: () => {
+        // The reaper race: our gate was swapped for another live owner's.
+        fs.unlinkSync(gate);
+        fs.writeFileSync(gate, otherText);
+      },
+    });
+    ok('(W1b) the displaced owner is not admitted', r.admitted === false);
+    ok('(W1b) it withdrew its holder file', fs.readdirSync(q).every((n) => !/^holder-/.test(n)));
+    ok('(W1b) the other owner keeps the gate', fs.readFileSync(gate, 'utf8') === otherText);
+    fs.unlinkSync(gate);
+    const again = lib.tryAdmit(dirs, me, Date.now());
+    ok('(W1b) an undisturbed admission still works', again.admitted === true && fs.existsSync(again.holderFile));
+    // Displaced before the holder is written: early exit, nothing written.
+    fs.unlinkSync(again.holderFile);
+    const q2 = mktmp();
+    const g2 = lib.acquireGate({ queue: q2 }, Date.now());
+    fs.unlinkSync(g2.gate);
+    fs.writeFileSync(g2.gate, otherText);
+    ok('(W1b) gateIsMine is false for a foreign token', lib.gateIsMine(g2) === false);
+  }
+
+  // --- I4: a failing pgid record tears the launched group down -----------------------------------------------
+  {
+    const repo = mkrepo();
+    const cache = mktmp();
+    const marker = path.join(mktmp(), 'marker');
+    const cfg = mkcfg({ full: `touch ${marker}; sleep 30` });
+    const r = await runHelper(['--repo', repo, '--config-root', cfg], baseEnv(cache, { TRAILHEAD_TEST_FAIL_PGID_UPDATE: '1' }));
+    ok('(I4) status error, exit 3', r.code === 3 && r.json && r.json.status === 'error');
+    ok('(I4) the suite never ran and no holder is left', !fs.existsSync(marker) && holdersOf(cache).length === 0);
+  }
+
   // --- (a) serialisation: maxParallel 1, two different commands ---------------------------------
   {
     const repo = mkrepo();
