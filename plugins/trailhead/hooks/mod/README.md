@@ -97,8 +97,11 @@ only where no mod does (it says the panel is not available). Claude Code only: t
 projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex-projection.js`).
 
 - **What it shows**: the map as a link with its destination (dim), then `In progress · n` (first, right under
-  the maps list), `Needs you · n`, `Frontier · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). A row is `#n title`
-  (a link to the issue) and the type, dim. Every assigned row shows its holder as `@login`; the ticket
+  the maps list), `Needs you · n`, `Frontier · n`, `UAT · n`, `Paused · n` and `Blocked · n` (an empty group is left out). Each group, the
+  maps list included, has its own glyph and colour (`◈` Maps violet, `▶` In progress accent, `!` Needs you orange, `◆` Frontier green,
+  `◎` UAT cyan, `‖` Paused grey, `■` Blocked red): the heading is the glyph, the bold name in that colour and a dim rule to the pane's edge, and
+  every row starts with a `│ ` gutter in the same colour, so the groups tell apart without colour too. A row is `#n title`
+  (a link to the issue) and the type (`build` cyan, `decision` orange, any other dim; dim on a blocked row). The unverified-count line is amber. Every assigned row shows its holder as `@login`; the ticket
   in play in this session is marked `▸` in the accent and says `this session` in place of its holder;
   blocked rows are dim. `In progress` is global for you: after the shown scope's own claimed tickets it lists your
   open in-progress tickets (assigned to the `gh` login) of every other open map and of the whiteboard, each with a dim

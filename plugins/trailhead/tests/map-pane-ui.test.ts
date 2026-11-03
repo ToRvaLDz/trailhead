@@ -521,13 +521,19 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-frontier')).toBe('Frontier · 3')
     expect(await textOf(ui, 'head-in-progress')).toBe('In progress · 2')
     expect(await textOf(ui, 'head-blocked')).toBe('Blocked · 2')
-    expect((await ui.find({ key: 'head-frontier' }))?.children[0]).toMatchObject({ props: { bold: true } })
+    expect((await ui.find({ key: 'head-frontier' }))?.children[0]).toMatchObject({ props: { bold: true, color: '#9ece6a' } })
+    // ogni sezione ha il suo glifo e un filetto colorato davanti a ogni riga
+    expect(await textOf(ui, 'glyph-frontier')).toBe('◆ ')
+    expect(await textOf(ui, 'glyph-blocked')).toBe('■ ')
+    expect(await textOf(ui, 'gutter-209')).toBe('│ ')
+    expect((await ui.find({ key: 'gutter-211' }))?.children[0]).toMatchObject({ props: { color: '#f7768e' } })
     expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-209', 'row-210', 'row-214', 'row-211', 'row-213'])
 
     expect(await textOf(ui, 'ticket-209')).toBe('#209 Burn-down view of the map')
     expect(await textOf(ui, 'type-209')).toBe(' build')
-    expect((await ui.find({ key: 'type-209' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    expect((await ui.find({ key: 'type-209' }))?.children[0]).toMatchObject({ props: { color: '#7dcfff' } })
     expect(await textOf(ui, 'type-214')).toBe(' decision')
+    expect((await ui.find({ key: 'type-214' }))?.children[0]).toMatchObject({ props: { color: '#ff9e64' } })
     const links = (await ui.findAll({ type: 'Link' })).map((l: any) => l.props.href)
     expect(links).toContain(`${URL}/209`)
 
@@ -553,6 +559,7 @@ for (const surface of SURFACES) {
     // the quarantined ticket is counted, never listed
     expect(await ui.find({ key: 'row-215' })).toBeUndefined()
     expect(await textOf(ui, 'unverified')).toBe('1 unverified ticket hidden (quarantined)')
+    expect((await ui.find({ key: 'unverified' }))?.children[0]).toMatchObject({ props: { color: '#e0af68' } })
     expect(await textOf(ui, 'age')).toBe('updated just now')
   })
 
@@ -2712,7 +2719,7 @@ for (const surface of SURFACES) {
     expect(await textOf(ui, 'head-maps')).toBe('Maps · 2')
     expect(await keysOf(ui, 'map-row-')).toEqual(['map-row-14', 'map-row-198'])
     expect(await textOf(ui, 'map-mark-198')).toBe('● ')
-    expect((await ui.find({ key: 'map-mark-198' }))?.children[0]).toMatchObject({ props: { color: ACCENT } })
+    expect((await ui.find({ key: 'map-mark-198' }))?.children[0]).toMatchObject({ props: { bold: true, color: '#bb9af7' } })
     expect(await textOf(ui, 'map-aside-198')).toBe(' 7 open / 23 · active')
     expect(await textOf(ui, 'map-label-198')).toBe('#198 trailhead mod')
     expect((await ui.find({ key: 'map-label-198' }))?.children[0]).toMatchObject({ props: { bold: true } })

@@ -92,6 +92,22 @@ const CHART_ROWS = 3
 // Space between ticket rows on the desktop, whose native buttons would touch; the terminal stays compact.
 const DESKTOP_ROW_GAP = 0.5
 const AMBER = '#e0af68'
+// Ogni sezione ha il suo glifo e colore (palette Tokyo Night del band), così si distinguono anche senza colore.
+const SECTION_STYLES = {
+  maps: { glyph: '◈', color: '#bb9af7' },
+  'in-progress': { glyph: '▶', color: ACCENT },
+  'needs-you': { glyph: '!', color: '#ff9e64' },
+  frontier: { glyph: '◆', color: '#9ece6a' },
+  uat: { glyph: '◎', color: '#7dcfff' },
+  paused: { glyph: '‖', color: '#a9b1d6' },
+  blocked: { glyph: '■', color: '#f7768e' },
+} as const
+type SectionKey = keyof typeof SECTION_STYLES
+// Il filetto a sinistra di ogni riga, nel colore della sezione: occupa GUTTER colonne.
+const GUTTER = '│ '
+const RULE_COLOR = '#3b4261'
+// Il tipo di ticket colorato; gli altri tipi restano attenuati.
+const TYPE_COLORS: Readonly<Record<string, string>> = { build: '#7dcfff', decision: '#ff9e64' }
 
 const EMPTY: MapPaneData = {
   map: null,
@@ -1052,14 +1068,27 @@ export function registerMapPane(on: On) {
       </Box>
     )
     const link = (url: string, label: string) => (url === '' ? label : <Link href={url} label={label} />)
+    // Intestazione di sezione: glifo e nome nel colore della sezione, poi un filetto fino al bordo.
+    const sectionHead = (key: SectionKey, label: string) => {
+      const { glyph, color } = SECTION_STYLES[key]
+      const rest = cols - glyph.length - 1 - label.length - 1
+      return (
+        <Box key={`section-head-${key}`}>
+          {text(`glyph-${key}`, { color }, `${glyph} `)}
+          {text(`head-${key}`, { bold: true, color }, label)}
+          {rest > 0 ? text(`rule-${key}`, { color: RULE_COLOR }, ` ${'─'.repeat(rest)}`) : null}
+        </Box>
+      )
+    }
 
     // The open maps, one row each; shown with several maps open (or with no active map, to pick one).
     // On the dashboard every map is listed and each row opens it.
     const mapRow = (m: MapSummary) => {
-      const r = mapRowLayout(m, { active, viewed, columns: cols, isDashboard: isBoard })
+      const r = mapRowLayout(m, { active, viewed, columns: cols - GUTTER.length, isDashboard: isBoard })
       return (
         <Box key={`map-row-${m.number}`}>
-          {text(`map-mark-${m.number}`, r.isActive ? accent : {}, r.mark)}
+          {text(`map-gutter-${m.number}`, { color: SECTION_STYLES.maps.color }, GUTTER)}
+          {text(`map-mark-${m.number}`, r.isActive ? { bold: true, color: SECTION_STYLES.maps.color } : {}, r.mark)}
           {r.isPressable ? (
             <Button
               key={`map-${m.number}`}
@@ -1076,7 +1105,7 @@ export function registerMapPane(on: On) {
     const isMapsShown = isBoard ? data.maps.length > 0 : data.maps.length > 1 || (active === null && data.maps.length > 0)
     const mapsGroup = isMapsShown ? (
       <Box key="group-maps" flexDirection="column" marginTop={gap}>
-        {text('head-maps', bold, `Maps · ${data.maps.length}`)}
+        {sectionHead('maps', `Maps · ${data.maps.length}`)}
         {data.maps.map(mapRow)}
       </Box>
     ) : null
@@ -1115,18 +1144,21 @@ export function registerMapPane(on: On) {
 
     // This session's own ticket survives a work-state file another session took over; without one, the file decides.
     const isInPlay = (t: PaneTicket) => (own !== null ? t.number === own : play !== null && !orphaned && play.ticket === t.number)
-    const row = (t: PaneTicket, hasMarkColumn: boolean, scope: string | null = null) => {
-      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: phase, columns: cols })
+    const row = (t: PaneTicket, section: SectionKey, hasMarkColumn: boolean, scope: string | null = null) => {
+      const r = rowLayout(t, { isInPlay: isInPlay(t), hasMarkColumn, pendingWork: pending, pendingPhase: phase, columns: cols - GUTTER.length })
       const style = r.isInPlay ? accent : r.isDim ? dim : {}
       const holder = r.isDim ? dim : {}
+      const typeColor = t.type === null ? undefined : TYPE_COLORS[t.type]
+      const typeStyle = r.isDim || typeColor === undefined ? dim : { color: typeColor }
       const line = (
         <Box key={`row-${t.number}`} width={cols} justifyContent="space-between">
           <Box>
+            {text(`gutter-${t.number}`, { color: SECTION_STYLES[section].color }, GUTTER)}
             {r.mark === null ? null : text(`mark-${t.number}`, r.isInPlay ? accent : {}, r.mark)}
             <Box key={`ticket-${t.number}`}>
               <Text {...style}>{link(t.url, r.label)}</Text>
             </Box>
-            {r.type === null ? null : text(`type-${t.number}`, dim, r.type)}
+            {r.type === null ? null : text(`type-${t.number}`, typeStyle, r.type)}
           </Box>
           {r.aside?.kind === 'holder' ? text(`holder-${t.number}`, holder, r.aside.text) : null}
           {r.aside?.kind === 'self' ? text(`self-${t.number}`, { color: ACCENT }, r.aside.text) : null}
@@ -1166,7 +1198,7 @@ export function registerMapPane(on: On) {
       )
     }
     // `elsewhere`: my tickets of other scopes, listed after the shown scope's with the line naming where each is.
-    const group = (key: string, name: string, rows: readonly PaneTicket[], elsewhere: readonly MyTicket[] = []) => {
+    const group = (key: Exclude<SectionKey, 'maps'>, name: string, rows: readonly PaneTicket[], elsewhere: readonly MyTicket[] = []) => {
       if (rows.length + elsewhere.length === 0) return null
       const hasMarkColumn = [...rows, ...elsewhere].some(isInPlay)
       return (
@@ -1176,9 +1208,9 @@ export function registerMapPane(on: On) {
           marginTop={gap}
           {...(e.surface === 'desktop' ? { rowGap: DESKTOP_ROW_GAP } : {})}
         >
-          {text(`head-${key}`, bold, `${name} · ${rows.length + elsewhere.length}`)}
-          {rows.map(t => row(t, hasMarkColumn))}
-          {elsewhere.map(t => row(t, hasMarkColumn, scopeLine(t, data.maps, cols)))}
+          {sectionHead(key, `${name} · ${rows.length + elsewhere.length}`)}
+          {rows.map(t => row(t, key, hasMarkColumn))}
+          {elsewhere.map(t => row(t, key, hasMarkColumn, scopeLine(t, data.maps, cols)))}
         </Box>
       )
     }
@@ -1197,7 +1229,7 @@ export function registerMapPane(on: On) {
     const notes = (d: { unverifiedCount: number; isCapped: boolean }) => [
       d.unverifiedCount === 0 ? null : (
         <Box key="unverified" marginTop={gap}>
-          <Text {...dim}>{unverifiedLine(d.unverifiedCount)}</Text>
+          <Text color={AMBER}>{unverifiedLine(d.unverifiedCount)}</Text>
         </Box>
       ),
       !d.isCapped ? null : (
