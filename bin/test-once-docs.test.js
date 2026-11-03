@@ -44,7 +44,6 @@ ok('tdd.md: full suite once at Verify', docs['tdd.md'].includes('once per ticket
 const engines = docs['ticket-engines.md'];
 ok('ticket-engines.md: one full run per tree', (engines.match(/runs the full suite once on the synced tree/g) || []).length === 2);
 ok('ticket-engines.md: test record named in build and bug Verify', (engines.match(/\*\*test record\*\*/g) || []).length === 2);
-ok('ticket-engines.md: reviewers do not re-run', (engines.match(/never re-run the full suite/g) || []).length >= 2);
 ok('ticket-engines.md: no double run after the sync', !engines.includes('then sync, then re-run the tests'));
 
 // Each Verify (build, bug) is its own line of ticket-engines.md.
@@ -54,12 +53,15 @@ for (const [i, line] of verifyLines.entries()) {
   const which = i === 0 ? 'build' : 'bug';
   ok(`${which} Verify: exactly one full-run invocation`, (line.match(/trailhead-test-run\.js run --repo/g) || []).length === 1);
   ok(`${which} Verify: failed record reused on the same tree`, line.includes('reuse it instead of invoking the helper'));
+  ok(`${which} Verify: reviewers never re-run, exactly once`, (line.match(/never re-run the full suite/g) || []).length === 1);
   ok(`${which} Verify: no legacy second run`, !line.includes('then run the tests') && !line.includes('then re-run the tests'));
 }
 
 // Scoping: the record and single-run rules apply only with testing.full.
 ok('executor-brief.md: scoping names testing.full', /testing\.full[^\n]*focused/.test(brief));
-ok('ticket-engines.md: scoping names testing.full', verifyLines.every((l) => /unconfigured` falls back[^;]*as before/.test(l)));
+ok('ticket-engines.md: unconfigured runs once, no record, reviewers get none', verifyLines.every((l) => l.includes('When the helper answers `unconfigured`, `unconfigured` falls back to the project\'s own command, run once on the synced tree: no test record is built and the reviewing agents get none, so they test as today.')));
+ok('ticket-engines.md: no garbled as-before sentence', verifyLines.every((l) => !l.includes('behave as before')));
+ok('ticket-engines.md: Execute/Fix focused clause kept', verifyLines.every((l) => l.includes('--kind targeted --files <a,b>')));
 ok('configuration-reference.md: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration-reference.md']));
 ok('README.md: scoping names testing.full', /without `testing\.full`/i.test(docs['README.md']));
 ok('configuration.mdx: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration.mdx']));
@@ -71,10 +73,16 @@ for (const name of ['code-review.md', 'verify.md', 'trailhead-code-review.md', '
 
 // Post-sync re-run reuses the cache.
 ok('teamwork.md: post-sync run reuses the cached result', docs['teamwork.md'].includes('`source: cache`'));
+const tw = docs['teamwork.md'];
+ok('teamwork.md: preflight never runs the suite', tw.includes('The preflight itself never runs the suite'));
+ok('teamwork.md: never an extra invocation', tw.includes('never an extra invocation'));
+ok('teamwork.md: Resolve new tree gets one run, record in the resolution comment', tw.includes('its test record is added to the resolution comment, superseding the Verify record'));
+ok('teamwork.md: no separate re-run instruction after synced', !tw.includes('re-run the test suite on the synced tree') && !tw.includes('re-runs the tests'));
 ok('teamwork.md: current needs no re-run', docs['teamwork.md'].includes('`current` needs no re-run'));
 
 // Reviewing agents read the record.
 for (const name of ['code-review.md', 'verify.md', 'agent-blocks.md', 'trailhead-code-review.md', 'trailhead-verify.md']) {
+  ok(`${name}: no record without testing.full`, docs[name].includes('without `testing.full` no test record is passed'));
   ok(`${name}: reads the test record`, docs[name].includes('test record'));
   ok(`${name}: never re-runs the full suite`, docs[name].includes('never re-run the full suite'));
 }
