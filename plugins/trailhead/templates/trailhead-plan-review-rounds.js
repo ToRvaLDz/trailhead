@@ -8,6 +8,8 @@
 // CLI:
 //   node trailhead-plan-review-rounds.js ask   --repo <project-root> [--host claude|codex]
 //   node trailhead-plan-review-rounds.js round --choice <config|1|2|3|until> --configured <n> --history <file>
+//   node trailhead-plan-review-rounds.js budget --repo <project-root> --reviewer <name> --prompt <file>
+//   node trailhead-plan-review-rounds.js overflow --output <file>
 // Prints one JSON line on stdout. Exit 0 ok / 1 error / 2 usage (message on stderr).
 //
 // Config: `plan_review` (off | on | comma list of CLIs, default off) and `plan_review.rounds`
@@ -39,6 +41,26 @@
 //   concerns) | ceiling (choice until: 5 rounds done) | exhausted (fixed choice: its rounds are
 //   spent) | continue. Every stop but converged carries `surviving`, the latest round's concerns.
 //   `config` resolves to --configured.
+//
+// budget: pre-check of one reviewer call. Estimates the prompt file's tokens as ceil(utf8 bytes / 3)
+// (an estimate on the high side for code and English, not a guarantee; `overflow` covers what it
+// misses) and compares them with cap = floor(window * 0.65), the other 35% being headroom for the
+// reviewer's own system prompt and output. The window is the per-CLI default (CONTEXT_WINDOWS, 128000
+// for any other name) or the `plan_review.context` override. Decision, first match wins: skip
+// (tokens > cap) | file (bytes > 102400, a single Linux argument over 128 KiB fails with E2BIG) | arg.
+//   {"status":"ok","reviewer","decision","bytes","tokens","window","cap","windowSource":"default"|"config",
+//    "reason"?,"pointer"?,"warnings":[]}
+// `reason` (skip) is ready to quote in PLAN-REVIEW; `pointer` (file) is the short argument to pass
+// instead of the prompt. Skip is still exit 0: the verdict is data, not a failure.
+//
+// overflow: post-check of one failed reviewer call. A pure pattern match over the captured output
+// (stdout and stderr together) for the known context-overflow and E2BIG messages.
+//   {"status":"ok","overflow":bool,"reason"?:<the matched line, trimmed and length-capped>}
+//
+// Config `plan_review.context`: an object { "<cli>": <window in tokens> }, merged per reviewer across
+// the two files (project entry, else global entry, else default). A valid entry is a positive integer
+// no larger than 10000000; anything else warns and falls through to the next layer; a value that is
+// not an object warns and is ignored.
 
 const fs = require('fs');
 const os = require('os');
@@ -51,7 +73,25 @@ const DEFAULT_ROUNDS = 2;
 const CEILING = 5;
 const HOSTS = ['claude', 'codex'];
 const CHOICES = ['config', '1', '2', '3', 'until'];
-const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'] };
+const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'], budget: ['repo', 'reviewer', 'prompt'], overflow: ['output'] };
+// Default context windows in tokens; any other reviewer name gets FALLBACK_WINDOW.
+const CONTEXT_WINDOWS = { claude: 200000, gemini: 1000000, codex: 272000, qwen: 256000, kimi: 256000, agy: 1000000, opencode: 128000, 'cursor-agent': 128000, coderabbit: 128000 };
+const FALLBACK_WINDOW = 128000;
+const MAX_WINDOW = 10000000;
+const CAP_RATIO = 0.65;
+const BYTES_PER_TOKEN = 3;
+const FILE_THRESHOLD_BYTES = 102400;
+const REASON_MAX = 200;
+// Known context-overflow and E2BIG messages of the reviewer CLIs (case-insensitive).
+const OVERFLOW_PATTERNS = [
+  /context_length_exceeded/i,
+  /maximum context length/i,
+  /prompt is too long/i,
+  /exceeds the context window/i,
+  /input is too long/i,
+  /too many tokens/i,
+  /argument list too long/i,
+];
 
 class Usage extends Error {}
 
@@ -70,6 +110,12 @@ function parseArgs(argv) {
   if (command === 'ask') {
     if (!out.repo) return { error: 'usage: missing --repo <project-root>' };
     if (out.host !== undefined && !HOSTS.includes(out.host)) return { error: `usage: --host must be one of ${HOSTS.join(', ')}` };
+  } else if (command === 'budget') {
+    if (!out.repo) return { error: 'usage: missing --repo <project-root>' };
+    if (!out.reviewer) return { error: 'usage: missing --reviewer <name>' };
+    if (!out.prompt) return { error: 'usage: missing --prompt <file>' };
+  } else if (command === 'overflow') {
+    if (!out.output) return { error: 'usage: missing --output <file>' };
   } else {
     if (!out.choice || !CHOICES.includes(out.choice)) return { error: `usage: --choice must be one of ${CHOICES.join(', ')}` };
     if (!out.configured || !/^[1-9]\d*$/.test(out.configured)) return { error: 'usage: --configured needs a positive integer' };
@@ -106,6 +152,7 @@ function globalConfigPath(env) {
 }
 
 // Effective { planReview, rounds } (undefined when unset) or { error }. Nearest file wins per key.
+// `contextLayers` is every file that sets plan_review.context, nearest first (merged per reviewer later).
 function readConfig(root, env, fs_) {
   const files = [path.join(root, CONFIG_REL), globalConfigPath(env)];
   const parsed = [];
@@ -119,6 +166,7 @@ function readConfig(root, env, fs_) {
     const hit = parsed.find(({ cfg }) => has(cfg, key));
     if (hit) out[prop] = { value: hit.cfg[key], file: hit.file };
   }
+  out.contextLayers = parsed.filter(({ cfg }) => has(cfg, 'plan_review.context')).map(({ file, cfg }) => ({ value: cfg['plan_review.context'], file }));
   return out;
 }
 
@@ -207,6 +255,70 @@ function runAsk(parsed, cwd, env, fs_, deps) {
   return { code: 0, result: { status: 'ask', configured, reviewers, unknown, warnings, ...buildMenus(configured) } };
 }
 
+const validWindow = (v) => Number.isInteger(v) && v > 0 && v <= MAX_WINDOW;
+
+// Window for one reviewer: first valid entry across the layers, else the default.
+function resolveWindow(layers, reviewer, warnings) {
+  for (const { value, file } of layers) {
+    if (!isObject(value)) {
+      warnings.push(`plan_review.context in ${file} must be an object of CLI name to window tokens; ignored`);
+      continue;
+    }
+    if (!has(value, reviewer)) continue;
+    if (validWindow(value[reviewer])) return { window: value[reviewer], windowSource: 'config' };
+    warnings.push(`plan_review.context.${reviewer} in ${file} must be a positive integer of at most ${MAX_WINDOW}; ignored`);
+  }
+  return { window: has(CONTEXT_WINDOWS, reviewer) ? CONTEXT_WINDOWS[reviewer] : FALLBACK_WINDOW, windowSource: 'default' };
+}
+
+// Pure decision over the prompt size and the window. First match wins: skip, file, arg.
+function budgetDecision(bytes, window) {
+  const tokens = Math.ceil(bytes / BYTES_PER_TOKEN);
+  const cap = Math.floor(window * CAP_RATIO);
+  const decision = tokens > cap ? 'skip' : bytes > FILE_THRESHOLD_BYTES ? 'file' : 'arg';
+  return { decision, tokens, cap };
+}
+
+function runBudget(parsed, cwd, env, fs_) {
+  const cfg = readConfig(path.resolve(cwd, parsed.repo), env, fs_);
+  if (cfg.error) return { code: 1, result: { status: 'error', reason: cfg.error } };
+  const file = path.resolve(cwd, parsed.prompt);
+  let bytes;
+  try {
+    bytes = fs_.readFileSync(file).length;
+  } catch (err) {
+    return { code: 1, result: { status: 'error', reason: `cannot read ${file}: ${err && err.message ? err.message : err}` } };
+  }
+  const warnings = [];
+  const { window, windowSource } = resolveWindow(cfg.contextLayers, parsed.reviewer, warnings);
+  const { decision, tokens, cap } = budgetDecision(bytes, window);
+  const result = { status: 'ok', reviewer: parsed.reviewer, decision, bytes, tokens, window, cap, windowSource };
+  if (decision === 'skip') result.reason = `prompt too large for ${parsed.reviewer}: estimated ${tokens} tokens exceeds the cap of ${cap} (65% of its ${window}-token context window)`;
+  if (decision === 'file') result.pointer = `Read the complete review brief in ${file} and answer it exactly as it asks.`;
+  result.warnings = warnings;
+  return { code: 0, result };
+}
+
+// Pure match over captured reviewer output: the first line carrying a known overflow message.
+function matchOverflow(text) {
+  for (const line of String(text).split(/\r?\n/)) {
+    if (OVERFLOW_PATTERNS.some((re) => re.test(line))) return line.trim().slice(0, REASON_MAX);
+  }
+  return null;
+}
+
+function runOverflow(parsed, cwd, fs_) {
+  const file = path.resolve(cwd, parsed.output);
+  let text;
+  try {
+    text = fs_.readFileSync(file, 'utf8');
+  } catch (err) {
+    return { code: 1, result: { status: 'error', reason: `cannot read ${file}: ${err && err.message ? err.message : err}` } };
+  }
+  const reason = matchOverflow(text);
+  return { code: 0, result: reason === null ? { status: 'ok', overflow: false } : { status: 'ok', overflow: true, reason } };
+}
+
 const norm = (key) => key.trim().toLowerCase().replace(/\s+/g, ' ');
 const filled = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -270,7 +382,10 @@ function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp } = {
   }
   let run;
   try {
-    run = parsed.command === 'ask' ? runAsk(parsed, cwd_, env_, fs_, { which, kimiHelp }) : runRound(parsed, cwd_, fs_);
+    if (parsed.command === 'ask') run = runAsk(parsed, cwd_, env_, fs_, { which, kimiHelp });
+    else if (parsed.command === 'budget') run = runBudget(parsed, cwd_, env_, fs_);
+    else if (parsed.command === 'overflow') run = runOverflow(parsed, cwd_, fs_);
+    else run = runRound(parsed, cwd_, fs_);
   } catch (e) {
     if (e instanceof Usage) {
       err.write(e.message + '\n');
@@ -282,7 +397,7 @@ function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp } = {
   return run.code;
 }
 
-module.exports = { parseArgs, readConfig, decide, main };
+module.exports = { parseArgs, readConfig, decide, budgetDecision, matchOverflow, main };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, stderr: process.stderr, env: process.env }));
