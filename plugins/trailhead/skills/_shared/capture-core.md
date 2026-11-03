@@ -40,6 +40,11 @@ The project file wins over the global one, key by key; either may spell the key 
 <!-- core: configuration.md | Three layers, **nearest wins** | 4bfa9380 -->
 <!-- core: multi-map.md | **Active map.** | 702fafcc -->
 
+## Repo target check
+
+**Before the first tracker write of a session** (any `gh issue create/edit/comment/close` or `gh api` write below), check which repository `gh` will write to: in a fork clone it can resolve the parent (an `upstream` remote, or `gh repo set-default`). Run `node <templates>/trailhead-repo-target.js check --repo <project root>` (`<templates>` as in "Map body writes"; skip silently if no directory has the script). It prints one JSON line: `ok`, `reuse` and `skipped` proceed silently; `ask` stops the write and asks the user which repository (one option per `candidates` entry, naming the fork and the parent, or noting no write access; never pick for them), then `node <templates>/trailhead-repo-target.js record --repo <project root> --target <chosen owner/name>` makes it `gh`'s default and remembers the answer for 8 hours (`record` adds `.trailhead/repo-target.json` to the repo's `.gitignore` if absent); a failed `record` (`status: error`) stops the write with a one-line report. Read-only `gh` calls may run before the check. A capture through `trailhead-capture.js` passes the resolved or chosen target as `--repo`.
+<!-- core: load-first.md | **Repo target check, once per session, before the first tracker write.** | 190926a2 -->
+
 ## Labels and create commands
 
 A ticket carries `trailhead:ticket`, exactly one type label and exactly one destination (its map's `trailhead:map-<n>` or `trailhead:whiteboard`), all in the create call itself, never a later `--add-label`. A known-blocked ticket, a seed included (`trailhead:seed` and `trailhead:blocked`), carries `trailhead:blocked` in the create call too.
