@@ -471,7 +471,7 @@ ok('both Verify step lines reference the Ticket diff', verifyStepLines181.every(
 ok('ticket-engines.md does NOT contain the old range-scoped diff', !ticketEnginesSource181.includes('git diff <base>...HEAD'));
 
 ok("techniques.md index row updates Code review to the ticket's own commits",
-  techniquesSource181.includes("review the ticket's own commits (its `Refs: #<n>` set) on 4 axes"));
+  techniquesSource181.includes("review the ticket's own commits (its `Refs: #<n>` set) on 5 axes"));
 
 for (const [label, src] of [
   ['code-review.md', codeReviewSource181],
