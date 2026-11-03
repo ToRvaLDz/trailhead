@@ -43,11 +43,12 @@
 // Exit 0 on ok, 1 on an error, 2 on a usage error (stderr).
 
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 const nodeFs = require('fs');
 const path = require('path');
 
 function defaultGit(args) {
-  const r = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('git', args, { encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 

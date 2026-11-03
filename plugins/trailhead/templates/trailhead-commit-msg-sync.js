@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 // Nome del file di logica installato accanto al wrapper commit-msg.
 const CJS_NAME = 'trailhead-commit-msg.cjs';
@@ -47,7 +48,7 @@ function normalize(text) {
 // deve stampare rumore sul terminale dell'invocante, solo far fallire questa
 // chiamata (il chiamante decide come reagire).
 function defaultRunGit(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
 // Risolve la hooksDir effettiva del repo (rispetta core.hooksPath e i

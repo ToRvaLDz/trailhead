@@ -44,6 +44,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn, spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const STALE_MS = 30 * 1000;
@@ -262,12 +263,6 @@ function ageMs(file, nowMs) {
 }
 
 // ---- git: tree snapshot -----------------------------------------------------------
-
-function gitEnv(env, extra = {}) {
-  const base = { ...env };
-  for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR']) delete base[k];
-  return { ...base, ...extra };
-}
 
 function git(repo, args, env, extra) {
   return execFileSync('git', ['--no-optional-locks', '-C', repo, ...args],
@@ -528,7 +523,7 @@ function launch(command, repo, logFd, env, prefix) {
     cwd: repo,
     detached: true,
     stdio: ['pipe', logFd, logFd],
-    env: { ...env, TRAILHEAD_TEST_CMD: command },
+    env: gitEnv(env, { TRAILHEAD_TEST_CMD: command }),
   });
   const exited = new Promise((resolve, reject) => {
     child.once('error', reject);

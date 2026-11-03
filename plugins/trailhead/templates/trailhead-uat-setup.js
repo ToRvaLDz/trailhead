@@ -46,6 +46,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const OUTPUT_TAIL = 2000;
@@ -257,7 +258,7 @@ function redactor(names, env) {
 function sh(command, repo, env, timeoutMs, wantOutput) {
   const timeout = Math.max(1, Math.ceil(timeoutMs));
   if (!wantOutput) {
-    const r = spawnSync('sh', ['-c', command], { cwd: repo, env, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
+    const r = spawnSync('sh', ['-c', command], { cwd: repo, env: gitEnv(env), stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
     const timedOut = Boolean(r.error && r.error.code === 'ETIMEDOUT');
     return { code: r.status, timedOut, spawnError: r.error && !timedOut ? r.error.message : null, tail: '' };
   }
@@ -265,7 +266,7 @@ function sh(command, repo, env, timeoutMs, wantOutput) {
   const file = path.join(dir, 'out');
   const fd = fs.openSync(file, 'w');
   try {
-    const r = spawnSync('sh', ['-c', command], { cwd: repo, env, stdio: ['ignore', fd, fd], timeout, killSignal: 'SIGKILL' });
+    const r = spawnSync('sh', ['-c', command], { cwd: repo, env: gitEnv(env), stdio: ['ignore', fd, fd], timeout, killSignal: 'SIGKILL' });
     const timedOut = Boolean(r.error && r.error.code === 'ETIMEDOUT');
     const res = { code: r.status, timedOut, spawnError: r.error && !timedOut ? r.error.message : null, tail: '' };
     if (wantOutput) {

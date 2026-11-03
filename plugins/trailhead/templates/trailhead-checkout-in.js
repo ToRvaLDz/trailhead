@@ -28,6 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const { findCheckouts, parseRepoShape } = require('./trailhead-checkout-find.js');
 
@@ -70,7 +71,7 @@ function real(p) {
 }
 
 function toplevelOf(dir) {
-  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', env: gitEnv() });
   if (r.status !== 0) return null;
   const top = r.stdout.replace(/\n$/, '');
   return top === '' ? null : real(top);

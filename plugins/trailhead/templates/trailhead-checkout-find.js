@@ -35,6 +35,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const DEFAULT_DEPTH = 3;
 const DEFAULT_CAP = 20000;
@@ -108,12 +109,12 @@ function real(p) {
 }
 
 function defaultOrigin(dir) {
-  const r = spawnSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000 });
+  const r = spawnSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', env: gitEnv(), timeout: 5000 });
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
 function toplevelOf(dir) {
-  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', timeout: 5000 });
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', env: gitEnv(), timeout: 5000 });
   return r.status === 0 && r.stdout.trim() !== '' ? real(r.stdout.replace(/\n$/, '')) : null;
 }
 

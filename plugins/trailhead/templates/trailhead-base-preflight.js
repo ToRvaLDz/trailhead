@@ -40,6 +40,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const CHECK_TIMEOUT_MS = 300000;
@@ -111,9 +112,9 @@ function tail(text) {
 
 // Runs git at `repo`; never throws on a non-zero exit.
 function makeGit(repo, env) {
-  const gitEnv = { ...process.env, ...env, GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' };
+  const spawnEnv = gitEnv({ ...process.env, ...env }, { GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' });
   const G = (args) => {
-    const r = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: gitEnv, maxBuffer: 64 * 1024 * 1024 });
+    const r = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: spawnEnv, maxBuffer: 64 * 1024 * 1024 });
     if (r.error) throw r.error;
     const res = { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
     G.last = res;
@@ -195,7 +196,7 @@ function sync(G, { trunk, head, base, ahead, behind, warnings }) {
 
 function runChecks(list, repo, env) {
   const results = list.map((command) => {
-    const r = spawnSync('sh', ['-c', command], { cwd: repo, encoding: 'utf8', env: { ...process.env, ...env }, timeout: CHECK_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+    const r = spawnSync('sh', ['-c', command], { cwd: repo, encoding: 'utf8', env: gitEnv({ ...process.env, ...env }), timeout: CHECK_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
     const timedOut = r.error && r.error.code === 'ETIMEDOUT';
     const output = (r.stdout || '') + (r.stderr || '') + (timedOut ? `\n(timed out after ${CHECK_TIMEOUT_MS / 1000}s)` : r.error && !timedOut ? `\n${r.error.message}` : '');
     return { command, ok: r.status === 0, code: r.status, output: tail(output) };

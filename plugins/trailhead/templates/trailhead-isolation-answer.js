@@ -32,6 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const STATE_DIR = '.trailhead';
 const STATE_FILE = 'isolation-answer.json';
@@ -124,7 +125,7 @@ function parseArgs(argv) {
 function resolveProjectRoot(dir) {
   try {
     const common = execFileSync('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: gitEnv() }).trim();
     if (common && path.basename(common) === '.git') return path.dirname(common);
     return dir;
   } catch {

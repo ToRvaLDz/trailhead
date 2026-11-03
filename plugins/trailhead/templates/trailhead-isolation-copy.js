@@ -33,6 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const SUFFIXES = ['.example', '.sample'];
@@ -131,7 +132,7 @@ const exists = (p, fs_) => {
 function suggest(from, fs_) {
   let tracked;
   try {
-    tracked = execFileSync('git', ['-C', from, 'ls-files', '-z'], { stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
+    tracked = execFileSync('git', ['-C', from, 'ls-files', '-z'], { stdio: ['ignore', 'pipe', 'ignore'], env: gitEnv(), maxBuffer: 64 * 1024 * 1024 })
       .toString().split('\0').filter(Boolean);
   } catch (err) {
     return [];
@@ -143,7 +144,7 @@ function suggest(from, fs_) {
     const sibling = file.slice(0, -suffix.length);
     if (out.includes(sibling) || checkRelPath(sibling) !== null || !exists(path.join(from, sibling), fs_)) continue;
     try {
-      execFileSync('git', ['-C', from, 'check-ignore', '-q', '--', sibling], { stdio: 'ignore' });
+      execFileSync('git', ['-C', from, 'check-ignore', '-q', '--', sibling], { stdio: 'ignore', env: gitEnv() });
       out.push(sibling);
     } catch (err) {
       // not ignored (exit 1) or git error: not a suggestion

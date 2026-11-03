@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 // Tokens `#<digits>` delimited by start/end, comma or whitespace, so `#19`
 // never matches inside `#192`. Input is the value of a parsed `Refs:` trailer.
@@ -76,7 +77,7 @@ function hunkTouches(hunk, tracked, anchors) {
 // --- git plumbing ----------------------------------------------------------------
 // LC_ALL=C: stable (non-localized) output. Literal pathspecs: a ticket file name
 // is never interpreted as a pathspec pattern.
-const GIT_ENV = { ...process.env, LC_ALL: 'C', GIT_LITERAL_PATHSPECS: '1' };
+const GIT_ENV = gitEnv(process.env, { LC_ALL: 'C', GIT_LITERAL_PATHSPECS: '1' });
 
 function git(repo, args) {
   return execFileSync('git', ['-C', repo, '-c', 'core.quotePath=false', ...args], {

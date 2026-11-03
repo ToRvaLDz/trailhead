@@ -56,11 +56,12 @@
 // status is a result (parked statuses included), 1 on status error, 2 on a usage error.
 
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 const nodeFs = require('fs');
 const path = require('path');
 
 function defaultGit(args) {
-  const env = { ...process.env, GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' };
+  const env = gitEnv(process.env, { GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' });
   const r = spawnSync('git', args, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
