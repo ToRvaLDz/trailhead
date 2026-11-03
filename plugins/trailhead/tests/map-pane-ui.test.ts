@@ -449,6 +449,7 @@ const rig = (on: On, engine?: any) => {
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('session.attach', (_$, e) => ({ clientId: e.clientId }))
   on('ui.render', () => ({ type: 'Box', props: { key: 'engine' }, children: [] }))
   return r
 }
@@ -2476,6 +2477,117 @@ for (const surface of SURFACES) {
     // disegnato, il comando torna a chiuderlo
     expect((await panel($)).text).toBe('Map panel closed.')
     expect(r.panes).toEqual([])
+  })
+
+  // #348: un auto-open che resta non disegnato non conta come fatto, così un trigger successivo può riprovare.
+  test(`an auto-open left undrawn does not end the auto-open, a drawn pane does [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    r.reason = 'attached surfaces place no panes: desktop has not reported its layout'
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // listed but undrawn: further renders do not open it again (the host places it when it can)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // the host dropped it while still undrawn: the next render tries again
+    r.panes = []
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(2)
+
+    // drawn at last: its own render completes the auto-open for good
+    r.panes = r.panes.map(p => ({ ...p, isPlaced: true }))
+    await mountPane($)
+    await settle(r)
+    r.panes = []
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(2)
+  })
+
+  test(`an auto-open that finds the pane listed and drawn ends the auto-open [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // placed by the host with no pane render yet (the pane's render needs the dock): the next band render sees it
+    r.panes = r.panes.map(p => ({ ...p, isPlaced: true }))
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    r.panes = []
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+  })
+
+  test(`the person's own request on an undrawn pane ends the auto-open, a close of it stays closed [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // the command is the person acting on it: the auto-open is done even though the pane is still undrawn
+    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect(r.opens).toHaveLength(2)
+    r.panes = []
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.opens).toHaveLength(2)
+  })
+
+  test(`a surface attaching in fullscreen retries the auto-open [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    r.reason = 'no-surface: no surface is attached ($.session.surfaces() is empty)'
+    await $.session.start(START)
+    await settle(r)
+    expect(r.opens).toEqual([])
+
+    // not fullscreen, or no layout said: the render trigger decides
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: { columns: 200, rows: 50, isFullscreen: false } } as never)
+    await $.session.attach({ surface, clientId: `${surface}:default` } as never)
+    await settle(r)
+    expect(r.opens).toEqual([])
+
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+    // still undrawn and listed: another attach does not open again
+    await $.session.attach({ surface, clientId: `${surface}:other`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+  })
+
+  test(`an attach never opens the pane after the person closed it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await panel($)
+    await panel($)
+    expect(r.panes).toEqual([])
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.opens).toHaveLength(1)
+
+  })
+
+  test(`an attach without an active map does not open the pane [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.active = null
+    await $.session.start(START)
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.opens).toEqual([])
   })
 
   for (const withBand of [false, true]) {

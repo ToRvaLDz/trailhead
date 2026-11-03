@@ -273,14 +273,20 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   involved; it leaves an armed trailing refresh alone, so the read after the search index caught up still follows.
   A read asked while the pane is undrawn is dropped; a render
   whose list (with no error) is older than `TIMER_MS + TIMER_GRACE_MS` asks for a read at once, as an empty view does.
-- **Auto-open**: once, in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render),
-  when a map is active. Never on the main screen, never again after the pane was opened or closed
-  by the person (a press on the `close` button counts as closing it). The open runs from a zero-delay timer because a render may not write state.
-  Being unasked, it waits undrawn below 144 columns (`isPlaced: false`), typical of a fresh session; `/trailhead:panel`
-  then opens it again as the person's request (drawn at any width) instead of closing it, and closes it only when even
-  that leaves it undrawn (the attached surfaces place no panes). With no surface attached yet (`no-surface`, the start of a session)
-  the pane stays open and the command answers that it will open once the screen is ready, again on every repeat; the
-  pane's first render on the surface that attaches asks for its read.
+- **Auto-open**: in fullscreen (`e.viewport.isFullscreen === true` in the `AbovePrompt` render, or in the
+  viewport of a `session.attach`, so a surface that attaches later tries again), when a map is active. Never on
+  the main screen, never again after the person acted on the pane (the command, closing it by hand, the `close`
+  button). The open runs from a zero-delay timer because a render may not write state.
+  The auto-open counts as done only once the pane is actually drawn (seen placed by a later check, or by the pane's
+  own render, which fires only when drawn). Being unasked, the open can stay undrawn (`isPlaced: false`): below
+  144 columns, or on a surface that has not reported its layout yet, typical of a fresh session. That does not burn
+  the auto-open: while the pane is listed undrawn nothing opens it again (the host places it itself when it can),
+  and if it vanishes undrawn the next trigger opens it again. `/trailhead:panel` closes a pane only when it is
+  listed and drawn; a listed but undrawn pane is opened again as the person's request (drawn at any width), and if
+  even that leaves it undrawn the pane stays open and the command says why (`Map panel not shown: <reason>`), so it
+  is never closed unseen. With no surface attached yet (`no-surface`, the start of a session) the command answers
+  that the panel will open once the screen is ready, again on every repeat; the pane's first render on the surface
+  that attaches asks for its read.
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
   `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`, `TIMER_GRACE_MS = 30_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = MAPS_READ_LIMIT = 100` (`MAPS_LIMIT` not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `MAPS_READ_LIMIT = 100`, `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.

@@ -874,9 +874,12 @@ let isOpening = false
 // Same for the fill an empty pane asks for from its render.
 let isFilling = false
 
-async function openPane($: Dollar) {
-  await update($, paneAutoOpened, () => true)
+// L'auto-open conta come fatto (`paneAutoOpened`) solo quando il pannello è davvero disegnato, o quando la
+// persona è intervenuta (comando, chiusura a mano, bottone close). Un'apertura non richiesta che resta non
+// disegnata non brucia il flag: un trigger successivo (render in fullscreen, `session.attach`) può riprovare.
+async function openPane($: Dollar, isRequested = false) {
   const opened = await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
+  if (isRequested || opened.isPlaced) await update($, paneAutoOpened, () => true)
   if (opened.isPlaced) void requestRefresh($)
   return opened
 }
@@ -885,14 +888,26 @@ async function autoOpen($: Dollar) {
   if (isOpening) return
   isOpening = true
   try {
-    if (!(await $.ui.panes()).some(pane => pane.id === PANE_ID)) await openPane($)
-    // Found up already (a reload with the pane showing): nothing to open, and renders stop asking.
-    else await update($, paneAutoOpened, () => true)
+    const pane = (await $.ui.panes()).find(p => p.id === PANE_ID)
+    if (pane === undefined) await openPane($)
+    // Found up and drawn (a reload with the pane showing): nothing to open, and renders stop asking.
+    else if (pane.isPlaced) await update($, paneAutoOpened, () => true)
+    // Listed but undrawn: the host places it itself when it can; its own render then completes the auto-open.
   } catch (err) {
     debug($, `trailhead mod: map pane auto-open failed: ${String(err)}`)
   } finally {
     isOpening = false
   }
+}
+
+// Una lettura sola, da un timer a ritardo zero: un render non può scrivere stato.
+async function autoOpenIfDue($: Dollar) {
+  if ((await read($, activeMap)) !== null && !(await read($, paneAutoOpened))) $.clock.after(0, () => void autoOpen($))
+}
+
+// Il render del pannello scatta solo da disegnato: l'auto-open è completato.
+async function markDrawn($: Dollar) {
+  if (!(await read($, paneAutoOpened))) $.clock.after(0, () => void update($, paneAutoOpened, () => true).catch(err => debug($, `trailhead mod: auto-open flag not set: ${String(err)}`)))
 }
 
 // Un pannello aperto ma non disegnato (l'auto-open sotto la soglia dei pannelli non richiesti, o su una
@@ -910,7 +925,7 @@ async function togglePanel($: Dollar): Promise<string> {
     await $.ui.close({ id: PANE_ID })
     return 'Map panel closed.'
   }
-  const opened = await openPane($)
+  const opened = await openPane($, true)
   if (opened.isPlaced) return 'Map panel opened.'
   return isNoSurface(opened.reason) ? PENDING_MESSAGE : `Map panel not shown: ${opened.reason}`
 }
@@ -984,7 +999,14 @@ export function registerMapPane(on: On) {
   // Only in fullscreen, where a pane docks beside the transcript; this bare matcher is
   // narrower than the band's, and the band's own hook (in register.tsx) draws after it.
   on('ui.render', { component: 'AbovePrompt', viewport: { isFullscreen: true } }, async ($, e, next) => {
-    if ((await read($, activeMap)) !== null && !(await read($, paneAutoOpened))) $.clock.after(0, () => void autoOpen($))
+    await autoOpenIfDue($)
+    return next(e)
+  })
+
+  // A surface that attaches later (a fresh desktop session) may place the pane the first open could not: with
+  // its layout saying fullscreen, the auto-open tries again. Without a viewport the render trigger decides.
+  on('session.attach', { viewport: { isFullscreen: true } }, async ($, e, next) => {
+    await autoOpenIfDue($)
     return next(e)
   })
 
@@ -997,6 +1019,7 @@ export function registerMapPane(on: On) {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
+    await markDrawn($)
     const ui = $.ui.resolve(e)
     const { Box, Text, Button, Link } = ui
     // Raster is the terminal surface's only; elsewhere the constructor is not a real element.
