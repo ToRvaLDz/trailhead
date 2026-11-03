@@ -44,7 +44,6 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn, spawnSync } = require('child_process');
-const { performance } = require('perf_hooks');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const STALE_MS = 30 * 1000;
@@ -430,12 +429,14 @@ const describeHolder = (h, nowMs) => {
 };
 
 // One admission attempt. { admitted, holderFile } or { admitted: false, behind }.
-// Total order of holders: (order, token). Holders with no stamp (unparseable
-// ones counted as live) sort first, which is the conservative side.
+// Total order of holders: (number, token). A holder still choosing (no number yet)
+// is a late arrival and sorts after everyone; one with no stamp at all (unparseable,
+// counted live) sorts first, which is the conservative side.
+const rank = (h) => (Number.isFinite(h.number) ? h.number : h.choosing === true ? Infinity : -Infinity);
 const holderBefore = (a, b) => {
-  const oa = Number.isFinite(a.order) ? a.order : -Infinity;
-  const ob = Number.isFinite(b.order) ? b.order : -Infinity;
-  if (oa !== ob) return oa < ob;
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra < rb;
   return String(a.token || '') < String(b.token || '');
 };
 
@@ -450,17 +451,26 @@ function admittedByRecount(live, mine) {
 }
 
 // Mutual exclusion does not rest on the gate (a contention optimisation that can
-// fail under crash recovery) but on a recount after the holder is written. Of any
-// two holders, the one that wrote later always sees the earlier one in its recount
-// (the earlier file existed before the later write), and a later write takes a
-// larger (order, token) stamp, so the later one withdraws; if both see each other
-// they agree on the order. Hooks (test-only): forgeGate makes the gate always
-// held, skipPrecheck skips the count under the gate, afterPrecheck runs before the
-// holder write, afterHolderWrite before the recount.
-function tryAdmit(dirs, me, nowMs, hooks = {}) {
+// fail under crash recovery) but on Lamport's bakery doorway, correct with atomic
+// file writes and reads: (1) write the holder with choosing:true and no number;
+// (2) read the live holders and take number = 1 + the largest number seen, then
+// rewrite the holder as {number, choosing:false}; (3) wait until no other live
+// holder is choosing (a dead one is reaped by the liveness rules, so a crashed
+// chooser never blocks); (4) recount over (number, token) and admit only when no
+// earlier holder has our cache key and our position is below the strictest limit
+// at or ahead of us, else withdraw and let the caller retry with a fresh doorway.
+// If B finishes its doorway before A starts its own, A's number is larger, so A
+// defers; if the doorways overlap, each waits in (3) until the other has a number,
+// and both then see each other with numbers and agree on (number, token).
+// Hooks (test-only): forgeGate makes the gate always held, skipPrecheck skips the
+// count under the gate, afterPrecheck runs before the holder write,
+// afterChoosingWrite between the doorway steps 1 and 2, afterNumber after step 2.
+async function tryAdmit(dirs, me, nowMs, hooks = {}, pollMs = 50) {
   fs.mkdirSync(dirs.queue, { recursive: true });
   const gate = hooks.forgeGate ? { held: true, gate: path.join(dirs.queue, '.gate'), token: 'forged' } : acquireGate(dirs, nowMs);
   if (!gate.held) return { admitted: false, behind: `queued behind the queue gate held by pid ${gate.pid === null ? '?' : gate.pid}` };
+  const token = rand();
+  const holderFile = path.join(dirs.queue, `holder-${process.pid}-${token}.json`);
   try {
     sweepGateLeftovers(dirs);
     const before = liveHolders(dirs, nowMs);
@@ -472,21 +482,31 @@ function tryAdmit(dirs, me, nowMs, hooks = {}) {
         return { admitted: false, behind: describeHolder(blocker, nowMs) };
       }
     }
-    if (hooks.afterPrecheck) hooks.afterPrecheck();
-    const token = rand();
-    const order = performance.timeOrigin + performance.now();
-    const holderFile = path.join(dirs.queue, `holder-${process.pid}-${token}.json`);
-    writeAtomic(holderFile, JSON.stringify({ pid: process.pid, pgid: null, limit: me.limit, key: me.key, repo: me.repo, tree: me.tree, command: me.command, startedAt: new Date(nowMs).toISOString(), order, token }));
-    if (hooks.afterHolderWrite) hooks.afterHolderWrite();
-    const live = liveHolders(dirs, nowMs);
-    if (!admittedByRecount(live, { token, order, key: me.key, limit: me.limit })) {
+    if (hooks.afterPrecheck) await hooks.afterPrecheck();
+    writeAtomic(holderFile, JSON.stringify({ pid: process.pid, pgid: null, limit: me.limit, key: me.key, repo: me.repo, tree: me.tree, command: me.command, startedAt: new Date(nowMs).toISOString(), choosing: true, token }));
+  } finally {
+    releaseGate(gate);
+  }
+  try {
+    if (hooks.afterChoosingWrite) await hooks.afterChoosingWrite();
+    const seen = liveHolders(dirs, nowMs).filter((h) => h.token !== token && Number.isFinite(h.number));
+    const number = 1 + Math.max(0, ...seen.map((h) => h.number));
+    updateHolder(holderFile, { number, choosing: false });
+    if (hooks.afterNumber) await hooks.afterNumber();
+    let live = liveHolders(dirs, nowMs);
+    while (live.some((h) => h.token !== token && h.choosing === true)) {
+      await sleep(pollMs);
+      live = liveHolders(dirs, nowMs);
+    }
+    if (!admittedByRecount(live, { token, number, key: me.key, limit: me.limit })) {
       rmQuiet(holderFile);
-      const ahead = live.filter((h) => h.token !== token && holderBefore(h, { token, order }));
+      const ahead = live.filter((h) => h.token !== token && holderBefore(h, { token, number }));
       return { admitted: false, behind: ahead.length > 0 ? describeHolder(ahead[0], nowMs) : 'queued behind a concurrent admission (retrying)' };
     }
     return { admitted: true, holderFile };
-  } finally {
-    releaseGate(gate);
+  } catch (e) {
+    rmQuiet(holderFile);
+    throw e;
   }
 }
 
@@ -634,7 +654,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
       // Queue admission; the key can move while waiting (re-entered below).
       for (;;) {
         if (signalled) return interrupted(s);
-        const adm = tryAdmit(dirs, { key: s.key, limit, repo, tree: s.tree, command }, nowMs());
+        const adm = await tryAdmit(dirs, { key: s.key, limit, repo, tree: s.tree, command }, nowMs(), {}, pollMs);
         if (adm.admitted) { holderFile = adm.holderFile; break; }
         if (adm.behind !== lastBehind) {
           lastBehind = adm.behind;

@@ -248,57 +248,87 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
     lib.releaseGate(r2);
   }
 
-  // --- W1 root: admission is correct even when the gate fails -------------------------------------------
+  // --- W1 root: admission is correct even when the gate fails (bakery doorway) -----------------------------
   {
     const holders = (dir) => fs.readdirSync(dir).filter((n) => /^holder-.*\.json$/.test(n));
     const meOf = (key, limit, label) => ({ key, limit, repo: '/r', tree: 't', command: label });
     const forge = { forgeGate: true };
+    const NOW = () => Date.now();
+    const POLL = 10;
+    const admit = (q, key, limit, hooks = {}) => lib.tryAdmit({ queue: q }, meOf(key, limit, key), NOW(), { ...forge, ...hooks }, POLL);
 
-    // Both pass the precheck before either holder exists (limit 1, distinct keys).
+    // The stamp counterexample: A stalls between the doorway steps while B tries to admit.
+    // B must wait for A to take a number, then both agree on (number, token): one admitted.
     let q = mktmp();
-    let inner;
-    const outer = lib.tryAdmit({ queue: q }, meOf('kA', 1, 'A'), Date.now(), {
-      ...forge,
-      afterPrecheck: () => { inner = lib.tryAdmit({ queue: q }, meOf('kB', 1, 'B'), Date.now(), forge); },
+    let bPromise;
+    let bDoneEarly = false;
+    const a1 = await admit(q, 'kA', 1, {
+      afterChoosingWrite: async () => {
+        bPromise = admit(q, 'kB', 1, { skipPrecheck: true }).then((r) => { bDoneEarly = true; return r; });
+        await sleep(200);
+        ok('(W1c) B waits while A is still choosing', bDoneEarly === false);
+      },
     });
-    ok('(W1c) limit 1: the earlier writer (B) is admitted', inner.admitted === true);
-    ok('(W1c) limit 1: the later writer (A) withdraws', outer.admitted === false);
-    ok('(W1c) exactly one holder file remains, and it is the earlier one',
-      holders(q).length === 1 && holders(q)[0] === path.basename(inner.holderFile));
+    const b1 = await bPromise;
+    ok('(W1c) limit 1: exactly one of two overlapping doorways is admitted', a1.admitted !== b1.admitted);
+    ok('(W1c) exactly one holder file remains, the admitted one',
+      holders(q).length === 1 && holders(q)[0] === path.basename((a1.admitted ? a1 : b1).holderFile));
 
-    // Same key, limit 2: only one may run.
+    // Sequential: B finishes its doorway first, A's number is larger, A defers.
     q = mktmp();
-    const outer2 = lib.tryAdmit({ queue: q }, meOf('kS', 2, 'A'), Date.now(), {
-      ...forge,
-      afterPrecheck: () => { inner = lib.tryAdmit({ queue: q }, meOf('kS', 2, 'B'), Date.now(), forge); },
-    });
-    ok('(W1c) same key, limit 2: only one admitted', inner.admitted === true && outer2.admitted === false && holders(q).length === 1);
-
-    // The later writer sees the earlier holder in its recount even with the precheck skipped.
-    q = mktmp();
-    let later;
-    const first = lib.tryAdmit({ queue: q }, meOf('k1', 1, 'A'), Date.now(), {
-      ...forge,
-      afterHolderWrite: () => { later = lib.tryAdmit({ queue: q }, meOf('k2', 1, 'B'), Date.now(), { ...forge, skipPrecheck: true }); },
-    });
-    ok('(W1c) the earlier holder stays admitted, the later one withdraws', first.admitted === true && later.admitted === false);
+    const first = await admit(q, 'k1', 1);
+    const late = await admit(q, 'k2', 1, { skipPrecheck: true });
+    ok('(W1c) the earlier holder stays admitted, the later one withdraws', first.admitted === true && late.admitted === false);
     ok('(W1c) only the earlier holder file remains', holders(q).length === 1 && holders(q)[0] === path.basename(first.holderFile));
 
-    // Strictest limit among holders at or ahead wins: an N=1 latecomer does not run beside an N=2 holder.
+    // Same key, limit 2, overlapping: only one runs.
     q = mktmp();
-    const e = lib.tryAdmit({ queue: q }, meOf('kE', 2, 'E'), Date.now(), forge);
-    const l = lib.tryAdmit({ queue: q }, meOf('kL', 1, 'L'), Date.now(), { ...forge, skipPrecheck: true });
+    let other;
+    const s1 = await admit(q, 'kS', 2, {
+      afterChoosingWrite: async () => { other = admit(q, 'kS', 2, { skipPrecheck: true }); await sleep(50); },
+    });
+    const s2 = await other;
+    ok('(W1c) same key, limit 2: only one admitted', s1.admitted !== s2.admitted && holders(q).length === 1);
+
+    // Strictest limit at or ahead wins.
+    q = mktmp();
+    const e = await admit(q, 'kE', 2);
+    const l = await admit(q, 'kL', 1, { skipPrecheck: true });
     ok('(W1c) an N=1 latecomer withdraws beside a live N=2 holder', e.admitted === true && l.admitted === false);
-    const l2 = lib.tryAdmit({ queue: q }, meOf('kM', 2, 'M'), Date.now(), { ...forge, skipPrecheck: true });
+    const l2 = await admit(q, 'kM', 2, { skipPrecheck: true });
     ok('(W1c) an N=2 latecomer is admitted as the second place', l2.admitted === true && holders(q).length === 2);
 
-    // A live gate swapped in after the dead-gate read is still never displaced by the reaper.
+    // A dead-pid chooser is reaped and does not block.
+    q = mktmp();
+    const deadHolder = path.join(q, 'holder-1-dead.json');
+    const dp = deadPid();
+    fs.writeFileSync(deadHolder, JSON.stringify({ pid: dp, pgid: dp, limit: 1, key: 'kd', choosing: true, token: 'dead' }));
+    const afterDead = await admit(q, 'kN', 1, { skipPrecheck: true });
+    ok('(W1c) a dead chooser does not block and is reaped', afterDead.admitted === true && !fs.existsSync(deadHolder));
+
+    // A live chooser is waited on.
+    q = mktmp();
+    const liveHolder = path.join(q, 'holder-2-live.json');
+    fs.writeFileSync(liveHolder, JSON.stringify({ pid: process.pid, pgid: null, limit: 1, key: 'kl', choosing: true, token: 'zzz' }));
+    let waited = true;
+    const pending = admit(q, 'kW', 1, { skipPrecheck: true }).then((r) => { waited = false; return r; });
+    await sleep(250);
+    ok('(W1c) a live chooser is waited on', waited === true);
+    fs.writeFileSync(liveHolder, JSON.stringify({ pid: process.pid, pgid: null, limit: 1, key: 'kl', choosing: false, number: 9, token: 'zzz' }));
+    const waitedRes = await pending;
+    ok('(W1c) it proceeds once the chooser has a number (and sorts ahead of it)', waitedRes.admitted === true);
+
+    // Undisturbed real admission (real gate) still works.
+    const real = await lib.tryAdmit({ queue: mktmp() }, meOf('k', 1, 'X'), NOW(), {}, POLL);
+    ok('(W1c) real admission with the real gate works', real.admitted === true);
+
+    // A live gate swapped in after the dead-gate read is never displaced by the reaper.
     const gq = mktmp();
     const gate = path.join(gq, '.gate');
     fs.writeFileSync(gate, JSON.stringify({ pid: deadPid(), token: 'dead' }));
     const liveText = JSON.stringify({ pid: process.pid, token: 'live' });
-    const gr = lib.acquireGate({ queue: gq }, Date.now(), { afterRead: () => { fs.unlinkSync(gate); fs.writeFileSync(gate, liveText); } });
-    ok('(W1c) real admission with an undisturbed gate still works', gr.held === false && lib.tryAdmit({ queue: mktmp() }, meOf('k', 1, 'X'), Date.now()).admitted === true);
+    const gr = lib.acquireGate({ queue: gq }, NOW(), { afterRead: () => { fs.unlinkSync(gate); fs.writeFileSync(gate, liveText); } });
+    ok('(W1c) the reaper does not displace a live gate', gr.held === false && fs.readFileSync(gate, 'utf8') === liveText);
   }
 
   // --- I4: a failing pgid record tears the launched group down -----------------------------------------------
