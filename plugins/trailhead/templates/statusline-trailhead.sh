@@ -64,15 +64,22 @@ DIR="$(j '.workspace.current_dir')"
 [ -z "$DIR" ] && DIR="$PWD"
 
 # --- repo root, nome progetto, tipo di checkout ---
+# Un GIT_DIR (o simili) ereditato batte -C e sposterebbe ogni chiamata git su un
+# altro repo (#349): via le variabili di posizione del repo prima del primo git.
+# Stessa lista di templates/trailhead-git-env.js.
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_OBJECT_DIRECTORY GIT_DIR GIT_WORK_TREE \
+  GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_INDEX_FILE GIT_NO_REPLACE_OBJECTS \
+  GIT_REPLACE_REF_BASE GIT_PREFIX GIT_SHALLOW_FILE GIT_COMMON_DIR
+
 # Il nome del progetto e' SEMPRE quello del repo principale, anche da un
 # worktree o da un clone: `git-common-dir` punta al `.git` del repo principale
 # (per un worktree linkato) o al proprio (per originale/clone), quindi il suo
 # genitore e' la root del progetto. Cosi' un worktree non mostra piu' il
 # basename della sua cartella (es. `wt-main`), ma il progetto vero.
 ROOT="$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$DIR")"
-GIT_DIR="$(git -C "$DIR" rev-parse --absolute-git-dir 2>/dev/null)"
+GITDIR_ABS="$(git -C "$DIR" rev-parse --absolute-git-dir 2>/dev/null)"
 COMMON="$(git -C "$DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-[ -z "$COMMON" ] && [ -n "$GIT_DIR" ] && COMMON="$GIT_DIR"   # git vecchio senza --path-format
+[ -z "$COMMON" ] && [ -n "$GITDIR_ABS" ] && COMMON="$GITDIR_ABS"   # git vecchio senza --path-format
 if [ -n "$COMMON" ]; then
   PROJ="$(basename "$(dirname "$COMMON")")"
 else
@@ -84,7 +91,7 @@ fi
 # per-ticket della convenzione trailhead (`../<repo>-t<n>`, repo a se' stante,
 # cartella `-t<n>`).
 CHECKOUT=""
-if [ -n "$GIT_DIR" ] && [ -n "$COMMON" ] && [ "$GIT_DIR" != "$COMMON" ]; then
+if [ -n "$GITDIR_ABS" ] && [ -n "$COMMON" ] && [ "$GITDIR_ABS" != "$COMMON" ]; then
   CHECKOUT="(WT)"
 elif printf '%s' "$(basename "$ROOT")" | grep -qE -- '-t[0-9]+$'; then
   CHECKOUT="(C)"
