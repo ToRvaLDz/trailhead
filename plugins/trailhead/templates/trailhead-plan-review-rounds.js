@@ -9,7 +9,7 @@
 //   node trailhead-plan-review-rounds.js ask   --repo <project-root> [--host claude|codex]
 //   node trailhead-plan-review-rounds.js round --choice <config|1|2|3|until> --configured <n> --history <file>
 //   node trailhead-plan-review-rounds.js budget --repo <project-root> --reviewer <name> --prompt <file>
-//   node trailhead-plan-review-rounds.js overflow --output <file>
+//   node trailhead-plan-review-rounds.js overflow --output <file> [--prompt <brief file>]
 // Prints one JSON line on stdout. Exit 0 ok / 1 error / 2 usage (message on stderr).
 //
 // Config: `plan_review` (off | on | comma list of CLIs, default off) and `plan_review.rounds`
@@ -54,7 +54,8 @@
 // instead of the prompt. Skip is still exit 0: the verdict is data, not a failure.
 //
 // overflow: post-check of one failed reviewer call. A pure pattern match over the captured output
-// (stdout and stderr together) for the known context-overflow and E2BIG messages.
+// (stdout and stderr together) for the known context-overflow and E2BIG messages. With --prompt
+// <brief file>, lines of the brief echoed back by the CLI are ignored; rate-limit lines never count.
 //   {"status":"ok","overflow":bool,"reason"?:<the matched line, trimmed and length-capped>}
 //
 // Config `plan_review.context`: an object { "<cli>": <window in tokens> }, merged per reviewer across
@@ -73,7 +74,7 @@ const DEFAULT_ROUNDS = 2;
 const CEILING = 5;
 const HOSTS = ['claude', 'codex'];
 const CHOICES = ['config', '1', '2', '3', 'until'];
-const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'], budget: ['repo', 'reviewer', 'prompt'], overflow: ['output'] };
+const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'], budget: ['repo', 'reviewer', 'prompt'], overflow: ['output', 'prompt'] };
 // Default context windows in tokens; any other reviewer name gets FALLBACK_WINDOW.
 const CONTEXT_WINDOWS = { claude: 200000, gemini: 1000000, codex: 272000, qwen: 256000, kimi: 256000, agy: 1000000, opencode: 128000, 'cursor-agent': 128000, coderabbit: 128000 };
 const FALLBACK_WINDOW = 128000;
@@ -89,9 +90,11 @@ const OVERFLOW_PATTERNS = [
   /prompt is too long/i,
   /exceeds the context window/i,
   /input is too long/i,
-  /too many tokens/i,
+  /input token count .* exceeds the maximum/i,
   /argument list too long/i,
 ];
+// A rate-limit error can mention tokens too; it is never a context overflow.
+const RATE_LIMIT = /rate.?limit|\b429\b|too many requests/i;
 
 class Usage extends Error {}
 
@@ -300,9 +303,13 @@ function runBudget(parsed, cwd, env, fs_) {
 }
 
 // Pure match over captured reviewer output: the first line carrying a known overflow message.
-function matchOverflow(text) {
+// Lines of the brief echoed back by the CLI (matched trimmed) and rate-limit lines never count.
+function matchOverflow(text, brief = '') {
+  const echoed = new Set(String(brief).split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
   for (const line of String(text).split(/\r?\n/)) {
-    if (OVERFLOW_PATTERNS.some((re) => re.test(line))) return line.trim().slice(0, REASON_MAX);
+    const t = line.trim();
+    if (echoed.has(t) || RATE_LIMIT.test(t)) continue;
+    if (OVERFLOW_PATTERNS.some((re) => re.test(t))) return t.slice(0, REASON_MAX);
   }
   return null;
 }
@@ -315,7 +322,16 @@ function runOverflow(parsed, cwd, fs_) {
   } catch (err) {
     return { code: 1, result: { status: 'error', reason: `cannot read ${file}: ${err && err.message ? err.message : err}` } };
   }
-  const reason = matchOverflow(text);
+  let brief = '';
+  if (parsed.prompt) {
+    const pf = path.resolve(cwd, parsed.prompt);
+    try {
+      brief = fs_.readFileSync(pf, 'utf8');
+    } catch (err) {
+      return { code: 1, result: { status: 'error', reason: `cannot read ${pf}: ${err && err.message ? err.message : err}` } };
+    }
+  }
+  const reason = matchOverflow(text, brief);
   return { code: 0, result: reason === null ? { status: 'ok', overflow: false } : { status: 'ok', overflow: true, reason } };
 }
 

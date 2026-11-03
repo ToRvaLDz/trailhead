@@ -423,16 +423,22 @@ for (const bad of [0, -5, 1.5, '1000', 10000001, null]) {
 }
 
 // --- overflow ----------------------------------------------------------------
-function overflow(text) {
+function overflow(text, brief) {
   const dir = tmp();
   const file = path.join(dir, 'codex.out');
   fs.writeFileSync(file, text);
-  const r = run(['overflow', '--output', file]);
+  const extra = [];
+  if (brief !== undefined) {
+    const pf = path.join(dir, 'brief.md');
+    fs.writeFileSync(pf, brief);
+    extra.push('--prompt', pf);
+  }
+  const r = run(['overflow', '--output', file, ...extra]);
   rm(dir);
   return r;
 }
 {
-  const msgs = ['context_length_exceeded', 'This model\'s Maximum Context Length is 128000 tokens', 'Error: prompt is too long: 250000 tokens', 'input exceeds the context window of the model', 'Input is too long for requested model', 'request has too many tokens', 'spawn E2BIG: Argument list too long'];
+  const msgs = ['context_length_exceeded', 'This model\'s Maximum Context Length is 128000 tokens', 'Error: prompt is too long: 250000 tokens', 'input exceeds the context window of the model', 'Input is too long for requested model', 'The input token count (300000) exceeds the maximum number of tokens allowed (128000)', 'spawn E2BIG: Argument list too long'];
   for (const m of msgs) {
     const r = overflow('some output\n  ' + m + '  \nmore');
     ok('overflow: matches "' + m + '"', r.code === 0 && r.json.status === 'ok' && r.json.overflow === true && r.json.reason.includes(m) && r.json.reason === r.json.reason.trim());
@@ -442,6 +448,10 @@ function overflow(text) {
   ok('overflow: ordinary output is not an overflow', (() => { const r = overflow('1. Risk: the plan is too long to read\nblocking: none'); return r.code === 0 && r.json.overflow === false && !('reason' in r.json); })());
   ok('overflow: a timeout is not an overflow', overflow('Error: request timed out after 540s').json.overflow === false);
   ok('overflow: an auth failure is not an overflow', overflow('401 Unauthorized: invalid API key').json.overflow === false);
+  ok('overflow: a rate-limit error is not an overflow', overflow('429 Too Many Requests: rate limit reached, too many tokens per minute').json.overflow === false);
+  ok('overflow: a line of the brief echoed back is not an overflow', overflow('user\n- prompt is too long -> skip\nError: request timed out', 'The PLAN:\n- prompt is too long -> skip\n').json.overflow === false);
+  ok('overflow: a real error still matches with the brief passed', overflow('- prompt is too long -> skip\nError: prompt is too long: 250000 tokens', '- prompt is too long -> skip\n').json.overflow === true);
+  ok('overflow: an unreadable brief file is status error, exit 1', (() => { const d = tmp(); const f = path.join(d, 'x.out'); fs.writeFileSync(f, 'prompt is too long'); const r = run(['overflow', '--output', f, '--prompt', path.join(d, 'none.md')]); rm(d); return r.code === 1 && r.json.status === 'error'; })());
   ok('overflow: an empty output file is not an overflow', overflow('').json.overflow === false);
   ok('overflow: an E2BIG line in the stderr part of a combined file is caught', overflow('partial stdout review text\n--- stderr ---\nbash: /usr/bin/codex: Argument list too long\n').json.overflow === true);
   ok('usage: overflow without --output exits 2', run(['overflow']).code === 2);
