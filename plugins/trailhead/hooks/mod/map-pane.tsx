@@ -895,22 +895,18 @@ async function autoOpen($: Dollar) {
   }
 }
 
-// Un pannello aperto ma non disegnato (l'auto-open sotto la soglia dei pannelli non richiesti, tipico di
-// una sessione appena aperta) non è visibile: il comando lo riapre, e una richiesta della persona lo
-// disegna a qualsiasi larghezza. Se nemmeno così viene disegnato lo chiude, tranne quando non c'è ancora
-// nessuna superficie (`no-surface`): è l'attesa normale dell'inizio sessione, il pannello resta aperto e
-// viene disegnato appena una superficie si collega (il suo render chiede la prima lettura).
+// Un pannello aperto ma non disegnato (l'auto-open sotto la soglia dei pannelli non richiesti, o su una
+// superficie che non ha ancora comunicato il layout) non è visibile: il comando lo riapre, e una richiesta
+// della persona lo disegna a qualsiasi larghezza. Se nemmeno così viene disegnato NON lo chiude: la persona
+// non l'ha mai visto, chiuderlo risponderebbe "closed" a un pannello mai mostrato. Resta aperto e viene
+// disegnato appena la superficie può collocarlo. Chiude solo un pannello elencato E disegnato. Senza
+// superficie collegata (`no-surface`, l'inizio sessione) la risposta è l'attesa normale.
 const PENDING_MESSAGE = 'Map panel will open as soon as the screen is ready.'
 const isNoSurface = (reason: string) => reason.startsWith('no-surface')
 
 async function togglePanel($: Dollar): Promise<string> {
   const pane = (await $.ui.panes()).find(p => p.id === PANE_ID)
-  if (pane?.isPlaced === false) {
-    const reopened = await openPane($)
-    if (reopened.isPlaced) return 'Map panel opened.'
-    if (isNoSurface(reopened.reason)) return PENDING_MESSAGE
-  }
-  if (pane !== undefined) {
+  if (pane?.isPlaced === true) {
     await $.ui.close({ id: PANE_ID })
     return 'Map panel closed.'
   }

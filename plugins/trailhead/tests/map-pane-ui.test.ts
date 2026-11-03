@@ -2410,7 +2410,36 @@ for (const surface of SURFACES) {
     expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
     await settle(r)
     expect(fetches(r)).toBe(0)
-    // a pane waiting undrawn can still be closed
+    // a pane the person never saw is not closed by a repeat: it stays open, undrawn, until it can be placed
+    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
+    // placed at last, the command sees it drawn and closes it
+    r.isPlaced = true
+    expect((await panel($)).text).toBe('Map panel opened.')
+    expect((await panel($)).text).toBe('Map panel closed.')
+    expect(r.panes).toEqual([])
+  })
+
+  // #348: l'auto-open su una superficie che non ha ancora comunicato il layout resta non disegnato; il comando
+  // non deve chiudere un pannello che la persona non ha mai visto.
+  test(`/trailhead:panel never closes a pane the auto-open left undrawn on a surface without layout [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.isPlaced = false
+    r.reason = 'attached surfaces place no panes: desktop has not reported its layout'
+    await $.session.start(START)
+    await mountBand($, FULLSCREEN)
+    await settle(r)
+    expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
+
+    const shown = `Map panel not shown: ${r.reason}`
+    expect((await panel($)).text).toBe(shown)
+    expect((await panel($)).text).toBe(shown)
+    expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
+
+    // the layout arrives: the command draws it, and only then does a repeat close it
+    r.isPlaced = true
+    expect((await panel($)).text).toBe('Map panel opened.')
     expect((await panel($)).text).toBe('Map panel closed.')
   })
 
