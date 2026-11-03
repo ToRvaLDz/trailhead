@@ -145,4 +145,11 @@ for (const [file, key, agent] of [
   }
 }
 
+// --- Parte E: #350, ogni agent del motore parte con contesto fresco, mai un fork ---------
+{
+  const techniques = read('_shared/techniques.md');
+  ok('E: techniques.md states engine agents spawn with fresh context, never a fork',
+    /fresh context, never a fork/.test(techniques) && techniques.includes('fork_turns'));
+}
+
 console.log(`engine-route-docs.test.js: ${passed} checks passed`);

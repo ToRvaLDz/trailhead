@@ -94,6 +94,10 @@ ok('codexSkillAdapterHeader §D no longer calls per-subagent model pinning defer
   !header.includes('deferred'));
 ok('codexSkillAdapterHeader §D pins the exact agent_type dispatch call shape',
   header.includes('spawn_agent(agent_type="trailhead-<technique>"'));
+ok('codexSkillAdapterHeader §D passes fork_turns="none" (v2) and fork_context=false (v1) on every spawn',
+  header.includes('fork_turns="none"') && header.includes('fork_context=false'));
+ok('codexSkillAdapterHeader §D no longer claims a subagent is unconditionally FRESH',
+  !header.includes('A subagent runs as a FRESH session'));
 ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
   header.includes('base multi_agent v1') && header.includes('inherit the one session model'));
 ok('codexSkillAdapterHeader §D says all 9 committed agents, names trailhead-grill, and runs an unpinned grill inline',
