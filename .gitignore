@@ -5,6 +5,7 @@ node_modules/
 .trailhead/work-state.json
 .trailhead/auto-run.json
 .trailhead/isolation-answer.json
+.trailhead/repo-target.json
 .trailhead/active-map
 .trailhead/models-collapse-notice
 .trailhead/model-defaults-ack
