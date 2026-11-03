@@ -7,6 +7,7 @@
 //   2. round: converged / continue / exhausted / no-progress / ceiling and their precedence.
 //   3. Usage errors (exit 2).
 //   4. End-to-end: the script itself through spawnSync.
+//   5. budget (pre-check of a reviewer prompt) and overflow (post-check of its output). #353.
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -314,6 +315,159 @@ ok('round: output is one status ok JSON line with the round count', round([[c('a
   const bad = setup('{nope', null);
   ok('e2e: an invalid config exits 1', spawnSync(process.execPath, [scriptPath, 'ask', '--repo', bad.root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: bad.gdir } }).status === 1);
   bad.done(); s.done(); rm(bin); rm(dir);
+}
+
+// --- budget ------------------------------------------------------------------
+// A prompt file of exactly n bytes (ASCII), inside its own temp dir.
+function promptFile(n, name = 'brief.md') {
+  const dir = tmp();
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, 'x'.repeat(n));
+  return { dir, file };
+}
+function budget(s, reviewer, n, extra = {}, name) {
+  const p = promptFile(n, name);
+  const r = run(['budget', '--repo', s.root, '--reviewer', reviewer, '--prompt', p.file], { env: { CLAUDE_CONFIG_DIR: s.gdir, PATH: '/nowhere' }, ...extra });
+  rm(p.dir);
+  return { ...r, file: p.file };
+}
+{
+  const s = setup({}, null);
+  const r = budget(s, 'claude', 1000);
+  ok('budget: a small prompt is arg, exit 0, one JSON line', r.code === 0 && r.json.status === 'ok' && r.json.decision === 'arg' && r.out.trim().split('\n').length === 1);
+  ok('budget: reports reviewer, bytes, tokens, window, cap, windowSource', r.json.reviewer === 'claude' && r.json.bytes === 1000 && r.json.tokens === 334 && r.json.window === 200000 && r.json.cap === 130000 && r.json.windowSource === 'default');
+  ok('budget: arg carries no reason and no pointer, and warnings is empty', !('reason' in r.json) && !('pointer' in r.json) && Array.isArray(r.json.warnings) && r.json.warnings.length === 0);
+  ok('budget: bytes === 102400 is still arg', budget(s, 'claude', 102400).json.decision === 'arg');
+  ok('budget: bytes 102401 is file', budget(s, 'claude', 102401).json.decision === 'file');
+  const atCap = budget(s, 'claude', 390000);
+  ok('budget: tokens === cap is not skipped (file for a large prompt)', atCap.json.tokens === 130000 && atCap.json.decision === 'file');
+  const over = budget(s, 'claude', 390001);
+  ok('budget: tokens === cap + 1 is skip', over.json.tokens === 130001 && over.json.decision === 'skip');
+  ok('budget: skip carries a reason naming estimated tokens, cap and window', /130001/.test(over.json.reason) && /130000/.test(over.json.reason) && /200000/.test(over.json.reason) && !('pointer' in over.json));
+  ok('budget: skip wins over file', over.json.bytes > 102400 && over.json.decision === 'skip');
+  const f = budget(s, 'gemini', 200000);
+  ok('budget: file carries the pointer to the absolute prompt path', f.json.decision === 'file' && f.json.pointer === 'Read the complete review brief in ' + f.file + ' and answer it exactly as it asks.');
+  const sp = budget(s, 'gemini', 200000, {}, 'my brief.md');
+  ok('budget: a pointer keeps a path with spaces whole', sp.file.includes(' ') && sp.json.pointer === 'Read the complete review brief in ' + sp.file + ' and answer it exactly as it asks.');
+  const windows = { claude: 200000, gemini: 1000000, codex: 272000, qwen: 256000, kimi: 256000, agy: 1000000, opencode: 128000, 'cursor-agent': 128000, coderabbit: 128000 };
+  for (const [name, w] of Object.entries(windows)) {
+    const r2 = budget(s, name, 10);
+    ok('budget: default window for ' + name + ' is ' + w, r2.json.window === w && r2.json.cap === Math.floor(w * 0.65));
+  }
+  const custom = budget(s, 'my-local', 10);
+  ok('budget: an unknown reviewer gets the 128000 fallback window', custom.json.window === 128000 && custom.json.windowSource === 'default');
+  s.done();
+}
+{
+  const s = setup({ 'plan_review.context': { codex: 1000 } }, { 'plan_review.context': { gemini: 5000, codex: 2000 } });
+  const c1 = budget(s, 'codex', 10);
+  ok('budget: the project window wins for a CLI both layers name', c1.json.window === 1000 && c1.json.cap === 650 && c1.json.windowSource === 'config');
+  const g1 = budget(s, 'gemini', 10);
+  ok('budget: a CLI only the global layer names is honoured', g1.json.window === 5000 && g1.json.windowSource === 'config');
+  ok('budget: a CLI neither layer names keeps the default', budget(s, 'claude', 10).json.windowSource === 'default');
+  const sk = budget(s, 'codex', 2000);
+  ok('budget: a configured small window skips an oversized prompt', sk.json.tokens === 667 && sk.json.decision === 'skip');
+  s.done();
+}
+{
+  const s = setup({ 'plan_review.context': { codex: 0 } }, { 'plan_review.context': { codex: 2000 } });
+  const r = budget(s, 'codex', 10);
+  ok('budget: an invalid project entry warns and falls through to the global value', r.json.window === 2000 && r.json.windowSource === 'config' && r.json.warnings.some((w) => w.includes('plan_review.context') && w.includes('codex')));
+  s.done();
+}
+{
+  const s = setup({ 'plan_review.context': 'big' }, null);
+  const r = budget(s, 'codex', 10);
+  ok('budget: a non-object plan_review.context warns and is ignored', r.code === 0 && r.json.window === 272000 && r.json.windowSource === 'default' && r.json.warnings.some((w) => w.includes('plan_review.context')));
+  s.done();
+  const arr = setup({ 'plan_review.context': [1] }, null);
+  ok('budget: an array plan_review.context is not an object, warned', budget(arr, 'codex', 10).json.warnings.length === 1);
+  arr.done();
+}
+for (const bad of [0, -5, 1.5, '1000', 10000001, null]) {
+  const s = setup({ 'plan_review.context': { codex: bad } }, null);
+  const r = budget(s, 'codex', 10);
+  ok('budget: context entry ' + JSON.stringify(bad) + ' is rejected with a warning', r.code === 0 && r.json.window === 272000 && r.json.windowSource === 'default' && r.json.warnings.length === 1);
+  s.done();
+}
+{
+  const s = setup({ 'plan_review.context': { codex: 10000000 } }, null);
+  ok('budget: 10000000 is the largest accepted window', budget(s, 'codex', 10).json.window === 10000000);
+  s.done();
+  const multi = setup({ 'plan_review.context': { codex: 4000 } }, null);
+  ok('budget: bytes are counted as UTF-8, not characters', (() => {
+    const dir = tmp();
+    const file = path.join(dir, 'u.md');
+    fs.writeFileSync(file, 'é'.repeat(10));
+    const r = run(['budget', '--repo', multi.root, '--reviewer', 'codex', '--prompt', file], { env: { CLAUDE_CONFIG_DIR: multi.gdir, PATH: '/nowhere' } });
+    rm(dir);
+    return r.json.bytes === 20 && r.json.tokens === 7;
+  })());
+  multi.done();
+}
+{
+  const s = setup({}, null);
+  const env = { env: { CLAUDE_CONFIG_DIR: s.gdir, PATH: '/nowhere' } };
+  ok('usage: budget without --repo exits 2', run(['budget', '--reviewer', 'codex', '--prompt', '/x'], env).code === 2);
+  ok('usage: budget without --reviewer exits 2', run(['budget', '--repo', s.root, '--prompt', '/x'], env).code === 2);
+  ok('usage: budget without --prompt exits 2', run(['budget', '--repo', s.root, '--reviewer', 'codex'], env).code === 2);
+  const u = run(['budget', '--repo', s.root], env);
+  ok('usage: budget errors go to stderr, stdout stays empty', u.errOut.startsWith('usage:') && u.out === '');
+  const missing = run(['budget', '--repo', s.root, '--reviewer', 'codex', '--prompt', '/nowhere/brief.md'], env);
+  ok('budget: an unreadable prompt file is status error, exit 1', missing.code === 1 && missing.json.status === 'error' && /cannot read/.test(missing.json.reason));
+  const bad = setup('{nope', null);
+  const p = promptFile(10);
+  const e = run(['budget', '--repo', bad.root, '--reviewer', 'codex', '--prompt', p.file], { env: { CLAUDE_CONFIG_DIR: bad.gdir, PATH: '/nowhere' } });
+  ok('budget: an invalid config is status error, exit 1', e.code === 1 && e.json.status === 'error');
+  rm(p.dir); bad.done(); s.done();
+}
+
+// --- overflow ----------------------------------------------------------------
+function overflow(text) {
+  const dir = tmp();
+  const file = path.join(dir, 'codex.out');
+  fs.writeFileSync(file, text);
+  const r = run(['overflow', '--output', file]);
+  rm(dir);
+  return r;
+}
+{
+  const msgs = ['context_length_exceeded', 'This model\'s Maximum Context Length is 128000 tokens', 'Error: prompt is too long: 250000 tokens', 'input exceeds the context window of the model', 'Input is too long for requested model', 'request has too many tokens', 'spawn E2BIG: Argument list too long'];
+  for (const m of msgs) {
+    const r = overflow('some output\n  ' + m + '  \nmore');
+    ok('overflow: matches "' + m + '"', r.code === 0 && r.json.status === 'ok' && r.json.overflow === true && r.json.reason.includes(m) && r.json.reason === r.json.reason.trim());
+  }
+  ok('overflow: matching is case-insensitive', overflow('PROMPT IS TOO LONG').json.overflow === true);
+  ok('overflow: the quoted reason is length-capped', overflow('prompt is too long ' + 'y'.repeat(5000)).json.reason.length <= 300);
+  ok('overflow: ordinary output is not an overflow', (() => { const r = overflow('1. Risk: the plan is too long to read\nblocking: none'); return r.code === 0 && r.json.overflow === false && !('reason' in r.json); })());
+  ok('overflow: a timeout is not an overflow', overflow('Error: request timed out after 540s').json.overflow === false);
+  ok('overflow: an auth failure is not an overflow', overflow('401 Unauthorized: invalid API key').json.overflow === false);
+  ok('overflow: an empty output file is not an overflow', overflow('').json.overflow === false);
+  ok('overflow: an E2BIG line in the stderr part of a combined file is caught', overflow('partial stdout review text\n--- stderr ---\nbash: /usr/bin/codex: Argument list too long\n').json.overflow === true);
+  ok('usage: overflow without --output exits 2', run(['overflow']).code === 2);
+  const miss = run(['overflow', '--output', '/nowhere/x.out']);
+  ok('overflow: an unreadable output file is status error, exit 1', miss.code === 1 && miss.json.status === 'error');
+}
+
+// --- budget and overflow end-to-end ------------------------------------------
+{
+  const s = setup({}, null);
+  const p = promptFile(200000, 'brief.md');
+  const res = spawnSync(process.execPath, [scriptPath, 'budget', '--repo', s.root, '--reviewer', 'gemini', '--prompt', p.file], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: s.gdir } });
+  const j = JSON.parse(res.stdout.trim());
+  ok('e2e: budget prints one JSON line with the file decision and exits 0', res.status === 0 && j.decision === 'file' && j.pointer.includes(p.file));
+  const huge = promptFile(500000);
+  const sk = spawnSync(process.execPath, [scriptPath, 'budget', '--repo', s.root, '--reviewer', 'claude', '--prompt', huge.file], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: s.gdir } });
+  ok('e2e: budget skip is still exit 0 with a reason', sk.status === 0 && JSON.parse(sk.stdout.trim()).decision === 'skip');
+  ok('e2e: budget usage error exits 2', spawnSync(process.execPath, [scriptPath, 'budget', '--repo', s.root], { encoding: 'utf8' }).status === 2);
+  const out = path.join(p.dir, 'o.out');
+  fs.writeFileSync(out, 'oops\ncontext_length_exceeded\n');
+  const ov = spawnSync(process.execPath, [scriptPath, 'overflow', '--output', out], { encoding: 'utf8' });
+  const oj = JSON.parse(ov.stdout.trim());
+  ok('e2e: overflow prints the verdict and exits 0', ov.status === 0 && oj.overflow === true && oj.reason.includes('context_length_exceeded'));
+  fs.writeFileSync(out, 'all good');
+  ok('e2e: overflow false on ordinary output', JSON.parse(spawnSync(process.execPath, [scriptPath, 'overflow', '--output', out], { encoding: 'utf8' }).stdout.trim()).overflow === false);
+  rm(p.dir); rm(huge.dir); s.done();
 }
 
 console.log(`plan-review-rounds.test.js: ${passed} checks passed`);
