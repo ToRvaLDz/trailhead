@@ -14,6 +14,8 @@ The orchestrator passes: the ticket number `<n>`, the PLAN (build) or the confir
 
 **TDD per the `config.tdd` value passed.** `seams`: test-first at the seams the PLAN names; `on`: test-first throughout; `off`: no test-first requirement. For a fix, where sensible, a test that fails before and passes after.
 
+**Test runs.** When `testing.full` is configured, run the full suite through `node <templates>/trailhead-test-run.js run --repo <working-root> --config-root <project root>` (focused runs: `--kind targeted --files <a,b>`) instead of the bare command: it queues behind other heavy runs on the machine and reuses a green result for an identical tree. Put its JSON (`source`, `tree`, exit) in the `tests:` line of your report. `status: unconfigured` means run the project's own command as usual.
+
 ## New dependencies
 **Vet before installing any new dependency** (slopsquatting barrier): name and typosquat similarity to popular packages, age / first-seen date, downloads (counts), repository metadata present and matching. On a host with a hook bus the `trailhead-install-guard` `PreToolUse` hook blocks a named public-registry install (npm / PyPI / crates.io / Go / RubyGems) until it is vetted.
 - **Clean result, or the orchestrator passed that exact package as user-approved:** install by re-running the exact install command prefixed with `TRAILHEAD_VERIFIED_INSTALL=1`.
