@@ -35,6 +35,13 @@ ok('substrate-commands.md ensures the label idempotently', commands.includes('gh
 ok('substrate-commands.md documents park and clear', commands.includes('trailhead-needs-you.js park --issue <n> --reason <text> --repo <owner/name>') && commands.includes('trailhead-needs-you.js clear --issue <n> --repo <owner/name>'));
 ok('substrate-commands.md first-use list has twenty-one labels', /all twenty-one:[^\n]*`trailhead:needs-you`/.test(commands));
 
+// Un ticket chiuso non tiene mai il mark, comunque sia stato chiuso.
+const SWEEP = 'node <templates>/trailhead-needs-you.js sweep --repo <owner/name>';
+ok('substrate-commands.md: Resolve clears needs-you right after the close', /gh issue close <n>\n[^\n]*\nnode <templates>\/trailhead-needs-you\.js clear --issue <n> --repo <owner\/name>/.test(commands));
+ok('substrate-commands.md documents sweep', commands.includes(SWEEP) && /however it was closed/.test(commands));
+ok('work SKILL.md sweeps at every work-start', work.includes(SWEEP) && /Sweep stale needs-you marks/.test(work));
+ok('auto.md sweeps at run start, before the queue', auto.includes(SWEEP) && /before the queue is read/.test(auto));
+
 for (const [name, text] of [['auto.md', auto], ['SKILL.md', work], ['substrate.md', substrate], ['substrate-commands.md', commands]]) {
   ok(`${name}: no em-dash`, !text.includes(String.fromCharCode(0x2014)));
 }

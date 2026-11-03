@@ -134,8 +134,52 @@ for (const [failOn, later] of [['ensure', ['view', 'comment', 'unassign', 'label
   ok('clear errors on unparseable JSON', run(makeTracker({ badJson: true }), clear).code === 1);
 }
 
+// --- sweep ----------------------------------------------------------------------
+// Tracker con più issue: closed [numeri chiusi con la label], failList, failRemove [numeri].
+function makeSweepTracker(init = {}) {
+  const t = { closed: [...(init.closed || [])], failList: !!init.failList, badJson: !!init.badJson, failRemove: init.failRemove || [], calls: [] };
+  const res = (stdout, status = 0) => ({ status, stdout, stderr: status ? 'forced failure' : '' });
+  t.gh = (args) => {
+    t.calls.push(args.join(' '));
+    const [a, b] = args;
+    if (a === 'issue' && b === 'list') {
+      if (t.failList) return res('', 1);
+      return t.badJson ? res('not json') : res(JSON.stringify(t.closed.map((number) => ({ number }))));
+    }
+    if (a === 'issue' && b === 'edit' && args.includes('--remove-label')) {
+      const n = Number(args[2]);
+      if (t.failRemove.includes(n)) return res('', 1);
+      t.closed = t.closed.filter((x) => x !== n);
+      return res('');
+    }
+    return res('', 1);
+  };
+  return t;
+}
+const sweep = ['sweep', '--repo', 'o/r'];
+{
+  const t = makeSweepTracker({ closed: [85, 12] });
+  const r = run(t, sweep);
+  ok('sweep ok, one JSON line', r.code === 0 && r.json.status === 'ok' && r.out.trim().split('\n').length === 1);
+  ok('sweep clears every closed labelled ticket', JSON.stringify(r.json.cleared) === '[12,85]' && t.closed.length === 0);
+  ok('sweep lists only closed tickets with the label', /^issue list --state closed --label trailhead:needs-you --json number --limit \d+ -R o\/r$/.test(t.calls[0]));
+  ok('sweep passes -R on every call', t.calls.every((c) => c.includes('-R o/r')));
+  const r2 = run(t, sweep);
+  ok('sweep is a no-op when nothing is left', r2.code === 0 && r2.json.cleared.length === 0 && t.calls.filter((c) => /--remove-label/.test(c)).length === 2);
+}
+{
+  const t = makeSweepTracker({ failList: true });
+  const r = run(t, sweep);
+  ok('sweep errors on a failed list, writes nothing', r.code === 1 && r.json.status === 'error' && !t.calls.some((c) => /issue edit/.test(c)));
+  ok('sweep errors on unparseable JSON', run(makeSweepTracker({ badJson: true }), sweep).code === 1);
+  const tp = makeSweepTracker({ closed: [3, 4, 5], failRemove: [4] });
+  const rp = run(tp, sweep);
+  ok('a failed removal is an error naming it, the others still cleared', rp.code === 1 && rp.json.status === 'error' && /#4/.test(rp.json.reason) && JSON.stringify(rp.json.cleared) === '[3,5]');
+}
+
 // --- usage ----------------------------------------------------------------------
-for (const argv of [[], ['bogus'], ['park'], ['park', '--issue', '7', '--repo', 'o/r'], ['park', '--issue', 'x', '--reason', 'r', '--repo', 'o/r'],
+for (const argv of [['sweep'], ['sweep', '--repo', 'nope'], ['sweep', '--repo', 'o/r', '--issue', '7'],
+  [], ['bogus'], ['park'], ['park', '--issue', '7', '--repo', 'o/r'], ['park', '--issue', 'x', '--reason', 'r', '--repo', 'o/r'],
   ['park', '--issue', '7', '--reason', '  ', '--repo', 'o/r'], ['park', '--issue', '7', '--reason', 'r'], ['clear', '--issue', '7'], ['clear', '--repo', 'o/r'],
   ['clear', '--issue', '7', '--repo', 'nope'], ['clear', '--issue', '7', '--repo', 'o/r', '--reason', 'r'], ['clear', '--issue']]) {
   const t = makeTracker();

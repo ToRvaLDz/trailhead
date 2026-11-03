@@ -7,6 +7,7 @@
 // CLI:
 //   node trailhead-needs-you.js park  --issue <n> --reason <text> --repo <owner/name>
 //   node trailhead-needs-you.js clear --issue <n> --repo <owner/name>
+//   node trailhead-needs-you.js sweep --repo <owner/name>
 //
 // park, in this order (so any partial failure leaves the ticket visible: a label is
 // never set on a ticket still claimed by the run):
@@ -21,10 +22,13 @@
 //   5. unassign `@me` when the ticket is assigned;
 //   6. add the label last.
 // clear: when the ticket carries the label, remove it; otherwise a no-op.
+// sweep: remove the label from every CLOSED issue that still carries it, however it was
+//   closed (a Resolve, a hand close, the web UI): a closed ticket never waits on the human.
 //
 // Prints exactly one JSON line on stdout:
 //   park:  {"status":"ok","issue":n,"commented":bool,"unassigned":bool,"labelled":bool}
 //   clear: {"status":"ok","issue":n,"cleared":bool}
+//   sweep: {"status":"ok","cleared":[n,...]}  (an error also carries the cleared list)
 //   error: {"status":"error","reason":"..."}
 // Exit 0 on ok, 1 on an error (any failed or unparseable gh step), 2 on a usage error
 // (stderr).
@@ -37,6 +41,7 @@ const LABEL = 'trailhead:needs-you';
 const LABEL_COLOR = 'D93F0B';
 const LABEL_DESC = 'Needs you: an autonomous run parked it for the human';
 const MARKER = 'NEEDS YOU';
+const SWEEP_LIMIT = 1000;
 
 function defaultGh(args) {
   const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -82,8 +87,8 @@ function secretProblem(text, guard) {
 
 function parseArgs(argv) {
   const cmd = argv[0];
-  if (cmd !== 'park' && cmd !== 'clear') return { error: `usage: expected park or clear, got: ${cmd === undefined ? '(nothing)' : cmd}` };
-  const allowed = cmd === 'park' ? ['--issue', '--reason', '--repo'] : ['--issue', '--repo'];
+  if (!['park', 'clear', 'sweep'].includes(cmd)) return { error: `usage: expected park, clear or sweep, got: ${cmd === undefined ? '(nothing)' : cmd}` };
+  const allowed = { park: ['--issue', '--reason', '--repo'], clear: ['--issue', '--repo'], sweep: ['--repo'] }[cmd];
   const o = { cmd, issue: null, reason: null, repo: null };
   for (let i = 1; i < argv.length; i++) {
     const flag = argv[i];
@@ -102,7 +107,7 @@ function parseArgs(argv) {
     }
   }
   if (!o.repo) return { error: `usage: ${cmd} requires --repo` };
-  if (!o.issue) return { error: `usage: ${cmd} requires --issue` };
+  if (cmd !== 'sweep' && !o.issue) return { error: `usage: ${cmd} requires --issue` };
   if (cmd === 'park' && (o.reason === null || !o.reason.trim())) return { error: 'usage: park requires a non-empty --reason' };
   return o;
 }
@@ -124,6 +129,32 @@ function readIssue(run, o) {
   };
 }
 
+// Numeri delle issue chiuse che portano ancora la label, ordinati; oppure { error }.
+function listClosedLabelled(run, repo) {
+  const r = run(['issue', 'list', '--state', 'closed', '--label', LABEL, '--json', 'number', '--limit', String(SWEEP_LIMIT), '-R', repo]);
+  if (r.status !== 0) return { error: `gh issue list failed: ${firstLine(r.stderr) || 'exit ' + r.status}` };
+  let j;
+  try { j = JSON.parse(r.stdout); } catch { return { error: 'gh issue list returned unparseable JSON' }; }
+  if (!Array.isArray(j)) return { error: 'gh issue list returned unexpected JSON' };
+  return { numbers: j.map((i) => i && i.number).filter((n) => Number.isInteger(n)).sort((a, b) => a - b) };
+}
+
+// Toglie la label da ogni issue chiusa; continua dopo un errore e lo riporta alla fine.
+function sweep(run, repo, emit) {
+  const list = listClosedLabelled(run, repo);
+  if (list.error) { emit({ status: 'error', reason: list.error, cleared: [] }); return 1; }
+  const results = list.numbers.map((n) => ({ n, r: run(['issue', 'edit', String(n), '--remove-label', LABEL, '-R', repo]) }));
+  const cleared = results.filter((x) => x.r.status === 0).map((x) => x.n);
+  const failed = results.filter((x) => x.r.status !== 0);
+  if (failed.length) {
+    const reason = failed.map((x) => `#${x.n}: ${firstLine(x.r.stderr) || 'exit ' + x.r.status}`).join('; ');
+    emit({ status: 'error', reason: `gh issue edit (remove label) failed for ${reason}`, cleared });
+    return 1;
+  }
+  emit({ status: 'ok', cleared });
+  return 0;
+}
+
 // True when the latest NEEDS YOU comment already carries this reason.
 function alreadyCommented(comments, reason) {
   const mine = comments.filter((b) => String(b).replace(/\r/g, '').split('\n')[0] === MARKER);
@@ -142,6 +173,8 @@ function main(argv, { gh, guard, stdout, stderr } = {}) {
   const fail = (reason) => { emit({ status: 'error', reason }); return 1; };
   const R = ['-R', o.repo];
   const n = String(o.issue);
+
+  if (o.cmd === 'sweep') return sweep(run, o.repo, emit);
 
   if (o.cmd === 'clear') {
     const cur = readIssue(run, o);
