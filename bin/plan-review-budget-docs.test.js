@@ -30,6 +30,17 @@ ok('configuration-reference.md: has the plan_review.context row', /^\| `plan_rev
 ok('configuration-reference.md: explains the 65% rule, the estimate and the post-check', /\*\*plan_review\.context\.\*\*[^\n]*ceil\(bytes \/ 3\)[^\n]*65%[^\n]*not a guarantee[^\n]*not retried/.test(config));
 ok('configuration-reference.md: documents the per-reviewer merge', /\*\*plan_review\.context\.\*\*[^\n]*merge per reviewer[^\n]*project wins/.test(config));
 
+ok('plan-review.md: the overflow call passes the brief so echoed lines are ignored', /overflow --output <dir>\/<cli>\.out --prompt <brief file>/.test(review));
+ok('plan-review.md: a failing budget or overflow helper has a stated fallback', /When `budget` or `overflow` itself fails[^\n]*never guess[^\n]*at most 100 KiB/.test(review));
+
+const root = path.resolve(__dirname, '..');
+const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+const readmeIt = fs.readFileSync(path.join(root, 'README.it.md'), 'utf8');
+const site = fs.readFileSync(path.join(root, 'site', 'src', 'content', 'docs', 'docs', 'configuration.mdx'), 'utf8');
+for (const [name, text] of [['README.md', readme], ['README.it.md', readmeIt], ['configuration.mdx', site]]) {
+  ok(`${name}: has the plan_review.context row`, /^\| `plan_review\.context` \|/m.test(text));
+}
+
 for (const [name, text] of [['plan-review.md', review], ['configuration-reference.md', config]]) {
   ok(`${name}: no em-dash`, !text.includes(String.fromCharCode(0x2014)));
 }

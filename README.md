@@ -506,6 +506,7 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `testing.maxParallel` | positive integer (**`1`**) | how many heavy test runs may run at once across the whole machine |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
+| `plan_review.context` | object (`{"<cli>": <tokens>}`) | override a reviewer CLI's context window; a reviewer whose estimated prompt is over 65% of its window is skipped and recorded in `PLAN-REVIEW` |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
 | `effort` | **`standard`** \| `lean` | how hard the `build`/`bug` engine works a change: `standard` runs every step, `lean` size-triages small changes and offers to skip the heavy ones (plan pass, TDD, cross-AI review, full code review, goal-backward verify). Governs `build`/`bug` only: `quick` always size-triages regardless of this key |
 | `isolation.copy` | array of repo-relative paths (**unset**) | gitignored files and directories (`.env`, `.npmrc`, local config) copied from the main checkout into every new `worktree`/`clone` workspace, never overwriting; unsafe paths (absolute, `..`, `.git`) are rejected. When unset, trailhead suggests the `.env` files that have a tracked `*.example` sibling |
