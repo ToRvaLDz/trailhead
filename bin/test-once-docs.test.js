@@ -47,6 +47,28 @@ ok('ticket-engines.md: test record named in build and bug Verify', (engines.matc
 ok('ticket-engines.md: reviewers do not re-run', (engines.match(/never re-run the full suite/g) || []).length >= 2);
 ok('ticket-engines.md: no double run after the sync', !engines.includes('then sync, then re-run the tests'));
 
+// Each Verify (build, bug) is its own line of ticket-engines.md.
+const verifyLines = engines.split('\n').filter((l) => l.startsWith('4. **Verify**'));
+ok('ticket-engines.md: build and bug Verify found', verifyLines.length === 2);
+for (const [i, line] of verifyLines.entries()) {
+  const which = i === 0 ? 'build' : 'bug';
+  ok(`${which} Verify: exactly one full-run invocation`, (line.match(/trailhead-test-run\.js run --repo/g) || []).length === 1);
+  ok(`${which} Verify: failed record reused on the same tree`, line.includes('reuse it instead of invoking the helper'));
+  ok(`${which} Verify: no legacy second run`, !line.includes('then run the tests') && !line.includes('then re-run the tests'));
+}
+
+// Scoping: the record and single-run rules apply only with testing.full.
+ok('executor-brief.md: scoping names testing.full', /testing\.full[^\n]*focused/.test(brief));
+ok('ticket-engines.md: scoping names testing.full', verifyLines.every((l) => /unconfigured` falls back[^;]*as before/.test(l)));
+ok('configuration-reference.md: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration-reference.md']));
+ok('README.md: scoping names testing.full', /without `testing\.full`/i.test(docs['README.md']));
+ok('configuration.mdx: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration.mdx']));
+
+// The reviewers never invoke the helper.
+for (const name of ['code-review.md', 'verify.md', 'trailhead-code-review.md', 'trailhead-verify.md']) {
+  ok(`${name}: no helper run invocation`, !docs[name].includes('trailhead-test-run.js run'));
+}
+
 // Post-sync re-run reuses the cache.
 ok('teamwork.md: post-sync run reuses the cached result', docs['teamwork.md'].includes('`source: cache`'));
 ok('teamwork.md: current needs no re-run', docs['teamwork.md'].includes('`current` needs no re-run'));
