@@ -36,7 +36,7 @@ for (const name of ['configuration-reference.md', 'README.md', 'README.it.md', '
   }
 }
 const ref = docs['configuration-reference.md'];
-for (const needle of ['**Test runs.**', 'TRAILHEAD_CACHE_DIR', 'nice -n 10', 'ionice -c 3', '--no-cache', 'tree SHA + command', '🧪 Test suite', 'safe to delete at any time']) {
+for (const needle of ['**Test runs.**', 'TRAILHEAD_CACHE_DIR', 'nice -n 10', 'ionice -c 3', '--no-cache', 'tree SHA + command', '🧪 Test suite', 'safe to delete when no test run is active']) {
   ok(`configuration-reference.md carries: ${needle}`, ref.includes(needle));
 }
 ok('README.md carries the Test runs paragraph', docs['README.md'].includes('**Test runs.**'));
