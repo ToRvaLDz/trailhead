@@ -19,7 +19,7 @@ const eq = (name, actual, expected) => { assert.deepStrictEqual(actual, expected
 // Run the merged hook end-to-end: tool_input JSON on stdin, capture {code, out, err}.
 function runHook(command, { env = {}, args = [], hook = HOOK, cwd } = {}) {
   const input = JSON.stringify({ tool_input: { command }, ...(cwd ? { cwd } : {}) });
-  const r = spawnSync('node', [hook, ...args], { input, env: { ...process.env, ...env } });
+  const r = spawnSync('node', [hook, ...args], { input, env: { ...process.env, CLAUDE_CONFIG_DIR: NO_GLOBAL, ...env } });
   return { code: r.status, out: r.stdout.toString(), err: r.stderr.toString() };
 }
 const codeOf = (r) => (r.out ? JSON.parse(r.out).code : undefined);
@@ -31,9 +31,20 @@ const BAD_INSTALL = 'npm install left-pad';
 const BAD_SEARCH = 'cd x && grep y z';
 const BAD_BODY = 'gh issue edit 5 --body ""';
 const BAD_LABELS = 'gh issue create --title x --body y --label trailhead:bug';
+const BAD_TEST = 'npm test 2>&1 | tail -20';
+
+// A scratch trailhead repo whose config sets testing.full, and an empty global config dir so
+// the developer's own config never leaks into the probes.
+const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-test-guard-'));
+const TEST_REPO = path.join(SCRATCH, 'repo');
+fs.mkdirSync(path.join(TEST_REPO, '.git'), { recursive: true });
+fs.mkdirSync(path.join(TEST_REPO, '.trailhead'));
+fs.writeFileSync(path.join(TEST_REPO, '.trailhead', 'config.json'), JSON.stringify({ testing: { full: 'npm test' } }));
+const NO_GLOBAL = path.join(SCRATCH, 'no-global');
+fs.mkdirSync(NO_GLOBAL);
 
 // --- unit: constants ---
-eq('guard order is fixed', GUARD_ORDER, ['commit', 'secret', 'install', 'search', 'body', 'labels']);
+eq('guard order is fixed', GUARD_ORDER, ['commit', 'secret', 'install', 'search', 'body', 'labels', 'test']);
 ok('freshness window is 5s', MOD_GUARDS_FRESH_MS === 5000);
 
 // --- unit: parseModGuards ---
@@ -49,10 +60,10 @@ for (const bad of ['commit', '@123', 'commit@abc', ',@1', '', undefined, 'commit
 eq('unknown names are ignored', [...parseModGuards(`commit,bogus@${NOW}`, NOW)], ['commit']);
 
 // --- unit: parseGuardsArg ---
-eq('no --guards -> all six', parseGuardsArg([]), GUARD_ORDER);
+eq('no --guards -> all seven', parseGuardsArg([]), GUARD_ORDER);
 eq('valid subset keeps canonical order', parseGuardsArg(['--guards=body,commit']), ['commit', 'body']);
-eq('empty --guards -> all six', parseGuardsArg(['--guards=']), GUARD_ORDER);
-eq('malformed --guards -> all six', parseGuardsArg(['--guards=commit,,body']), GUARD_ORDER);
+eq('empty --guards -> all seven', parseGuardsArg(['--guards=']), GUARD_ORDER);
+eq('malformed --guards -> all seven', parseGuardsArg(['--guards=commit,,body']), GUARD_ORDER);
 eq('any unknown name invalidates the whole list', parseGuardsArg(['--guards=commit,secert']), GUARD_ORDER);
 
 // --- unit: runGuards with fake evaluators ---
@@ -66,7 +77,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
     evaluators: {
       commit: spy('commit', () => { throw new Error('boom'); }),
       secret: spy('secret', allow), install: spy('install', blocker('I')),
-      search: spy('search', blocker('S')), body: spy('body', allow), labels: spy('labels', allow),
+      search: spy('search', blocker('S')), body: spy('body', allow), labels: spy('labels', allow), test: spy('test', allow),
     },
   });
   eq('a throwing guard counts as allow and the next one still blocks', r.code, 2);
@@ -76,7 +87,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
 {
   const r = runGuards('x', {
     now: NOW, env: { TRAILHEAD_MOD_GUARDS: `commit@${NOW}` },
-    evaluators: { commit: blocker('C'), secret: allow, install: allow, search: allow, body: allow, labels: allow },
+    evaluators: { commit: blocker('C'), secret: allow, install: allow, search: allow, body: allow, labels: allow, test: allow },
   });
   eq('a fresh stamp skips the listed guard', r.code, 0);
 }
@@ -84,7 +95,7 @@ const blocker = (code) => () => ({ kind: 'block', payload: { decision: 'block', 
   const adv = (t) => () => ({ kind: 'advise', stderr: `${t}\n`, payload: { hookSpecificOutput: { additionalContext: t } } });
   const r = runGuards('x', {
     now: NOW, env: {},
-    evaluators: { commit: adv('a'), secret: adv('b'), install: allow, search: allow, body: allow, labels: allow },
+    evaluators: { commit: adv('a'), secret: adv('b'), install: allow, search: allow, body: allow, labels: allow, test: allow },
   });
   eq('advisories exit 0', r.code, 0);
   eq('advisory stderr lines are all written', r.stderr, 'a\nb\n');
@@ -98,11 +109,13 @@ const { evaluate: evInstall } = require('./trailhead-install-guard.js');
 const { evaluate: evSearch } = require('./trailhead-search-guard.js');
 const { evaluate: evBody } = require('./trailhead-body-guard.js');
 const { evaluate: evLabels } = require('./trailhead-labels-guard.js');
+const { evaluate: evTest } = require('./trailhead-test-guard.js');
 for (const [name, cmd, ev] of [
   ['commit', BAD_COMMIT, evCommit], ['secret', BAD_SECRET, evSecret], ['install', BAD_INSTALL, evInstall],
   ['search', BAD_SEARCH, evSearch], ['body', BAD_BODY, evBody], ['labels', BAD_LABELS, evLabels],
+  ['test', BAD_TEST, (c) => evTest(c, { cwd: TEST_REPO, env: { CLAUDE_CONFIG_DIR: NO_GLOBAL } })],
 ]) {
-  const r = runHook(cmd);
+  const r = runHook(cmd, name === 'test' ? { cwd: TEST_REPO } : {});
   const want = ev(cmd);
   ok(`${name}: evaluator blocks the probe`, want.kind === 'block');
   eq(`${name}: exit 2`, r.code, 2);
@@ -171,19 +184,19 @@ for (const [name, cmd, ev] of [
     const hook = path.join(tmp, 'trailhead-bash-guards.js');
     fs.rmSync(path.join(tmp, 'trailhead-search-guard.js'));
 
-    const codex = runHook(BAD_SEARCH, { hook, args: ['--guards=commit,secret,install,body,labels'] });
+    const codex = runHook(BAD_SEARCH, { hook, args: ['--guards=commit,secret,install,body,labels,test'] });
     eq('--guards without search never loads search-guard', codex.code, 0);
     eq('--guards without search: no warning', codex.err, '');
-    const still = runHook(BAD_INSTALL, { hook, args: ['--guards=commit,secret,install,body,labels'] });
+    const still = runHook(BAD_INSTALL, { hook, args: ['--guards=commit,secret,install,body,labels,test'] });
     eq('--guards subset still blocks with its guards', still.code, 2);
     const only = runHook(BAD_INSTALL, { hook, args: ['--guards=commit'] });
     eq('unselected guards do not run', only.code, 0);
 
     for (const bad of ['--guards=', '--guards=commit,secert', '--guards=commit,,body']) {
       const r = runHook(BAD_INSTALL, { hook, args: [bad] });
-      eq(`${bad}: falls back to all six (install blocks)`, r.code, 2);
+      eq(`${bad}: falls back to all seven (install blocks)`, r.code, 2);
       const clean = runHook('git status', { hook, args: [bad] });
-      ok(`${bad}: all six are selected (the missing search module is reported)`, /search/.test(clean.err));
+      ok(`${bad}: all seven are selected (the missing search module is reported)`, /search/.test(clean.err));
     }
 
     const missing = runHook(`${BAD_BODY} && ${BAD_SEARCH}`, { hook });
@@ -217,13 +230,14 @@ for (const [name, cmd, ev] of [
 // Run from a scratch dir outside any trailhead repo: those suites open unlabelled issues, which
 // the labels guard (rightly) blocks inside a trailhead repo.
 const SUITE_CWD = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-suites-'));
-for (const name of ['commit', 'secret', 'install', 'search', 'body', 'labels']) {
+for (const name of ['commit', 'secret', 'install', 'search', 'body', 'labels', 'test']) {
   const file = path.join(__dirname, `trailhead-${name}-guard.test.js`);
   const r = spawnSync('node', [file], { cwd: SUITE_CWD, env: { ...process.env, TRAILHEAD_GUARD_HOOK: HOOK } });
   if (r.status !== 0) process.stderr.write(r.stdout.toString() + r.stderr.toString());
   eq(`${name}-guard suite passes through the merged hook`, r.status, 0);
 }
 fs.rmSync(SUITE_CWD, { recursive: true, force: true });
+fs.rmSync(SCRATCH, { recursive: true, force: true });
 
 // --- registration: one Bash entry, one command (the merged hook) ---
 {

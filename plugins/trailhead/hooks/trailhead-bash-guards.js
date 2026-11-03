@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // trailhead-bash-guards.js: PreToolUse(Bash) hook.
-// One process for the six Bash guards (commit, secret, install, search, body, labels)
-// instead of six: each Bash call pays a single node start-up. The guards keep
+// One process for the seven Bash guards (commit, secret, install, search, body, labels, test)
+// instead of seven: each Bash call pays a single node start-up. The guards keep
 // their own modules and verdicts; this runner only calls each one's pure
-// evaluate(cmd) in a fixed order (commit, secret, install, search, body, labels).
+// evaluate(cmd) in a fixed order (commit, secret, install, search, body, labels, test).
 //   - First block wins: its payload goes to stdout and the hook exits 2; later
 //     guards do not run. An earlier advisory keeps its stderr line.
 //   - No block: advisories (secret-guard's "could not scan") surface on stderr
@@ -11,9 +11,9 @@
 //   - Failure posture is unchanged per guard: a throwing guard counts as allow
 //     and the others still run; a guard module that fails to load is skipped
 //     with a one-line stderr warning.
-//   - --guards=<name,...> picks the guards (default: all six). The Codex install
-//     ships no search-guard and registers --guards=commit,secret,install,body,labels.
-//     A missing, empty, malformed or unknown-name list falls back to all six, so
+//   - --guards=<name,...> picks the guards (default: all seven). The Codex install
+//     ships no search-guard and registers --guards=commit,secret,install,body,labels,test.
+//     A missing, empty, malformed or unknown-name list falls back to all seven, so
 //     a config typo never disables a guard.
 //   - TRAILHEAD_MOD_GUARDS=<name,...>@<epoch-ms>: the mod (which has ported those
 //     guards) stamps the guards it already ran; a stamp no older than
@@ -22,7 +22,7 @@
 // Crash-safe: unparseable input or any internal error -> exit 0.
 // Self-contained, no dependencies. Pure functions are exported for tests.
 
-const GUARD_ORDER = ['commit', 'secret', 'install', 'search', 'body', 'labels'];
+const GUARD_ORDER = ['commit', 'secret', 'install', 'search', 'body', 'labels', 'test'];
 const MOD_GUARDS_FRESH_MS = 5000;
 const MOD_GUARDS_RE = /^([a-z][a-z0-9-]*(?:,[a-z][a-z0-9-]*)*)@(\d+)$/;
 
@@ -37,7 +37,7 @@ function parseModGuards(value, now = Date.now()) {
 }
 
 // Guards selected by --guards=<name,...>, in canonical order. Anything but a
-// well-formed list of known names means all six.
+// well-formed list of known names means all seven.
 function parseGuardsArg(argv) {
   const arg = argv.find((a) => a.startsWith('--guards='));
   if (!arg) return GUARD_ORDER;
