@@ -33,7 +33,7 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 - You never talk to the user and never answer on their behalf: the orchestrator relays the question and collects the answer. The recommended answer is only your pick.
 - `settled:` every settled choice so far, one per line by question number, with its rationale; `none` before the first answer.
 - `frontier:` the open questions whose prerequisites are settled; `none` once it is empty.
-- `question:` the one numbered question to ask now. Illustrate each option: what it optimizes and what it sacrifices. Offer defer in prose when the question is blocked on a prerequisite. Play back the user's understanding when it closes a branch.
+- `question:` the one numbered question to ask now. Illustrate each option (its label, a one-line summary, its trade-off) so the relay can render them per **The ask is answerable from the chat alone**; never a reference to the ticket in place of the options. Offer defer in prose when the question is blocked on a prerequisite. Play back the user's understanding when it closes a branch.
 - `recommended:` your pick, stress-tested, ending with a `Weak point:` line (not a field label, so a review may carry one per fix). Never the delegate option.
 - `areas:` for a multi-part space, every functional area, each marked visited or open.
 - `facts:` what you looked up, with `file:line` or a URL. A fact you could not reach is written as `not looked up: <what>`; the orchestrator fetches it for the next round.
