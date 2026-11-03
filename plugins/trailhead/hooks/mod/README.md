@@ -283,8 +283,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   the auto-open: while the pane is listed undrawn nothing opens it again (the host places it itself when it can),
   and if it vanishes undrawn the next trigger opens it again. `/trailhead:panel` closes a pane only when it is
   listed and drawn; a listed but undrawn pane is opened again as the person's request (drawn at any width), and if
-  even that leaves it undrawn the pane stays open and the command says why (`Map panel not shown: <reason>`), so it
-  is never closed unseen. With no surface attached yet (`no-surface`, the start of a session) the command answers
+  even that leaves it undrawn the pane stays open and the command says so in a fixed sentence (`Map panel is open but not shown yet: ...`; the host's reason goes to the
+  debug log only), so it is never closed unseen. With no surface attached yet (`no-surface`, the start of a session) the command answers
   that the panel will open once the screen is ready, again on every repeat; the pane's first render on the surface
   that attaches asks for its read.
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,

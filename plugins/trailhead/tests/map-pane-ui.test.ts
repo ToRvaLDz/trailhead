@@ -463,6 +463,8 @@ const BAND_PROPS = {
   scroll: { offset: 0, bodyRows: 10 },
   view: {},
 } as const
+// What the command answers for an undrawn pane (never the host's raw reason).
+const NOT_SHOWN = 'Map panel is open but not shown yet: it appears once the screen can place it.'
 const FULLSCREEN = { columns: 200, rows: 50, isFullscreen: true } as const
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
@@ -2404,16 +2406,16 @@ for (const surface of SURFACES) {
     expect(r.logs).toEqual([])
   })
 
-  test(`/trailhead:panel says why a pane cannot be placed [${surface}]`, async ($, on) => {
+  test(`/trailhead:panel says plainly that a pane cannot be placed yet [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.isPlaced = false
     await $.session.start(START)
-    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect((await panel($)).text).toBe(NOT_SHOWN)
     await settle(r)
     expect(fetches(r)).toBe(0)
     // a pane the person never saw is not closed by a repeat: it stays open, undrawn, until it can be placed
-    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
-    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect((await panel($)).text).toBe(NOT_SHOWN)
+    expect((await panel($)).text).toBe(NOT_SHOWN)
     expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
     // placed at last, the command sees it drawn and closes it
     r.isPlaced = true
@@ -2433,7 +2435,7 @@ for (const surface of SURFACES) {
     await settle(r)
     expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
 
-    const shown = `Map panel not shown: ${r.reason}`
+    const shown = NOT_SHOWN
     expect((await panel($)).text).toBe(shown)
     expect((await panel($)).text).toBe(shown)
     expect(r.panes.map(p => [p.id, p.isPlaced])).toEqual([[PANE, false]])
@@ -2537,7 +2539,7 @@ for (const surface of SURFACES) {
     expect(r.opens).toHaveLength(1)
 
     // the command is the person acting on it: the auto-open is done even though the pane is still undrawn
-    expect((await panel($)).text).toBe('Map panel not shown: terminal too narrow')
+    expect((await panel($)).text).toBe(NOT_SHOWN)
     expect(r.opens).toHaveLength(2)
     r.panes = []
     await mountBand($, FULLSCREEN)

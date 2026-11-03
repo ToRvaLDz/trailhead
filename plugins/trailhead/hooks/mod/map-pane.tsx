@@ -132,7 +132,8 @@ export const myTickets = atom({ plugin: 'trailhead', key: 'myTickets' } as const
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Whether that press waits for the running turn to end (cancellable) or was sent to the host.
 export const pendingPhase = atom({ plugin: 'trailhead', key: 'pendingPhase' } as const, null as 'queued' | 'starting' | null)
-// Set once the pane was opened by the command, by itself or closed by the person: never auto-opened after.
+// Set once the auto-open is done: the pane was seen drawn, or the person acted on it (the command, a close by
+// hand, the close button). An unasked open that stays undrawn does not set it; never auto-opened after it is set.
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
 const WORK_COMMAND = 'trailhead:work'
@@ -917,6 +918,7 @@ async function markDrawn($: Dollar) {
 // disegnato appena la superficie può collocarlo. Chiude solo un pannello elencato E disegnato. Senza
 // superficie collegata (`no-surface`, l'inizio sessione) la risposta è l'attesa normale.
 const PENDING_MESSAGE = 'Map panel will open as soon as the screen is ready.'
+const NOT_SHOWN_MESSAGE = 'Map panel is open but not shown yet: it appears once the screen can place it.'
 const isNoSurface = (reason: string) => reason.startsWith('no-surface')
 
 async function togglePanel($: Dollar): Promise<string> {
@@ -927,7 +929,8 @@ async function togglePanel($: Dollar): Promise<string> {
   }
   const opened = await openPane($, true)
   if (opened.isPlaced) return 'Map panel opened.'
-  return isNoSurface(opened.reason) ? PENDING_MESSAGE : `Map panel not shown: ${opened.reason}`
+  debug($, `trailhead mod: map pane not placed: ${opened.reason}`)
+  return isNoSurface(opened.reason) ? PENDING_MESSAGE : NOT_SHOWN_MESSAGE
 }
 
 // The close button: the pane goes (its `ui.close` hook stops the timers). The press counts as the
