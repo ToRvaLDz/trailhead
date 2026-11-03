@@ -25,13 +25,14 @@
 // Exit 0 on ok, 1 on an error, 2 on a usage error (stderr).
 
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const MAX_PAGES = 100; // 100 pages x 100 issues
 const QUERY = 'query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(first:100,after:$after,labels:["trailhead:uat"],states:[OPEN,CLOSED],orderBy:{field:CREATED_AT,direction:ASC}){nodes{number title state body} pageInfo{hasNextPage endCursor}}}}';
 const URL_RE = /https:\/\/github\.com\/([^/\s)]+)\/([^/\s)]+)\/issues\/(\d+)(?![\w])/gi;
 
 function defaultGh(args) {
-  const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('gh', args, { encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 

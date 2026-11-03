@@ -40,6 +40,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 const { guardedWrite, loadGuard, secretProblem } = require('./trailhead-issue-body.js');
 
 const MAX_PAGES = 100; // 100 pages x 100 issues
@@ -52,7 +53,7 @@ const NEEDS_YOU_DESC = 'Needs you: an autonomous run parked it for the human';
 const TITLE_PREFIX = 'Merge the branches left unmerged: ';
 
 function defaultGh(args) {
-  const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('gh', args, { encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 

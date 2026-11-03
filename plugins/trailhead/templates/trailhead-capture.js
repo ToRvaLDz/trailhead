@@ -27,6 +27,7 @@
 // A caller checking only the exit status therefore never mistakes a partial for success.
 
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,7 +39,7 @@ const SEARCH_CAP = 1000;
 const KEY_RE = /^[A-Za-z0-9._:-]{1,100}$/;
 
 function defaultGh(args, input) {
-  const r = spawnSync('gh', args, { input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('gh', args, { input, encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 

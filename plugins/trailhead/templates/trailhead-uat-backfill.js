@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const LABEL = 'trailhead:uat';
 const COLOR = 'BFD4F2';
@@ -27,7 +28,7 @@ const LIMIT = 1000;
 const UAT_LINE_RE = /^UAT of:/m;
 
 function defaultGh(args) {
-  const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('gh', args, { encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 

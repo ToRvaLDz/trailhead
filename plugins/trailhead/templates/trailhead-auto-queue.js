@@ -27,6 +27,7 @@
 // Exit 0 on ok, 1 on an error, 2 on a usage error (stderr).
 
 const { spawnSync } = require('child_process');
+const { gitEnv } = require('./trailhead-git-env.js');
 
 const LIMIT = 1000;
 const FRONTIER_SEARCH = 'no:assignee -label:trailhead:blocked -label:trailhead:unverified -label:trailhead:paused';
@@ -39,7 +40,7 @@ const MAP_LABEL_RE = /^trailhead:map-(\d+)$/;
 const TYPES = ['decision', 'research', 'prototype', 'build', 'bug', 'task'];
 
 function defaultGh(args) {
-  const r = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('gh', args, { encoding: 'utf8', env: gitEnv(), maxBuffer: 64 * 1024 * 1024 });
   return { status: r.status === null ? 1 : r.status, stdout: r.stdout || '', stderr: r.stderr || (r.error ? String(r.error.message) : '') };
 }
 
