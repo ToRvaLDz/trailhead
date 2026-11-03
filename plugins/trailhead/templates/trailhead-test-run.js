@@ -36,13 +36,15 @@
 // Teardown covers the launched process group only; a command that escapes it
 // (setsid, a daemon) is outside the guarantee.
 // Test-only env: TRAILHEAD_TEST_POLL_MS (default 1000), TRAILHEAD_TEST_GRACE_MS
-// (default 5000), TRAILHEAD_TEST_PAUSE_AFTER_HIT_MS, TRAILHEAD_TEST_CRASH_AT=before-go.
+// (default 5000), TRAILHEAD_TEST_PAUSE_AFTER_HIT_MS, TRAILHEAD_TEST_CRASH_AT=before-go,
+// TRAILHEAD_TEST_FAIL_PGID_UPDATE (inject a failure when recording the pgid).
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn, spawnSync } = require('child_process');
+const { performance } = require('perf_hooks');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const STALE_MS = 30 * 1000;
@@ -428,36 +430,59 @@ const describeHolder = (h, nowMs) => {
 };
 
 // One admission attempt. { admitted, holderFile } or { admitted: false, behind }.
-// True while `.gate` still carries our token (a reaper may have displaced it).
-function gateIsMine(g) {
-  const cur = readJson(g.gate);
-  return cur.ok && isObject(cur.value) && cur.value.token === g.token;
+// Total order of holders: (order, token). Holders with no stamp (unparseable
+// ones counted as live) sort first, which is the conservative side.
+const holderBefore = (a, b) => {
+  const oa = Number.isFinite(a.order) ? a.order : -Infinity;
+  const ob = Number.isFinite(b.order) ? b.order : -Infinity;
+  if (oa !== ob) return oa < ob;
+  return String(a.token || '') < String(b.token || '');
+};
+
+// Admission decision over the live holders (ours included): true when no holder
+// ahead of us carries our cache key and our position is below the smallest limit
+// among the holders at or ahead of us (the strictest live policy wins).
+function admittedByRecount(live, mine) {
+  const ahead = live.filter((h) => h.token !== mine.token && holderBefore(h, mine));
+  if (mine.key && ahead.some((h) => h.key === mine.key)) return false;
+  const limit = Math.min(mine.limit, ...ahead.map((h) => h.limit));
+  return ahead.length < limit;
 }
 
-// hooks.afterHolderWrite (test-only) runs between the holder write and the gate re-check.
+// Mutual exclusion does not rest on the gate (a contention optimisation that can
+// fail under crash recovery) but on a recount after the holder is written. Of any
+// two holders, the one that wrote later always sees the earlier one in its recount
+// (the earlier file existed before the later write), and a later write takes a
+// larger (order, token) stamp, so the later one withdraws; if both see each other
+// they agree on the order. Hooks (test-only): forgeGate makes the gate always
+// held, skipPrecheck skips the count under the gate, afterPrecheck runs before the
+// holder write, afterHolderWrite before the recount.
 function tryAdmit(dirs, me, nowMs, hooks = {}) {
   fs.mkdirSync(dirs.queue, { recursive: true });
-  const gate = acquireGate(dirs, nowMs);
+  const gate = hooks.forgeGate ? { held: true, gate: path.join(dirs.queue, '.gate'), token: 'forged' } : acquireGate(dirs, nowMs);
   if (!gate.held) return { admitted: false, behind: `queued behind the queue gate held by pid ${gate.pid === null ? '?' : gate.pid}` };
   try {
     sweepGateLeftovers(dirs);
-    const live = liveHolders(dirs, nowMs);
-    const same = me.key ? live.find((h) => h.key === me.key) : null;
-    const limit = Math.min(me.limit, ...live.map((h) => h.limit));
-    if (same || live.length >= limit) {
-      const blocker = same || live.slice().sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)))[0];
-      return { admitted: false, behind: describeHolder(blocker, nowMs) };
+    const before = liveHolders(dirs, nowMs);
+    if (!hooks.skipPrecheck) {
+      const same = me.key ? before.find((h) => h.key === me.key) : null;
+      const limit = Math.min(me.limit, ...before.map((h) => h.limit));
+      if (same || before.length >= limit) {
+        const blocker = same || before.slice().sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)))[0];
+        return { admitted: false, behind: describeHolder(blocker, nowMs) };
+      }
     }
-    const displaced = { admitted: false, behind: 'queued behind the queue gate (displaced, retrying)' };
-    if (!gateIsMine(gate)) return displaced;
-    const holderFile = path.join(dirs.queue, `holder-${process.pid}-${rand()}.json`);
-    writeAtomic(holderFile, JSON.stringify({ pid: process.pid, pgid: null, limit: me.limit, key: me.key, repo: me.repo, tree: me.tree, command: me.command, startedAt: new Date(nowMs).toISOString() }));
+    if (hooks.afterPrecheck) hooks.afterPrecheck();
+    const token = rand();
+    const order = performance.timeOrigin + performance.now();
+    const holderFile = path.join(dirs.queue, `holder-${process.pid}-${token}.json`);
+    writeAtomic(holderFile, JSON.stringify({ pid: process.pid, pgid: null, limit: me.limit, key: me.key, repo: me.repo, tree: me.tree, command: me.command, startedAt: new Date(nowMs).toISOString(), order, token }));
     if (hooks.afterHolderWrite) hooks.afterHolderWrite();
-    // A reaper race can displace our gate; then another process may have been
-    // admitted on a count that missed us, so withdraw (the gate is not ours to release).
-    if (!gateIsMine(gate)) {
+    const live = liveHolders(dirs, nowMs);
+    if (!admittedByRecount(live, { token, order, key: me.key, limit: me.limit })) {
       rmQuiet(holderFile);
-      return displaced;
+      const ahead = live.filter((h) => h.token !== token && holderBefore(h, { token, order }));
+      return { admitted: false, behind: ahead.length > 0 ? describeHolder(ahead[0], nowMs) : 'queued behind a concurrent admission (retrying)' };
     }
     return { admitted: true, holderFile };
   } finally {
@@ -697,7 +722,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
 
 module.exports = {
   shQuote, substituteFiles, cacheKey, pick, readConfig, niceArgs, priorityPrefix, parseArgs, hasDirtySubmodule,
-  snapshotTree, pidAlive, groupAlive, tryAdmit, liveHolders, gateIsMine, acquireGate, releaseGate, readResult, main,
+  snapshotTree, pidAlive, groupAlive, tryAdmit, liveHolders, acquireGate, releaseGate, readResult, main,
 };
 
 if (require.main === module) {
