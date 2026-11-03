@@ -50,5 +50,24 @@ eq('auto-merge merges into the target repo', [out.status, git(b, 'rev-parse', 'm
 eq('auto-merge leaves the GIT_DIR repo alone', git(a, 'rev-parse', 'HEAD'), aHead);
 assert.notStrictEqual(bMain, bBranch);
 
+// issue-body: the gh spawn (which asks git for the repo) must not see GIT_DIR.
+const bin = path.join(tmp, 'bin');
+fs.mkdirSync(bin);
+fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\nprintf "dir=%s wt=%s idx=%s" "${GIT_DIR-unset}" "${GIT_WORK_TREE-unset}" "${GIT_INDEX_FILE-unset}"\n', { mode: 0o755 });
+const probe = `process.stdout.write(require(${JSON.stringify(path.join(T, 'trailhead-issue-body.js'))}).defaultGh(['x']).stdout)`;
+const ib = spawnSync(process.execPath, ['-e', probe], { encoding: 'utf8', env: { ...hostile, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
+eq('issue-body gh spawn gets no repo-location vars', ib.stdout, 'dir=unset wt=unset idx=unset');
+
+// The other gh-spawning templates share the same one-line scrub.
+for (const f of ['unblock', 'uat-backfill', 'merge-ticket', 'needs-you', 'uat-followup', 'auto-queue', 'capture']) {
+  const src = fs.readFileSync(path.join(T, `trailhead-${f}.js`), 'utf8');
+  eq(`${f} gh spawn is scrubbed`, /spawnSync\('gh', args, \{[^}]*env: gitEnv\(\)/.test(src), true);
+}
+
+// The statusline keeps its own copy of the names: it must equal the template list.
+const sl = fs.readFileSync(path.join(T, 'statusline-trailhead.sh'), 'utf8');
+const unsetLine = sl.match(/^unset ((?:GIT_\w+[ \\\n]+)+)/m)[1].split(/[\s\\]+/).filter(Boolean);
+eq('statusline unset list equals the template list', [...unsetLine].sort(), [...require(path.join(T, 'trailhead-git-env.js')).GIT_LOCATION_VARS].sort());
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`${passed} passed`);
