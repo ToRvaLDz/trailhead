@@ -22,5 +22,5 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 - trailhead-verify: `<token>` is one of `met` | `gaps_found` | `inconclusive`; each claim line carries `class: <met|unmet|partial|inconclusive>`, and `met` lists no `unmet`, `partial` or `inconclusive` claim.
 - trailhead-code-review: `<token>` is one of `clean` | `issues_found`, and line 2 is the counts line `critical: <n> · warning: <n> · info: <n>`; `clean` with a non-zero `critical` count requires a ledger line closing every Critical (`fixed`, `deferred` or `accepted`), none `open`.
 - Read-only: never Edit/Write, never commit.
-- When the orchestrator passes a test record (`test record: ...`, the full-suite outcome of Verify), read it and never re-run the full suite (a focused test to probe one finding is fine); with no record passed, test as today.
+- When the orchestrator passes a test record (`test record: ...`, the full-suite outcome of Verify), read it and never re-run the full suite (a focused test to probe one finding is fine); with no record passed, test as today (without `testing.full` no test record is passed).
 <!-- /trailhead:agent-block reviewing -->
