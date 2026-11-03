@@ -478,7 +478,7 @@ Three layers: **nearest wins**, key by key (a key unset at one layer inherits th
 - **Global**: `trailhead/config.json` in your host's config directory: `$CLAUDE_CONFIG_DIR` (default `~/.claude`) on Claude Code, `$CODEX_HOME` (default `~/.codex`) on Codex. Your standing defaults across every project.
 - **Defaults**: the built-in values.
 
-`/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (⚙️ way of working (git · release · isolation) · 🌐 ticket language · 🧠 models (a High / Balanced / Low profile, or Manual) · 🎨 design + approval · 🧪 TDD · ⚖️ effort · 🖥️ acceptance testing (browser, UAT setup, a test account) · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
+`/trailhead:config` runs a **guided, menu-driven setup**: pick the scope, then walk each setting (⚙️ way of working (git · release · isolation) · 🌐 ticket language · 🧠 models (a High / Balanced / Low profile, or Manual) · 🎨 design + approval · 🧪 TDD (and test suite) · ⚖️ effort · 🖥️ acceptance testing (browser, UAT setup, a test account) · 🧑‍⚖️ plan review · 📊 statusline) as an icon-labelled menu; no hand-editing JSON. Every step is asked (none skipped), and **plan and execute models are always two separate, version-pinned choices**. `config get` prints the effective merged config; `config set <key> <value>` writes one key.
 
 `/trailhead:prune [map]` reclaims a map's sub-issue slots under GitHub's 100-cap (drops closed/orphan edges, keeps every reference). Offered automatically when a map is near or at the cap, and runnable on demand.
 
@@ -501,6 +501,9 @@ The **📊 statusline** step offers to install trailhead's Claude Code status ba
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify (after asking who drives, AI or human, or skip); `off` still runs AI-driven checks via commands, and walks you through a conversational UAT for anything only you can do (step by step in chat, not a checklist to self-serve) |
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
+| `testing.full` | shell command (**unset**) | the full test suite; when set, the engine runs it through the [test queue and cache](#test-runs) |
+| `testing.targeted` | shell command with `{files}` (**unset**) | a focused run; `{files}` becomes the single-quoted files |
+| `testing.maxParallel` | positive integer (**`1`**) | how many heavy test runs may run at once across the whole machine |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
@@ -528,7 +531,10 @@ Example config file (the same shape works for the project `.trailhead/config.jso
 
 **Design mockups and acceptance testing.** How the `design.*` keys play out (canvas, design system, approval, moving from claude.ai/design) is in [Mockups before code](#-mockups-before-code); how `acceptance.browser` and `testing.*` drive Verify is in [Acceptance testing](#-acceptance-testing-uat).
 
-**Nested or flat.** The list keys above (`isolation.copy`, `preflight.checks`, `uat.setup`, `uat.accounts`) can be written nested (`{"uat": {"setup": [...]}}`) or flat (`"uat.setup": [...]`); if a file has both, the nested form wins with a warning, and a project value replaces the global one as a whole (lists are not merged). `git`, `release` and the isolation *mode* stay in the conventions header; only `isolation.copy` lives in `config.json`.
+<a id="test-runs"></a>
+**Test runs.** With `testing.full` set, the engine runs the suite through `trailhead-test-run.js`. **Queue**: at most `testing.maxParallel` heavy runs at once across every session and worktree on the machine (the strictest limit among live runs wins); a waiting run says what it is queued behind. **Cache**: a green result is stored under tree SHA + command + git common dir, so identical code is never tested twice (an uncommitted edit gets its own key; a submodule with uncommitted content disables caching for that run; gitignored files, env and toolchain are not in the key, `--no-cache` forces a run). **Priority**: `nice -n 10` and `ionice -c 3` when present. State lives in `$TRAILHEAD_CACHE_DIR`, else `${XDG_CACHE_HOME:-~/.cache}/trailhead`. The launched process group is torn down when the command ends; a command that escapes it (`setsid`, a daemon) is outside that guarantee.
+
+**Nested or flat.** The list keys above (`isolation.copy`, `preflight.checks`, `uat.setup`, `uat.accounts`) and the `testing.full` / `testing.targeted` / `testing.maxParallel` keys can be written nested (`{"uat": {"setup": [...]}}`) or flat (`"uat.setup": [...]`); if a file has both, the nested form wins with a warning, and a project value replaces the global one as a whole (lists are not merged). `git`, `release` and the isolation *mode* stay in the conventions header; only `isolation.copy` lives in `config.json`.
 
 ---
 

@@ -35,6 +35,9 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 | `tdd` | **`seams`** \| `on` \| `off` | how the `build` engine tests |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | drive the browser in Verify (after asking who drives, AI or human, or skip); `off` still runs AI-driven checks via commands, and walks you through a conversational UAT for anything only you can do (step by step in chat, not a checklist to self-serve) |
 | `testing.webapp` / `testing.url` | bool / URL | is it browser-drivable, and where |
+| `testing.full` | shell command (**unset**) | the full test suite; when set, the engine runs it through the test queue and cache (see **Test runs** below) |
+| `testing.targeted` | shell command with `{files}` (**unset**) | a focused run; `{files}` becomes the single-quoted files |
+| `testing.maxParallel` | positive integer (**`1`**) | how many heavy test runs may run at once across the whole machine |
 | `plan_review` | **`off`** \| `on` \| CLI list | send `build` PLANs to external AI CLIs (Gemini, Codex, …) for a second opinion and converge on their concerns |
 | `plan_review.rounds` | integer (**`2`**) | max converge-and-re-review rounds |
 | `code_review.rounds` | integer (**`2`**) | max fix-and-re-review rounds in Code review before its boundary HITL checkpoint |
@@ -44,7 +47,9 @@ The statusline step offers to install trailhead's Claude Code status bar: one li
 | `uat.setup` | array of `{name, run, check?, note?}` (**unset**) | ordered setup run at every UAT start, after the stale-base preflight and before the who-drives ask. A passing `check` skips the step; after `run`, `check` is polled until it passes; `note` is a rule the agent honours (for example "ask before using the Pixel"). `[]` means no setup needed |
 | `uat.accounts` | object role to `{user, secret}` (**unset**) | named test accounts for UAT. `secret` must be a `$ENV` reference (a literal is rejected); machine-specific values (device id, local URL, a personal user) should be `$ENV` references too, so the committed config stays generic |
 
-`isolation.copy`, `preflight.checks` and the `uat.*` keys can be written nested (`{"uat": {"setup": [...]}}`) or flat (`"uat.setup": [...]`); if one file carries both, the nested form wins and a warning says so.
+**Test runs.** With `testing.full` set, the engine runs the suite through `trailhead-test-run.js`. **Queue**: at most `testing.maxParallel` heavy runs at once across every session and worktree on the machine (the strictest limit among live runs wins); a waiting run says what it is queued behind. **Cache**: a green result is stored under tree SHA + command + git common dir, so identical code is never tested twice (an uncommitted edit gets its own key; a submodule with uncommitted content disables caching for that run; gitignored files, env and toolchain are not in the key, `--no-cache` forces a run). **Priority**: `nice -n 10` and `ionice -c 3` when present. State lives in `$TRAILHEAD_CACHE_DIR`, else `${XDG_CACHE_HOME:-~/.cache}/trailhead`. The launched process group is torn down when the command ends; a command that escapes it (`setsid`, a daemon) is outside that guarantee.
+
+`isolation.copy`, `preflight.checks`, the `uat.*` keys and `testing.full` / `testing.targeted` / `testing.maxParallel` can be written nested (`{"uat": {"setup": [...]}}`) or flat (`"uat.setup": [...]`); if one file carries both, the nested form wins and a warning says so.
 
 `git`, `release`, and `isolation` aren't config.json keys: they're conventions-header keys stored in the repo's `trailhead:conventions` issue, reachable from the guided setup's way-of-working step (see [Core concepts](/docs/concepts) for the full header).
 

@@ -478,7 +478,7 @@ Tre layer: **il più vicino vince**, chiave per chiave (una chiave non impostata
 - **Global**: `trailhead/config.json` nella directory di config dell'host: `$CLAUDE_CONFIG_DIR` (default `~/.claude`) su Claude Code, `$CODEX_HOME` (default `~/.codex`) su Codex. I tuoi default permanenti su ogni progetto.
 - **Defaults**: i valori integrati.
 
-`/trailhead:config` esegue un **setup guidato, a menu**: scegli lo scope, poi percorri ogni impostazione (⚙️ modo di lavorare (git · release · isolation) · 🌐 ticket language · 🧠 models (un profilo High / Balanced / Low, o Manual) · 🎨 design + approval · 🧪 TDD · ⚖️ effort · 🖥️ acceptance testing (browser, setup UAT, un account di test) · 🧑‍⚖️ plan review · 📊 statusline) come un menu con icone; niente editing manuale del JSON. Ogni passo è chiesto (nessuno saltato), e i **modelli plan ed execute sono sempre due scelte separate e version-pinned**. `config get` stampa la config effettiva unita; `config set <key> <value>` scrive una chiave.
+`/trailhead:config` esegue un **setup guidato, a menu**: scegli lo scope, poi percorri ogni impostazione (⚙️ modo di lavorare (git · release · isolation) · 🌐 ticket language · 🧠 models (un profilo High / Balanced / Low, o Manual) · 🎨 design + approval · 🧪 TDD (e suite di test) · ⚖️ effort · 🖥️ acceptance testing (browser, setup UAT, un account di test) · 🧑‍⚖️ plan review · 📊 statusline) come un menu con icone; niente editing manuale del JSON. Ogni passo è chiesto (nessuno saltato), e i **modelli plan ed execute sono sempre due scelte separate e version-pinned**. `config get` stampa la config effettiva unita; `config set <key> <value>` scrive una chiave.
 
 `/trailhead:prune [map]` recupera gli slot di sub-issue di una mappa sotto il cap di 100 di GitHub (elimina gli edge chiusi/orfani, mantiene ogni riferimento). Offerto automaticamente quando una mappa è vicina o al cap, ed eseguibile anche su richiesta.
 
@@ -501,6 +501,9 @@ Il passo **📊 statusline** offre di installare la status bar di trailhead per 
 | `tdd` | **`seams`** \| `on` \| `off` | come il motore `build` testa |
 | `acceptance.browser` | **`auto`** \| `on` \| `off` | guida il browser in Verify (dopo aver chiesto chi guida, AI o umano, o skip); `off` esegue comunque controlli AI-driven via comandi, e ti accompagna in una UAT conversazionale per ciò che solo tu puoi fare (passo-passo in chat, non una checklist da fare da solo) |
 | `testing.webapp` / `testing.url` | bool / URL | è browser-drivabile, e dove |
+| `testing.full` | comando shell (**non impostato**) | la suite completa; se impostato, il motore la esegue tramite la [coda e cache dei test](#esecuzioni-dei-test) |
+| `testing.targeted` | comando shell con `{files}` (**non impostato**) | un'esecuzione mirata; `{files}` diventa l'elenco dei file tra apici singoli |
+| `testing.maxParallel` | intero positivo (**`1`**) | quante esecuzioni pesanti di test possono girare insieme su tutta la macchina |
 | `plan_review` | **`off`** \| `on` \| CLI list | invia i PLAN di `build` ad AI CLI esterne (Gemini, Codex, …) per un secondo parere e converge sulle loro obiezioni |
 | `plan_review.rounds` | integer (**`2`**) | numero massimo di round converge-and-re-review |
 | `code_review.rounds` | integer (**`2`**) | numero massimo di round fix-and-re-review in Code review prima del checkpoint HITL di confine |
@@ -528,7 +531,10 @@ Esempio di file di config (la stessa forma funziona per il `.trailhead/config.js
 
 **Mockup di design e acceptance testing.** Come si comportano le chiavi `design.*` (canvas, design system, approvazione, passaggio da claude.ai/design) è in [Mockup prima del codice](#-mockup-prima-del-codice); come `acceptance.browser` e `testing.*` guidano la Verify è in [Acceptance testing](#-acceptance-testing-uat).
 
-**Annidata o piatta.** Le chiavi a lista qui sopra (`isolation.copy`, `preflight.checks`, `uat.setup`, `uat.accounts`) si possono scrivere annidate (`{"uat": {"setup": [...]}}`) o piatte (`"uat.setup": [...]`); se un file ha entrambe vince la forma annidata con un avviso, e un valore di progetto sostituisce quello globale per intero (le liste non si uniscono). `git`, `release` e la *modalità* isolation restano nell'header delle conventions; solo `isolation.copy` sta in `config.json`.
+<a id="esecuzioni-dei-test"></a>
+**Esecuzioni dei test.** Con `testing.full` impostato, il motore esegue la suite tramite `trailhead-test-run.js`. **Coda**: al massimo `testing.maxParallel` esecuzioni pesanti alla volta su tutte le sessioni e i worktree della macchina (vince il limite più severo tra quelle attive); chi aspetta dice dietro a cosa è in coda. **Cache**: un risultato verde è salvato sotto tree SHA + comando + git common dir, quindi lo stesso codice non viene mai testato due volte (una modifica non committata ha la sua chiave; un submodule con contenuto non committato disattiva la cache per quell'esecuzione; file ignorati da git, env e toolchain non sono nella chiave, `--no-cache` forza l'esecuzione). **Priorità**: `nice -n 10` e `ionice -c 3` se presenti. Lo stato sta in `$TRAILHEAD_CACHE_DIR`, altrimenti `${XDG_CACHE_HOME:-~/.cache}/trailhead`. Il gruppo di processi lanciato viene chiuso a fine comando; un comando che ne esce (`setsid`, un daemon) è fuori da questa garanzia.
+
+**Annidata o piatta.** Le chiavi a lista qui sopra (`isolation.copy`, `preflight.checks`, `uat.setup`, `uat.accounts`) e le chiavi `testing.full` / `testing.targeted` / `testing.maxParallel` si possono scrivere annidate (`{"uat": {"setup": [...]}}`) o piatte (`"uat.setup": [...]`); se un file ha entrambe vince la forma annidata con un avviso, e un valore di progetto sostituisce quello globale per intero (le liste non si uniscono). `git`, `release` e la *modalità* isolation restano nell'header delle conventions; solo `isolation.copy` sta in `config.json`.
 
 ---
 
