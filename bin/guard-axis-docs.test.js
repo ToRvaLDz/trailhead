@@ -34,7 +34,7 @@ for (const sub of ['a guard on an impossible state', 'defence already enforced e
 ok('axis extends the speculative generality smell', axis.includes('extends the speculative generality smell'));
 
 ok('axis: the guard code is reachable, the state it guards must be shown impossible',
-  axis.includes("the guard's own code must be reachable (live), while the state it guards against must be shown impossible"));
+  axis.includes("The guard's own code must be reachable (live), while the state it guards against must be shown impossible"));
 ok('classify: this axis is the exception, what is verified is the impossibility',
   classify.includes('except for Impossible-state guards, where what you verify is that the state cannot occur, not a reachable failing path'));
 
@@ -61,7 +61,7 @@ ok('ticket-engines.md: both Verify lines reference techniques/code-review.md', v
 ok('agent: names the injected single source', agent.includes('injected at spawn from the trailhead skill\'s single source (`_shared/techniques/code-review.md`)'));
 
 for (const [name, text] of Object.entries({ 'code-review.md': review, 'techniques.md': techniques, 'guard-axis-docs.test.js': read(__dirname, 'guard-axis-docs.test.js') })) {
-  ok(`${name} has no em-dash`, !text.includes('—'));
+  ok(`${name} has no em-dash`, !text.includes(String.fromCharCode(0x2014)));
 }
 
 console.log(`guard-axis-docs.test.js: ${passed} checks passed`);
