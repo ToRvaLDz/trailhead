@@ -167,6 +167,18 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
   ok('prefix with both on PATH', lib.niceArgs(bin).join(' ') === 'nice -n 10 ionice -c 3');
   ok('prefix with none on PATH', lib.niceArgs(empty).length === 0);
 
+  // W2: each present binary is probed; a failing ionice is dropped with a warning.
+  const failBin = mktmp();
+  fs.writeFileSync(path.join(failBin, 'nice'), '#!/bin/sh\nexit 0\n');
+  fs.writeFileSync(path.join(failBin, 'ionice'), '#!/bin/sh\nexit 1\n');
+  for (const b of ['nice', 'ionice']) fs.chmodSync(path.join(failBin, b), 0o755);
+  const prio = lib.priorityPrefix(failBin);
+  ok('probe keeps nice, drops a failing ionice', prio.args.join(' ') === 'nice -n 10');
+  ok('probe warns priority-unavailable', prio.warnings.length === 1 && /^priority-unavailable: ionice/.test(prio.warnings[0]));
+  const bothOk = lib.priorityPrefix(bin);
+  ok('probe keeps both when they work', bothOk.args.join(" ") === "nice -n 10 ionice -c 3" && bothOk.warnings.length === 0);
+  ok('probe with none on PATH', lib.priorityPrefix(empty).args.length === 0 && lib.priorityPrefix(empty).warnings.length === 0);
+
   ok('args: defaults', lib.parseArgs(['run', '--repo', '/r']).kind === 'full');
   ok('args: targeted needs files', /--files/.test(lib.parseArgs(['run', '--repo', '/r', '--kind', 'targeted']).error));
   ok('args: unknown flag', /unknown/.test(lib.parseArgs(['run', '--repo', '/r', '--zzz']).error));
@@ -195,12 +207,47 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
   git(repo, 'commit', '-qm', 'second');
   ok('committing the same files lands on the same tree',
     lib.snapshotTree(repo, process.env).tree === git(repo, 'rev-parse', 'HEAD^{tree}'));
+  // I1: the dirty snapshot works from the real index, in a linked worktree too.
+  const wtDir = path.join(mktmp(), 'wt');
+  git(repo, 'worktree', 'add', '-q', '-b', 'snapwt', wtDir);
+  const wtClean = lib.snapshotTree(wtDir, process.env).tree;
+  fs.writeFileSync(path.join(wtDir, 'a.txt'), 'worktree edit\n');
+  const wtDirty = lib.snapshotTree(wtDir, process.env);
+  ok('dirty snapshot in a linked worktree', wtDirty.tree && wtDirty.tree !== wtClean);
+  git(wtDir, 'add', 'a.txt');
+  ok('staged and unstaged edits give the same tree', lib.snapshotTree(wtDir, process.env).tree === wtDirty.tree);
+  fs.rmSync(path.join(wtDir, 'a.txt'));
+  ok('a deleted tracked file changes the tree', lib.snapshotTree(wtDir, process.env).tree !== wtDirty.tree);
   const plain = mktmp();
   ok('not a git repo -> tree null', lib.snapshotTree(plain, process.env).tree === null);
   ok('index of the repo untouched by snapshot', git(repo, 'status', '--porcelain') === '');
 }
 
 (async () => {
+  // --- W1: a live gate swapped in after the dead-gate read is never displaced -----------------------
+  {
+    const q = mktmp();
+    const dirs = { queue: q };
+    const gate = path.join(q, '.gate');
+    fs.writeFileSync(gate, JSON.stringify({ pid: deadPid(), token: 'dead' }));
+    const liveText = JSON.stringify({ pid: process.pid, token: 'live' });
+    const r = lib.acquireGate(dirs, Date.now(), {
+      afterRead: () => {
+        // Another reaper reaped the dead gate and linked its own live one.
+        fs.unlinkSync(gate);
+        fs.writeFileSync(gate, liveText);
+      },
+    });
+    ok('(W1) the racing reaper does not get the gate', r.held === false && r.pid === process.pid);
+    ok('(W1) the live gate is still in place, unchanged', fs.readFileSync(gate, 'utf8') === liveText);
+    ok('(W1) no stale copy left behind', fs.readdirSync(q).every((n) => !n.startsWith('.gate.stale-')));
+    fs.unlinkSync(gate);
+    fs.writeFileSync(gate, JSON.stringify({ pid: deadPid(), token: 'dead2' }));
+    const r2 = lib.acquireGate(dirs, Date.now());
+    ok('(W1) an undisturbed dead gate is still reaped and taken', r2.held === true);
+    lib.releaseGate(r2);
+  }
+
   // --- (a) serialisation: maxParallel 1, two different commands ---------------------------------
   {
     const repo = mkrepo();
@@ -586,6 +633,22 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
     ok('(j) exit 143 and one interrupted line', r.code === 143 && r.json && r.json.status === 'interrupted' && r.json.signal === 'SIGTERM');
     ok('(j) the TERM-ignoring descendant was killed', await until(() => !lib.pidAlive(pid), 3000));
     ok('(j) the holder is gone and nothing cached', holdersOf(cache).length === 0 && resultsOf(cache).length === 0);
+  }
+
+  // --- I2: SIGHUP gets the same teardown, exit 129 ---------------------------------------------------
+  {
+    const repo = mkrepo();
+    const cache = mktmp();
+    const pidFile = path.join(mktmp(), 'pid');
+    const cfg = mkcfg({ full: `echo $$ > ${pidFile}; sleep 60` });
+    const h = start(['--repo', repo, '--config-root', cfg], baseEnv(cache));
+    ok('(I2) the command is running', await until(() => fs.existsSync(pidFile) && holdersOf(cache).length === 1));
+    await sleep(100);
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    h.child.kill('SIGHUP');
+    const r = await h.done;
+    ok('(I2) exit 129 and interrupted', r.code === 129 && r.json && r.json.status === 'interrupted' && r.json.signal === 'SIGHUP');
+    ok('(I2) the command was torn down, holder gone', await until(() => !lib.pidAlive(pid), 3000) && holdersOf(cache).length === 0);
   }
 
   // cleanup

@@ -32,7 +32,7 @@
 //   {"status":"passed|failed|interrupted|unconfigured|invalid|error","exitCode","tree",
 //    "command","source":"cache|run","cached","log","waitedMs","queuedBehind"?,"warnings"?,"message"?}
 // Exit: 0 passed / cached / unconfigured, 1 failed, 2 usage error or invalid config,
-// 3 internal error, 130/143 interrupted by SIGINT/SIGTERM.
+// 3 internal error, 130/143/129 interrupted by SIGINT/SIGTERM/SIGHUP.
 // Teardown covers the launched process group only; a command that escapes it
 // (setsid, a daemon) is outside the guarantee.
 // Test-only env: TRAILHEAD_TEST_POLL_MS (default 1000), TRAILHEAD_TEST_GRACE_MS
@@ -42,7 +42,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execFileSync, spawn } = require('child_process');
+const { execFileSync, spawn, spawnSync } = require('child_process');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const STALE_MS = 30 * 1000;
@@ -147,6 +147,22 @@ function niceArgs(pathEnv, fs_ = fs) {
   if (onPath('nice')) out.push('nice', '-n', '10');
   if (onPath('ionice')) out.push('ionice', '-c', '3');
   return out;
+}
+
+// Like niceArgs, but each present binary is probed once (`<bin> <args> true`) and
+// only the ones that work are used (ionice can be denied by ioprio_set).
+// Returns { args, warnings }.
+function priorityPrefix(pathEnv, fs_ = fs) {
+  const args = [];
+  const warnings = [];
+  const parts = [['nice', ['-n', '10']], ['ionice', ['-c', '3']]];
+  for (const [bin, binArgs] of parts) {
+    if (niceArgs(pathEnv, fs_).indexOf(bin) < 0) continue;
+    const r = spawnSync(bin, [...binArgs, 'true'], { env: { ...process.env, PATH: pathEnv }, stdio: 'ignore' });
+    if (r.status === 0) args.push(bin, ...binArgs);
+    else warnings.push(`priority-unavailable: ${bin} is on the PATH but failed its probe, so the suite runs without it`);
+  }
+  return { args, warnings };
 }
 
 function parseArgs(argv) {
@@ -285,8 +301,21 @@ function snapshotTree(repo, env) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-test-run-idx-'));
   try {
     const extra = { GIT_INDEX_FILE: path.join(dir, 'index') };
-    git(repo, ['read-tree', 'HEAD'], env, extra);
-    git(repo, ['add', '-A'], env, extra);
+    // Seed the temp index from the real one so stat data is reused and
+    // `git add -A` does not rehash every file; read-tree HEAD is the fallback.
+    let seeded = false;
+    try {
+      const real = path.resolve(repo, git(repo, ['rev-parse', '--git-path', 'index'], env).trim());
+      fs.copyFileSync(real, extra.GIT_INDEX_FILE);
+      git(repo, ['add', '-A'], env, extra);
+      seeded = true;
+    } catch {
+      rmQuiet(extra.GIT_INDEX_FILE);
+    }
+    if (!seeded) {
+      git(repo, ['read-tree', 'HEAD'], env, extra);
+      git(repo, ['add', '-A'], env, extra);
+    }
     return { tree: git(repo, ['write-tree'], env, extra).trim(), commonDir: common, dirtySubmodule };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -311,7 +340,8 @@ function readResult(dirs, key) {
 const HOLDER_RE = /^holder-.*\.json$/;
 
 // Gate: born complete via link(), so it is never empty or partial.
-function acquireGate(dirs, nowMs) {
+// hooks.afterRead (test-only) runs between reading a dead gate and renaming it.
+function acquireGate(dirs, nowMs, hooks = {}) {
   const gate = path.join(dirs.queue, '.gate');
   const token = rand();
   const tmp = path.join(dirs.queue, `.gate.tmp-${process.pid}-${token}`);
@@ -326,11 +356,27 @@ function acquireGate(dirs, nowMs) {
       }
       const cur = readJson(gate);
       if (cur.missing) continue;
-      const owner = cur.ok && isObject(cur.value) ? cur.value.pid : null;
+      const seen = cur.ok && isObject(cur.value) ? cur.value : null;
+      const owner = seen ? seen.pid : null;
       const dead = owner === null ? ageMs(gate, nowMs) > STALE_MS : !pidAlive(owner);
       if (!dead) return { held: false, pid: owner };
-      // Reap a dead gate by renaming it away (atomic), then try again.
-      try { fs.renameSync(gate, `${gate}.stale-${process.pid}-${rand()}`); } catch { /* raced */ }
+      if (hooks.afterRead) hooks.afterRead();
+      // Reap a dead gate by renaming it away (atomic), then confirm what was
+      // renamed is the dead gate that was read: another reaper may have swapped
+      // in a live gate between the read and the rename.
+      const stale = `${gate}.stale-${process.pid}-${rand()}`;
+      try { fs.renameSync(gate, stale); } catch { continue; /* raced */ }
+      const moved = readJson(stale);
+      const same = seen
+        ? moved.ok && isObject(moved.value) && moved.value.pid === seen.pid && moved.value.token === seen.token
+        : !moved.ok;
+      if (same) { rmQuiet(stale); continue; }
+      // A live gate was displaced: put it back. EEXIST means someone else holds
+      // the gate now; either way this attempt did not get it.
+      const liveOwner = moved.ok && isObject(moved.value) ? moved.value.pid : null;
+      try { fs.linkSync(stale, gate); } catch { /* someone else holds it */ }
+      rmQuiet(stale);
+      return { held: false, pid: liveOwner };
     }
     return { held: false, pid: null };
   } finally {
@@ -416,8 +462,7 @@ const launcherScript = (prefix) =>
 
 // Spawns the handshake launcher detached in its own process group. Returns
 // { child, pgid, exited } where exited resolves { code, signal } when it ends.
-function launch(command, repo, logFd, env) {
-  const prefix = niceArgs(env.PATH);
+function launch(command, repo, logFd, env, prefix) {
   const child = spawn('sh', ['-c', launcherScript(prefix)], {
     cwd: repo,
     detached: true,
@@ -468,7 +513,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
   const pollMs = Number(env_.TRAILHEAD_TEST_POLL_MS) || DEFAULT_POLL_MS;
   const handlers = {};
   if (signals) {
-    for (const sig of ['SIGINT', 'SIGTERM']) {
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       handlers[sig] = () => {
         signalled = signalled || sig;
         if (activeGroup !== null && !teardown) teardown = teardownGroup(activeGroup, graceMs);
@@ -534,7 +579,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
     };
     const interrupted = (s) => {
       emit({ status: 'interrupted', signal: signalled, tree: s ? s.tree : null, command, log: base.log, waitedMs: nowMs() - started });
-      return signalled === 'SIGINT' ? 130 : 143;
+      return signalled === 'SIGINT' ? 130 : signalled === 'SIGHUP' ? 129 : 143;
     };
     const release = () => { if (holderFile) { rmQuiet(holderFile); holderFile = null; } };
 
@@ -570,7 +615,9 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
     fs.mkdirSync(dirs.logs, { recursive: true });
     base.log = path.join(dirs.logs, `${(s.tree || 'notree').slice(0, 12)}-${Math.floor(nowMs() / 1000)}-${process.pid}.log`);
     logFd = fs.openSync(base.log, 'a');
-    const run = launch(command, repo, logFd, env_);
+    const prio = priorityPrefix(env_.PATH);
+    warnings.push(...prio.warnings);
+    const run = launch(command, repo, logFd, env_, prio.args);
     activeGroup = run.pgid;
     if (signalled) teardown = teardown || teardownGroup(run.pgid, graceMs);
     updateHolder(holderFile, { pgid: run.pgid });
@@ -623,7 +670,7 @@ async function main(argv, { cwd, env, stdout, stderr, now, signals = true } = {}
 }
 
 module.exports = {
-  shQuote, substituteFiles, cacheKey, pick, readConfig, niceArgs, parseArgs, hasDirtySubmodule,
+  shQuote, substituteFiles, cacheKey, pick, readConfig, niceArgs, priorityPrefix, parseArgs, hasDirtySubmodule,
   snapshotTree, pidAlive, groupAlive, tryAdmit, liveHolders, acquireGate, releaseGate, readResult, main,
 };
 
