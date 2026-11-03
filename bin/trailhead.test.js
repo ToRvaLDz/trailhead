@@ -920,7 +920,7 @@ ok('codex: hooks.json exists', fs.existsSync(codexHooksJsonPath));
 const codexHooksJson = JSON.parse(fs.readFileSync(codexHooksJsonPath, 'utf8'));
 const codexHooksJsonStr = JSON.stringify(codexHooksJson);
 ok('codex: hooks.json registers the merged Bash guards under PreToolUse', (codexHooksJson.hooks.PreToolUse || []).some((g) => g.matcher === 'Bash' &&
-  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body,labels'))));
+  (g.hooks || []).some((h) => h.command.includes('trailhead-bash-guards.js') && h.command.endsWith(' --guards=commit,secret,install,body,labels,test'))));
 ok('codex: hooks.json registers none of the per-guard scripts on their own', !/trailhead-(commit|secret|install|search|body|labels)-guard\.js/.test(codexHooksJsonStr));
 ok('codex: the six guard modules the merged hook requires are still shipped (no search)',
   ['commit', 'secret', 'install', 'body', 'labels'].every((n) => fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', `trailhead-${n}-guard.js`))) &&
@@ -1335,7 +1335,7 @@ ok('claude: exactly one PreToolUse/Bash trailhead-bash-guards registration', (()
   const s = JSON.parse(settingsContent);
   return (s.hooks.PreToolUse || []).flatMap((g) => g.hooks || []).filter((h) => h.command.includes('trailhead-bash-guards.js')).length === 1;
 })());
-ok('claude: hooks/trailhead-bash-guards.js and its six modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard', 'labels-guard']
+ok('claude: hooks/trailhead-bash-guards.js and its seven modules exist', ['bash-guards', 'commit-guard', 'secret-guard', 'install-guard', 'search-guard', 'body-guard', 'labels-guard', 'test-guard']
   .every((n) => fs.existsSync(path.join(claudeDir, 'hooks', `trailhead-${n}.js`))));
 // mockup-link-guard: Claude-only PreToolUse(AskUserQuestion) backstop for the
 // Prototype "link in the same message as the approval ask" rule.
@@ -1732,7 +1732,7 @@ const bashGuardCommands = (registry) => (registry.hooks.PreToolUse || [])
   ok('(#207) codex migration: exit 0', out.status === 0);
   const cmds = bashGuardCommands(JSON.parse(fs.readFileSync(hooksJsonFile, 'utf8')));
   ok('(#207) codex migration: only the merged entry remains', cmds.length === 1 &&
-    cmds[0].endsWith(' --guards=commit,secret,install,body,labels'));
+    cmds[0].endsWith(' --guards=commit,secret,install,body,labels,test'));
   const once = fs.readFileSync(hooksJsonFile, 'utf8');
   runInstaller([`--codex`, `--dir=${mDir}`]);
   ok('(#207) codex install twice leaves the same hooks.json', fs.readFileSync(hooksJsonFile, 'utf8') === once);

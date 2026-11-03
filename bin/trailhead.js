@@ -248,7 +248,7 @@ function claudePaths(configDir) {
 // The six Bash guard modules. They are shipped, but only require()d by the
 // merged trailhead-bash-guards.js (one process per Bash call), never registered
 // on their own. Legacy installs registered each one; the installers strip those.
-const BASH_GUARD_MODULES = ['trailhead-commit-guard.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-body-guard.js', 'trailhead-labels-guard.js'];
+const BASH_GUARD_MODULES = ['trailhead-commit-guard.js', 'trailhead-secret-guard.js', 'trailhead-install-guard.js', 'trailhead-search-guard.js', 'trailhead-body-guard.js', 'trailhead-labels-guard.js', 'trailhead-test-guard.js'];
 // Every hook script copied into the hooks dir (shipped runtime files).
 const HOOK_FILES = [...BASH_GUARD_MODULES, 'trailhead-bash-guards.js', 'trailhead-issue-injection-scanner.js', 'trailhead-secret-read-guard.js', 'trailhead-mockup-link-guard.js', 'trailhead-mockup-link-stop.js', 'trailhead-check-update.js'];
 // The registered entrypoints: the shipped files that must appear in
