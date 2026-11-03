@@ -50,6 +50,8 @@ ok('classify: severity cap', classify.includes('Impossible-state guards findings
 
 ok('axis: explicit non-findings',
   axis.includes('Not findings: trust boundaries (user input, network, files, env), deliberate defence-in-depth, test and DI seams, and dead code (a separate smell, not this axis)'));
+ok('axis: exclusions win over the evidence',
+  axis.includes('The exclusions win over the evidence: no evidence, upstream validation included, turns a check at a trust boundary into a finding.'));
 
 ok('reuse smell list points to the new axis', /speculative generality \(delete; see \*\*Impossible-state guards\*\*\)/.test(reuse));
 
