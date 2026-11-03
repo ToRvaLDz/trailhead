@@ -59,7 +59,7 @@ for (const [i, line] of verifyLines.entries()) {
 
 // Scoping: the record and single-run rules apply only with testing.full.
 ok('executor-brief.md: scoping names testing.full', /testing\.full[^\n]*focused/.test(brief));
-ok('ticket-engines.md: unconfigured runs once, no record, reviewers get none', verifyLines.every((l) => l.includes('When the helper answers `unconfigured`, `unconfigured` falls back to the project\'s own command, run once on the synced tree: no test record is built and the reviewing agents get none, so they test as today.')));
+ok('ticket-engines.md: unconfigured runs once, no record, reviewers get none', verifyLines.every((l) => l.includes('The helper\'s `unconfigured` falls back to the project\'s own command, run once on the synced tree; no test record is built and the reviewing agents get none, so they test as today (Execute and Fix focused runs still use `--kind targeted --files <a,b>`)')));
 ok('ticket-engines.md: no garbled as-before sentence', verifyLines.every((l) => !l.includes('behave as before')));
 ok('ticket-engines.md: Execute/Fix focused clause kept', verifyLines.every((l) => l.includes('--kind targeted --files <a,b>')));
 ok('configuration-reference.md: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration-reference.md']));
