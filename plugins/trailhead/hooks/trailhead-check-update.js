@@ -11,6 +11,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+// Un GIT_DIR ereditato batterebbe -C: le chiamate git non lo seguono (#349).
+const { gitEnv } = require('./lib/trailhead-git-env.js');
 
 const REPO = 'ToRvaLDz/trailhead';
 const NPM_PKG = '@marcomigozzi/trailhead';
@@ -33,7 +35,7 @@ function readJSON(p) {
 }
 function run(cmd, args) {
   try {
-    return execFileSync(cmd, args, { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync(cmd, args, { encoding: 'utf8', env: gitEnv(), timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch { return ''; }
 }
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;

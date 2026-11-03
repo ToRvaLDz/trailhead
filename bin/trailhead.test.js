@@ -974,6 +974,8 @@ ok('codex: skills/trailhead/hooks/lib/mockup-link.js exists (mockup-link-stop re
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'mockup-link.js')));
 ok('codex: skills/trailhead/hooks/lib/gh-auth-preflight.js exists (check-update require target)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'gh-auth-preflight.js')));
+ok('codex: skills/trailhead/hooks/lib/trailhead-git-env.js exists (check-update require target)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'trailhead-git-env.js')));
 ok('codex: skills/trailhead/hooks/trailhead-mockup-link-guard.js does NOT exist',
   !fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'trailhead-mockup-link-guard.js')));
 ok('codex: skills/trailhead/hooks/lib/shell-scan.js still exists (secret-read-guard require target)',
@@ -1342,6 +1344,7 @@ ok('claude: hooks/trailhead-bash-guards.js and its seven modules exist', ['bash-
 ok('claude: hooks/trailhead-mockup-link-guard.js exists', fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-guard.js')));
 ok('claude: hooks/lib/mockup-link.js exists (mockup-link-guard require target)', fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'mockup-link.js')));
 ok('claude: hooks/lib/gh-auth-preflight.js exists (check-update require target)', fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'gh-auth-preflight.js')));
+ok('claude: hooks/lib/trailhead-git-env.js exists (check-update require target)', fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'trailhead-git-env.js')));
 ok('claude: hooks/trailhead-mockup-link-stop.js does NOT exist (Codex-only twin)', !fs.existsSync(path.join(claudeDir, 'hooks', 'trailhead-mockup-link-stop.js')));
 ok('claude: settings.json does NOT register mockup-link-stop', !settingsContent.includes('trailhead-mockup-link-stop.js'));
 ok('claude: settings.json registers mockup-link-guard under PreToolUse/AskUserQuestion',

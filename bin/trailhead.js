@@ -262,10 +262,12 @@ const ENTRYPOINT_FILES = HOOK_FILES.filter((f) => !BASH_GUARD_MODULES.includes(f
 // also does require('./lib/body-sources.js'), #210; trailhead-check-update.js
 // does require('./lib/model-defaults-review.js'), which in turn reads the
 // sibling model-defaults.json, #186; both mockup-link hooks do
-// require('./lib/mockup-link.js')). Copied by name, never a recursive
+// require('./lib/mockup-link.js'); trailhead-check-update.js also does
+// require('./lib/trailhead-git-env.js'), a byte-identical copy of
+// templates/trailhead-git-env.js, #349). Copied by name, never a recursive
 // sweep: the Claude hooks/lib dir is shared with other plugins, so we must
 // not clobber a co-tenant's lib nor ship our own *.test.js files.
-const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'body-sources.js', 'unmodelled.js', 'model-defaults-review.js', 'model-defaults.json', 'inherit-session.js', 'model-route.js', 'mockup-link.js', 'gh-auth-preflight.js'];
+const HOOK_LIB_FILES = ['commit-message-check.js', 'shell-scan.js', 'gh-subcommand.js', 'body-sources.js', 'unmodelled.js', 'model-defaults-review.js', 'model-defaults.json', 'inherit-session.js', 'model-route.js', 'mockup-link.js', 'gh-auth-preflight.js', 'trailhead-git-env.js'];
 // search-guard is Claude-Code-specific (#169), and so is mockup-link-guard
 // (it gates the AskUserQuestion tool, which Codex lacks): excluded from both
 // the Codex hook copy and the Codex verify spec's expected hookFiles, so a
