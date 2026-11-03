@@ -49,7 +49,10 @@ ok('build/bug Verify start with the preflight, before the tests and Code review'
     return p >= 0 && p < l.indexOf('**Code review**') && p < l.indexOf('**Goal-backward verification**') && p < l.indexOf('**Acceptance testing**');
   }));
 ok('Verify runs the tests after the sync, before the Code review',
-  [buildVerify, bugVerify].every((i) => lines[i].indexOf('then re-run the tests') > 0 && lines[i].indexOf('then re-run the tests') < lines[i].indexOf('**Code review**')));
+  [buildVerify, bugVerify].every((i) => {
+    const run = lines[i].indexOf('runs the full suite once on the synced tree');
+    return run > lines[i].indexOf('then sync') && run < lines[i].indexOf('**Code review**');
+  }));
 ok('Resolve names git: pr without isolation',
   [buildResolve, bugResolve].every((i) => lines[i].includes('`git: pr` without isolation: on the ticket branch, immediately before the push and PR')));
 ok('Resolve runs it before the Pending-UAT guard',
