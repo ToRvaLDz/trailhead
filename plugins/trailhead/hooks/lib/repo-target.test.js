@@ -9,7 +9,7 @@ const fs = require('fs');
 const os = require('os');
 
 const scriptPath = path.resolve(__dirname, '..', '..', 'templates', 'trailhead-repo-target.js');
-const { parseGithubSlug, parentSlug, decide, parseArgs, main, IDLE_WINDOW_MS } = require(scriptPath);
+const { parseGithubSlug, parentSlug, decide, parseArgs, main, IDLE_WINDOW_MS, SLUG_RE } = require(scriptPath);
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
@@ -32,7 +32,7 @@ function fakeRun(world) {
     }
     if (args[0] === 'repo' && args[1] === 'set-default') return world.setDefault || { status: 0, stdout: '', stderr: '' };
     if (args[0] === 'repo' && args[1] === 'view') {
-      const v = args[2] === '--json' ? world.view : world.originView;
+      const v = args.includes('--') ? world.originView : world.view;
       return v ? { status: 0, stdout: JSON.stringify(v), stderr: '' } : fail;
     }
     return fail;
@@ -99,6 +99,14 @@ ok('parentSlug null', parentSlug(null) === null);
   ok('fork whose target is itself -> ok', decide(own, null, T0).status === 'ok');
   ok('origin not a fork of target -> ok', decide(f({ target: 'x/y', originSlug: 'u/cli', originInfo: { isFork: true, parent: { name: 'cli', owner: { login: 'cli' } } } }), null, T0).status === 'ok');
   ok('origin not a fork -> ok', decide(f({ target: 'x/y', originSlug: 'u/cli', originInfo: { isFork: false, parent: null } }), null, T0).status === 'ok');
+  // origin that cannot be verified -> skipped, never a silent ok (#351 I1)
+  const unv = decide(f({ target: 'x/y', originSlug: 'u/cli', originInfo: null, originExists: true }), null, T0);
+  ok('origin differs, lookup failed -> skipped', unv.status === 'skipped' && unv.reason === 'origin fork relation could not be verified');
+  const nonGh = decide(f({ target: 'x/y', originSlug: null, originInfo: null, originExists: true }), null, T0);
+  ok('origin not a github.com URL -> skipped', nonGh.status === 'skipped' && nonGh.reason === 'origin fork relation could not be verified');
+  ok('no origin remote at all -> ok', decide(f({ originSlug: null, originExists: false }), null, T0).status === 'ok');
+  ok('origin == target, exists -> ok', decide(f({ originExists: true }), null, T0).status === 'ok');
+  ok('no-write still asks before the unverified skip', decide(f({ permission: 'READ', target: 'x/y', originSlug: 'u/cli', originInfo: null, originExists: true, remotes: ['u/cli', 'x/y'] }), null, T0).reason === 'no-write');
   const nw = decide(f({ permission: 'READ', target: 'x/y', originSlug: 'u/cli', remotes: ['u/cli', 'x/y'] }), null, T0);
   ok('no write -> ask no-write', nw.status === 'ask' && nw.reason === 'no-write');
   ok('no-write candidates: origin first, target included', JSON.stringify(nw.candidates) === '["u/cli","x/y"]');
@@ -124,6 +132,9 @@ ok('parentSlug null', parentSlug(null) === null);
   ok('parseArgs record', r.command === 'record' && r.repo === '/x' && r.target === 'o/n');
   ok('parseArgs check', parseArgs(['check']).command === 'check');
   ok('parseArgs clear', parseArgs(['clear', '--repo', '/x']).repo === '/x');
+  for (const bad of ['-x/y', '--exec/y', '.x/y', '_x/y', 'x/', '/y', 'a/b/c', 'x y/z']) ok(`SLUG_RE rejects ${bad}`, !SLUG_RE.test(bad));
+  for (const good of ['o/n', 'cli/cli', 'a-b/c.d_e', '0x/y']) ok(`SLUG_RE accepts ${good}`, SLUG_RE.test(good));
+  ok('parseArgs rejects a -x/y target', !!parseArgs(['record', '--target', '-x/y']).error);
   for (const argv of [[], ['frob'], ['record'], ['record', '--target', 'nope'], ['record', '--target'], ['check', '--target', 'o/n'], ['clear', '--bogus', '1']]) {
     ok(`parseArgs error: ${argv.join(' ')}`, !!parseArgs(argv).error);
   }
@@ -170,7 +181,10 @@ ok('parentSlug null', parentSlug(null) === null);
   const nogit = runMain(['check', '--repo', dir], { cwd: '/', world: { view: { nameWithOwner: 'o/n', viewerPermission: 'WRITE' } } });
   ok('no remotes readable: target alone, ok', nogit.lines[0].status === 'ok');
   const noOriginInfo = runMain(['check', '--repo', dir], { cwd: '/', world: forkWorld({ originView: undefined, view: { nameWithOwner: 'cli/cli', viewerPermission: 'WRITE' } }) });
-  ok('origin lookup fails: falls back to ok when writable', noOriginInfo.lines[0].status === 'ok');
+  ok('origin lookup fails: skipped, not a silent ok', noOriginInfo.lines[0].status === 'skipped' && /could not be verified/.test(noOriginInfo.lines[0].reason));
+  const ghes = runMain(['check', '--repo', dir], { cwd: '/', world: { view: { nameWithOwner: 'cli/cli', viewerPermission: 'WRITE' }, remotes: [['origin', 'git@ghe.example.com:u/cli.git']] } });
+  ok('origin on another host: skipped', ghes.lines[0].status === 'skipped' && /could not be verified/.test(ghes.lines[0].reason));
+  ok('origin lookup passes -- before the slug', a.calls.some((c) => c.join(' ') === 'gh repo view --json nameWithOwner,isFork,parent -- fakeuser/cli'));
 }
 
 // --- main: record --------------------------------------------------------------
@@ -178,9 +192,10 @@ ok('parentSlug null', parentSlug(null) === null);
   const dir = mktmp();
   const w = runMain(['record', '--repo', dir, '--target', 'fakeuser/cli'], { cwd: '/', world: forkWorld() });
   ok('record differing target: written, setDefault true', w.lines[0].status === 'written' && w.lines[0].setDefault === true && w.lines[0].target === 'fakeuser/cli');
-  ok('record calls gh repo set-default with the target', w.calls.some((c) => c.join(' ') === 'gh repo set-default fakeuser/cli'));
+  ok('record calls gh repo set-default with the target', w.calls.some((c) => c.join(' ') === 'gh repo set-default -- fakeuser/cli'));
   const s = JSON.parse(fs.readFileSync(recPath(dir), 'utf8'));
   ok('record file shape', JSON.stringify(Object.keys(s)) === '["target","recordedAt","usedAt"]' && s.target === 'fakeuser/cli' && s.recordedAt === iso(T0));
+  ok('record in a non-git dir leaves .gitignore alone', !fs.existsSync(path.join(dir, '.gitignore')));
   ok('record leaves no temp', fs.readdirSync(path.join(dir, '.trailhead')).join() === 'repo-target.json');
 
   const same = runMain(['record', '--repo', dir, '--target', 'cli/cli'], { cwd: '/', now: at(HOUR), world: forkWorld() });
@@ -193,6 +208,27 @@ ok('parentSlug null', parentSlug(null) === null);
   ok('set-default failure: nothing written', !fs.existsSync(path.join(dir2, '.trailhead')));
   const noView = runMain(['record', '--repo', dir2, '--target', 'fakeuser/cli'], { cwd: '/', world: {} });
   ok('record with unresolvable gh: error, nothing written', noView.lines[0].status === 'error' && !fs.existsSync(path.join(dir2, '.trailhead')));
+}
+
+// --- main: record keeps the marker gitignored (#351 W1) ---------------------------
+{
+  const IGN = '.trailhead/repo-target.json';
+  const gitDir = mktmp();
+  fs.mkdirSync(path.join(gitDir, '.git'));
+  const give = () => runMain(['record', '--repo', gitDir, '--target', 'cli/cli'], { cwd: '/', world: forkWorld() });
+  give();
+  ok('record creates .gitignore with the marker in a git repo', fs.readFileSync(path.join(gitDir, '.gitignore'), 'utf8') === IGN + '\n');
+  give();
+  ok('record is idempotent on .gitignore', fs.readFileSync(path.join(gitDir, '.gitignore'), 'utf8') === IGN + '\n');
+  const g2 = mktmp();
+  fs.mkdirSync(path.join(g2, '.git'));
+  fs.writeFileSync(path.join(g2, '.gitignore'), 'node_modules');
+  runMain(['record', '--repo', g2, '--target', 'cli/cli'], { cwd: '/', world: forkWorld() });
+  ok('record appends after a file without trailing newline', fs.readFileSync(path.join(g2, '.gitignore'), 'utf8') === 'node_modules\n' + IGN + '\n');
+  const g3 = mktmp();
+  fs.mkdirSync(path.join(g3, '.git'));
+  runMain(['record', '--repo', g3, '--target', 'fakeuser/cli'], { cwd: '/', world: forkWorld({ setDefault: { status: 1, stdout: '', stderr: 'x' } }) });
+  ok('a failed record does not touch .gitignore', !fs.existsSync(path.join(g3, '.gitignore')));
 }
 
 // --- main: clear, usage errors -------------------------------------------------
