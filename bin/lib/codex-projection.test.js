@@ -96,6 +96,14 @@ ok('codexSkillAdapterHeader §D pins the exact agent_type dispatch call shape',
   header.includes('spawn_agent(agent_type="trailhead-<technique>"'));
 ok('codexSkillAdapterHeader §D passes fork_turns="none" (v2) and fork_context=false (v1) on every spawn',
   header.includes('fork_turns="none"') && header.includes('fork_context=false'));
+ok('codexSkillAdapterHeader §D pins the full v2 call shape with fork_turns="none"',
+  header.includes('spawn_agent(agent_type="trailhead-<technique>", fork_turns="none"'));
+ok('codexSkillAdapterHeader §D keys the no-fork rule on the context parameter, not on agent_type',
+  header.includes('key it on the context parameter the schema shows, not on whether `agent_type` is present'));
+ok('codexSkillAdapterHeader §D passes neither fork parameter when the schema exposes neither',
+  header.includes('exposes neither') && header.includes('pass neither'));
+ok('codexSkillAdapterHeader §D says a fork_context-only schema takes fork_context=false in the agent_type call',
+  header.includes('v2 shape') && header.includes('takes `fork_context=false` instead'));
 ok('codexSkillAdapterHeader §D no longer claims a subagent is unconditionally FRESH',
   !header.includes('A subagent runs as a FRESH session'));
 ok('codexSkillAdapterHeader §D keeps the base spawn_agent v1 fallback path',
