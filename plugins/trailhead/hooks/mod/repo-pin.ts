@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { RepoPin } from '../../types'
+import { gitArgv } from './git-env'
 import { parseWorktreeBranches } from './worktree-porcelain'
 import { sameValue } from './work-state-view'
 
@@ -72,7 +73,7 @@ let remembered: RepoPin | null = null
 // the caller falls back.
 export async function toplevelOf($: EngineInterface): Promise<string | null> {
   try {
-    const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: await $.session.cwd(), timeoutMs: 5_000 })
+    const out = await $.process.run(gitArgv('rev-parse', '--show-toplevel'), { cwd: await $.session.cwd(), timeoutMs: 5_000 })
     const top = out.stdout.trim()
     return out.exitCode === 0 && top.startsWith('/') ? top : null
   } catch {
@@ -96,9 +97,9 @@ async function gitRepo($: EngineInterface): Promise<{ repo: RepoRead; toplevel: 
   try {
     const cwd = await $.session.cwd()
     const run = (argv: string[]) => $.process.run(argv, { cwd, timeoutMs: 5_000 })
-    const top = await run(['git', 'rev-parse', '--show-toplevel'])
+    const top = await run(gitArgv('rev-parse', '--show-toplevel'))
     if (repoFromGit(top, null) === null) return null
-    const repo = repoFromGit(top, await run(['git', 'remote', 'get-url', 'origin']))
+    const repo = repoFromGit(top, await run(gitArgv('remote', 'get-url', 'origin')))
     return repo === null ? null : { repo, toplevel: repo.root }
   } catch {
     return null
@@ -149,7 +150,7 @@ const parentOf = (path: string): string => path.replace(/\/+$/, '').replace(/\/[
 
 async function checkoutOf($: EngineInterface, path: string, key: string): Promise<string | null> {
   try {
-    const run = (args: string[]) => $.process.run(['git', '-C', path, ...args], { cwd: '/', timeoutMs: 5_000 })
+    const run = (args: string[]) => $.process.run(gitArgv('-C', path, ...args), { cwd: '/', timeoutMs: 5_000 })
     const top = await run(['rev-parse', '--show-toplevel'])
     if (top.exitCode !== 0 || !top.stdout.trim().startsWith('/')) return null
     const origin = await run(['remote', 'get-url', 'origin'])
@@ -192,7 +193,7 @@ async function liveCheckout($: EngineInterface, pin: RepoPin): Promise<string | 
     const top = await checkoutOf($, seed, key)
     if (top === null) continue
     // The seed's own worktree list names the main tree first, then the others.
-    const listed = await $.process.run(['git', '-C', top, 'worktree', 'list', '--porcelain'], { cwd: '/', timeoutMs: 5_000 }).catch(() => null)
+    const listed = await $.process.run(gitArgv('-C', top, 'worktree', 'list', '--porcelain'), { cwd: '/', timeoutMs: 5_000 }).catch(() => null)
     const paths = listed !== null && listed.exitCode === 0 ? parseWorktreeBranches(listed.stdout).map(w => w.path) : []
     for (const path of [...paths, top]) {
       if (path === pin.root || !(await exists($, path))) continue

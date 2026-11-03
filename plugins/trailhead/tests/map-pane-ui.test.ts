@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const SESSION = 'sess-A'
@@ -390,11 +391,11 @@ const rig = (on: On, engine?: any) => {
   on('session.cwd', () => ({ value: r.cwd }))
   on('process.run', async (_$, e) => {
     // The pin's own `git rev-parse --show-toplevel`: answered apart, never counted as a `gh` call.
-    if (e.argv[0] === 'git') {
-      r.gitCalls.push({ argv: [...e.argv], cwd: e.init?.cwd })
+    if (unscrub(e.argv)[0] === 'git') {
+      r.gitCalls.push({ argv: [...unscrub(e.argv)], cwd: e.init?.cwd })
       // Answered per directory, like git: the worktree gives `top`, the other checkouts their own root.
       const where = e.init?.cwd
-      if (e.argv[1] === 'remote') {
+      if (unscrub(e.argv)[1] === 'remote') {
         const remote = r.gitRemote === null ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: `${r.gitRemote}\n`, stderr: '' }
         return { value: { ...remote, isStdoutTruncated: false, isStderrTruncated: false } }
       }
@@ -403,21 +404,21 @@ const rig = (on: On, engine?: any) => {
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
     // The pin's host check: answered apart, never counted as a read of the pane.
-    if (e.argv[1] === 'auth') {
-      const host = e.argv[4] ?? ''
+    if (unscrub(e.argv)[1] === 'auth') {
+      const host = unscrub(e.argv)[4] ?? ''
       r.authCalls.push(host)
       const out = r.authHosts.includes(host) ? { exitCode: 0, stdout: '', stderr: '' } : { exitCode: 1, stdout: '', stderr: `You are not logged into any accounts on ${host}` }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
-    if (isLoginRead(e.argv) || isMineRead(e.argv)) {
-      r.mineCalls.push([...e.argv])
-      const body = isLoginRead(e.argv)
+    if (isLoginRead(unscrub(e.argv)) || isMineRead(unscrub(e.argv))) {
+      r.mineCalls.push([...unscrub(e.argv)])
+      const body = isLoginRead(unscrub(e.argv))
         ? { data: { viewer: { login: 'me' } } }
         : { data: { repository: { issues: { nodes: (r.mine ?? []).map(flatNode), pageInfo: { hasNextPage: false, endCursor: null } } } } }
-      const out = r.mine === null && isMineRead(e.argv) ? { exitCode: 1, stdout: '', stderr: 'boom' } : { exitCode: 0, stdout: JSON.stringify(body), stderr: '' }
+      const out = r.mine === null && isMineRead(unscrub(e.argv)) ? { exitCode: 1, stdout: '', stderr: 'boom' } : { exitCode: 0, stdout: JSON.stringify(body), stderr: '' }
       return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
     }
-    r.calls.push([...e.argv])
+    r.calls.push([...unscrub(e.argv)])
     r.cwds.push(e.init?.cwd)
     // `gh` needs a repo around it: without its own cwd it uses the session's, wherever a `cd` left it.
     const where = e.init?.cwd ?? r.cwd
@@ -427,7 +428,7 @@ const rig = (on: On, engine?: any) => {
       return { value: { exitCode: 1, stdout: '', stderr: 'failed to run git: fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     if (r.deny !== null) return { deny: r.deny }
-    const out = await (r.gh ?? defaultGh)(e.argv)
+    const out = await (r.gh ?? defaultGh)(unscrub(e.argv))
     return { value: { ...out, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('ui.open', (_$, e) => {

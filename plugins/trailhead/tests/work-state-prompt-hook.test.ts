@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 const SESSION = 'sess-A'
 const ID = 'trailhead:work-state'
@@ -48,8 +49,8 @@ const rig = (on: On) => {
   on('session.cwd', () => ({ value: '/repo' }))
   on('process.run', (_$, e) => {
     const out = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-    if (e.argv[0] === 'git') return out(0, '/repo\n')
-    return out(r.authHosts.includes(e.argv[4] ?? '') ? 0 : 1)
+    if (unscrub(e.argv)[0] === 'git') return out(0, '/repo\n')
+    return out(r.authHosts.includes(unscrub(e.argv)[4] ?? '') ? 0 : 1)
   })
   on('ui.status', () => ({ value: undefined }))
   on('state.set', { plugin: 'trailhead' }, (_$, e, next) => {

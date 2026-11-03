@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 import { resetLocate } from '../hooks/mod/work-state-locate'
 
@@ -31,7 +32,7 @@ const rig = (on: On) => {
   on('session.cwd', () => ({ value: r.cwd }))
   on('session.id', () => ({ value: SESSION }))
   on('process.run', (_$, e) => {
-    const line = e.argv.join(' ')
+    const line = unscrub(e.argv).join(' ')
     r.runs.push(line)
     const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (line === 'git rev-parse --show-toplevel') return out(`${r.cwd}\n`)

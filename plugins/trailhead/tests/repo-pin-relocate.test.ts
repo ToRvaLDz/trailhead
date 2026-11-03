@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 // #347: the pinned checkout deleted under the session (a finished worktree). The pin must leave the dead
 // root for a live checkout of the same repo instead of staying on a path nothing can run in.
@@ -30,9 +31,9 @@ const setup = (on: any, rig: Rig) => {
   on('session.root', () => ({ value: DEAD }))
   on('session.repo', () => ({ value: { root: DEAD, remote: REMOTE, internal: false } }))
   on('process.run', (_$: unknown, e: { argv: string[]; init?: { cwd?: string } }) => {
-    rig.calls.push({ argv: [...e.argv], cwd: e.init?.cwd })
+    rig.calls.push({ argv: [...unscrub(e.argv)], cwd: e.init?.cwd })
     if (e.init?.cwd !== undefined && !rig.alive.has(e.init.cwd)) return { deny: 'spawn git ENOENT' }
-    const [, flag, path, ...rest] = e.argv
+    const [, flag, path, ...rest] = unscrub(e.argv)
     if (flag !== '-C' || path === undefined || !rig.alive.has(path)) {
       // Probes outside -C run in the session cwd, which is gone: top-level reads fail.
       return out('', 128)

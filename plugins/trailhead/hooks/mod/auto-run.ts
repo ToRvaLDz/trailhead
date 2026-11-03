@@ -4,6 +4,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { AutoRun, RepoPin, RunCounts, WorkState } from '../../types'
+import { gitArgv } from './git-env'
 import { GH_TIMEOUT_MS, MIN_REFRESH_MS } from './map-pane'
 import { aggregateRun, isRunMember, nextRunAfterFailure, parseRunCounts, parseRunScope, runCountsArgs, slotTicket } from './auto-run-view'
 import type { Where } from './auto-run-view'
@@ -48,7 +49,7 @@ async function gate($: EngineInterface, main: string, own: WorkState | null): Pr
 // La regola di cloneOnBranch (trailhead-auto-slot.js): git dir dentro la cartella e HEAD sul branch dello slot.
 // undefined: git non è riuscito a girare.
 async function cloneOnBranch($: EngineInterface, dir: string, ticket: number): Promise<boolean | undefined> {
-  const git = (args: string[]) => $.process.run(['git', '-C', dir, ...args], { cwd: dir, timeoutMs: GIT_TIMEOUT_MS })
+  const git = (args: string[]) => $.process.run(gitArgv('-C', dir, ...args), { cwd: dir, timeoutMs: GIT_TIMEOUT_MS })
   try {
     const g = await git(['rev-parse', '--absolute-git-dir'])
     if (g.exitCode !== 0) return false

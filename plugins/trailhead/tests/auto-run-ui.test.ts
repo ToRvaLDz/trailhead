@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 import { resetAutoRun } from '../hooks/mod/auto-run'
 import { resetLocate } from '../hooks/mod/work-state-locate'
@@ -47,7 +48,7 @@ const rig = (on: On) => {
   on('session.cwd', () => ({ value: r.cwd }))
   on('session.id', () => ({ value: SESSION }))
   on('process.run', (_$, e) => {
-    const line = e.argv.join(' ')
+    const line = unscrub(e.argv).join(' ')
     r.runs.push(line)
     r.cwds.push(e.cwd ?? '')
     const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })

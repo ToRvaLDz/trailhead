@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { unscrub } from './unscrub'
 
 // #299: a session started outside any repo, the repo and `origin` created mid-session. The host's
 // `session.repo()` keeps answering null (observed live on Claude Code 2.1.306), while git in the cwd
@@ -26,7 +27,7 @@ test('the pin follows a repo created mid-session although session.repo() still a
   // The host's memoized answer: null from the start, even once the repo exists.
   on('session.repo', () => ({ value: null }))
   on('process.run', (_$, e) => {
-    const cmd = e.argv.join(' ')
+    const cmd = unscrub(e.argv).join(' ')
     if (cmd === 'git rev-parse --show-toplevel') return isCreated ? out(`${CWD}\n`) : out('', 128)
     if (cmd === 'git remote get-url origin') return isCreated ? out(`${REMOTE}\n`) : out('', 2)
     return out('', 1)
@@ -55,7 +56,7 @@ test('the git fallback spawns no more than it needs: nothing past a failed rev-p
   on('session.root', () => ({ value: CWD }))
   on('session.repo', () => ({ value: null }))
   on('process.run', (_$, e) => {
-    const cmd = e.argv.join(' ')
+    const cmd = unscrub(e.argv).join(' ')
     spawned.push(cmd)
     if (cmd === 'git rev-parse --show-toplevel') return isCreated ? out(`${CWD}\n`) : out('', 128)
     if (cmd === 'git remote get-url origin') return out(`${REMOTE}\n`)

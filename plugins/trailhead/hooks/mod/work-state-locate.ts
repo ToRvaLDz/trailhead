@@ -3,6 +3,7 @@
 // may sit in the main checkout. Pure parts first, then the engine part that looks the state up.
 import type { EngineInterface } from 'claude-code'
 
+import { gitArgv } from './git-env'
 import { isMissing, parseWorkState } from './work-state-view'
 import { MAX_FAILURES, parseWorktreeBranches } from './worktree-porcelain'
 
@@ -91,7 +92,7 @@ async function nowOf($: EngineInterface): Promise<number | null> {
 // null: the listing itself failed (not the same as an empty one). Path and branch of each checkout.
 export async function listWorktreeBranches($: EngineInterface, root: string): Promise<{ path: string; branch: string | null }[] | null> {
   try {
-    const out = await $.process.run(['git', 'worktree', 'list', '--porcelain'], { cwd: root, timeoutMs: LOOKUP_TIMEOUT_MS })
+    const out = await $.process.run(gitArgv('worktree', 'list', '--porcelain'), { cwd: root, timeoutMs: LOOKUP_TIMEOUT_MS })
     return out.exitCode === 0 ? parseWorktreeBranches(out.stdout) : null
   } catch {
     return null

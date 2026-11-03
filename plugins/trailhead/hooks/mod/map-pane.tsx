@@ -50,6 +50,7 @@ import {
 } from './map-pane-view'
 import { elsewhereInProgress, myTicketsFromRows, parseLogin, scopeLine } from './my-tickets'
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
+import { gitArgv, scrubGitEnv } from './git-env'
 import { isMainTurnRunning } from './turn-state'
 import { createdIssueNumber, isWhiteboardCreate, nextFollow, whiteboardHint } from './whiteboard-follow'
 import { fit, isMissing, sameValue } from './work-state-view'
@@ -232,9 +233,10 @@ async function setPane($: Dollar, next: MapPaneData) {
 type GhResult = { ok: true; stdout: string } | { ok: false; reason: string }
 
 // Always run in the pinned repo, so the session's cwd moving out of it never changes what is read.
+// gh resolves {owner}/{repo} through git, so it gets the same scrubbed env as a git call.
 async function gh($: Dollar, pin: RepoPin, args: readonly string[]): Promise<GhResult> {
   try {
-    const out = await $.process.run(['gh', ...args], { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
+    const out = await $.process.run(scrubGitEnv(['gh', ...args]), { cwd: pin.root, timeoutMs: GH_TIMEOUT_MS })
     return out.exitCode === 0 ? { ok: true, stdout: out.stdout } : { ok: false, reason: failureReason(out) }
   } catch (error) {
     // A deleted cwd fails the spawn as ENOENT, the same as a missing binary: look before blaming gh.
@@ -647,7 +649,7 @@ async function placeOf($: Dollar): Promise<{ pin: RepoPin; where: 'in' | 'out' }
 // Whether the pinned root still answers as a checkout root, the same test the verb's helper applies.
 async function isCheckoutRoot($: Dollar, root: string): Promise<boolean> {
   try {
-    const out = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { cwd: root, timeoutMs: 5_000 })
+    const out = await $.process.run(gitArgv('rev-parse', '--show-toplevel'), { cwd: root, timeoutMs: 5_000 })
     return out.exitCode === 0 && out.stdout.trim() === root
   } catch {
     return false
