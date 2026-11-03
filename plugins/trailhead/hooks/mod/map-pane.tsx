@@ -105,6 +105,8 @@ const SECTION_STYLES = {
 type SectionKey = keyof typeof SECTION_STYLES
 // Il filetto a sinistra di ogni riga, nel colore della sezione: occupa GUTTER colonne.
 const GUTTER = '│ '
+// Sul desktop il filetto è una barra continua di questa larghezza, alta quanto tutto il blocco del ticket.
+const GUTTER_BAR = 0.25
 const RULE_COLOR = '#3b4261'
 // Il tipo di ticket colorato; gli altri tipi restano attenuati.
 const TYPE_COLORS: Readonly<Record<string, string>> = { build: '#7dcfff', decision: '#ff9e64' }
@@ -1068,6 +1070,24 @@ export function registerMapPane(on: On) {
       </Box>
     )
     const link = (url: string, label: string) => (url === '' ? label : <Link href={url} label={label} />)
+    // Il filetto di un blocco (riga e righe sotto): sul desktop una barra che si allunga quanto il blocco, nel
+    // terminale un `│` per riga. Occupa sempre GUTTER colonne.
+    const gutter = (key: string, section: SectionKey, lines: number) => {
+      const { color } = SECTION_STYLES[section]
+      return e.surface === 'desktop' ? (
+        <Box key={key} width={GUTTER.length}>
+          <Box key={`${key}-bar`} width={GUTTER_BAR} backgroundColor={color} />
+        </Box>
+      ) : (
+        <Box key={key} flexDirection="column" width={GUTTER.length}>
+          {Array.from({ length: lines }, (_, i) => (
+            <Text key={`${key}-${i}`} color={color}>
+              {GUTTER}
+            </Text>
+          ))}
+        </Box>
+      )
+    }
     // Intestazione di sezione: glifo e nome nel colore della sezione, poi un filetto fino al bordo.
     const sectionHead = (key: SectionKey, label: string) => {
       const { glyph, color } = SECTION_STYLES[key]
@@ -1087,7 +1107,7 @@ export function registerMapPane(on: On) {
       const r = mapRowLayout(m, { active, viewed, columns: cols - GUTTER.length, isDashboard: isBoard })
       return (
         <Box key={`map-row-${m.number}`}>
-          {text(`map-gutter-${m.number}`, { color: SECTION_STYLES.maps.color }, GUTTER)}
+          {gutter(`map-gutter-${m.number}`, 'maps', 1)}
           {text(`map-mark-${m.number}`, r.isActive ? { bold: true, color: SECTION_STYLES.maps.color } : {}, r.mark)}
           {r.isPressable ? (
             <Button
@@ -1151,9 +1171,8 @@ export function registerMapPane(on: On) {
       const typeColor = t.type === null ? undefined : TYPE_COLORS[t.type]
       const typeStyle = r.isDim || typeColor === undefined ? dim : { color: typeColor }
       const line = (
-        <Box key={`row-${t.number}`} width={cols} justifyContent="space-between">
+        <Box key={`row-${t.number}`} width={cols - GUTTER.length} justifyContent="space-between">
           <Box>
-            {text(`gutter-${t.number}`, { color: SECTION_STYLES[section].color }, GUTTER)}
             {r.mark === null ? null : text(`mark-${t.number}`, r.isInPlay ? accent : {}, r.mark)}
             <Box key={`ticket-${t.number}`}>
               <Text {...style}>{link(t.url, r.label)}</Text>
@@ -1186,14 +1205,17 @@ export function registerMapPane(on: On) {
           ) : null}
         </Box>
       )
-      const parent = uatParentLine(t, cols)
-      return parent === null && scope === null ? (
-        line
-      ) : (
-        <Box key={`entry-${t.number}`} flexDirection="column">
-          {line}
-          {parent === null ? null : text(`uat-of-${t.number}`, dim, parent)}
-          {scope === null ? null : text(`scope-of-${t.number}`, dim, scope)}
+      // Le righe sotto (genitore UAT, dove sta) rientrano dopo il filetto, che copre tutto il blocco.
+      const parent = uatParentLine(t, cols - GUTTER.length)
+      const lines = 1 + (parent === null ? 0 : 1) + (scope === null ? 0 : 1)
+      return (
+        <Box key={`entry-${t.number}`} width={cols}>
+          {gutter(`gutter-${t.number}`, section, lines)}
+          <Box key={`entry-lines-${t.number}`} flexDirection="column">
+            {line}
+            {parent === null ? null : text(`uat-of-${t.number}`, dim, parent)}
+            {scope === null ? null : text(`scope-of-${t.number}`, dim, scope)}
+          </Box>
         </Box>
       )
     }
@@ -1210,7 +1232,7 @@ export function registerMapPane(on: On) {
         >
           {sectionHead(key, `${name} · ${rows.length + elsewhere.length}`)}
           {rows.map(t => row(t, key, hasMarkColumn))}
-          {elsewhere.map(t => row(t, key, hasMarkColumn, scopeLine(t, data.maps, cols)))}
+          {elsewhere.map(t => row(t, key, hasMarkColumn, scopeLine(t, data.maps, cols - GUTTER.length)))}
         </Box>
       )
     }

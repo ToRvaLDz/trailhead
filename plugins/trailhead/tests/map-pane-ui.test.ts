@@ -525,8 +525,13 @@ for (const surface of SURFACES) {
     // ogni sezione ha il suo glifo e un filetto colorato davanti a ogni riga
     expect(await textOf(ui, 'glyph-frontier')).toBe('◆ ')
     expect(await textOf(ui, 'glyph-blocked')).toBe('■ ')
-    expect(await textOf(ui, 'gutter-209')).toBe('│ ')
-    expect((await ui.find({ key: 'gutter-211' }))?.children[0]).toMatchObject({ props: { color: '#f7768e' } })
+    if (surface === 'terminal') {
+      expect(await textOf(ui, 'gutter-209')).toBe('│ ')
+      expect((await ui.find({ key: 'gutter-211' }))?.children[0]).toMatchObject({ props: { color: '#f7768e' } })
+    } else {
+      // sul desktop il filetto è una barra continua, alta quanto il blocco
+      expect((await ui.find({ key: 'gutter-211-bar' }))?.props).toMatchObject({ backgroundColor: '#f7768e' })
+    }
     expect(await keysOf(ui, 'row-')).toEqual(['row-208', 'row-212', 'row-209', 'row-210', 'row-214', 'row-211', 'row-213'])
 
     expect(await textOf(ui, 'ticket-209')).toBe('#209 Burn-down view of the map')
@@ -593,6 +598,10 @@ for (const surface of SURFACES) {
     // the parent line, dim, under the row; none without a parent
     expect(await textOf(ui, 'uat-of-240')).toBe('tests Burn-down view of the map #209')
     expect((await ui.find({ key: 'uat-of-240' }))?.children[0]).toMatchObject({ props: { dimColor: true } })
+    // la riga del genitore sta nel blocco del ticket, dopo il filetto che copre entrambe le righe
+    expect(await keysOf(ui, 'entry-lines-240')).toEqual(['entry-lines-240'])
+    expect(await textOf(ui, 'entry-lines-240')).toContain('tests Burn-down view of the map #209')
+    if (surface === 'terminal') expect(await textOf(ui, 'gutter-240')).toBe('│ │ ')
     expect(await textOf(ui, 'uat-of-241')).toBe('tests #212')
     expect(await hasKey(ui, 'uat-of-242')).toBe(false)
     expect(await textOf(ui, 'uat-of-243')).toBe('tests Paused parent #150')
