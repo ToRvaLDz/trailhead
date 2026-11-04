@@ -21,11 +21,13 @@ const engines = read(skills, 'trailhead-work', 'references', 'ticket-engines.md'
 const auditing = read(skills, 'trailhead-manage', 'references', 'auditing.md');
 const manage = read(docs, 'commands', 'manage.md');
 const concepts = read(docs, 'concepts.md');
+const readmes = [['README.md', read(root, 'README.md')], ['README.it.md', read(root, 'README.it.md')]];
 
 // The format and who writes it: codebase-map.md.
 ok('map: facet stamp format', map.includes('`_as of <short sha>_`'));
 ok('map: stamp comes from the scan root HEAD', map.includes('`git -C <scan root> rev-parse --short HEAD`'));
 ok('map: a full re-run restamps every facet', /full re-run[^.]*restamps? (?:all|every)/i.test(map));
+ok('map: the restamp rule is not a parenthetical splitting the sentence', !/restamps all of them\)/.test(map));
 ok('map: a patch passes --stamp', map.includes('--section "<facet>" --stamp <short sha>'));
 ok('map: an unstamped facet gains it on its next patch', /no stamp[^.]*gains it on its next patch/i.test(map));
 ok('map: an untouched facet keeps its stamp', /untouched[^.]*keeps its (?:old )?stamp/i.test(map));
@@ -58,6 +60,7 @@ ok('auditing 7b: a script failure never blocks the audit or the marker', /never 
 for (const status of ['current', 'stale', 'unstamped', 'unresolved', 'no-paths']) {
   ok(`auditing 7b: status ${status}`, sec.includes(`\`${status}\``));
 }
+ok('auditing 7b: current is not proof either, a patch moves the stamp over the whole facet', /`current` is not proof/.test(sec) && /whole facet/.test(sec));
 const report = auditing.slice(secEnd, auditing.indexOf('## 9. Proposals'));
 ok('auditing 8: report lists stale facets with changed files, outside the sum', /stale facets?[^.]*changed files/i.test(report) && /outside the (?:class )?sum/.test(report));
 const proposals = auditing.slice(auditing.indexOf('## 9. Proposals'), auditing.indexOf('## 10.'));
@@ -66,5 +69,11 @@ ok('auditing 9: stale facets get no proposal', /\*\*Stale facets\*\* → no prop
 // Reader-facing docs.
 ok('site manage: audit mentions stale codebase facets', /codebase facet/i.test(manage) && /as of/.test(manage));
 ok('site concepts: codebase bullet mentions the stamp', concepts.split('\n').some((l) => l.includes('`trailhead:codebase`') && /as of/.test(l)));
+
+for (const [name, text] of readmes) {
+  const lines = text.split('\n');
+  ok(`${name}: codebase bullet mentions the stamp`, lines.some((l) => l.includes('`trailhead:codebase`') && l.includes('`_as of <short sha>_`')));
+  ok(`${name}: audit paragraph mentions stale codebase facets`, lines.some((l) => l.startsWith('`/trailhead:audit') && l.includes('`_as of <short sha>_`')));
+}
 
 console.log(`facet-stamp-docs.test.js: ${passed} checks passed`);
