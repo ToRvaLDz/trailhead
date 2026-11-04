@@ -29,7 +29,7 @@ The fog holds only what you cannot phrase yet: a question you can already phrase
 
 A map is scoped to **one** effort, so knowledge that belongs to the *repo* (not to any single map) lives in repo-scoped anchor issues, created once and shared by every map (each map's Notes just links them, so nothing is stranded when a map finishes):
 
-- **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift.
+- **`trailhead:codebase`**: the distilled codebase map (architecture, stack, conventions, risks, test/build), written once at adopt and refreshed only on major drift. Each facet opens with `_as of <short sha>_`, the commit it is true at, and `audit` flags a facet whose cited files changed since.
 - **`trailhead:conventions`**: the project's way of working, readable by everyone: a small machine-read header the engine obeys (`git: main|pr`, `release: command|auto`, `isolation: auto|none|worktree|clone`) over human prose. `/trailhead:adopt` and `:new` ask for it up front. `isolation: auto` (the default) decides per ticket at work-start by asking whether you'll work more than one ticket at once, then picks a worktree (plain repo) or clone (submodule superrepo), else the current checkout.
 - **`trailhead:dashboard`**: the pinned index of the whole surface: a link to every open map, the whiteboard, and live counts (inbox, whiteboard frontier).
 

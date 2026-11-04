@@ -137,8 +137,9 @@ Hunt regressions in closed work, and find duplicate or groupable open tickets.
    - Where the code changed, or there are no `Refs:` commits to compare, a verification agent re-checks the ticket goal-backward against current code. If more than 20 tickets would need an agent, it shows the count and asks whether to proceed, narrow to one map, or cancel.
 2. Classes each ticket: implemented, unchanged, **evolved** (a later ticket changed the code on purpose, named in the report), implemented wrong, not implemented, or unverifiable.
 3. Compares the open tickets for duplicates and groupable clusters (same scope, same type, within one map). Claimed tickets are reported as related only.
-4. Presents one consolidated report. Nothing has been written to GitHub up to this point.
-5. Offers each follow-up as a separate proposal, applied only on an explicit yes: a new `bug` with `Regression of:` for implemented wrong; reopening with a gap comment for not implemented; opening the missing build tickets of a no-build decision; closing a duplicate natively as a duplicate after carrying its wiring over; or a supersede-and-merge for a groupable cluster. Evolved tickets get no proposal. The last proposal is advancing the audit marker.
+4. On a whole-repo run, checks the codebase facets too: each facet of the codebase issue carries an `_as of <short sha>_` stamp, and the audit flags a facet as stale when a file it cites changed after that commit. The check is deterministic, runs no agent, and is report-only.
+5. Presents one consolidated report. Nothing has been written to GitHub up to this point.
+6. Offers each follow-up as a separate proposal, applied only on an explicit yes: a new `bug` with `Regression of:` for implemented wrong; reopening with a gap comment for not implemented; opening the missing build tickets of a no-build decision; closing a duplicate natively as a duplicate after carrying its wiring over; or a supersede-and-merge for a groupable cluster. Evolved tickets get no proposal. The last proposal is advancing the audit marker.
 
 **What it writes**
 
