@@ -10,9 +10,13 @@
 //   index     --repo <dir>
 //   fastpath  --repo <dir> [--index <file>] <n> [<n>...]
 //   attribute --repo <dir> [--index <file>] --ticket <n> --claim <spec> [--claim <spec>...]
+//   facets    --repo <dir> --body-file <file>
 // A claim spec is a comma list of `<path>:<s>-<e>` (HEAD line range) or
 // `<path>:@<g>` (deletion gap after HEAD line g). `index` prints the trailer
 // index; save it and pass it back with --index so a whole audit scans once.
+// `facets` is read-only: for each `## ` facet of a trailhead:codebase issue body
+// it compares the `_as of <sha>_` stamp with HEAD over the files the facet cites
+// (auditing.md step 7b). #360.
 //
 // Git is only ever run through execFileSync('git', ['-C', repo, ...]), never a
 // shell, with LC_ALL=C so output parsing is stable on localized machines.
@@ -21,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { gitEnv } = require('./trailhead-git-env.js');
+const { facetsOf } = require('./trailhead-issue-body.js');
 
 // Tokens `#<digits>` delimited by start/end, comma or whitespace, so `#19`
 // never matches inside `#192`. Input is the value of a parsed `Refs:` trailer.
@@ -616,15 +621,58 @@ function attribute(repo, n, claims, index) {
   }
 }
 
+// --- facet freshness (auditing.md step 7b) ----------------------------------------------
+// Backticked tokens of a facet's text that can be repo paths: a trailing `:<line>`
+// or `:<line>-<line>` and a trailing `/` are stripped; absolute paths, `..`,
+// whitespace and a leading `-` or `:` are dropped, so nothing odd reaches git's argv.
+function citedTokens(text) {
+  const found = [];
+  for (const m of String(text).matchAll(/`([^`\n]+)`/g)) {
+    const token = m[1].trim().replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
+    if (!token || token.startsWith('/') || /^[-:]/.test(token) || token.includes('..') || /\s/.test(token)) continue;
+    if (!found.includes(token)) found.push(token);
+  }
+  return found;
+}
+
+// Freshness of one facet against HEAD. Status: current | stale | unstamped |
+// unresolved (stamp unknown, or not an ancestor of HEAD) | no-paths (no cited
+// file exists at the stamp, so there is nothing to compare).
+function facetStatus(ctx, facet, head) {
+  const out = { name: facet.name, sha: facet.sha, status: 'unstamped', paths: [], changed: [] };
+  if (!facet.sha) return out;
+  let full;
+  try {
+    full = git(ctx.repo, ['rev-parse', '--verify', '-q', `${facet.sha}^{commit}`]).trim();
+  } catch (err) {
+    return { ...out, status: 'unresolved' };
+  }
+  if (!SHA_RE.test(full) || !isAncestor(ctx, full, head)) return { ...out, status: 'unresolved' };
+  const paths = citedTokens(facet.text).filter((p) => objectExists(ctx, `${full}:${p}`));
+  if (!paths.length) return { ...out, status: 'no-paths' };
+  // Plain paths: GIT_LITERAL_PATHSPECS already makes them literal. --no-renames
+  // lists a renamed or deleted cited file under its old name.
+  const changed = git(ctx.repo, ['diff', '--name-only', '-z', '--no-renames', full, head, '--', ...paths])
+    .split('\0').filter(Boolean).sort();
+  return { ...out, status: changed.length ? 'stale' : 'current', paths, changed };
+}
+
+function facetsReport(repo, bodyFile) {
+  const facets = facetsOf(fs.readFileSync(bodyFile, 'utf8'));
+  const head = git(repo, ['rev-parse', 'HEAD']).trim();
+  const ctx = makeCtx(repo);
+  return { head, facets: facets.map((f) => facetStatus(ctx, f, head)) };
+}
+
 // --- CLI ----------------------------------------------------------------------------------
 class UsageError extends Error {}
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (!['index', 'fastpath', 'attribute'].includes(command)) {
-    throw new UsageError('usage: trailhead-audit-walk.js <index|fastpath|attribute> --repo <dir> ...');
+  if (!['index', 'fastpath', 'attribute', 'facets'].includes(command)) {
+    throw new UsageError('usage: trailhead-audit-walk.js <index|fastpath|attribute|facets> --repo <dir> ...');
   }
-  const opts = { command, repo: null, index: null, ticket: null, claims: [], tickets: [] };
+  const opts = { command, repo: null, bodyFile: null, index: null, ticket: null, claims: [], tickets: [] };
   const value = (flag, i) => {
     if (i >= rest.length) throw new UsageError(`usage: ${flag} requires a value`);
     return rest[i];
@@ -637,12 +685,14 @@ function parseArgs(argv) {
     const arg = rest[i];
     if (arg === '--repo') opts.repo = value(arg, ++i);
     else if (arg === '--index') opts.index = value(arg, ++i);
+    else if (arg === '--body-file' && command === 'facets') opts.bodyFile = value(arg, ++i);
     else if (arg === '--ticket' && command === 'attribute') opts.ticket = number(value(arg, ++i), '--ticket');
     else if (arg === '--claim' && command === 'attribute') opts.claims.push(value(arg, ++i));
     else if (command === 'fastpath' && !arg.startsWith('--')) opts.tickets.push(number(arg, 'ticket'));
     else throw new UsageError(`usage: unknown argument: ${arg}`);
   }
   if (command === 'fastpath' && !opts.tickets.length) throw new UsageError('usage: fastpath needs at least one ticket number');
+  if (command === 'facets' && !opts.bodyFile) throw new UsageError('usage: facets needs --body-file <file>');
   if (command === 'attribute' && opts.ticket === null) throw new UsageError('usage: attribute needs --ticket <n>');
   if (command === 'attribute' && !opts.claims.length) throw new UsageError('usage: attribute needs at least one --claim <spec>');
   return opts;
@@ -658,6 +708,7 @@ function readIndexFile(file) {
 
 function run(opts, repo) {
   if (opts.command === 'index') return buildTrailerIndex(repo);
+  if (opts.command === 'facets') return facetsReport(repo, path.resolve(opts.bodyFile));
   const index = opts.index ? readIndexFile(opts.index) : buildTrailerIndex(repo);
   if (opts.command === 'attribute') return attribute(repo, opts.ticket, opts.claims, index);
   return { shallow: index.shallow === true, tickets: opts.tickets.map((n) => fastPath(repo, n, index)) };
