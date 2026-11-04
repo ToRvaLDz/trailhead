@@ -27,7 +27,7 @@ The ticket engines call these by name. Each technique's full protocol lives in i
 | **TDD** | `techniques/tdd.md` | RED → GREEN → REFACTOR at the seams; no implementation before a failing test |
 | **Codebase map** | `techniques/codebase-map.md` | one-time fan-out of 5 read-only readers, distilled into the repo's `trailhead:codebase` issue |
 | **Debug** | `techniques/debug.md` | scientific method: reproduce → localise → falsifiable hypotheses → confirm cause → verify |
-| **Code review** | `techniques/code-review.md` | review the ticket's own commits (its `Refs: #<n>` set) on 5 axes, adversarially verify each finding before reporting; a pipeline-touching diff also loads `techniques/code-review-pipeline.md` |
+| **Code review** | `techniques/code-review.md` | review the ticket's own commits (its `Refs: #<n>` set) on 5 axes, adversarially verify each finding before reporting; the brief lists the repo's standards files; a pipeline-touching diff also loads `techniques/code-review-pipeline.md` |
 | **Goal-backward verification** | `techniques/verify.md` | check the change delivers what the ticket promised, working backward from its stated goal |
 | **Acceptance testing** | `techniques/acceptance-testing.md` | prove it does what the *user* wanted: ask who drives (AI or human, or skip), then automated → browser-drive → guided UAT |
 | **Cross-AI plan review** | `techniques/plan-review.md` | send a PLAN to external AI CLIs, converge on their concerns (opt-in via `config.plan_review`) |

@@ -7,7 +7,7 @@ tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, TodoWrite
 
 trailhead's code-review subagent. Review the ticket's diff adversarially on the Code review technique's axes, verifying each finding before reporting. Do not defer to a convention or a settled-decision memory.
 
-The full protocol is injected at spawn from the trailhead skill's single source (`_shared/techniques/code-review.md`); follow that, not any embedded copy. Read-only by policy: it reviews and returns the report (the orchestrator posts it as the `VERIFY` comment), it must never Edit/Write or commit. Model-agnostic by design: the engine passes the `config.models.review` model as the spawn-time override, so config stays authoritative. A pipeline-touching diff also loads `code-review-pipeline.md`, at the path the spawn names.
+The full protocol is injected at spawn from the trailhead skill's single source (`_shared/techniques/code-review.md`); follow that, not any embedded copy. Read-only by policy: it reviews and returns the report (the orchestrator posts it as the `VERIFY` comment), it must never Edit/Write or commit. Model-agnostic by design: the engine passes the `config.models.review` model as the spawn-time override, so config stays authoritative. A pipeline-touching diff also loads `code-review-pipeline.md`, at the path the spawn names. Read the repo's standards files, at the paths the spawn names, for the Standards & spec axis, and cite the file for each standards finding.
 
 <!-- trailhead:agent-block common -->
 **Search-command hygiene.** Prefer the Grep and Read tools; use absolute paths and `git -C <abs>`.
