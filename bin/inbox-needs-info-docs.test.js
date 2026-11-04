@@ -60,6 +60,9 @@ for (const f of ['README.md', 'README.it.md', 'site/src/content/docs/docs/concep
   ok(`${f} lists the needs-info state label`, fs.readFileSync(path.join(root, f), 'utf8').includes('`needs-info` ('));
 }
 ok('chart.md shows four sections', fs.readFileSync(path.join(root, 'site/src/content/docs/docs/commands/chart.md'), 'utf8').includes('Shows four sections by name'));
+const chartPage = fs.readFileSync(path.join(root, 'site/src/content/docs/docs/commands/chart.md'), 'utf8');
+ok('chart.md no longer says the inbox decides alone', !chartPage.includes('alone on clear ones'));
+ok('chart.md states the explicit yes', chartPage.includes('Nothing is written without your explicit yes'));
 ok('this test has no em-dash', !fs.readFileSync(__filename, 'utf8').includes(String.fromCharCode(8212)));
 
 console.log(`inbox-needs-info-docs.test.js: ${passed} checks passed`);

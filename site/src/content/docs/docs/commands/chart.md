@@ -132,8 +132,8 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 **What it does**
 
 1. Shows four sections by name: incoming issues to triage (open issues with no `trailhead:*` label, plus quarantined issues a session's trust check labelled `trailhead:unverified`), issues waiting on their reporter (open `trailhead:needs-info` issues: answered ones are proposed for triage, ones with no answer after `inbox.needs_info_days` (default 14) are offered for closing, the rest are only counted), parked fog ready to graduate (open `trailhead:fog` issues, most recently active first), and out-of-scope lines that are actually deferred.
-2. For each incoming issue it decides with you on judgement calls, and alone on clear ones: adopt as a ticket, park as fog, mark out of scope, mark duplicate, or ask the reporter for more information.
-3. For parked fog it asks whether to graduate it, keep it parked, or drop it.
+2. For each issue in the first three sections (incoming, answered or timed out while waiting on the reporter, parked fog) it proposes a move with a one-line why and puts them to you as one list, which you confirm or amend item by item. Nothing is written without your explicit yes: silence or an ambiguous reply leaves the issue untouched. An incoming issue can be adopted as a ticket, parked as fog, marked out of scope, marked duplicate, or sent back to the reporter for more information.
+3. Parked fog goes in the same list: the proposal is to graduate it, keep it parked, or drop it.
 4. For out-of-scope lines that name a gate or a later feature, it asks how to re-route each (`seed`, `idea` or `todo`, and which map), wiring gate-first with a live trigger and moving the whole cluster together.
 
 **What it writes**
@@ -149,7 +149,7 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 /trailhead:inbox
 ```
 
-trailhead lists, for example, two incoming issues, one fog item that just got new comments, and one deferred out-of-scope line, and walks you through each.
+trailhead lists, for example, two incoming issues, one fog item that just got new comments, and one deferred out-of-scope line, then proposes a move for each issue for you to confirm, and asks how to re-route the deferred line.
 
 ### /trailhead:grill
 
