@@ -131,7 +131,7 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 
 **What it does**
 
-1. Shows three sections by name: incoming issues to triage (open issues with no `trailhead:*` label, plus quarantined issues a session's trust check labelled `trailhead:unverified`), parked fog ready to graduate (open `trailhead:fog` issues, most recently active first), and out-of-scope lines that are actually deferred.
+1. Shows four sections by name: incoming issues to triage (open issues with no `trailhead:*` label, plus quarantined issues a session's trust check labelled `trailhead:unverified`), issues waiting on their reporter (open `trailhead:needs-info` issues: answered ones are proposed for triage, ones with no answer after `inbox.needs_info_days` (default 14) are offered for closing, the rest are only counted), parked fog ready to graduate (open `trailhead:fog` issues, most recently active first), and out-of-scope lines that are actually deferred.
 2. For each incoming issue it decides with you on judgement calls, and alone on clear ones: adopt as a ticket, park as fog, mark out of scope, mark duplicate, or ask the reporter for more information.
 3. For parked fog it asks whether to graduate it, keep it parked, or drop it.
 4. For out-of-scope lines that name a gate or a later feature, it asks how to re-route each (`seed`, `idea` or `todo`, and which map), wiring gate-first with a live trigger and moving the whole cluster together.
@@ -140,7 +140,7 @@ Triage issues opened by others and integrate the worthwhile ones into the map.
 
 - Adopted issues are changed in place (same number, reporter stays credited): a trailhead block is appended below the original text (`Parent:`, `Adopted-from: opened by @<author>`, a reframed `## Question`, `## Blocked by`), with the ticket and type labels, the map label and the sub-issue edge. A comment tells the reporter it was picked up.
 - Fog: the issue stays open with `trailhead:fog` and a comment of clarifying questions; later it can be adopted in place.
-- Out of scope: `trailhead:out-of-scope`, the sub-issue edge dropped to reclaim a slot, then closed with the reason. Duplicates are linked and closed; needs-info stays open with a question.
+- Out of scope: `trailhead:out-of-scope`, the sub-issue edge dropped to reclaim a slot, then closed with the reason. Duplicates are linked and closed; needs-info stays open with the question posted first and `trailhead:needs-info` added, so it leaves the queue until the reporter answers. A timed-out one is closed only on your yes: the label comes off, then it is closed as not planned with a message asking for a new issue.
 - Updated *Out of scope* lines on the map for anything re-routed.
 
 **Example**
