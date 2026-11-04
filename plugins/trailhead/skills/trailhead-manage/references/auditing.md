@@ -112,7 +112,7 @@ Deterministic, no agent: read the body with `gh issue view <n> --json body -q .b
 - `unresolved`: the stamp is unknown or not an ancestor of HEAD (a shallow clone, a rewritten commit).
 - `no-paths`: no cited file exists at the stamp, so there is nothing to compare.
 
-A script failure is one line in the report and never blocks the audit or the marker. The flag is a hint, not a verdict: a facet citing a frequently edited file reads stale after any edit to it.
+A script failure is one line in the report and never blocks the audit or the marker. The flag is a hint, not a verdict: a facet citing a frequently edited file reads stale after any edit to it. `current` is not proof either: patching one line moves the stamp over the whole facet, so an earlier edit to another file it cites stops being flagged.
 
 ## 8. Report
 
