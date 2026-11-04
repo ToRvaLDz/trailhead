@@ -10,7 +10,7 @@
 //     prototype | build | bug | task, and exactly one of `trailhead:map-<n>` |
 //     `trailhead:whiteboard` (never both, never two maps). Non-ticket trailhead issues
 //     (`trailhead:map`, `trailhead:dashboard`, `trailhead:codebase`,
-//     `trailhead:conventions`, and `trailhead:fog` / `trailhead:unverified`) are exempt.
+//     `trailhead:conventions`, and `trailhead:fog` / `trailhead:needs-info` / `trailhead:unverified`) are exempt.
 //     State labels (blocked, seed, paused, ...) are allowed extras and never count
 //     toward the shape. This rule applies in any repo.
 //   - A create with NO `trailhead:*` label is blocked too, but only inside a trailhead
@@ -36,7 +36,7 @@ const { words, parseRedirects } = require('./lib/body-sources.js');
 
 const PLAIN_SENTINEL = /(?:^|\s)TRAILHEAD_PLAIN_ISSUE=1(?:\s|$)/;
 const TYPES = ['decision', 'research', 'prototype', 'build', 'bug', 'task'];
-const EXEMPT = ['trailhead:map', 'trailhead:dashboard', 'trailhead:codebase', 'trailhead:conventions', 'trailhead:fog', 'trailhead:unverified'];
+const EXEMPT = ['trailhead:map', 'trailhead:dashboard', 'trailhead:codebase', 'trailhead:conventions', 'trailhead:fog', 'trailhead:needs-info', 'trailhead:unverified'];
 const MAP_RE = /^trailhead:map-\d+$/;
 const WHITEBOARD = 'trailhead:whiteboard';
 const TYPE_LIST = TYPES.map((t) => `trailhead:${t}`).join(' | ');

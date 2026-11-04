@@ -146,14 +146,14 @@ for (const l of nodeLines) {
 
 // --- labels ----------------------------------------------------------------------
 {
-  const setup = /all twenty-one: ([^)]*)\)/.exec(substrateCommands)[1];
+  const setup = /all twenty-two: ([^)]*)\)/.exec(substrateCommands)[1];
   const labels = new Set(setup.match(/trailhead:[a-z][a-z-]*/g));
   for (const t of ['decision', 'research', 'prototype', 'build', 'bug', 'task']) labels.add(`trailhead:${t}`);
-  ok('the twenty-one label set was parsed from the first-use setup', labels.size === 21);
+  ok('the twenty-two label set was parsed from the first-use setup', labels.size === 22);
   const named = new Set(withoutMarkers(compact).match(/(?<![\/\w])trailhead:[a-z][a-z-]*/g));
   ok('capture-core.md names labels', named.size >= 8);
   for (const l of named) {
-    ok(`label is in the twenty-one set: ${l}`, labels.has(l) || l === 'trailhead:map-');
+    ok(`label is in the twenty-two set: ${l}`, labels.has(l) || l === 'trailhead:map-');
   }
 }
 

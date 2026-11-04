@@ -104,7 +104,7 @@ ok('a seed without type is blocked', blocked(create(['trailhead:ticket', 'trailh
 }
 
 // --- non-ticket trailhead issues are exempt ---
-for (const l of ['trailhead:map', 'trailhead:dashboard', 'trailhead:codebase', 'trailhead:conventions', 'trailhead:fog', 'trailhead:unverified']) {
+for (const l of ['trailhead:map', 'trailhead:dashboard', 'trailhead:codebase', 'trailhead:conventions', 'trailhead:fog', 'trailhead:needs-info', 'trailhead:unverified']) {
   ok(`${l} create passes`, !blocked(create([l]), TH));
 }
 ok('map issue with extra labels passes', !blocked(create(['trailhead:map', 'trailhead:paused']), TH));

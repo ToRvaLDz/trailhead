@@ -30,10 +30,10 @@ ok('work claim step has the by-hand fallback', claimStep.includes('gh issue edit
 ok('a failed clear is reported, never blocking the claim (work)', /failed `clear` is reported to the user in one line but never blocks the claim/.test(claimStep));
 ok('a failed clear is reported, never blocking the claim (quick)', /failed `clear` is reported to the user in one line but never blocks the claim/.test(quickBullet));
 
-ok('substrate.md documents the label, off every run, on the human frontier', /\*\*`trailhead:needs-you`\*\*[\s\S]{0,900}not a frontier exclusion for humans/.test(substrate) && substrate.includes('twenty-one labels'));
+ok('substrate.md documents the label, off every run, on the human frontier', /\*\*`trailhead:needs-you`\*\*[\s\S]{0,900}not a frontier exclusion for humans/.test(substrate) && substrate.includes('twenty-two labels'));
 ok('substrate-commands.md ensures the label idempotently', commands.includes('gh label create trailhead:needs-you --color D93F0B --description "Needs you: an autonomous run parked it for the human" --force'));
 ok('substrate-commands.md documents park and clear', commands.includes('trailhead-needs-you.js park --issue <n> --reason <text> --repo <owner/name>') && commands.includes('trailhead-needs-you.js clear --issue <n> --repo <owner/name>'));
-ok('substrate-commands.md first-use list has twenty-one labels', /all twenty-one:[^\n]*`trailhead:needs-you`/.test(commands));
+ok('substrate-commands.md first-use list has twenty-two labels', /all twenty-two:[^\n]*`trailhead:needs-you`/.test(commands));
 
 // Un ticket chiuso non tiene mai il mark, comunque sia stato chiuso.
 const SWEEP = 'node <templates>/trailhead-needs-you.js sweep --repo <owner/name>';
