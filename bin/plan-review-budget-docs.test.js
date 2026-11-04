@@ -33,6 +33,21 @@ ok('configuration-reference.md: documents the per-reviewer merge', /\*\*plan_rev
 ok('plan-review.md: the overflow call passes the brief so echoed lines are ignored', /overflow --output <dir>\/<cli>\.out --prompt <brief file>/.test(review));
 ok('plan-review.md: a failing budget or overflow helper has a stated fallback', /When `budget` or `overflow` itself fails[^\n]*never guess[^\n]*at most 100 KiB/.test(review));
 
+// #368: every reviewer call is bounded by the run helper.
+ok('plan-review.md: every reviewer call goes through the run subcommand, whatever the launch mode', /Every reviewer call goes through the `run` subcommand, whatever the launch mode[^\n]*trailhead-plan-review-rounds\.js run --output <dir>\/<cli>\.out -- /.test(review));
+ok('plan-review.md: the helper bounds the call because the Bash timeout does not apply to a background call', /helper is what bounds[^\n]*`timeout` parameter does not apply to a background call/.test(review));
+ok('plan-review.md: a timeout skips overflow and takes the one-retry rule', /- `timeout`:[^\n]*\*\*Do not run `overflow`\*\*[^\n]*one-retry rule/.test(review));
+ok('plan-review.md: a second timeout drops the reviewer, recorded with the seconds', /A second timeout \*\*drops\*\*[^\n]*`second timeout`[^\n]*seconds/.test(review));
+ok('plan-review.md: failed or error runs overflow then the one-retry rule', /- `failed` or `error`: run `node <templates>\/trailhead-plan-review-rounds\.js overflow/.test(review));
+ok('plan-review.md: no human prompt on this path, never reported as still running past the bound', /No human prompt anywhere on this path[^\n]*never reported as "still running" past the bound/.test(review));
+ok('plan-review.md: a missing run helper falls back to timeout -k 10 600, 124 or 137 meaning timeout', /helper is missing or fails[^\n]*`timeout -k 10 600 <cmd> < \/dev\/null > <dir>\/<cli>\.out 2>&1`[^\n]*`gtimeout`[^\n]*124 or 137/.test(review));
+ok('plan-review.md: with no bound available the reviewer is skipped, recorded', /neither available, skip the reviewer, recording that no bound was available/.test(review));
+ok('plan-review.md: the stdin line is not evidence of a stdin hang', /`Reading additional input from stdin\.\.\.` is \*\*not evidence of a stdin hang\*\*/.test(review));
+ok('plan-review.md: the synchronous case still goes through run with the tool timeout above the helper deadline', /still goes through `run`[^\n]*`600000`[^\n]*above the helper's deadline/.test(review));
+ok('plan-review.md: the raw-shell 0% CPU stuck check is gone', !/0% CPU/.test(review));
+const techniques = read('skills/_shared/techniques.md');
+ok('techniques.md: the outcome is awaited up to the bound, a stalled plan reviewer ends as a recorded drop', /the outcome always awaited \(up to its bound[^\n]*stalled reviewer ends as a dropped reviewer, recorded in `PLAN-REVIEW`, never an open wait/.test(techniques));
+
 const root = path.resolve(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 const readmeIt = fs.readFileSync(path.join(root, 'README.it.md'), 'utf8');
@@ -41,7 +56,7 @@ for (const [name, text] of [['README.md', readme], ['README.it.md', readmeIt], [
   ok(`${name}: has the plan_review.context row`, /^\| `plan_review\.context` \|/m.test(text));
 }
 
-for (const [name, text] of [['plan-review.md', review], ['configuration-reference.md', config]]) {
+for (const [name, text] of [['plan-review.md', review], ['configuration-reference.md', config], ['techniques.md', techniques]]) {
   ok(`${name}: no em-dash`, !text.includes(String.fromCharCode(0x2014)));
 }
 console.log(`plan-review-budget-docs.test.js: ${passed} checks passed`);
