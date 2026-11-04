@@ -798,5 +798,67 @@ function cli(args) {
   ok('attribute merge replacing a tracked line: merge is not a producer', !shas(c).includes(m));
 }
 
+// --- facets: freshness of the codebase issue's facets -------------------------
+{
+  const facetsRun = (dir, body) => {
+    const file = path.join(dir, '.git', 'facets-body.md');
+    fs.writeFileSync(file, body);
+    let text = '';
+    const code = walk.main(['facets', '--repo', dir, '--body-file', file], { stdout: { write: (t) => { text += t; } } });
+    return { code, out: JSON.parse(text) };
+  };
+  const facet = (name, sha, ...cited) => `## ${name}\n\n${sha ? `_as of ${sha}_\n\n` : ''}${cited.map((c) => `- \`${c}\` is here`).join('\n')}\n\n`;
+  const byName = (r, name) => r.out.facets.find((f) => f.name === name);
+
+  const dir = mkrepo();
+  const c1 = commit(dir, {
+    'src/a.js': 'a\n', 'src/b.js': 'b\n', 'lib/old.js': 'o\n', 'lib/mv.js': 'm\n',
+    'docs/x.md': 'x\n', 'star/[ab].txt': 's\n', 'star/a.txt': 'plain\n',
+  }, 'feat: base');
+  const s1 = c1.slice(0, 7);
+  const body = '# Codebase\n\n' + [
+    facet('Fresh', s1, 'docs/x.md'),
+    facet('Edited', s1, 'src/a.js:3-9', 'docs/x.md'),
+    facet('Gone', s1, 'lib/old.js'),
+    facet('Moved', s1, 'lib/mv.js'),
+    facet('Unstamped', null, 'src/b.js'),
+    facet('Rewritten', 'deadbeef', 'src/b.js'),
+    facet('Nothing', s1, 'no/such.js', '/etc/passwd', '../x', '-rf', ':x', 'a b', 'plain words'),
+    facet('Glob', s1, 'star/[ab].txt'),
+    facet('Dir', s1, 'src/'),
+  ].join('') + '## Fenced\n\n```\n## Not a facet\n```\n';
+  commit(dir, { 'src/a.js': 'a2\n', 'lib/old.js': null, 'star/[ab].txt': 's2\n' }, 'fix: edits');
+  git(dir, ['mv', 'lib/mv.js', 'lib/moved.js']);
+  const c2 = finishCommit(dir, ['commit', '-q'], 'refactor: rename', {});
+  const r = facetsRun(dir, body);
+  eq('facets: exit 0 and head', [r.code, r.out.head], [0, c2]);
+  eq('facets: fresh facet is current', [byName(r, 'Fresh').status, byName(r, 'Fresh').changed], ['current', []]);
+  eq('facets: edited cited file (with :line suffix) is stale', [byName(r, 'Edited').status, byName(r, 'Edited').changed, byName(r, 'Edited').paths], ['stale', ['src/a.js'], ['src/a.js', 'docs/x.md']]);
+  eq('facets: deleted cited file is stale', [byName(r, 'Gone').status, byName(r, 'Gone').changed], ['stale', ['lib/old.js']]);
+  eq('facets: renamed cited file is stale', byName(r, 'Moved').status, 'stale');
+  eq('facets: no stamp is unstamped', [byName(r, 'Unstamped').status, byName(r, 'Unstamped').sha], ['unstamped', null]);
+  eq('facets: unknown stamp is unresolved', byName(r, 'Rewritten').status, 'unresolved');
+  eq('facets: unsafe and missing tokens are ignored, nothing resolved is no-paths', [byName(r, 'Nothing').status, byName(r, 'Nothing').paths], ['no-paths', []]);
+  eq('facets: glob characters match literally and a real change reads stale', [byName(r, 'Glob').status, byName(r, 'Glob').changed], ['stale', ['star/[ab].txt']]);
+  eq('facets: trailing slash is stripped', [byName(r, 'Dir').status, byName(r, 'Dir').paths], ['stale', ['src']]);
+  ok('facets: a fenced ## is not a facet', !r.out.facets.some((f) => f.name === 'Not a facet'));
+  eq('facets: fenced section is listed as unstamped', byName(r, 'Fenced').status, 'unstamped');
+
+  // A stamp that is a real commit but not an ancestor of HEAD is unresolved.
+  git(dir, ['checkout', '-q', '-b', 'side', c1]);
+  const side = commit(dir, { 'side.txt': 's\n' }, 'feat: side');
+  git(dir, ['checkout', '-q', 'main']);
+  const o = facetsRun(dir, facet('Side', side.slice(0, 7), 'src/b.js'));
+  eq('facets: a stamp off HEAD history is unresolved', byName(o, 'Side').status, 'unresolved');
+
+  // Usage errors exit 2 with {"error":...}.
+  let text = '';
+  const bad = walk.main(['facets', '--repo', dir], { stdout: { write: (t) => { text += t; } } });
+  ok('facets: --body-file is required', bad === 2 && JSON.parse(text).error);
+  text = '';
+  const missing = walk.main(['facets', '--repo', dir, '--body-file', '/nonexistent/body.md'], { stdout: { write: (t) => { text += t; } } });
+  ok('facets: unreadable body file is a fatal error', missing === 2 && JSON.parse(text).error);
+}
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);
