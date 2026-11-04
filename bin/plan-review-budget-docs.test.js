@@ -39,8 +39,9 @@ ok('plan-review.md: the helper bounds the call because the Bash timeout does not
 ok('plan-review.md: a timeout skips overflow and takes the one-retry rule', /- `timeout`:[^\n]*\*\*Do not run `overflow`\*\*[^\n]*one-retry rule/.test(review));
 ok('plan-review.md: a second timeout drops the reviewer, recorded with the seconds', /A second timeout \*\*drops\*\*[^\n]*`second timeout`[^\n]*seconds/.test(review));
 ok('plan-review.md: failed or error runs overflow then the one-retry rule', /- `failed` or `error`: run `node <templates>\/trailhead-plan-review-rounds\.js overflow/.test(review));
+ok('plan-review.md: the helper-fails fallback names no JSON line and excludes a status error line', /helper is missing, exits non-zero with no JSON line \(a helper killed by a signal prints none\), or prints non-JSON output\*\*[^\n]*`status: error` JSON line is not this case[^\n]*`failed`\/`error` branch/.test(review));
 ok('plan-review.md: no human prompt on this path, never reported as still running past the bound', /No human prompt anywhere on this path[^\n]*never reported as "still running" past the bound/.test(review));
-ok('plan-review.md: a missing run helper falls back to timeout -k 10 600, 124 or 137 meaning timeout', /helper is missing or fails[^\n]*`timeout -k 10 600 <cmd> < \/dev\/null > <dir>\/<cli>\.out 2>&1`[^\n]*`gtimeout`[^\n]*124 or 137/.test(review));
+ok('plan-review.md: a missing run helper falls back to timeout -k 10 600, 124 or 137 meaning timeout', /helper is missing, exits non-zero[^\n]*`timeout -k 10 600 <cmd> < \/dev\/null > <dir>\/<cli>\.out 2>&1`[^\n]*`gtimeout`[^\n]*124 or 137/.test(review));
 ok('plan-review.md: with no bound available the reviewer is skipped, recorded', /neither available, skip the reviewer, recording that no bound was available/.test(review));
 ok('plan-review.md: the stdin line is not evidence of a stdin hang', /`Reading additional input from stdin\.\.\.` is \*\*not evidence of a stdin hang\*\*/.test(review));
 ok('plan-review.md: the synchronous case still goes through run with the tool timeout above the helper deadline', /still goes through `run`[^\n]*`600000`[^\n]*above the helper's deadline/.test(review));
