@@ -33,7 +33,7 @@ ok('needs info: ensures the label idempotently', needsInfo.includes('gh label cr
 ok('resurfacing only on a reporter comment after the label', /only when the reporter comments after the label/.test(needsInfo));
 ok('every move on an answered issue drops the label first', /dropping `trailhead:needs-info` first/.test(needsInfo));
 ok('Ask again removes and re-adds the label', /\*\*Ask again\*\*[^\n]*removes and re-adds the label/.test(needsInfo));
-ok('Keep waiting re-applies the label', /\*\*Keep waiting\*\* re-applies the label/.test(needsInfo));
+ok('Keep waiting removes and re-adds the label, stating what a failure leaves', /\*\*Keep waiting\*\* removes and re-adds the label/.test(needsInfo) && /A failed removal keeps the old clock, so the offer returns next run; a failed re-add leaves the issue in the incoming queue/.test(needsInfo));
 ok('a timeout is only an offer, never an automatic close', /only \*\*offered\*\* for closing/.test(needsInfo) && /never closed automatically/.test(needsInfo));
 ok('the label comes off before the close', /remove the label, \*\*then\*\* `gh issue close <n> --reason "not planned"/.test(needsInfo));
 ok('the close message follows ticket.language and asks for a new issue', needsInfo.includes('`config.ticket.language`') && needsInfo.includes('asks for a new issue linking this one'));
