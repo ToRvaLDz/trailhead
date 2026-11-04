@@ -8,6 +8,7 @@
 //   3. Usage errors (exit 2).
 //   4. End-to-end: the script itself through spawnSync.
 //   5. budget (pre-check of a reviewer prompt) and overflow (post-check of its output). #353.
+//   6. run (a reviewer call under a wall-clock deadline), real stub scripts through spawnSync. #368.
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -478,6 +479,75 @@ function overflow(text, brief) {
   fs.writeFileSync(out, 'all good');
   ok('e2e: overflow false on ordinary output', JSON.parse(spawnSync(process.execPath, [scriptPath, 'overflow', '--output', out], { encoding: 'utf8' }).stdout.trim()).overflow === false);
   rm(p.dir); rm(huge.dir); s.done();
+}
+
+// --- run: a reviewer call under a deadline (#368) -------------------------------
+{
+  const dir = tmp();
+  const out = path.join(dir, 'r.out');
+  const stub = (name, body) => { const f = path.join(dir, name); fs.writeFileSync(f, body); return f; };
+  const helper = (extra, cmd, env = {}) => {
+    const t0 = Date.now();
+    const res = spawnSync(process.execPath, [scriptPath, 'run', '--output', out, ...extra, '--', ...cmd], { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30000 });
+    let json = null;
+    try { json = JSON.parse(res.stdout.trim()); } catch { /* not json */ }
+    return { res, json, ms: Date.now() - t0, text: fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : null };
+  };
+  const node = (f, ...a) => [process.execPath, f, ...a];
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+  const fast = helper([], node(stub('fast.js', "console.log('review text'); console.error('warn text');")));
+  ok('run: fast exit 0 is status ok, exit 0, one JSON line', fast.res.status === 0 && fast.json.status === 'ok' && fast.json.exitCode === 0 && fast.json.signal === null && fast.json.timeoutSeconds === 600 && fast.json.output === out && !('reason' in fast.json) && fast.res.stdout.trim().split('\n').length === 1);
+  ok('run: stdout and stderr both land in the output file', fast.text.includes('review text') && fast.text.includes('warn text'));
+
+  const bad = helper([], node(stub('bad.js', "console.log('partial'); process.exit(3);")));
+  ok('run: a non-zero exit is failed with its code, still exit 0', bad.res.status === 0 && bad.json.status === 'failed' && bad.json.exitCode === 3 && /3/.test(bad.json.reason) && bad.text.includes('partial'));
+
+  const stdinStub = stub('stdin.js', "process.stdin.on('data', () => {}); process.stdin.on('end', () => { console.log('EOF'); });");
+  const eof = helper(['--timeout', '5'], node(stdinStub));
+  ok('run: stdin is closed (a reader gets EOF at once)', eof.json.status === 'ok' && eof.text.includes('EOF') && eof.ms < 4000);
+
+  const missing = helper([], [path.join(dir, 'no-such-cli'), 'x']);
+  ok('run: a missing command is status error, exit 0, text in the file', missing.res.status === 0 && missing.json.status === 'error' && missing.json.exitCode === null && /ENOENT/.test(missing.json.reason) && /ENOENT/.test(missing.text));
+  const noexec = helper([], [stub('plain.txt', 'x')]);
+  ok('run: a non-executable command is status error', noexec.res.status === 0 && noexec.json.status === 'error' && /EACCES/.test(noexec.text));
+
+  const pass = helper([], node(stub('argv.js', "console.log(JSON.stringify(process.argv.slice(2)));"), '--foo', '', '--timeout', 'a b'));
+  ok('run: argv after -- is passed verbatim, flags and empty strings included', pass.json.status === 'ok' && pass.text.trim() === JSON.stringify(['--foo', '', '--timeout', 'a b']));
+
+  const sleeper = helper(['--timeout', '1'], node(stub('sleep.js', "console.log('Reading additional input from stdin...'); setTimeout(() => {}, 300000);")));
+  ok('run: a silent sleeper is timeout within the bound, exit 0', sleeper.res.status === 0 && sleeper.json.status === 'timeout' && sleeper.json.timeoutSeconds === 1 && /1s/.test(sleeper.json.reason) && sleeper.ms < 6000);
+  ok('run: the partial output of a timed-out call stays in the file', sleeper.text.includes('Reading additional input from stdin...'));
+  const ov = run(['overflow', '--output', out]);
+  ok('run: overflow on that partial output is not what classifies a timeout', ov.json.overflow === false && sleeper.json.status === 'timeout');
+  const ovText = stub('ov.js', "console.log('context_length_exceeded'); setTimeout(() => {}, 300000);");
+  const slow = helper(['--timeout', '1'], node(ovText));
+  ok('run: timeout wins even when the output looks like an overflow', slow.json.status === 'timeout' && run(['overflow', '--output', out]).json.overflow === true);
+
+  const pidFile = path.join(dir, 'gc.pid');
+  const grand = stub('grand.js', `
+const { spawn } = require('child_process');
+const fs = require('fs');
+process.on('SIGTERM', () => {});
+const gc = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setTimeout(() => {}, 300000);"], { stdio: 'ignore' });
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(gc.pid));
+setTimeout(() => {}, 300000);
+`);
+  const stubborn = helper(['--timeout', '1'], node(grand), { TRAILHEAD_REVIEW_GRACE_MS: '400' });
+  ok('run: a child ignoring SIGTERM still ends as timeout, killed by SIGKILL', stubborn.json.status === 'timeout' && stubborn.json.signal === 'SIGKILL' && stubborn.ms < 8000);
+  const gcPid = Number(fs.readFileSync(pidFile, 'utf8'));
+  for (let i = 0; i < 20 && alive(gcPid); i++) sleepMs(100);
+  ok('run: the grandchild does not survive the timeout', gcPid > 0 && !alive(gcPid));
+
+  const usage = (argv) => spawnSync(process.execPath, [scriptPath, 'run', ...argv], { encoding: 'utf8' });
+  ok('usage: run without --output exits 2', usage(['--', 'true']).status === 2);
+  ok('usage: run without a command exits 2', usage(['--output', out]).status === 2 && usage(['--output', out, '--']).status === 2);
+  ok('usage: run with a bad --timeout exits 2', ['0', '-1', '1.5', 'abc'].every((v) => usage(['--output', out, '--timeout', v, '--', 'true']).status === 2));
+  ok('usage: run with an unknown helper flag exits 2', usage(['--output', out, '--bogus', 'x', '--', 'true']).status === 2);
+  const unwritable = spawnSync(process.execPath, [scriptPath, 'run', '--output', path.join(dir, 'no', 'such', 'dir', 'x.out'), '--', 'true'], { encoding: 'utf8' });
+  ok('run: an unwritable output file exits 1 with status error', unwritable.status === 1 && JSON.parse(unwritable.stdout.trim()).status === 'error');
+  rm(dir);
 }
 
 console.log(`plan-review-rounds.test.js: ${passed} checks passed`);

@@ -10,6 +10,7 @@
 //   node trailhead-plan-review-rounds.js round --choice <config|1|2|3|until> --configured <n> --history <file>
 //   node trailhead-plan-review-rounds.js budget --repo <project-root> --reviewer <name> --prompt <file>
 //   node trailhead-plan-review-rounds.js overflow --output <file> [--prompt <brief file>]
+//   node trailhead-plan-review-rounds.js run --output <file> [--timeout <seconds>] -- <cmd> [args...]
 // Prints one JSON line on stdout. Exit 0 ok / 1 error / 2 usage (message on stderr).
 //
 // Config: `plan_review` (off | on | comma list of CLIs, default off) and `plan_review.rounds`
@@ -58,6 +59,22 @@
 // <brief file>, lines of the brief echoed back by the CLI are ignored; rate-limit lines never count.
 //   {"status":"ok","overflow":bool,"reason"?:<the matched line, trimmed and length-capped>}
 //
+// run: launches ONE reviewer call under a wall-clock deadline, so no call can outlive its bound
+// (the Bash tool's own `timeout` does not apply to a background call). `--` ends the helper's flags:
+// everything after it is the command's argv verbatim (no shell). The command gets stdin closed and its
+// stdout and stderr together go to --output (a file descriptor, truncated at start, no pipes), in its
+// own process group. At the deadline the group gets SIGTERM, then SIGKILL after a grace period (10s;
+// TRAILHEAD_REVIEW_GRACE_MS overrides it, for tests), so a child that ignores SIGTERM and its
+// descendants still end. If the helper itself gets SIGTERM or SIGINT it kills the group first.
+//   {"status":"ok"|"failed"|"timeout"|"error","exitCode":<n|null>,"signal":<s|null>,"seconds":<n>,
+//    "timeoutSeconds":<n>,"output":<file>,"reason"?:<text, for failed, timeout and error>}
+// ok = exit 0; failed = non-zero exit (or a signal) before the deadline; timeout = the deadline hit,
+// whatever the exit then was and even when the output has content (do not run `overflow` on it);
+// error = the command could not be launched (ENOENT, E2BIG, EACCES...), the error text is also written
+// into --output. All four exit 0 (the reviewer's result is data). --timeout is a positive integer,
+// default 600 seconds. A missing --output or command is a usage error (exit 2); an unwritable
+// --output is exit 1. `main` returns a Promise of the exit code for this subcommand only.
+//
 // Config `plan_review.context`: an object { "<cli>": <window in tokens> }, merged per reviewer across
 // the two files (project entry, else global entry, else default). A valid entry is a positive integer
 // no larger than 10000000; anything else warns and falls through to the next layer; a value that is
@@ -66,7 +83,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const CONFIG_REL = path.join('.trailhead', 'config.json');
 const ROSTER = ['claude', 'gemini', 'codex', 'qwen', 'kimi', 'agy', 'opencode', 'cursor-agent', 'coderabbit'];
@@ -74,7 +91,7 @@ const DEFAULT_ROUNDS = 2;
 const CEILING = 5;
 const HOSTS = ['claude', 'codex'];
 const CHOICES = ['config', '1', '2', '3', 'until'];
-const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'], budget: ['repo', 'reviewer', 'prompt'], overflow: ['output', 'prompt'] };
+const VALUED = { ask: ['repo', 'host'], round: ['choice', 'configured', 'history'], budget: ['repo', 'reviewer', 'prompt'], overflow: ['output', 'prompt'], run: ['output', 'timeout'] };
 // Default context windows in tokens; any other reviewer name gets FALLBACK_WINDOW.
 const CONTEXT_WINDOWS = { claude: 200000, gemini: 1000000, codex: 272000, qwen: 256000, kimi: 256000, agy: 1000000, opencode: 128000, 'cursor-agent': 128000, coderabbit: 128000 };
 const FALLBACK_WINDOW = 128000;
@@ -83,6 +100,13 @@ const CAP_RATIO = 0.65;
 const BYTES_PER_TOKEN = 3;
 const FILE_THRESHOLD_BYTES = 102400;
 const REASON_MAX = 200;
+// Wall-clock deadline of one reviewer call: above the 540s floor agy already uses. It is wall-clock
+// (not a no-output check) because a healthy reviewer may stay quiet for minutes.
+const DEFAULT_TIMEOUT_SECONDS = 600;
+// Time between SIGTERM and SIGKILL to the reviewer's process group.
+const KILL_GRACE_MS = 10000;
+// Last resort after SIGKILL: stop waiting for an exit event that never comes.
+const EXIT_FALLBACK_MS = 2000;
 // Known context-overflow and E2BIG messages of the reviewer CLIs (case-insensitive).
 const OVERFLOW_PATTERNS = [
   /context_length_exceeded/i,
@@ -104,6 +128,10 @@ function parseArgs(argv) {
   const out = { command };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
+    if (command === 'run' && a === '--') {
+      out.cmd = argv.slice(i + 1);
+      break;
+    }
     const name = a.startsWith('--') ? a.slice(2) : null;
     if (!name || !VALUED[command].includes(name)) return { error: `usage: unknown argument ${a}` };
     const v = argv[++i];
@@ -119,6 +147,10 @@ function parseArgs(argv) {
     if (!out.prompt) return { error: 'usage: missing --prompt <file>' };
   } else if (command === 'overflow') {
     if (!out.output) return { error: 'usage: missing --output <file>' };
+  } else if (command === 'run') {
+    if (!out.output) return { error: 'usage: missing --output <file>' };
+    if (out.timeout !== undefined && !/^[1-9]\d*$/.test(out.timeout)) return { error: 'usage: --timeout needs a positive integer (seconds)' };
+    if (!out.cmd || out.cmd.length === 0 || out.cmd[0] === '') return { error: 'usage: missing command after -- <cmd> [args...]' };
   } else {
     if (!out.choice || !CHOICES.includes(out.choice)) return { error: `usage: --choice must be one of ${CHOICES.join(', ')}` };
     if (!out.configured || !/^[1-9]\d*$/.test(out.configured)) return { error: 'usage: --configured needs a positive integer' };
@@ -335,6 +367,81 @@ function runOverflow(parsed, cwd, fs_) {
   return { code: 0, result: reason === null ? { status: 'ok', overflow: false } : { status: 'ok', overflow: true, reason } };
 }
 
+// Runs one reviewer call under a wall-clock deadline. Resolves { code, result }; never rejects.
+function runRun(parsed, cwd, env, deps) {
+  const file = path.resolve(cwd, parsed.output);
+  const timeoutSeconds = parsed.timeout === undefined ? DEFAULT_TIMEOUT_SECONDS : Number(parsed.timeout);
+  const graceMs = deps.graceMs !== undefined ? deps.graceMs : (/^\d+$/.test(env.TRAILHEAD_REVIEW_GRACE_MS || '') ? Number(env.TRAILHEAD_REVIEW_GRACE_MS) : KILL_GRACE_MS);
+  const base = { timeoutSeconds, output: file };
+  let fd;
+  try {
+    fd = fs.openSync(file, 'w');
+  } catch (e) {
+    return Promise.resolve({ code: 1, result: { status: 'error', reason: `cannot write ${file}: ${e && e.message ? e.message : e}` } });
+  }
+  const started = Date.now();
+  const seconds = () => Math.round((Date.now() - started) / 100) / 10;
+  const [cmd, ...args] = parsed.cmd;
+
+  return new Promise((resolve) => {
+    let child = null;
+    let settled = false;
+    let timedOut = false;
+    let timers = [];
+    const killGroup = (sig) => {
+      if (!child || !child.pid) return;
+      try { process.kill(-child.pid, sig); } catch (e) { /* group already gone */ }
+    };
+    const onSignal = (sig) => { killGroup('SIGKILL'); process.exit(sig === 'SIGINT' ? 130 : 143); };
+    const finish = (code, result) => {
+      if (settled) return;
+      settled = true;
+      timers.forEach(clearTimeout);
+      process.removeListener('SIGTERM', onSignal);
+      process.removeListener('SIGINT', onSignal);
+      try { fs.closeSync(fd); } catch (e) { /* already closed */ }
+      resolve({ code, result: { ...result, seconds: seconds(), ...base } });
+    };
+    const fail = (e) => {
+      const text = `trailhead run: cannot launch ${cmd}: ${e && e.message ? e.message : e}`;
+      try { fs.writeSync(fd, text + '\n'); } catch (w) { /* the reason still goes in the JSON */ }
+      finish(0, { status: 'error', exitCode: null, signal: null, reason: text });
+    };
+
+    try {
+      child = spawn(cmd, args, { stdio: ['ignore', fd, fd], detached: true, cwd });
+    } catch (e) {
+      fail(e);
+      return;
+    }
+    process.once('SIGTERM', onSignal);
+    process.once('SIGINT', onSignal);
+    child.on('error', (e) => { if (!child.pid) fail(e); });
+
+    child.on('exit', (exitCode, signal) => {
+      // Stragglers of the reviewer's group never outlive the call.
+      killGroup('SIGKILL');
+      if (timedOut) {
+        finish(0, { status: 'timeout', exitCode, signal, reason: `no exit within ${timeoutSeconds}s; the process group was terminated` });
+      } else if (exitCode === 0) {
+        finish(0, { status: 'ok', exitCode, signal });
+      } else {
+        finish(0, { status: 'failed', exitCode, signal, reason: signal ? `killed by ${signal}` : `exit code ${exitCode}` });
+      }
+    });
+
+    timers.push(setTimeout(() => {
+      timedOut = true;
+      killGroup('SIGTERM');
+      timers.push(setTimeout(() => {
+        killGroup('SIGKILL');
+        // Final fallback: do not wait for an exit event a stuck descendant could delay.
+        timers.push(setTimeout(() => finish(0, { status: 'timeout', exitCode: null, signal: 'SIGKILL', reason: `no exit within ${timeoutSeconds}s; the process group was killed` }), EXIT_FALLBACK_MS));
+      }, graceMs));
+    }, timeoutSeconds * 1000));
+  });
+}
+
 const norm = (key) => key.trim().toLowerCase().replace(/\s+/g, ' ');
 const filled = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -384,7 +491,8 @@ function runRound(parsed, cwd, fs_) {
   return { code: 0, result: decide(history, parsed.choice, Number(parsed.configured)) };
 }
 
-function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp } = {}) {
+// Returns the exit code, or a Promise of it for the `run` subcommand (the only asynchronous one).
+function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp, graceMs } = {}) {
   const cwd_ = cwd || process.cwd();
   const out = stdout || process.stdout;
   const err = stderr || process.stderr;
@@ -395,6 +503,12 @@ function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp } = {
   if (parsed.error) {
     err.write(parsed.error + '\n');
     return 2;
+  }
+  if (parsed.command === 'run') {
+    return runRun(parsed, cwd_, env_, { graceMs }).then((r) => {
+      out.write(JSON.stringify(r.result) + '\n');
+      return r.code;
+    });
   }
   let run;
   try {
@@ -416,5 +530,5 @@ function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp } = {
 module.exports = { parseArgs, readConfig, decide, budgetDecision, matchOverflow, main };
 
 if (require.main === module) {
-  process.exit(main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, stderr: process.stderr, env: process.env }));
+  Promise.resolve(main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, stderr: process.stderr, env: process.env })).then((code) => process.exit(code));
 }
