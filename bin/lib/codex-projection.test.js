@@ -131,6 +131,10 @@ ok('codexSkillAdapterHeader §H makes backgrounding reviewers the default',
   header.includes('the default is to background the reviewers'));
 ok('codexSkillAdapterHeader §H closes reviewer stdin to avoid the EOF hang',
   header.includes('/dev/null') && header.toLowerCase().includes('stdin'));
+ok('codexSkillAdapterHeader §H bounds every reviewer call through the run subcommand (#368)',
+  header.includes('trailhead-plan-review-rounds.js run --output') && header.includes('timeout_ms') && header.includes('above the helper') &&
+  header.includes('a `timeout` skips the `overflow` check') && header.includes('timeout -k 10 600') &&
+  header.includes('not evidence of a stdin hang') && !header.includes('0% CPU'));
 
 // --- codexVerbSkillContent (#46) ---
 ok('codexVerbSkillContent: SKILL.md frontmatter is at byte 0 with name+description', (() => {
