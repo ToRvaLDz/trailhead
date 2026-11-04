@@ -89,7 +89,7 @@ for (const frag of ['still current and complete', 'Decisions so far', 'status qu
 // 6. Inbox: nessuna chiusura o commento pubblico senza un si'
 const inbox = read('trailhead-chart/references/inbox.md');
 ok('inbox drops "on your own for clear ones"', !inbox.includes('on your own for clear ones'));
-const intro = lineOf(inbox, (l) => l.startsWith('For each issue in the first two sections'));
+const intro = lineOf(inbox, (l) => l.startsWith('For each issue in the first three sections'));
 for (const frag of ['propose a disposition', 'one list', 'explicit yes', 'never close', 'comment on', 'out-of-scope ruling'])
   ok(`inbox intro carries: ${frag}`, intro.includes(frag));
 const dup = lineOf(inbox, (l) => l.startsWith('- **Duplicate.**'));
