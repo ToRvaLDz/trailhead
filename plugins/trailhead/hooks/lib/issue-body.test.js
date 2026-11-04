@@ -207,6 +207,87 @@ const EMPTY_DECISIONS = ['Intro line for the map, long enough.', '', '## Decisio
   ok('remove numbered: an all-same-number list is not renumbered', lazy.body === sec('1. b', '1. c'));
 }
 
+// --- applyOp: facet stamp ----------------------------------------------------
+{
+  const FACETS = [
+    '# Codebase',
+    '',
+    '## Layout',
+    '',
+    '_as of aaaaaaa_',
+    '',
+    '- `src/` the code',
+    '',
+    '## Stack',
+    '',
+    '- node',
+    '',
+    '## Empty',
+    '',
+    '## Pending',
+    '',
+    '_as of bbbbbbb_',
+    '',
+    '_none yet_',
+    '',
+  ].join('\n');
+  const STAMP = 'abc1234';
+  const stamped = (r) => r.body.split('\n');
+  const section = (body, name) => mod.facetsOf(body).find((f) => f.name === name);
+
+  const ins = applyOp(FACETS, { kind: 'append', section: 'Stack', line: '- more', stamp: STAMP });
+  ok('stamp: insert when the section has none', !ins.error && section(ins.body, 'Stack').sha === STAMP);
+  ok('stamp: inserted as first content, blank line after', /## Stack\n\n_as of abc1234_\n\n- node\n- more\n/.test(ins.body));
+  const rep = applyOp(FACETS, { kind: 'append', section: 'Layout', line: '- `lib/` helpers', stamp: STAMP });
+  ok('stamp: replaces the old stamp', section(rep.body, 'Layout').sha === STAMP && !rep.body.includes('aaaaaaa'));
+  ok('stamp: one stamp line per section', stamped(rep).filter((l) => /^_as of /.test(l)).length === 2);
+  const again = applyOp(rep.body, { kind: 'append', section: 'Layout', line: '- `x/` x', stamp: 'def5678' });
+  ok('stamp: repeat patch never duplicates the stamp', (again.body.match(/_as of def5678_/g) || []).length === 1 && !again.body.includes('abc1234_\n\n- `src/'));
+  ok('stamp: other sections untouched', section(rep.body, 'Stack').text === section(FACETS, 'Stack').text && section(rep.body, 'Pending').sha === 'bbbbbbb');
+  const keep = applyOp(FACETS, { kind: 'append', section: 'Layout', line: '- `lib/` helpers' });
+  ok('stamp: no --stamp keeps the old stamp', section(keep.body, 'Layout').sha === 'aaaaaaa' && (keep.body.match(/_as of aaaaaaa_/g) || []).length === 1);
+  const bare = applyOp(FACETS, { kind: 'append', section: 'Stack', line: '- more' });
+  ok('stamp: no old stamp and no --stamp leaves the section as before', bare.body === FACETS.replace('- node\n', '- node\n- more\n'));
+  const empty = applyOp(FACETS, { kind: 'append', section: 'Empty', line: '- first', stamp: STAMP });
+  ok('stamp: empty section gains stamp and line', section(empty.body, 'Empty').sha === STAMP && /## Empty\n\n_as of abc1234_\n\n- first\n/.test(empty.body));
+  const ph = applyOp(FACETS, { kind: 'append', section: 'Pending', line: '- real', stamp: STAMP });
+  ok('stamp: placeholder under an existing stamp is dropped', !/none yet/.test(ph.body) && section(ph.body, 'Pending').sha === STAMP && /_as of abc1234_\n\n- real\n/.test(ph.body));
+  const phKeep = applyOp(FACETS, { kind: 'append', section: 'Pending', line: '- real' });
+  ok('stamp: placeholder dropped and old stamp kept without --stamp', !/none yet/.test(phKeep.body) && section(phKeep.body, 'Pending').sha === 'bbbbbbb');
+
+  const r1 = applyOp(FACETS, { kind: 'replace', section: 'Layout', text: '- `new/` fresh\n', stamp: STAMP });
+  ok('stamp: replace writes the new content under the supplied stamp', section(r1.body, 'Layout').sha === STAMP && /_as of abc1234_\n\n- `new\/` fresh\n/.test(r1.body) && !r1.body.includes('src/'));
+  const r2 = applyOp(FACETS, { kind: 'replace', section: 'Layout', text: '_as of 1111111_\n\n- `new/` fresh\n', stamp: STAMP });
+  ok('stamp: replace file carrying its own stamp does not duplicate it', (r2.body.match(/_as of /g) || []).length === 2);
+  ok('stamp: replace file stamp is overridden by --stamp', section(r2.body, 'Layout').sha === STAMP && !r2.body.includes('1111111'));
+  const r3 = applyOp(FACETS, { kind: 'replace', section: 'Layout', text: '- `new/` fresh\n' });
+  ok('stamp: replace without --stamp keeps the old stamp', section(r3.body, 'Layout').sha === 'aaaaaaa');
+
+  const rm = applyOp(FACETS.replace('- node\n', '- node\n- go\n'), { kind: 'remove', section: 'Stack', match: '- go', stamp: STAMP });
+  ok('stamp: remove stamps the section', !rm.error && rm.changed && section(rm.body, 'Stack').sha === STAMP && !rm.body.includes('- go'));
+  const noop = applyOp(FACETS, { kind: 'remove', section: 'Stack', match: 'absent', stamp: STAMP });
+  ok('stamp: a no-op remove writes nothing and does not stamp', noop.changed === false && noop.body === FACETS);
+
+  const bad = applyOp(FACETS, { kind: 'append', section: 'Stack', line: 'x', stamp: 'XYZ' });
+  ok('stamp: invalid value is an error', !!bad.error);
+  const pre = applyOp(FACETS, { kind: 'append', section: ':preamble', line: 'x', stamp: STAMP });
+  ok('stamp: preamble is an error', !!pre.error);
+
+  const fenced = ['# C', '', '## Real', '', '_as of aaaaaaa_', '', '```', '## Not a facet', '```', ''].join('\n');
+  const fs2 = mod.facetsOf(fenced);
+  ok('facetsOf: fence-aware, one facet with its sha', fs2.length === 1 && fs2[0].name === 'Real' && fs2[0].sha === 'aaaaaaa');
+  const fl = mod.facetsOf(FACETS);
+  ok('facetsOf: names, shas and null for unstamped', fl.map((f) => f.name).join() === 'Layout,Stack,Empty,Pending' && fl[1].sha === null && fl[0].sha === 'aaaaaaa');
+
+  for (const stamp of ['XYZ', 'ABCDEF1', 'abc12', 'a'.repeat(41), '']) {
+    const r = mod.parseArgs(['append', '--issue', '1', '--section', 'x', '--line', 'y', '--stamp', stamp]);
+    ok(`stamp: parseArgs rejects "${stamp}"`, !!r.error);
+  }
+  ok('stamp: parseArgs rejects :preamble', !!mod.parseArgs(['append', '--issue', '1', '--section', ':preamble', '--line', 'y', '--stamp', 'abc1234']).error);
+  ok('stamp: parseArgs accepts 7 to 40 hex', mod.parseArgs(['append', '--issue', '1', '--section', 'x', '--line', 'y', '--stamp', 'abc1234']).stamp === 'abc1234'
+    && mod.parseArgs(['remove', '--issue', '1', '--section', 'x', '--match', 'y', '--stamp', 'a'.repeat(40)]).stamp === 'a'.repeat(40));
+}
+
 // --- fake tracker ------------------------------------------------------------
 function makeTracker(init = {}) {
   const t = {
