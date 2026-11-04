@@ -8,7 +8,8 @@
 //
 // CLI:
 //   node trailhead-issue-body.js <append|replace|remove> --issue <n> [--repo <owner/name>]
-//        --section "<name>" (--line "<text>" | --file <path> | --match "<text>") [--dry-run]
+//        --section "<name>" (--line "<text>" | --file <path> | --match "<text>")
+//        [--stamp <sha>] [--dry-run]
 //   append   adds --line as the last line of the section (a `_none yet_`-style
 //            placeholder that is the section's only content is dropped)
 //   replace  swaps the section content for the text of --file
@@ -17,6 +18,12 @@
 // <name> matches a `## ` heading with its leading emoji/punctuation stripped
 // (`Decisions so far` matches `## ✅ Decisions so far`); `:preamble` is the text
 // before the first `## ` (the conventions header).
+// --stamp <sha> (7 to 40 lowercase hex) sets the section's `_as of <sha>_` line, the
+// commit a codebase facet was written or last patched against: the first content
+// line of the section, then a blank line. Applied only when given (map and
+// conventions patches omit it) and written in the same single guarded write as the
+// patch. Without it an existing stamp is kept; a no-op `remove` writes nothing and
+// does not stamp. Not valid on `:preamble`. #360.
 // --dry-run reads and computes (secret scan included) but writes nothing and
 // prints the old and new byte sizes.
 //
@@ -198,9 +205,83 @@ function readSection(body, name) {
   return sec ? lines.slice(sec.from, sec.to).filter((l) => !isBlank(l)) : null;
 }
 
-// op: { kind: 'append'|'replace'|'remove', section, line|text|match }.
+// --- facet stamp -------------------------------------------------------------
+
+const STAMP_RE = /^_as of ([0-9a-f]{7,40})_$/;
+const STAMP_VALUE_RE = /^[0-9a-f]{7,40}$/;
+const stampLine = (sha) => `_as of ${sha}_`;
+
+// The first non-blank line of lines[from..to) when it is a stamp: { at, sha }, else null.
+function stampIn(lines, from, to) {
+  for (let i = from; i < to; i++) {
+    if (isBlank(lines[i])) continue;
+    const m = STAMP_RE.exec(lines[i].trim());
+    return m ? { at: i, sha: m[1] } : null;
+  }
+  return null;
+}
+
+// `## ` sections of a body as { name, sha, text }: sha is the stamp or null, text
+// the section content. Fence-aware (headingIndexes), so a fenced `## ` is no facet.
+function facetsOf(body) {
+  const { lines } = splitBody(String(body));
+  const heads = headingIndexes(lines);
+  return heads.map((h, k) => {
+    const to = k + 1 < heads.length ? heads[k + 1] : lines.length;
+    const stamp = stampIn(lines, h + 1, to);
+    return { name: headingName(lines[h]), sha: stamp ? stamp.sha : null, text: lines.slice(h + 1, to).join('\n') };
+  });
+}
+
+// Runs the op with the stamp set aside, then writes the supplied stamp (else the
+// old one, else the file's own for a replace) back as the section's first content.
+function applyStamped(body, op) {
+  if (op.stamp !== undefined && !STAMP_VALUE_RE.test(op.stamp)) return { error: 'stamp must be 7 to 40 lowercase hex characters' };
+  if (op.section === PREAMBLE) return op.stamp === undefined ? applyCore(body, op) : { error: 'a stamp does not apply to the preamble' };
+  const parts = splitBody(String(body));
+  const sec = findSection(parts.lines, op.section);
+  if (!sec) return { error: `section not found: ${op.section}` };
+  const old = stampIn(parts.lines, sec.from, sec.to);
+  let text = op.text;
+  let own = null;
+  if (op.kind === 'replace') {
+    const tl = bodyLines(text);
+    const t = stampIn(tl, 0, tl.length);
+    if (t) {
+      own = t.sha;
+      tl.splice(t.at, t.at + 1 < tl.length && isBlank(tl[t.at + 1]) ? 2 : 1);
+      text = tl.join('\n');
+    }
+  }
+  const sha = op.stamp !== undefined ? op.stamp : old ? old.sha : own;
+  if (!old && sha === null) return applyCore(body, { ...op, text });
+  // Strip the old stamp line and the one blank line after it.
+  let stripped = parts;
+  if (old) {
+    const drop = old.at + 1 < sec.to && isBlank(parts.lines[old.at + 1]) ? 2 : 1;
+    stripped = { ...parts, lines: [...parts.lines.slice(0, old.at), ...parts.lines.slice(old.at + drop)] };
+  }
+  const r = applyCore(joinBody(stripped), { ...op, text });
+  if (r.error) return r;
+  if (!r.changed) return { ...r, body: String(body) };
+  const out = splitBody(r.body);
+  const ns = findSection(out.lines, op.section);
+  let at = ns.from;
+  while (at < ns.to && isBlank(out.lines[at])) at++;
+  if (at === ns.to) at = ns.from;
+  const add = [stampLine(sha)];
+  if (at >= out.lines.length || !isBlank(out.lines[at])) add.push('');
+  const lines = [...out.lines.slice(0, at), ...add, ...out.lines.slice(at)];
+  return { ...r, body: joinBody({ ...out, lines }) };
+}
+
+// op: { kind: 'append'|'replace'|'remove', section, line|text|match, stamp? }.
 // Returns { body, changed, summary } or { error }.
 function applyOp(body, op) {
+  return applyStamped(body, op);
+}
+
+function applyCore(body, op) {
   const parts = splitBody(String(body));
   const { lines } = parts;
   const sec = findSection(lines, op.section);
@@ -446,7 +527,7 @@ function parseArgs(argv) {
   for (let i = 1; i < argv.length; i++) {
     const flag = argv[i];
     if (flag === '--dry-run') { o.dryRun = true; continue; }
-    if (!['--issue', '--repo', '--section', '--line', '--file', '--match'].includes(flag)) return { error: `usage: unknown argument: ${flag}` };
+    if (!['--issue', '--repo', '--section', '--line', '--file', '--match', '--stamp'].includes(flag)) return { error: `usage: unknown argument: ${flag}` };
     i++;
     if (i >= argv.length) return { error: `usage: ${flag} requires a value` };
     const v = argv[i];
@@ -460,6 +541,10 @@ function parseArgs(argv) {
   }
   if (o.issue === undefined) return { error: 'usage: --issue is required' };
   if (!o.section) return { error: 'usage: --section is required' };
+  if (o.stamp !== undefined) {
+    if (!STAMP_VALUE_RE.test(o.stamp)) return { error: `usage: --stamp must be 7 to 40 lowercase hex characters, got: ${o.stamp}` };
+    if (o.section === PREAMBLE) return { error: 'usage: --stamp does not apply to :preamble' };
+  }
   const given = ['line', 'file', 'match'].filter((k) => o[k] !== undefined);
   const want = { append: 'line', replace: 'file', remove: 'match' }[kind];
   if (given.length !== 1 || given[0] !== want) return { error: `usage: ${kind} needs exactly --${want}` };
@@ -476,7 +561,7 @@ function main(argv, { gh, stdout, stderr, guard, tmpdir, firstEditDelta2 } = {})
   if (o.kind === 'replace') {
     try { text = fs.readFileSync(o.file, 'utf8'); } catch (e) { err.write(`usage: cannot read --file ${o.file}: ${e.message}\n`); return 2; }
   }
-  const op = { kind: o.kind, section: o.section, line: o.line, text, match: o.match };
+  const op = { kind: o.kind, section: o.section, line: o.line, text, match: o.match, stamp: o.stamp };
   const prefix = `issue #${o.issue}`;
   let summary = '';
   let unchanged = false;
@@ -516,7 +601,7 @@ function noopFirst(o, compute, wasUnchanged, opts) {
   return !(r && r.error) && wasUnchanged();
 }
 
-module.exports = { applyOp, readSection, defaultGh, PLACEHOLDER_RE, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE, HISTORY_FULL_NOTE };
+module.exports = { applyOp, facetsOf, readSection, defaultGh, PLACEHOLDER_RE, guardedWrite, loadGuard, main, parseArgs, readIssue, editCount, secretProblem, PREAMBLE, HISTORY_FULL_NOTE };
 
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), {}));
