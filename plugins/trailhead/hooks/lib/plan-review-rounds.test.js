@@ -454,6 +454,7 @@ function overflow(text, brief) {
   ok('overflow: a real error still matches with the brief passed', overflow('- prompt is too long -> skip\nError: prompt is too long: 250000 tokens', '- prompt is too long -> skip\n').json.overflow === true);
   ok('overflow: an unreadable brief file is status error, exit 1', (() => { const d = tmp(); const f = path.join(d, 'x.out'); fs.writeFileSync(f, 'prompt is too long'); const r = run(['overflow', '--output', f, '--prompt', path.join(d, 'none.md')]); rm(d); return r.code === 1 && r.json.status === 'error'; })());
   ok('overflow: an empty output file is not an overflow', overflow('').json.overflow === false);
+  ok('overflow: the helper\'s own spawn E2BIG launch error is an overflow', overflow('trailhead run: cannot launch codex: spawn E2BIG\n').json.overflow === true);
   ok('overflow: an E2BIG line in the stderr part of a combined file is caught', overflow('partial stdout review text\n--- stderr ---\nbash: /usr/bin/codex: Argument list too long\n').json.overflow === true);
   ok('usage: overflow without --output exits 2', run(['overflow']).code === 2);
   const miss = run(['overflow', '--output', '/nowhere/x.out']);
@@ -539,6 +540,43 @@ setTimeout(() => {}, 300000);
   const gcPid = Number(fs.readFileSync(pidFile, 'utf8'));
   for (let i = 0; i < 20 && alive(gcPid); i++) sleepMs(100);
   ok('run: the grandchild does not survive the timeout', gcPid > 0 && !alive(gcPid));
+
+  // Signals sent to the helper kill the reviewer's group: SIGHUP 129, SIGTERM 143, SIGINT 130.
+  // A driver process signals the helper once the sleeper has written its pid, then reports.
+  const sigPid = path.join(dir, 'sig.pid');
+  const sigStub = stub('sigsleep.js', `require('fs').writeFileSync(${JSON.stringify(sigPid)}, String(process.pid)); setTimeout(() => {}, 300000);`);
+  const driver = stub('sigdriver.js', `
+const { spawn } = require('child_process');
+const fs = require('fs');
+const [script, output, pidFile, stubFile, sig] = process.argv.slice(2);
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const h = spawn(process.execPath, [script, 'run', '--output', output, '--timeout', '60', '--', process.execPath, stubFile], { stdio: 'ignore' });
+let code = null;
+h.on('exit', (c) => { code = c; });
+let n = 0;
+const wait = setInterval(() => {
+  if (!fs.existsSync(pidFile) || ++n > 100) { if (n > 100) { clearInterval(wait); console.log('{}'); h.kill('SIGKILL'); } return; }
+  clearInterval(wait);
+  const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+  h.kill(sig);
+  let m = 0;
+  const settle = setInterval(() => {
+    if ((code !== null && !alive(pid)) || ++m > 50) {
+      clearInterval(settle);
+      const dead = !alive(pid);
+      if (!dead) process.kill(pid, 'SIGKILL');
+      console.log(JSON.stringify({ code, dead }));
+    }
+  }, 100);
+}, 100);
+`);
+  for (const [sig, code] of [['SIGHUP', 129], ['SIGTERM', 143], ['SIGINT', 130]]) {
+    try { fs.unlinkSync(sigPid); } catch { /* none yet */ }
+    const r = spawnSync(process.execPath, [driver, scriptPath, out, sigPid, sigStub, sig], { encoding: 'utf8', timeout: 30000 });
+    let d = {};
+    try { d = JSON.parse(r.stdout.trim()); } catch { /* not json */ }
+    ok(`run: ${sig} to the helper kills the reviewer and exits ${code}`, d.code === code && d.dead === true);
+  }
 
   const usage = (argv) => spawnSync(process.execPath, [scriptPath, 'run', ...argv], { encoding: 'utf8' });
   ok('usage: run without --output exits 2', usage(['--', 'true']).status === 2);

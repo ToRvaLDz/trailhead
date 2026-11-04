@@ -65,7 +65,9 @@
 // stdout and stderr together go to --output (a file descriptor, truncated at start, no pipes), in its
 // own process group. At the deadline the group gets SIGTERM, then SIGKILL after a grace period (10s;
 // TRAILHEAD_REVIEW_GRACE_MS overrides it, for tests), so a child that ignores SIGTERM and its
-// descendants still end. If the helper itself gets SIGTERM or SIGINT it kills the group first.
+// descendants still end. If the helper itself gets SIGTERM, SIGINT or SIGHUP it kills the group first (exit 143, 130, 129).
+// A process that leaves the group with setsid is out of reach of the group kill, and a reviewer that
+// exits in the window after the deadline fires is still reported `timeout`.
 //   {"status":"ok"|"failed"|"timeout"|"error","exitCode":<n|null>,"signal":<s|null>,"seconds":<n>,
 //    "timeoutSeconds":<n>,"output":<file>,"reason"?:<text, for failed, timeout and error>}
 // ok = exit 0; failed = non-zero exit (or a signal) before the deadline; timeout = the deadline hit,
@@ -116,6 +118,7 @@ const OVERFLOW_PATTERNS = [
   /input is too long/i,
   /input token count .* exceeds the maximum/i,
   /argument list too long/i,
+  /E2BIG/i,
 ];
 // A rate-limit error can mention tokens too; it is never a context overflow.
 const RATE_LIMIT = /rate.?limit|\b429\b|too many requests/i;
@@ -392,13 +395,14 @@ function runRun(parsed, cwd, env, deps) {
       if (!child || !child.pid) return;
       try { process.kill(-child.pid, sig); } catch (e) { /* group already gone */ }
     };
-    const onSignal = (sig) => { killGroup('SIGKILL'); process.exit(sig === 'SIGINT' ? 130 : 143); };
+    const onSignal = (sig) => { killGroup('SIGKILL'); process.exit(sig === 'SIGINT' ? 130 : sig === 'SIGHUP' ? 129 : 143); };
     const finish = (code, result) => {
       if (settled) return;
       settled = true;
       timers.forEach(clearTimeout);
       process.removeListener('SIGTERM', onSignal);
       process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGHUP', onSignal);
       try { fs.closeSync(fd); } catch (e) { /* already closed */ }
       resolve({ code, result: { ...result, seconds: seconds(), ...base } });
     };
@@ -416,6 +420,7 @@ function runRun(parsed, cwd, env, deps) {
     }
     process.once('SIGTERM', onSignal);
     process.once('SIGINT', onSignal);
+    process.once('SIGHUP', onSignal);
     child.on('error', (e) => { if (!child.pid) fail(e); });
 
     child.on('exit', (exitCode, signal) => {
