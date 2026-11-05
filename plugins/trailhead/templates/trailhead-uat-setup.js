@@ -119,8 +119,12 @@ function pick(cfg, key, file) {
   return out;
 }
 
+// Su Codex lo script vive in <codexHome>/skills/trailhead/<dir>: la config globale sta lì, non in ~/.claude.
+const CODEX_INSTALL = /[\\/]skills[\\/]trailhead[\\/](?:hooks|templates)$/;
+const codexHome = () => (CODEX_INSTALL.test(__dirname) ? path.resolve(__dirname, '..', '..', '..') : null);
+
 function globalConfigPath(env) {
-  const base = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude');
+  const base = codexHome() || env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude');
   return path.join(base, 'trailhead', 'config.json');
 }
 
@@ -378,7 +382,7 @@ function main(argv, { cwd, stdout, env, fs: fsMod } = {}) {
   return 0;
 }
 
-module.exports = { parseArgs, readConfig, main };
+module.exports = { globalConfigPath, parseArgs, readConfig, main };
 
 if (require.main === module) {
   const code = main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, env: process.env });

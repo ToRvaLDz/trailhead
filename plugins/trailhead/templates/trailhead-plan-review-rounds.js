@@ -184,8 +184,12 @@ function readFile(file, fs_) {
   return { cfg };
 }
 
+// Su Codex lo script vive in <codexHome>/skills/trailhead/<dir>: la config globale sta lì, non in ~/.claude.
+const CODEX_INSTALL = /[\\/]skills[\\/]trailhead[\\/](?:hooks|templates)$/;
+const codexHome = () => (CODEX_INSTALL.test(__dirname) ? path.resolve(__dirname, '..', '..', '..') : null);
+
 function globalConfigPath(env) {
-  const base = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude');
+  const base = codexHome() || env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude');
   return path.join(base, 'trailhead', 'config.json');
 }
 
@@ -532,7 +536,7 @@ function main(argv, { cwd, stdout, stderr, env, fs: fsMod, which, kimiHelp, grac
   return run.code;
 }
 
-module.exports = { parseArgs, readConfig, decide, budgetDecision, matchOverflow, main };
+module.exports = { globalConfigPath, parseArgs, readConfig, decide, budgetDecision, matchOverflow, main };
 
 if (require.main === module) {
   Promise.resolve(main(process.argv.slice(2), { cwd: process.cwd(), stdout: process.stdout, stderr: process.stderr, env: process.env })).then((code) => process.exit(code));

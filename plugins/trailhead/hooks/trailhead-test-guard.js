@@ -71,8 +71,12 @@ function gitTop(cwd) {
   }
 }
 
+// Su Codex lo script vive in <codexHome>/skills/trailhead/<dir>: la config globale sta lì, non in ~/.claude.
+const CODEX_INSTALL = /[\\/]skills[\\/]trailhead[\\/](?:hooks|templates)$/;
+const codexHome = () => (CODEX_INSTALL.test(__dirname) ? path.resolve(__dirname, '..', '..', '..') : null);
+
 function configDir(env) {
-  return (env && env.CLAUDE_CONFIG_DIR) || path.join((env && env.HOME) || os.homedir(), '.claude');
+  return codexHome() || (env && env.CLAUDE_CONFIG_DIR) || path.join((env && env.HOME) || os.homedir(), '.claude');
 }
 
 // The effective testing.full string, or null when the guard is off. The project value
@@ -225,4 +229,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { evaluate, readFull, normalise, runsFull };
+module.exports = { configDir, evaluate, readFull, normalise, runsFull };

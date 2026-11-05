@@ -1088,6 +1088,15 @@ ok('codex migration: stale prompts/trailhead.md swept on install', !fs.existsSyn
 ok('codex migration: stale prompts/trailhead-work.md swept on install', !fs.existsSync(path.join(migCodexDir, 'prompts', 'trailhead-work.md')));
 ok('codex migration: per-verb skill projected in its place', fs.existsSync(path.join(migCodexDir, 'skills', 'trailhead-work', 'SKILL.md')));
 
+// La config globale di Codex sta nella cartella del vecchio motore: un aggiornamento non deve cancellarla.
+const keepCodexDir = mktmp();
+fs.mkdirSync(path.join(keepCodexDir, 'trailhead', 'references'), { recursive: true });
+fs.writeFileSync(path.join(keepCodexDir, 'trailhead', 'references', 'old.md'), 'stale engine\n');
+fs.writeFileSync(path.join(keepCodexDir, 'trailhead', 'config.json'), '{"testing":{"full":"npm test"}}\n');
+runInstaller([`--codex`, `--dir=${keepCodexDir}`]);
+ok('codex install: global config survives', fs.existsSync(path.join(keepCodexDir, 'trailhead', 'config.json')));
+ok('codex install: old engine files still swept', !fs.existsSync(path.join(keepCodexDir, 'trailhead', 'references')));
+
 // codex migration: a stale trailhead-owned skill dir (pre-split monolith /
 // removed cluster) is swept on reinstall; a co-tenant skill is preserved.
 const migCodexSkillDir = mktmp();

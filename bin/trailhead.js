@@ -617,7 +617,10 @@ function installCodex(configDir, { useSymlink }) {
   for (const f of (fs.existsSync(L.promptsDir) ? fs.readdirSync(L.promptsDir) : [])) {
     if (f.startsWith('trailhead-')) rmrf(path.join(L.promptsDir, f));
   }
-  rmrf(L.legacyEngineDir);
+  // La stessa cartella ospita la config globale di Codex: un aggiornamento non deve cancellarla.
+  for (const f of (fs.existsSync(L.legacyEngineDir) ? fs.readdirSync(L.legacyEngineDir) : [])) {
+    if (f !== 'config.json') rmrf(path.join(L.legacyEngineDir, f));
+  }
 
   // Sweep the whole engine + any prior per-verb skills, then project fresh.
   sweepTrailheadSkills(L.skillsRoot);
