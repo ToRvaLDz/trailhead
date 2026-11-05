@@ -198,9 +198,9 @@ a.mini:hover { color: var(--fg); border-color: var(--border); }
 .view p { margin: 0; font-size: 13.5px; color: var(--fg-muted); line-height: 1.5; }
 .view p b { color: var(--fg); font-weight: 650; }
 
-.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 38px; align-items: start; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr; gap: 16px; margin-top: 38px; align-items: start; }
 .shot { margin: 0; background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-.shot.wide { grid-column: 1 / -1; }
+.shot.wide { grid-column: 1; grid-row: span 2; }
 .shot img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); }
 .shot figcaption { padding: 0 6px 4px; font-size: 13.5px; color: var(--fg-muted); line-height: 1.5; }
 .shot figcaption b { color: var(--fg); font-weight: 650; }
@@ -276,6 +276,7 @@ footer { border-top: 1px solid var(--border-soft); padding: 40px 0; margin-top: 
   .props, .installs, .techs, .duo { grid-template-columns: 1fr; }
   .subtechs, .captures, .views { grid-template-columns: 1fr 1fr; }
   .shots { grid-template-columns: 1fr; }
+  .shot.wide { grid-row: auto; }
   .callout { grid-template-columns: 1fr; gap: 12px; }
   .cycle { flex-direction: column; }
   .step + .step { margin-left: 0; margin-top: 12px; }

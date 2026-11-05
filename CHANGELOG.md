@@ -2,6 +2,38 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.18.0 (2026-11-05)
+
+### Why
+This release keeps heavy test suites from starving the machine: runs go through one machine-wide queue with a result cache, the engine runs the full suite once per ticket, and a new hook blocks the bare command. Reviews check more and prove more, the inbox can wait on a reporter, and a round of fixes keeps writes on the right repository and the right checkout, on forks, under inherited git variables and on Codex.
+
+### Added
+- **Machine-wide test queue (#362).** With `testing.full` set, the engine runs the suite through `trailhead-test-run.js`: at most `testing.maxParallel` heavy runs at once across every session and worktree, and a green result cached by tree, command and repository so identical code is not tested twice.
+- **Test guard (#364).** A Bash call that runs the bare `testing.full` command is blocked, pointing at focused tests or the queue helper. trailhead now ships ten hooks.
+- **Inbox needs-info (#354).** An issue waiting on its reporter is parked with the `trailhead:needs-info` label and its question posted first, leaves the queue, and comes back in its own inbox section with a timeout.
+- **Wider code review (#352, #355, #359).** Review flags guards against states the stack cannot reach, checks CI/CD pipeline reliability when workflow files change, and lists the repo's standards files in the reviewer's brief.
+- **Stamped codebase facets (#360).** Each facet of the codebase map carries the commit it is true at, and the audit reports the stale ones.
+- **Plan and TDD evidence (#356, #357).** Every PLAN seam states what it catches and what it misses, and a forced mutation must be shown to have landed before its red is trusted.
+- **Map panel sections.** Each section of the panel has its own colour, glyph and gutter.
+
+### Changed
+- **Full suite once per ticket (#363).** Execute and Fix run focused tests only; Verify runs the full suite once for the tree and records it, and reviewing agents read that record instead of running it again.
+- **Plan review budget (#353).** A reviewer whose estimated prompt is over 65% of its context window is skipped and recorded in `PLAN-REVIEW`; `plan_review.context` overrides a reviewer CLI's window.
+- **Bulk-created tickets (#361).** Tickets created together reference each other only by real issue numbers.
+- **Inbox docs (#366).** The docs state that every inbox move needs an explicit yes.
+
+### Fixed
+- **Issue writes in a fork (#351).** A fork whose `gh` default is the parent is detected before the first tracker write, captures included, so a write no longer lands on the parent repository.
+- **Inherited git variables (#349).** An inherited `GIT_DIR` and the other repo-location variables no longer steer the `git` and `gh` spawns of templates, hooks, the mod and the statusline to the wrong checkout.
+- **Codex subagents (#350).** Every engine subagent on Codex is spawned with forking off, so it does not inherit the parent conversation.
+- **Plan reviewer time limit (#368).** Every plan reviewer call runs through a bounded helper; the whole reviewer process group is stopped on a hang-up, and an argument list too long for launch is caught.
+- **Grilling asks (#358, #365).** A yes always accepts the recommended answer, and the options asked about are shown in chat once instead of only on the ticket.
+- **Map panel refresh (#326, #369).** A multi-line Bash tracker write refreshes the panel, and a heredoc body no longer counts as a write.
+- **Map panel on a deleted checkout (#347).** The panel names the missing folder instead of saying `gh` is not installed, and re-pins to a live checkout.
+- **Map panel on a new desktop session (#348).** `/trailhead:panel` as the first message of a desktop session opens the panel instead of closing the one just auto-opened, and a panel never drawn is never reported closed. A desktop session starts at its first message, so the panel still cannot appear before anything is typed.
+- **Global config on Codex.** A Codex install or update no longer deletes `<codexHome>/trailhead/config.json`, and the test queue, test guard, plan review, inbox, base preflight, UAT setup and isolation copy read that file on Codex instead of `~/.claude`.
+- **Needs-you mark.** A closed ticket drops the mark.
+
 ## 0.17.0 (2026-10-30)
 
 ### Why
