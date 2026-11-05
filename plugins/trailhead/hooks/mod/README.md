@@ -291,9 +291,12 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   even that leaves it undrawn the pane stays open and the command says so in a fixed sentence (`Map panel is open but not shown yet: ...`; the host's reason goes to the
   debug log only), so it is never closed unseen. With no surface attached yet (`no-surface`, the start of a session) the command answers
   that the panel will open once the screen is ready, again on every repeat; the pane's first render on the surface
-  that attaches asks for its read.
+  that attaches asks for its read. A desktop session starts at its first message, not when it is created, so nothing
+  can open the pane on a session where nothing was typed, and a `/trailhead:panel` sent as that first message lands
+  right after the auto-open. Within `UNSEEN_MS` of a drawn auto-open the command keeps the pane and answers
+  `Map panel opened.` instead of closing a pane nobody could have seen.
 - **Constants** (`map-pane.tsx`): `PANE_ID = 'trailhead-map'`, `PANE_TITLE = 'Map'`,
-  `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`, `TIMER_GRACE_MS = 30_000`,
+  `MIN_REFRESH_MS = 15_000`, `TIMER_MS = 180_000`, `GH_TIMEOUT_MS = 20_000`, `TIMER_GRACE_MS = 30_000`, `UNSEEN_MS = 2_000`,
   `PANEL_COMMAND = 'trailhead:panel'`, `MAPS_LIMIT = MAPS_READ_LIMIT = 100` (`MAPS_LIMIT` not exported); `worktree-porcelain.ts`: `MAX_FAILURES = 3` (shared by the work-state lookup and the run scan); `auto-run-view.ts`: `RESUME_HINT`; `map-pane-view.ts`: `MAPS_READ_LIMIT = 100`, `LIST_LIMIT = 200`, `HISTORY_LIMIT = 5000`.
 - **Atoms**: `mapPane` (with `maps`, the open maps), `activeMap`, `viewedMap` (`null` follows the active map), `isDashboard`, `dashboardPane`, `pendingWork`, `pendingPhase` (`queued` or `starting`), `paneAutoOpened`. Module variables hold the queue and
   the timers, what `/clear` carries over (`carried`), the held press (`held`) and the one being sent (`inFlight`),

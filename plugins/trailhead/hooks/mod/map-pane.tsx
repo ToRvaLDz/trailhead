@@ -897,6 +897,8 @@ const pressDashboard = ($: Dollar, isOn: boolean): void => {
 // so the auto-open runs from a zero-delay timer, a dispatch of its own; `isOpening` keeps two
 // renders from opening twice before the flag is written.
 let isOpening = false
+// Quando l'auto-open ha disegnato il pannello: serve a `/trailhead:panel` per riconoscerne uno mai visto.
+let autoOpenedAt: number | null = null
 // Same for the fill an empty pane asks for from its render.
 let isFilling = false
 
@@ -915,7 +917,10 @@ async function autoOpen($: Dollar) {
   isOpening = true
   try {
     const pane = (await $.ui.panes()).find(p => p.id === PANE_ID)
-    if (pane === undefined) await openPane($)
+    if (pane === undefined) {
+      const opened = await openPane($)
+      if (opened.isPlaced) autoOpenedAt = await $.clock.now()
+    }
     // Found up and drawn (a reload with the pane showing): nothing to open, and renders stop asking.
     else if (pane.isPlaced) await update($, paneAutoOpened, () => true)
     // Listed but undrawn: the host places it itself when it can; its own render then completes the auto-open.
@@ -946,9 +951,16 @@ const PENDING_MESSAGE = 'Map panel will open as soon as the screen is ready.'
 const NOT_SHOWN_MESSAGE = 'Map panel is open but not shown yet: it appears once the screen can place it.'
 const isNoSurface = (reason: string) => reason.startsWith('no-surface')
 
+// Il desktop avvia la sessione al primo invio, non al +: un `/trailhead:panel` come primo messaggio arriva
+// pochi millisecondi dopo l'auto-open. Nessuno fa in tempo a vedere il pannello e a digitare il comando sotto
+// questa soglia, quindi la richiesta è di vederlo, non di chiuderlo.
+const UNSEEN_MS = 2_000
+
 async function togglePanel($: Dollar): Promise<string> {
   const pane = (await $.ui.panes()).find(p => p.id === PANE_ID)
-  if (pane?.isPlaced === true) {
+  const isUnseen = autoOpenedAt !== null && (await $.clock.now()) - autoOpenedAt < UNSEEN_MS
+  autoOpenedAt = null
+  if (pane?.isPlaced === true && !isUnseen) {
     await $.ui.close({ id: PANE_ID })
     return 'Map panel closed.'
   }

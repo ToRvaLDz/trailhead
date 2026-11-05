@@ -2608,6 +2608,37 @@ for (const surface of SURFACES) {
     expect(r.opens).toHaveLength(2)
   })
 
+  // Il desktop avvia la sessione al primo invio: il comando che l'ha avviata arriva subito dopo l'auto-open.
+  test(`/trailhead:panel right after the auto-open keeps the pane the person never saw [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
+
+    const opened = await panel($)
+    expect(opened.text).toBe('Map panel opened.')
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
+
+    // the next press acts on a pane the person asked for: it closes, however soon
+    const closed = await panel($)
+    expect(closed.text).toBe('Map panel closed.')
+    expect(r.panes).toEqual([])
+  })
+
+  test(`/trailhead:panel closes an auto-opened pane once it has been on screen [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await $.session.attach({ surface, clientId: `${surface}:default`, viewport: FULLSCREEN } as never)
+    await settle(r)
+    expect(r.panes.map(p => p.id)).toEqual([PANE])
+
+    await r.clock.advance(2_000)
+    const closed = await panel($)
+    expect(closed.text).toBe('Map panel closed.')
+    expect(r.panes).toEqual([])
+  })
+
   test(`a surface attaching in fullscreen retries the auto-open [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.isPlaced = false
