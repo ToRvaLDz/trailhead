@@ -2,6 +2,9 @@ import { expect, test } from 'claude-code/testing'
 
 import { GH_ISSUE_WRITE } from '../hooks/mod/map-pane'
 
+// A heredoc that writes a body file, as the model usually runs before a tracker write.
+const HEREDOC = "cat > /tmp/x.md <<'EOF'\nbody line\nEOF"
+
 // Bash commands the pane refreshes on (a write to the tracker) and ones it must ignore.
 const WRITES = [
   'gh issue close 5',
@@ -25,6 +28,13 @@ const WRITES = [
   "gh api -X PUT 'repos/o/r/issues/5/lock'",
   'gh api repos/o/r/issues/5 --input body.json',
   'node /x/templates/trailhead-issue-body.js append --issue 198 --section "Decisions so far" --line x',
+  // multi-line: a heredoc before the write, or a line on either side of it
+  `${HEREDOC}\ncd /repo && gh issue edit 325 --title "t"`,
+  `${HEREDOC}\ngh issue create --body-file /tmp/x.md`,
+  `${HEREDOC}\ngh issue comment 5 --body-file /tmp/x.md`,
+  'echo hi\ngh issue close 5',
+  'gh issue close 5\necho hi',
+  `${HEREDOC}\nnode /x/templates/trailhead-issue-body.js append --issue 198 --section "Decisions so far" --line x`,
 ]
 const READS = [
   'gh issue list --state open',
@@ -40,6 +50,10 @@ const READS = [
   'gh api repos/o/r/pulls -f state=open',
   'git log && echo gh issue',
   'gh api repos/o/r/issues/5 | jq . ; echo -f x',
+  // multi-line reads
+  `${HEREDOC}\ngh issue view 5`,
+  `${HEREDOC}\ngh issue list --state open`,
+  'cd /repo\ngh api repos/o/r/issues/5',
 ]
 
 test('the write matcher takes the tracker writes of a Bash call', () => {

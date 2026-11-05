@@ -1516,6 +1516,34 @@ for (const surface of SURFACES) {
     }
   })
 
+  test(`a multi-line Bash write refreshes, a multi-line read does not [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    const heredoc = "cat > /tmp/x.md <<'EOF'\nbody line\nEOF"
+    const base = fetches(r)
+    for (const command of [`${heredoc}\ngh issue view 5`, `${heredoc}\ngh issue list --state open`]) {
+      await r.clock.advance(FLOOR)
+      await $.tool.call({ tool: 'Bash', command } as never)
+      await settle(r)
+    }
+    expect(fetches(r)).toBe(base)
+
+    for (const command of [`${heredoc}\ncd /repo && gh issue edit 325 --title "t"`, `${heredoc}\ngh issue create --body-file /tmp/x.md`]) {
+      // until a whole floor passes with no read (the previous write's follow-up, the slow timer), so this write starts outside one
+      let seen = -1
+      while (seen !== fetches(r)) {
+        seen = fetches(r)
+        await r.clock.advance(FLOOR)
+        await settle(r)
+      }
+      const before = fetches(r)
+      await $.tool.call({ tool: 'Bash', command } as never)
+      await settle(r)
+      expect([command, fetches(r)]).toEqual([command, before + 1])
+    }
+  })
+
   test(`closing the pane stops refreshing [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     await $.session.start(START)
