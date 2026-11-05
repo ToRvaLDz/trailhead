@@ -83,6 +83,18 @@ const HEREDOCS: Array<[string, boolean]> = [
   ['echo $((1<<2)); gh issue view 5', false],
   ["cat <<'EOF' >x\nnode trailhead-issue-body.js append\nEOF", false],
   ['echo "a <<EOF"\ngh issue close 5', true],
+  // a `<<` in a comment opens nothing, so the write after it stays
+  ['# build body with <<EOF\ngh issue close 5', true],
+  ['git commit -m "x" # see <<EOF\ngh issue close 5', true],
+  ['# build body with <<EOF\ngh issue view 5', false],
+  ['cat a#b <<EOF\ngh issue close 5\nEOF', false],
+  // an opener inside a multi-line quoted string opens nothing
+  ['echo "a\ncat <<EOF\nb"\ngh issue close 5\nEOF', true],
+  ['echo "a\ncat <<EOF\nb"\ngh issue view 5\nEOF', false],
+  // a `<<` inside a parameter expansion opens nothing
+  ['echo ${x:-<<EOF}\ngh issue close 5\nEOF', true],
+  // an apostrophe in a heredoc body leaks no quote state into later lines
+  ["cat <<EOF\nit's\nEOF\ncat <<B\ngh issue close 5\nB", false],
 ]
 
 test('isTrackerWrite takes the writes and leaves the reads', () => {
