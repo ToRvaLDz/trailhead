@@ -1334,6 +1334,22 @@ for (const surface of SURFACES) {
     expect(listReads(r)).toEqual([])
   })
 
+  // A heredoc body is data: a write-looking line inside one starts no read, a real write after it still does (#369).
+  test(`a heredoc body that names a tracker write starts no pane read [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    await $.session.start(START)
+    await openAndMount($, r)
+    await r.clock.advance(FLOOR)
+    const before = fetches(r)
+    await $.tool.call({ tool: 'Bash', command: "cat > /tmp/x.md <<'EOF'\ngh issue close 209\nEOF" } as never)
+    await settle(r)
+    expect(fetches(r)).toBe(before)
+
+    await $.tool.call({ tool: 'Bash', command: "cat > /tmp/x.md <<'EOF'\nbody\nEOF\ngh issue close 209" } as never)
+    await settle(r)
+    expect(fetches(r)).toBe(before + 1)
+  })
+
   // The reads asked while the pane was undrawn (the person on another session) are dropped: drawn again with a
   // list older than one slow-timer period, the pane reads at once instead of showing a closed ticket.
   test(`a pane drawn again with an overdue list reads at once [${surface}]`, async ($, on) => {

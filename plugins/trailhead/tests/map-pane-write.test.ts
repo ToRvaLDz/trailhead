@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { GH_ISSUE_WRITE } from '../hooks/mod/map-pane'
+import { GH_ISSUE_WRITE, isTrackerWrite } from '../hooks/mod/map-pane'
 
 // A heredoc that writes a body file, as the model usually runs before a tracker write.
 const HEREDOC = "cat > /tmp/x.md <<'EOF'\nbody line\nEOF"
@@ -62,4 +62,34 @@ test('the write matcher takes the tracker writes of a Bash call', () => {
 
 test('the write matcher leaves reads alone', () => {
   for (const command of READS) expect([command, GH_ISSUE_WRITE.test(command)]).toEqual([command, false])
+})
+
+// A heredoc body is data, not commands: [command, is it a tracker write]. `\t` is a tab.
+const HEREDOCS: Array<[string, boolean]> = [
+  ['cat >f <<EOF\ngh issue close 5\nEOF', false],
+  ["cat >f <<'EOF'\ngh issue close 5\nEOF", false],
+  ['cat >f <<"EOF"\ngh issue close 5\nEOF', false],
+  ['cat >f <<-EOF\n\tgh issue close 5\n\tEOF', false],
+  ['cat <<A >a; cat <<B >b\ngh issue close 1\nA\ngh issue edit 2\nB', false],
+  ['cat <<A >a; cat <<B >b\nx\nA\ny\nB\ngh issue close 3', true],
+  ['gh issue create --body-file - <<EOF\nbody\nEOF', true],
+  ['gh issue comment 5 -F - <<EOF\ngh issue close 9\nEOF', true],
+  ["cat <<'EOF' >x\nb\nEOF\ngh issue close 5", true],
+  ["cat <<'EOF' >x\nEOF2\ngh issue close 5\n EOF\nEOF", false],
+  ["cat <<'EOF' >x\ngh issue close 5", false],
+  ['cat <<-EOF >x\nb\n  EOF\ngh issue close 5\nEOF', false],
+  ["cat <<< 'x'\ngh issue close 5", true],
+  ['echo $((1<<2))\ngh issue close 5', true],
+  ['echo $((1<<2)); gh issue view 5', false],
+  ["cat <<'EOF' >x\nnode trailhead-issue-body.js append\nEOF", false],
+  ['echo "a <<EOF"\ngh issue close 5', true],
+]
+
+test('isTrackerWrite takes the writes and leaves the reads', () => {
+  for (const command of WRITES) expect([command, isTrackerWrite(command)]).toEqual([command, true])
+  for (const command of READS) expect([command, isTrackerWrite(command)]).toEqual([command, false])
+})
+
+test('isTrackerWrite ignores a heredoc body and keeps a write around it', () => {
+  for (const [command, verdict] of HEREDOCS) expect([command, isTrackerWrite(command)]).toEqual([command, verdict])
 })

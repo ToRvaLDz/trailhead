@@ -51,6 +51,7 @@ import {
 import { elsewhereInProgress, myTicketsFromRows, parseLogin, scopeLine } from './my-tickets'
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { gitArgv, scrubGitEnv } from './git-env'
+import { stripHeredocBodies } from './heredoc'
 import { isMainTurnRunning } from './turn-state'
 import { createdIssueNumber, isWhiteboardCreate, nextFollow, whiteboardHint } from './whiteboard-follow'
 import { fit, isMissing, sameValue } from './work-state-view'
@@ -623,6 +624,10 @@ async function restoreAfterClear($: Dollar) {
 export const GH_ISSUE_WRITE =
   /\bgh\b[^\n;&|]*\bissue\s+(?:edit|close|create|comment|reopen|delete|transfer)\b|\bgh\b(?=[^\n;&|]*\sapi\s)(?=[^\n;&|]*\brepos\/[^\s;&|]*\/issues\b)(?=[^\n;&|]*(?:\s(?:-X|--method)[\s=]*["']?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-[fF]|--field\b|--raw-field\b|--input\b)))(?![^\n;&|]*\s(?:-X|--method)[\s=]*["']?GET\b)|\btrailhead-issue-body\.js\b/
 
+// A tracker write once heredoc bodies are out: a body line is data, never a command (#369). The matcher
+// stays the regex because the host's `command:` takes no function; the handler runs this check first.
+export const isTrackerWrite = (command: string): boolean => GH_ISSUE_WRITE.test(stripHeredocBodies(command))
+
 // The host runs the verb in the session's own directory, which a shell `cd` may have moved, and the mod cannot
 // move it back: `out` hands the pinned checkout to the verb, which moves first (#312). A checkout that cannot
 // be read is `unknown`, refused, but not told it is elsewhere.
@@ -1006,12 +1011,14 @@ export function registerMapPane(on: On) {
     return result
   })
 
-  // After the call ran: a Bash `gh issue` write changed the tracker.
+  // After the call ran: a Bash `gh issue` write changed the tracker (heredoc bodies not counted).
   on('tool.call', { tool: 'Bash', command: GH_ISSUE_WRITE }, async ($, e, next) => {
+    // The matcher saw the raw text: a write named only inside a heredoc body is no write.
+    if (typeof e.command !== 'string' || !isTrackerWrite(e.command)) return next(e)
     const result = await next(e)
     lastWriteAt = await $.clock.now()
     void requestRefresh($, { isWrite: true })
-    await hintWhiteboard($, e.command, result)
+    await hintWhiteboard($, stripHeredocBodies(e.command), result)
     return result
     // This hook never judges the call: if it fails, the call goes on untouched.
   }).catch((_$, e, next) => next(e))
