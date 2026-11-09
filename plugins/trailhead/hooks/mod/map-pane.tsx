@@ -621,6 +621,9 @@ async function restoreAfterClear($: Dollar) {
 // in the line never counts. Three kinds: `gh issue <verb>`; a `gh api` call on a `repos/.../issues` path that
 // writes (an explicit POST/PATCH/PUT/DELETE, or a -f/-F/--field/--raw-field/--input, which makes gh default to
 // POST) and does not say `-X GET`; and the body helper, which rewrites a map's body through the API.
+// Known difference: quoted text is not told apart, so a write verb inside quotes (`echo "gh issue close 5"`) counts and
+// costs one extra read. Blanking quotes would lose real writes (`bash -c "gh issue close 5"`), and telling data
+// quotes from executed ones is shell emulation (#226).
 export const GH_ISSUE_WRITE =
   /\bgh\b[^\n;&|]*\bissue\s+(?:edit|close|create|comment|reopen|delete|transfer)\b|\bgh\b(?=[^\n;&|]*\sapi\s)(?=[^\n;&|]*\brepos\/[^\s;&|]*\/issues\b)(?=[^\n;&|]*(?:\s(?:-X|--method)[\s=]*["']?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-[fF]|--field\b|--raw-field\b|--input\b)))(?![^\n;&|]*\s(?:-X|--method)[\s=]*["']?GET\b)|\btrailhead-issue-body\.js\b/
 

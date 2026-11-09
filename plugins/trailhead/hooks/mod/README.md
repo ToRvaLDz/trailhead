@@ -266,7 +266,7 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   `repos/.../issues` path with a write method (`-X`/`--method` POST, PATCH, PUT, DELETE) or an implicit POST
   (`-f`, `-F`, `--field`, `--raw-field`, `--input`) and no `-X GET`, or the `trailhead-issue-body.js` helper
   (`GH_ISSUE_WRITE`), outside any heredoc body (`isTrackerWrite`: a body is data, so a `gh issue close` line in a
-  `cat <<EOF` writes nothing); reads never refresh. Never two fetches inside `MIN_REFRESH_MS` (save the turn-end read below): a request inside the floor
+  `cat <<EOF` writes nothing; quoted text is not told apart, so a write verb inside quotes still counts: an extra read, never a lost write); reads never refresh. Never two fetches inside `MIN_REFRESH_MS` (save the turn-end read below): a request inside the floor
   keeps one trailing refresh for the rest of it. A write that reads at once also arms that trailing refresh, so one
   more read follows when the floor ends, after the search index (the history) caught up; a burst of writes still costs one
   read per floor plus one trailing, and one more when the turn ends after it. The host drops a refused timer without a word (a refused `every` period ends
