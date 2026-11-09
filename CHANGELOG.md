@@ -2,6 +2,16 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.18.1 (2026-11-09)
+
+### Why
+A small fix release: trailhead stops leaving its runtime files as untracked noise in a project, and the Codex install finds its helpers wherever `CODEX_HOME` points.
+
+### Fixed
+- **Runtime files out of git (#371).** Every file trailhead writes under `.trailhead/` is kept out of git by the directory's own `.trailhead/.gitignore` (everything but `config.json`), so a fresh project no longer shows them as untracked. Your root `.gitignore` is no longer edited, and a `.trailhead` path symlinked outside the project is refused.
+- **Codex with a custom `CODEX_HOME` (#372).** The projected engine text points at `CODEX_HOME` instead of a fixed `~/.codex`, so the helpers are no longer skipped when Codex lives elsewhere.
+- **Map panel write check (#370).** A load error in the mod's git-env module now fails its parity test instead of skipping it. A write verb inside quoted text still counts as a tracker write (one extra panel read); this is now documented.
+
 ## 0.18.0 (2026-11-05)
 
 ### Why

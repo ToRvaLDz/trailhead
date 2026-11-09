@@ -36,7 +36,7 @@ jobs:
     steps:
       # ... your build and test steps ...
       - if: failure()
-        uses: ToRvaLDz/trailhead/actions/capture@v0.18.0
+        uses: ToRvaLDz/trailhead/actions/capture@v0.18.1
         with:
           type: bug
           title: "CI failed on ${{ github.ref_name }}"
