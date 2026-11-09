@@ -33,8 +33,7 @@
 //   {"status":"skipped","reason"}                  gh/git unavailable, origin unverifiable or any error: proceed as before
 // record validates the slug, runs `gh repo set-default <target>` when it differs
 // from the current resolution (so every later bare gh call lands there), then writes
-// the file (and adds `.trailhead/repo-target.json` to <project root>/.gitignore if
-// absent, only when the root is a git checkout): {"status":"written","target","setDefault":true|false,"path"}; if
+// the file (kept out of git by .trailhead/.gitignore, see trailhead-runtime-dir.js): {"status":"written","target","setDefault":true|false,"path"}; if
 // set-default fails: {"status":"error","reason"} and nothing is written.
 // clear prints {"status":"cleared|absent","path"}.
 // Exit 0 on every normal outcome and on any unexpected error; exit 2 only on a
@@ -43,6 +42,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { prepareRuntimeFile } = require('./trailhead-runtime-dir.js');
 const { execFileSync, spawnSync } = require('child_process');
 const { gitEnv } = require('./trailhead-git-env.js');
 
@@ -50,7 +50,6 @@ const STATE_DIR = '.trailhead';
 const STATE_FILE = 'repo-target.json';
 const IDLE_WINDOW_MS = 8 * 60 * 60 * 1000;
 const WRITE_PERMISSIONS = ['ADMIN', 'MAINTAIN', 'WRITE'];
-const IGNORE_LINE = `${STATE_DIR}/${STATE_FILE}`;
 // GitHub owners start with an alphanumeric (never `-`, so a slug is never read as a flag).
 const OWNER = '[A-Za-z0-9][A-Za-z0-9-]*';
 const SLUG_RE = new RegExp(`^${OWNER}\\/[A-Za-z0-9_.-]+$`);
@@ -201,7 +200,7 @@ function readRecord(file, fsMod) {
 
 // Atomic write: a unique temp in the same dir, then rename over the file.
 function writeAtomic(dir, file, text, fsMod) {
-  fsMod.mkdirSync(dir, { recursive: true });
+  prepareRuntimeFile(file, fsMod);
   const tmp = path.join(dir, `.${STATE_FILE}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`);
   try {
     fsMod.writeFileSync(tmp, text);
@@ -235,17 +234,6 @@ function doCheck({ repoDir, file, dir, run, fsMod, now, out }) {
   }
 }
 
-// Adds the marker to <root>/.gitignore if absent; only in a git checkout. Best-effort.
-function ensureIgnored(root, fsMod) {
-  try {
-    if (!fsMod.existsSync(path.join(root, '.git'))) return;
-    const file = path.join(root, '.gitignore');
-    const text = fsMod.existsSync(file) ? fsMod.readFileSync(file, 'utf8') : '';
-    if (text.split(/\r?\n/).some((l) => l.trim() === IGNORE_LINE || l.trim() === '/' + IGNORE_LINE)) return;
-    fsMod.writeFileSync(file, text + (text === '' || text.endsWith('\n') ? '' : '\n') + IGNORE_LINE + '\n');
-  } catch { /* the record itself is already written */ }
-}
-
 function doRecord({ repoDir, file, dir, run, fsMod, now, out, target }) {
   const view = ghJson(run, ['repo', 'view', '--json', 'nameWithOwner'], repoDir);
   if (!view || typeof view.nameWithOwner !== 'string') {
@@ -263,7 +251,6 @@ function doRecord({ repoDir, file, dir, run, fsMod, now, out, target }) {
   }
   const stamp = now.toISOString();
   writeAtomic(dir, file, JSON.stringify({ target, recordedAt: stamp, usedAt: stamp }, null, 2) + '\n', fsMod);
-  ensureIgnored(path.dirname(dir), fsMod);
   writeResult(out, { status: 'written', target, setDefault: needsDefault, path: file });
 }
 

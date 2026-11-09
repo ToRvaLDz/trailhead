@@ -561,7 +561,7 @@ ok('stalePins: a non-object models.codex yields no codex pins (not an exception)
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-mdr-codexhome-'));
   const libDir = path.join(codexHome, 'skills', 'trailhead', 'hooks', 'lib');
   fs.mkdirSync(libDir, { recursive: true });
-  for (const f of ['model-defaults-review.js', 'model-defaults.json', 'inherit-session.js']) {
+  for (const f of ['model-defaults-review.js', 'model-defaults.json', 'inherit-session.js', 'trailhead-runtime-dir.js']) {
     fs.copyFileSync(path.join(__dirname, f), path.join(libDir, f));
   }
   fs.mkdirSync(path.join(codexHome, 'trailhead'), { recursive: true });

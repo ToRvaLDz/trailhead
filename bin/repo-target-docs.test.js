@@ -29,7 +29,7 @@ for (const [name, text] of [['load-first.md', loadFirst], ['capture-core.md', ca
 for (const [name, text] of [['load-first.md', loadFirst], ['capture-core.md', captureCore]]) {
   ok(`${name} names check`, text.includes('trailhead-repo-target.js check'));
   ok(`${name} names record`, text.includes('trailhead-repo-target.js record'));
-  ok(`${name} says record gitignores the marker`, text.includes('`.gitignore` if absent'));
+  ok(`${name} says the marker stays out of git`, text.includes('kept out of git by `.trailhead/.gitignore`'));
   ok(`${name} names the marker`, text.includes('.trailhead/repo-target.json'));
 }
 ok('capture-core.md places the check before the create commands',

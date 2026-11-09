@@ -41,7 +41,8 @@ function run(argv, { cwd, env = {}, fsMod } = {}) {
 
 const statePath = (dir) => path.join(dir, '.trailhead', 'work-state.json');
 const readState = (dir) => JSON.parse(fs.readFileSync(statePath(dir), 'utf8'));
-const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs.readdirSync(path.join(dir, '.trailhead')) : [];
+// Il .gitignore seminato da trailhead-runtime-dir.js non conta come file del record.
+const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs.readdirSync(path.join(dir, '.trailhead')).filter((f) => f !== '.gitignore') : [];
 
 // --- fresh set ---------------------------------------------------------------
 {

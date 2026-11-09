@@ -31,7 +31,7 @@ for (const needle of [
   '`/trailhead:auto` and an explicit `none`/`worktree`/`clone` never read or write the record',
   "Isolation: reusing this session's answer",
   "(one ticket at a time)",
-  "add it to that repo's `.gitignore` if absent",
+  "kept out of git by `.trailhead/.gitignore`",
   '.trailhead/isolation-answer.json',
   'three-dir lookup',
 ]) ok(`teamwork.md carries: ${needle}`, teamwork.includes(needle));

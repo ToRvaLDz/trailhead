@@ -25,6 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { prepareRuntimeFile } = require('./trailhead-runtime-dir.js');
 
 const GUARD_REL = path.join('.github', 'workflows', 'trailhead-label-guard.yml');
 // Prima riga di ogni versione del guard trailhead (tra le prime 5, trim).
@@ -122,7 +123,7 @@ function ackGuard({ repoDir, fs: fsMod = fs }) {
   const existingText = readGuard(repoDir, fsMod);
   if (existingText == null) return false;
   const file = path.join(repoDir, ACK_REL);
-  fsMod.mkdirSync(path.dirname(file), { recursive: true });
+  prepareRuntimeFile(file, fsMod);
   fsMod.writeFileSync(file, sha256(existingText) + '\n');
   return true;
 }

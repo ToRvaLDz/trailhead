@@ -27,6 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { prepareRuntimeFile } = require('./trailhead-runtime-dir.js');
 
 const STATE_DIR = '.trailhead';
 const STATE_FILE = 'work-state.json';
@@ -138,7 +139,7 @@ function readExisting(file, fsMod) {
 // Atomic write: a unique temp in the same dir, then rename over the file
 // (never an in-place truncate); the temp is removed if anything fails.
 function writeAtomic(dir, file, text, fsMod) {
-  fsMod.mkdirSync(dir, { recursive: true });
+  prepareRuntimeFile(file, fsMod);
   const tmp = path.join(dir, `.${STATE_FILE}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`);
   try {
     fsMod.writeFileSync(tmp, text);

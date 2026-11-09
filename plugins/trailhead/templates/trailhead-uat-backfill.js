@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { gitEnv } = require('./trailhead-git-env.js');
+const { prepareRuntimeFile } = require('./trailhead-runtime-dir.js');
 
 const LABEL = 'trailhead:uat';
 const COLOR = 'BFD4F2';
@@ -98,7 +99,7 @@ function main(argv, { gh, stdout, stderr } = {}) {
   let reason;
   if (o.marker && failed.length === 0) {
     try {
-      fs.mkdirSync(path.dirname(o.marker), { recursive: true });
+      prepareRuntimeFile(o.marker, fs);
       fs.writeFileSync(o.marker, new Date().toISOString() + '\n');
     } catch (e) {
       reason = `marker not written: ${e && e.message ? e.message : String(e)}`;

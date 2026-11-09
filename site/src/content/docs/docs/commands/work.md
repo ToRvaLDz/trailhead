@@ -34,7 +34,7 @@ Work the next frontier ticket, or the one you name.
 
 - The claim (assignee) on the ticket; engine comments (`DISCUSS`, `PLAN`, `VERIFY`, the resolution, and for bugs `REPRO` and `DIAGNOSIS`); atomic commits, each with a `Refs: #<n>` trailer.
 - The closed ticket, the map's Decisions so far, removed `trailhead:blocked` labels on newly unblocked dependents, and any new tickets or graduated fog.
-- Local, gitignored markers: `.trailhead/session-ticket` and `.trailhead/active-map`.
+- Local, gitignored markers: `.trailhead/session-ticket` and `.trailhead/active-map`. trailhead keeps them, and every other runtime file under `.trailhead/`, out of git with its own `.trailhead/.gitignore`; only `config.json` stays trackable, and your root `.gitignore` is left alone.
 - When a map is exhausted it asks about any deferred out-of-scope lines and whether to close the map, and refreshes the dashboard.
 
 **Example**

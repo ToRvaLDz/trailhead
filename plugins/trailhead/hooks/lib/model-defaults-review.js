@@ -17,6 +17,7 @@ const DATA_FILE = path.join(__dirname, 'model-defaults.json');
 const HOSTS = ['claude', 'codex'];
 const TIERS = ['strong', 'standard', 'fast'];
 const { isInheritSession } = require('./inherit-session.js');
+const { prepareRuntimeFile } = require('./trailhead-runtime-dir.js');
 
 // Host: la lib viene copiata byte-per-byte su Codex (sotto
 // <codexHome>/skills/trailhead/hooks/lib), quindi l'host si deduce dal path
@@ -321,7 +322,7 @@ function readAckFile(file) {
 
 function writeAckFile(file, since) {
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    prepareRuntimeFile(file, fs);
     fs.writeFileSync(`${file}.tmp`, since);
     fs.renameSync(`${file}.tmp`, file);
   } catch {

@@ -22,7 +22,8 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 const mktmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'trailhead-auto-run-test-'));
 const recPath = (dir) => path.join(dir, '.trailhead', 'auto-run.json');
 const readRec = (dir) => JSON.parse(fs.readFileSync(recPath(dir), 'utf8'));
-const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs.readdirSync(path.join(dir, '.trailhead')) : [];
+// Il .gitignore seminato da trailhead-runtime-dir.js non conta come file del record.
+const trailheadFiles = (dir) => fs.existsSync(path.join(dir, '.trailhead')) ? fs.readdirSync(path.join(dir, '.trailhead')).filter((f) => f !== '.gitignore') : [];
 const fixedNow = () => new Date('2026-10-20T10:00:00.000Z');
 
 // Esegue main() catturando stdout e stderr; ritorna { code, lines, err }.

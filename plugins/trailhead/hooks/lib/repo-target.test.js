@@ -196,7 +196,7 @@ ok('parentSlug null', parentSlug(null) === null);
   const s = JSON.parse(fs.readFileSync(recPath(dir), 'utf8'));
   ok('record file shape', JSON.stringify(Object.keys(s)) === '["target","recordedAt","usedAt"]' && s.target === 'fakeuser/cli' && s.recordedAt === iso(T0));
   ok('record in a non-git dir leaves .gitignore alone', !fs.existsSync(path.join(dir, '.gitignore')));
-  ok('record leaves no temp', fs.readdirSync(path.join(dir, '.trailhead')).join() === 'repo-target.json');
+  ok('record leaves no temp', fs.readdirSync(path.join(dir, '.trailhead')).sort().join() === '.gitignore,repo-target.json');
 
   const same = runMain(['record', '--repo', dir, '--target', 'cli/cli'], { cwd: '/', now: at(HOUR), world: forkWorld() });
   ok('record same as current: no set-default', same.lines[0].setDefault === false && !same.calls.some((c) => c.includes('set-default')));
@@ -210,25 +210,18 @@ ok('parentSlug null', parentSlug(null) === null);
   ok('record with unresolvable gh: error, nothing written', noView.lines[0].status === 'error' && !fs.existsSync(path.join(dir2, '.trailhead')));
 }
 
-// --- main: record keeps the marker gitignored (#351 W1) ---------------------------
+// --- main: record keeps the marker out of git (#351 W1, #371) ----------------------
 {
-  const IGN = '.trailhead/repo-target.json';
   const gitDir = mktmp();
   fs.mkdirSync(path.join(gitDir, '.git'));
-  const give = () => runMain(['record', '--repo', gitDir, '--target', 'cli/cli'], { cwd: '/', world: forkWorld() });
-  give();
-  ok('record creates .gitignore with the marker in a git repo', fs.readFileSync(path.join(gitDir, '.gitignore'), 'utf8') === IGN + '\n');
-  give();
-  ok('record is idempotent on .gitignore', fs.readFileSync(path.join(gitDir, '.gitignore'), 'utf8') === IGN + '\n');
-  const g2 = mktmp();
-  fs.mkdirSync(path.join(g2, '.git'));
-  fs.writeFileSync(path.join(g2, '.gitignore'), 'node_modules');
-  runMain(['record', '--repo', g2, '--target', 'cli/cli'], { cwd: '/', world: forkWorld() });
-  ok('record appends after a file without trailing newline', fs.readFileSync(path.join(g2, '.gitignore'), 'utf8') === 'node_modules\n' + IGN + '\n');
+  fs.writeFileSync(path.join(gitDir, '.gitignore'), 'node_modules');
+  runMain(['record', '--repo', gitDir, '--target', 'cli/cli'], { cwd: '/', world: forkWorld() });
+  ok('record leaves the root .gitignore alone', fs.readFileSync(path.join(gitDir, '.gitignore'), 'utf8') === 'node_modules');
+  ok('record seeds .trailhead/.gitignore', fs.readFileSync(path.join(gitDir, '.trailhead', '.gitignore'), 'utf8').split('\n').includes('*'));
   const g3 = mktmp();
   fs.mkdirSync(path.join(g3, '.git'));
   runMain(['record', '--repo', g3, '--target', 'fakeuser/cli'], { cwd: '/', world: forkWorld({ setDefault: { status: 1, stdout: '', stderr: 'x' } }) });
-  ok('a failed record does not touch .gitignore', !fs.existsSync(path.join(g3, '.gitignore')));
+  ok('a failed record creates no .trailhead', !fs.existsSync(path.join(g3, '.trailhead')));
 }
 
 // --- main: clear, usage errors -------------------------------------------------
