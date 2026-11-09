@@ -1,7 +1,7 @@
 // Mod side of #349: git spawns go through `env -u <repo-location vars> git ...`
 // (the mod's process.run cannot delete env), and the name list matches the template's.
 // The mod file is TypeScript: loaded through Node's type stripping (Node >= 22.18);
-// skipped on an older Node, where the source checks below still run.
+// skipped (with an explicit SKIP line) on a Node with no type stripping; any other load error fails.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -12,7 +12,14 @@ let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('ok -', name); };
 
 let mod = null;
-try { mod = require(path.join(modDir, 'git-env.ts')); } catch { /* no type stripping */ }
+try {
+  mod = require(path.join(modDir, 'git-env.ts'));
+} catch (err) {
+  // Only a Node with no type stripping may skip; a syntax error in the mod file must fail the test.
+  const noStripping = err.code === 'ERR_UNKNOWN_FILE_EXTENSION' || !process.features.typescript;
+  if (!noStripping) throw err;
+  console.log(`SKIP - mod/git-env.ts not loadable without type stripping (${err.code || err.name})`);
+}
 
 if (mod) {
   t('the mod name list equals the template list', () => {
