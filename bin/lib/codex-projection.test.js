@@ -45,12 +45,12 @@ ok('convertToCodex rewrites /clear to /new', (() => {
 })());
 
 // --- convertToCodex: paths ---
-ok('convertToCodex rewrites ~/.claude/foo', convertToCodex('~/.claude/foo') === '~/.codex/foo');
-ok('convertToCodex rewrites $HOME/.claude', convertToCodex('$HOME/.claude') === '$HOME/.codex');
+ok('convertToCodex rewrites ~/.claude/foo', convertToCodex('~/.claude/foo') === '${CODEX_HOME:-~/.codex}/foo');
+ok('convertToCodex rewrites $HOME/.claude', convertToCodex('$HOME/.claude') === '${CODEX_HOME:-$HOME/.codex}');
 ok('convertToCodex rewrites bare .claude/', convertToCodex('see .claude/skills/').includes('.codex/skills/'));
 
 // --- convertToCodex: plugin root ---
-ok('convertToCodex rewrites CLAUDE_PLUGIN_ROOT', convertToCodex('${CLAUDE_PLUGIN_ROOT}/templates').includes('~/.codex/skills/trailhead/templates'));
+ok('convertToCodex rewrites CLAUDE_PLUGIN_ROOT', convertToCodex('${CLAUDE_PLUGIN_ROOT}/templates') === '${CODEX_HOME:-~/.codex}/skills/trailhead/templates');
 
 // --- codexLayout ---
 const layout = codexLayout('/c');
@@ -378,7 +378,7 @@ ok('codexAgentTomlPlan: a keyed key whose object value has no model stays pin-le
 ok('codexAgentTomlPlan: description is routed through convertToCodex (host paths rewritten)', (() => {
   const defs = [{ name: 'trailhead-plan', description: 'see ~/.claude/skills', tools: 'Read', body: 'b' }];
   const plan = codexAgentTomlPlan('/c', {}, defs);
-  return plan.writes[0].content.includes('description = "see ~/.codex/skills"');
+  return plan.writes[0].content.includes('description = "see ${CODEX_HOME:-~/.codex}/skills"');
 })());
 
 ok('codexAgentTomlPlan: a missing description renders as an empty string, not "undefined"', (() => {
@@ -507,7 +507,7 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
   ok('convertToCodex leaves no CLAUDE_CONFIG_DIR behind', !/CLAUDE_CONFIG_DIR/.test(a + b));
   const c = convertToCodex('config dir = `$CLAUDE_CONFIG_DIR` or `~/.claude`; `${CLAUDE_CONFIG_DIR}/x`');
   ok('convertToCodex maps the bare config-dir forms to CODEX_HOME',
-    c === 'config dir = `$CODEX_HOME` or `~/.codex`; `${CODEX_HOME}/x`');
+    c === 'config dir = `$CODEX_HOME` or `${CODEX_HOME:-~/.codex}`; `${CODEX_HOME}/x`');
   ok('convertToCodex leaves a longer variable name untouched',
     convertToCodex('$CLAUDE_CONFIG_DIRX') === '$CLAUDE_CONFIG_DIRX');
 
@@ -549,6 +549,34 @@ ok('convertToCodex keeps CLAUDE_CODE_SESSION_ID intact',
         !!shared[fam] && out.includes(shared[fam]) === (familyOf[name] === fam));
     }
   }
+}
+
+// Un CODEX_HOME diverso da ~/.codex: ogni percorso della home di Codex lo segue, riscritto una volta sola.
+{
+  ok('convertToCodex names a literal Codex home through CODEX_HOME',
+    convertToCodex('`~/.codex/skills/trailhead/templates/`') === '`${CODEX_HOME:-~/.codex}/skills/trailhead/templates/`');
+  ok('convertToCodex leaves an existing CODEX_HOME expansion as it is',
+    convertToCodex('${CODEX_HOME:-~/.codex}/agents/x.toml') === '${CODEX_HOME:-~/.codex}/agents/x.toml');
+  ok('convertToCodex rewrites its own output only once',
+    convertToCodex(convertToCodex('${CLAUDE_CONFIG_DIR:-~/.claude}/a ~/.claude/b ${CLAUDE_PLUGIN_ROOT}/c'))
+      === '${CODEX_HOME:-~/.codex}/a ${CODEX_HOME:-~/.codex}/b ${CODEX_HOME:-~/.codex}/skills/trailhead/c');
+  ok('convertToCodex keeps a look-alike home file name whole',
+    convertToCodex('~/.claude.json and ~/.codexrc') === '~/.claude.json and ~/.codexrc');
+  ok('convertToCodex keeps a project-level .claude/ relative',
+    convertToCodex('see .claude/settings.json') === 'see .codex/settings.json');
+
+  // Il testo proiettato non nomina mai la home di Codex come percorso fisso.
+  const root = path.join(__dirname, '../../plugins/trailhead');
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.md') ? [path.join(d, e.name)] : []);
+  const files = ['skills', 'agents', 'commands'].flatMap((n) => walk(path.join(root, n)));
+  const fixed = files.filter((f) => /(?<!:-)(~|\$HOME)\/\.codex(?![\w.-])/.test(convertToCodex(fs.readFileSync(f, 'utf8'))));
+  ok(`no projected .md names the Codex home as a fixed path (${fixed.map((f) => path.relative(root, f)).join(', ')})`, fixed.length === 0);
+
+  ok('codexSkillAdapterHeader names the Codex home through CODEX_HOME',
+    !/(?<!:-)~\/\.codex\//.test(codexSkillAdapterHeader()));
+  const toml = codexAgentTomlPlan('/c', {}, STUB_AGENT_DEFS).writes[0].content;
+  ok('codexAgentTomlPlan names the skill dir through CODEX_HOME', toml.includes('${CODEX_HOME:-~/.codex}/skills/trailhead'));
 }
 
 console.log(`✓ codex-projection: ${passed} assertions passed`);
