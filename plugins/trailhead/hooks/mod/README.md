@@ -47,6 +47,26 @@ The file is read on `session.start`, `turn.start`, `turn.complete`, and after a 
 command contains `trailhead-work-state.js` (so a step change shows without waiting for a turn).
 Atoms and the status entry are only written when their content changed.
 
+## Session title
+
+Claude Code only. The mod renames the session so the title shows the ticket in play and its step,
+for example `#373 · execute: Rename the session…`, whatever entry point started the work.
+
+- **What it shows**: `#<n> · <step>: <title>`, the title flattened to one line and the whole text cut at
+  80 characters with `…`; no title gives `#<n> · <step>`; a paused ticket shows `#<n> · paused: …`.
+- **Only the session's own ticket**: the state must name this very session. Another session's state, a
+  state with no session and no state at all set nothing, so a plain session is never renamed.
+- **When**: `classic.UserPromptSubmit` and `classic.SessionStart` answer with `sessionTitle`, so it
+  updates on a prompt or at session start, never mid-turn. It is set only when it changed since the last
+  one the mod set, so a rename made by hand between steps is not overwritten on every prompt.
+- **`#<n> ✓ closed`**: when the own state goes away after a title was set, the next prompt replaces the
+  title with it, once. Resolve clears the state mid-turn and its handoff asks for `/clear`, which starts a new
+  session: `✓ closed` shows only if another prompt is sent in the same session before the `/clear`;
+  otherwise the session keeps the last step title it got. The record of the last title is module state,
+  so a hot reload loses it (the last step title stays; never a wrong rename).
+- **Parallel `auto` run**: slots write a state with no session, so they never title; a session with no
+  ticket of its own but a live run shows the run label (`auto · 1 done · 2 in flight`).
+
 ## System prompt
 
 Next to the screen pieces, the mod appends one section, `trailhead:work-state`, to the system
