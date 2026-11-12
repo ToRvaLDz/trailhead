@@ -14,6 +14,8 @@ import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { sessionLiveness } from './session-registry'
+import { nextTitle } from './session-title'
+import type { Titled } from './session-title'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { ELSEWHERE, fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
 import type { StageStatus } from './work-state-view'
@@ -177,6 +179,10 @@ async function setSnapshot($: Dollar, value: PromptSnapshot | null) {
   told.set(await $.session.id(), value)
 }
 
+// The last session title each session emitted (module state, like `told`): a hot reload loses it, which
+// only keeps the last step title instead of `✓ closed`, never a wrong rename.
+const titled = new Map<string, Titled>()
+
 const debug = ($: Dollar, message: string) => {
   try {
     $.ui.log(message, { to: 'debug' })
@@ -317,6 +323,20 @@ function safeRefresh($: Dollar, init: RefreshInit = {}): Promise<void> {
     }
   })
   return queue
+}
+
+// Fail-open: the session title is a courtesy, so any error leaves the hook result untouched.
+async function titleHook<R extends object>($: Dollar, result: R): Promise<R> {
+  try {
+    await safeRefresh($)
+    const session = await $.session.id()
+    const step = nextTitle(titled.get(session) ?? null, await read($, workState), session, await read($, autoRun))
+    if (step.last !== null) titled.set(session, step.last)
+    return step.emit === null ? result : { ...result, sessionTitle: step.emit }
+  } catch (err) {
+    debug($, `trailhead mod: session title failed: ${String(err)}`)
+    return result
+  }
 }
 
 async function resumeHintCleared($: Dollar) {
@@ -471,6 +491,7 @@ export const register: Register = on => {
     }
     // The ended session's mirror is never read again.
     told.delete(e.sessionId)
+    titled.delete(e.sessionId)
     return next(e)
   })
 
@@ -483,6 +504,13 @@ export const register: Register = on => {
     await setSnapshot($, null).catch(err => debug($, `trailhead mod: snapshot reset after clear failed: ${String(err)}`))
     return result
   })
+
+  // The session title follows the ticket in play; it is set on a prompt or at a session start, never mid-turn.
+  on('classic.UserPromptSubmit', async ($, e, next) => titleHook($, await next(e)))
+
+  // No matcher: the validator only refuses the same matcher twice. After /clear the state names the
+  // old session, so it is foreign and nothing is set.
+  on('classic.SessionStart', async ($, e, next) => titleHook($, await next(e)))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const state = await read($, workState)
