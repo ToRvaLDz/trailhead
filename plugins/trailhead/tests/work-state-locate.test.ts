@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { candidates, isOwnState, parseWorktrees, pickOwn, siblingClones } from '../hooks/mod/work-state-locate'
+import { candidates, isOwnState, parseWorktrees, pickOwn, siblingClones, submoduleBases } from '../hooks/mod/work-state-locate'
 
 const state = (session: string | null) =>
   JSON.stringify({ map: null, ticket: 270, title: 'T', step: 'execute', auto: false, autoDone: 0, session, updatedAt: null })
@@ -16,6 +16,18 @@ test('siblingClones matches <basename>-t<digits> only, sorted, under the main ro
   const names = ['repo-t12', 'repo', 'repo-t5', 'repo-t5x', 'repo-tx', 'other-t3', 'repo-t5-old', 'repoXt7']
   expect(siblingClones('/home/me/repo', names)).toEqual(['/home/me/repo-t12', '/home/me/repo-t5'])
   expect(siblingClones('/r.x', ['r.x-t1', 'rax-t2'])).toEqual(['/r.x-t1'])
+})
+
+test('siblingClones also matches the submodule clones it is given', () => {
+  const names = ['connee2-t640', 'connee-app-t723', 'connee-app', 'other-t1', 'connee-hacs-t9']
+  expect(siblingClones('/g/connee2', names, ['connee-app', 'connee-hacs'])).toEqual(['/g/connee-app-t723', '/g/connee-hacs-t9', '/g/connee2-t640'])
+  expect(siblingClones('/g/connee2', names, ['a.b'])).toEqual(['/g/connee2-t640'])
+})
+
+test('submoduleBases reads the repo name of each submodule url, once', () => {
+  const gitmodules = '[submodule "app"]\n\tpath = app\n\turl = git@github.com:ToRvaLDz/connee-app.git\n[submodule "hacs"]\n\turl = https://github.com/x/connee-hacs/\n[submodule "dup"]\n\turl = ../connee-app.git\n'
+  expect(submoduleBases(gitmodules)).toEqual(['connee-app', 'connee-hacs'])
+  expect(submoduleBases('')).toEqual([])
 })
 
 test('candidates drops the pinned root and duplicates, worktrees before siblings', () => {

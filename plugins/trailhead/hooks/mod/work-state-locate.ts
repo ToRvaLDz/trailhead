@@ -17,11 +17,25 @@ export const trim = (path: string): string => (path.length > 1 ? path.replace(/\
 // The checkout paths of `git worktree list --porcelain`, in the order git prints them (main first).
 export const parseWorktrees = (porcelain: string): string[] => parseWorktreeBranches(porcelain).map(w => w.path)
 
-// The per-ticket clones beside the main working tree: `<basename>-t<digits>`, sorted.
-export const siblingClones = (mainRoot: string, names: readonly string[]): string[] => {
-  const base = basename(mainRoot).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// The repo names of the submodules a `.gitmodules` declares (the last segment of each url, no `.git`):
+// a superrepo may clone a submodule alone per ticket, at `../<submodule repo>-t<n>`.
+export const submoduleBases = (gitmodules: string): string[] => {
+  const bases = gitmodules
+    .split('\n')
+    .map(line => /^\s*url\s*=\s*(\S+)\s*$/.exec(line)?.[1] ?? null)
+    .filter((url): url is string => url !== null)
+    .map(url => url.replace(/\/+$/, '').replace(/^.*[/:]/, '').replace(/\.git$/, ''))
+    .filter(base => base !== '')
+  return bases.filter((base, i) => bases.indexOf(base) === i)
+}
+
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// The per-ticket clones beside the main working tree: `<basename>-t<digits>`, plus `<base>-t<digits>` for
+// each of `bases` (the submodule clones), sorted.
+export const siblingClones = (mainRoot: string, names: readonly string[], bases: readonly string[] = []): string[] => {
   const parent = dirname(mainRoot)
-  const pattern = new RegExp(`^${base}-t\\d+$`)
+  const pattern = new RegExp(`^(?:${[basename(mainRoot), ...bases].map(escaped).join('|')})-t\\d+$`)
   return names
     .filter(name => pattern.test(name))
     .sort()
@@ -103,10 +117,20 @@ async function listWorktrees($: EngineInterface, root: string): Promise<string[]
   return (await listWorktreeBranches($, root))?.map(w => w.path) ?? null
 }
 
+// The submodule repo names of the main checkout; none when it has no readable `.gitmodules`.
+async function submodulesOf($: EngineInterface, mainRoot: string): Promise<string[]> {
+  try {
+    return submoduleBases((await $.fs.read(`${mainRoot}/.gitmodules`)) as string)
+  } catch {
+    return []
+  }
+}
+
 export async function listSiblings($: EngineInterface, mainRoot: string): Promise<string[] | null> {
   try {
     const entries = await $.fs.list(dirname(mainRoot))
-    return siblingClones(mainRoot, entries.filter(entry => entry.kind === 'dir').map(entry => entry.name))
+    const bases = await submodulesOf($, mainRoot)
+    return siblingClones(mainRoot, entries.filter(entry => entry.kind === 'dir').map(entry => entry.name), bases)
   } catch {
     return null
   }
