@@ -2,6 +2,20 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.19.0 (2026-11-12)
+
+### Why
+The session now says which ticket it is on: the Claude Code mod renames it after the ticket and step in play, and a round of fixes keeps that title right when sessions share a checkout, change repo or work in a submodule clone.
+
+### Added
+- **Session title (#373).** With the mod, the session is renamed `#<n> · <step>: <title>` (for example `#373 · execute: Rename the session…`), updated on each prompt and at session start, never mid-turn. A title set by hand is kept until the step changes; a resolved ticket shows `#<n> ✓ closed` on the next prompt; a parallel `auto` run shows its run label. Claude Code only.
+
+### Fixed
+- **Shared state file (#373).** Another session's state taking over the shared `.trailhead/work-state.json` keeps this session's title instead of marking its ticket closed.
+- **A `cd` into another repo (#373).** No state in another repo is no longer read as the ticket closing: `✓ closed` shows only when the state goes away in the repo the title was set in.
+- **Starting a ticket (#373).** `/trailhead:work|resume|quick <n>`, the map panel's press included, titles the session at once (`#<n>: <title>`, with the panel row's title) instead of on the next prompt; the step joins on the following prompt.
+- **Submodule clones (#373).** The work-state lookup also finds a ticket working in a clone of a superrepo's submodule (`../<submodule repo>-t<n>`, the `isolation: clone` layout for a path-bound app), so its status line and title show it in play.
+
 ## 0.18.1 (2026-11-09)
 
 ### Why

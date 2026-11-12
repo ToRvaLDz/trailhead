@@ -428,7 +428,7 @@ jobs:
     steps:
       # ... i tuoi step di build e test ...
       - if: failure()
-        uses: ToRvaLDz/trailhead/actions/capture@v0.18.1
+        uses: ToRvaLDz/trailhead/actions/capture@v0.19.0
         with:
           type: bug
           title: "CI fallita su ${{ github.ref_name }}"
