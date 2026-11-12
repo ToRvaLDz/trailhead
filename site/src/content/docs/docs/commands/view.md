@@ -141,9 +141,9 @@ None.
 
 The same mod draws a pipeline band above the prompt (the ticket in play and its discuss › plan › execute › verify step) and a `trailhead:` status entry under it, whenever a ticket is in play.
 
-The mod also renames the session to show the ticket in play and its step, for example `#373 · execute: Rename the session…`. It updates only on a prompt or at session start, never mid-turn, and a title you set by hand is not overwritten until the step changes. When the ticket is resolved, the next prompt in the same session shows `#373 ✓ closed`; Resolve asks for `/clear`, which starts a new session, so a session cleared right away keeps its last step title. A parallel `auto` run shows its run label instead (`auto · 1 done · 2 in flight`), and a plain session with no ticket of its own is never renamed. Claude Code only; it needs the mod.
-
 ![The pipeline band above the prompt and the trailhead status entry under it](../../../../assets/screenshots/work-state-band.png)
+
+The mod also renames the session to show the ticket in play and its step, for example `#373 · execute: Rename the session…`. It updates only on a prompt or at session start, never mid-turn, and a title you set by hand is not overwritten until the step changes. When the ticket is resolved, the next prompt in the same session shows `#373 ✓ closed`; Resolve asks for `/clear`, which starts a new session, so a session cleared right away keeps its last step title. A parallel `auto` run shows its run label instead (`auto · 1 done · 2 in flight`), and a plain session with no ticket of its own is never renamed. Claude Code only; it needs the mod.
 
 **What it writes**
 
