@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="200" viewBox="0 0 960 200" role="img" aria-labelledby="t d">
+  <title id="t">The engine for a build ticket</title>
+  <desc id="d">Discuss, plan, execute, verify: each step recorded on the ticket.</desc>
+  <defs>
+    <style>
+      .sans { font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .num { font-size: 13px; font-weight: 700; letter-spacing: .12em; fill: #e8613c; }
+      .h { font-size: 20px; font-weight: 700; fill: #f2efe8; }
+      .p { font-size: 13px; fill: #9fb0a6; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1714"/>
+      <stop offset="1" stop-color="#0c1210"/>
+    </linearGradient>
+    <marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3c7a5a"/>
+    </marker>
+  </defs>
+  <rect width="960" height="200" rx="18" fill="url(#bg)"/>
+  <rect x=".5" y=".5" width="959" height="199" rx="18" fill="none" stroke="#24322c"/>
+
+  <g class="sans">
+    <rect x="28" y="28" width="204" height="144" rx="12" fill="#131b18" stroke="#24322c"/>
+    <text x="48" y="60" class="num">01</text>
+    <text x="48" y="90" class="h">Discuss</text>
+    <text x="48" y="116" class="p">Grill the idea into</text>
+    <text x="48" y="134" class="p">closed choices, one</text>
+    <text x="48" y="152" class="p">question at a time.</text>
+
+    <rect x="260" y="28" width="204" height="144" rx="12" fill="#131b18" stroke="#24322c"/>
+    <text x="280" y="60" class="num">02</text>
+    <text x="280" y="90" class="h">Plan</text>
+    <text x="280" y="116" class="p">Steps, seams, files and</text>
+    <text x="280" y="134" class="p">checks, reviewable on</text>
+    <text x="280" y="152" class="p">the ticket.</text>
+
+    <rect x="492" y="28" width="204" height="144" rx="12" fill="#131b18" stroke="#24322c"/>
+    <text x="512" y="60" class="num">03</text>
+    <text x="512" y="90" class="h">Execute</text>
+    <text x="512" y="116" class="p">Atomic commits that</text>
+    <text x="512" y="134" class="p">each reference the</text>
+    <text x="512" y="152" class="p">ticket, tests alongside.</text>
+
+    <rect x="724" y="28" width="208" height="144" rx="12" fill="#131b18" stroke="#3c7a5a"/>
+    <text x="744" y="60" class="num">04</text>
+    <text x="744" y="90" class="h">Verify</text>
+    <text x="744" y="116" class="p">Tests, adversarial</text>
+    <text x="744" y="134" class="p">review and acceptance</text>
+    <text x="744" y="152" class="p">before it closes.</text>
+  </g>
+  <path d="M234 100 L256 100" stroke="#3c7a5a" stroke-width="2.5" marker-end="url(#head)"/>
+  <path d="M466 100 L488 100" stroke="#3c7a5a" stroke-width="2.5" marker-end="url(#head)"/>
+  <path d="M698 100 L720 100" stroke="#3c7a5a" stroke-width="2.5" marker-end="url(#head)"/>
+</svg>
