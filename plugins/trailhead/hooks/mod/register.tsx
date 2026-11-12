@@ -14,7 +14,8 @@ import { pinKey, pinPath, refreshPin } from './repo-pin'
 import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state'
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { sessionLiveness } from './session-registry'
-import { nextTitle } from './session-title'
+import { pressTitleOf } from './press-title'
+import { nextTitle, startedTicket } from './session-title'
 import type { Titled } from './session-title'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { ELSEWHERE, fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
@@ -326,11 +327,16 @@ function safeRefresh($: Dollar, init: RefreshInit = {}): Promise<void> {
 }
 
 // Fail-open: the session title is a courtesy, so any error leaves the hook result untouched.
-async function titleHook<R extends object>($: Dollar, result: R): Promise<R> {
+// `prompt`: the prompt being submitted, so one that starts a ticket titles it before its state is written.
+async function titleHook<R extends object>($: Dollar, result: R, prompt: string | null = null): Promise<R> {
   try {
     await safeRefresh($)
     const session = await $.session.id()
-    const step = nextTitle(titled.get(session) ?? null, await read($, workState), session, await read($, autoRun))
+    const pinned = await read($, repoPin)
+    const repo = pinned === null ? null : pinKey(pinned)
+    const ticket = prompt === null ? null : startedTicket(prompt)
+    const started = ticket === null ? null : { ticket, title: pressTitleOf(ticket) }
+    const step = nextTitle(titled.get(session) ?? null, await read($, workState), session, await read($, autoRun), { repo, started })
     if (step.last !== null) titled.set(session, step.last)
     return step.emit === null ? result : { ...result, sessionTitle: step.emit }
   } catch (err) {
@@ -506,7 +512,7 @@ export const register: Register = on => {
   })
 
   // The session title follows the ticket in play; it is set on a prompt or at a session start, never mid-turn.
-  on('classic.UserPromptSubmit', async ($, e, next) => titleHook($, await next(e)))
+  on('classic.UserPromptSubmit', async ($, e, next) => titleHook($, await next(e), typeof e.prompt === 'string' ? e.prompt : null))
 
   // No matcher: the validator only refuses the same matcher twice. After /clear the state names the
   // old session, so it is foreign and nothing is set.

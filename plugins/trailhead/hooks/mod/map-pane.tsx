@@ -52,6 +52,7 @@ import { elsewhereInProgress, myTicketsFromRows, parseLogin, scopeLine } from '.
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { gitArgv, scrubGitEnv } from './git-env'
 import { stripHeredocBodies } from './heredoc'
+import { notePressTitle } from './press-title'
 import { isMainTurnRunning } from './turn-state'
 import { createdIssueNumber, isWhiteboardCreate, nextFollow, whiteboardHint } from './whiteboard-follow'
 import { fit, isMissing, sameValue } from './work-state-view'
@@ -668,8 +669,9 @@ async function isCheckoutRoot($: Dollar, root: string): Promise<boolean> {
 // with no turn running it is sent at once. With no pin or an unreadable checkout it refuses before anything, as the
 // clear is destructive; outside the pinned repo it goes through and the verb moves into it. The pendingWork claim is
 // taken with the version it read, so two presses never both pass.
-async function startVerb($: Dollar, verb: 'work' | 'resume', number: number) {
+async function startVerb($: Dollar, verb: 'work' | 'resume', number: number, title: string) {
   if (held !== null || inFlight !== null) return
+  notePressTitle(number, title)
   const place = await placeOf($)
   if ('refusal' in place) return refuse($, number, place.refusal)
   const { value, version } = await $.state.get(PENDING)
@@ -1223,7 +1225,7 @@ export function registerMapPane(on: On) {
               variant="primary"
               onPress={() => {
                 const verb = r.aside?.kind === 'resume' ? 'resume' : 'work'
-                void startVerb($, verb, t.number).catch(err => debug($, `trailhead mod: ${verb} press failed: ${String(err)}`))
+                void startVerb($, verb, t.number, t.title).catch(err => debug($, `trailhead mod: ${verb} press failed: ${String(err)}`))
               }}
             />
           ) : null}

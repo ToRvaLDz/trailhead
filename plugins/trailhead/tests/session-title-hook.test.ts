@@ -11,18 +11,19 @@ const stateText = (over: Record<string, unknown> = {}): string =>
     session: SESSION, updatedAt: '2026-11-12T00:00:00.000Z', ...over,
   })
 
+// `root`/`remote` are the checkout the session sits in; the state file is only ever in /repo.
 const rig = (on: On) => {
-  const r = { file: null as string | null, id: SESSION }
+  const r = { file: null as string | null, id: SESSION, root: '/repo', remote: 'git@github.com:ToRvaLDz/trailhead.git' }
   on('fs.read', (_$, e) => {
-    if (r.file === null) return { deny: "ENOENT: no such file or directory, open '.trailhead/work-state.json'" }
+    if (r.file === null || !e.path.startsWith('/repo/')) return { deny: "ENOENT: no such file or directory, open '.trailhead/work-state.json'" }
     return e.path.endsWith('/.trailhead/work-state.json') ? { value: r.file } : { deny: `unexpected read of ${e.path}` }
   })
   on('session.id', () => ({ value: r.id }))
-  on('session.repo', () => ({ value: { root: '/repo', remote: 'git@github.com:ToRvaLDz/trailhead.git', internal: false } }))
-  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.repo', () => ({ value: { root: r.root, remote: r.remote, internal: false } }))
+  on('session.cwd', () => ({ value: r.root }))
   on('process.run', (_$, e) => {
     const out = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-    return unscrub(e.argv)[0] === 'git' ? out(0, '/repo\n') : out(1)
+    return unscrub(e.argv)[0] === 'git' ? out(0, `${r.root}\n`) : out(1)
   })
   on('ui.status', () => ({ value: undefined }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
@@ -88,6 +89,31 @@ test('another session taking over the file after a titled prompt sets nothing', 
   expect(await prompt($)).toBeUndefined()
   r.file = null
   expect(await prompt($)).toBe('#373 ✓ closed')
+})
+
+test('a cd into another repo keeps the title: no state there is not a closed ticket', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  await prompt($)
+  r.root = '/other'
+  r.remote = 'git@github.com:ToRvaLDz/other.git'
+  expect(await prompt($)).toBeUndefined()
+  r.root = '/repo'
+  r.remote = 'git@github.com:ToRvaLDz/trailhead.git'
+  expect(await prompt($)).toBeUndefined()
+  r.file = null
+  expect(await prompt($)).toBe('#373 ✓ closed')
+})
+
+test('a prompt starting a ticket titles it before the engine writes its state', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText({ session: 'sess-old' })
+  await $.session.start(START)
+  const started = await $.classic.UserPromptSubmit({ prompt: '/trailhead:work 844' })
+  expect(started.sessionTitle).toBe('#844')
+  r.file = stateText({ ticket: 844, title: 'Mockup', step: 'discuss' })
+  expect(await prompt($)).toBe('#844 · discuss: Mockup')
 })
 
 test('resolve then clear: the new session is not titled from the old state', async ($, on) => {
