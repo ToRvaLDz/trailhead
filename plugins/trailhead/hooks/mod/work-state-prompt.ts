@@ -1,9 +1,9 @@
 // Pure builder of the work-state section of the system prompt. No engine calls here.
 import type { WorkState } from '../../types'
+import { cutChars, flat } from './text-flat'
 
 const MAX_TITLE = 120
 const MAX_BYTES = 1024
-const ELLIPSIS = '…'
 
 const encoder = new TextEncoder()
 const bytes = (text: string): number => encoder.encode(text).length
@@ -11,16 +11,8 @@ const bytes = (text: string): number => encoder.encode(text).length
 // The repo the links point at: host and owner/name of the pin.
 export type LinkRepo = { host: string; slug: string }
 
-// Flat single line, cut by code point so a surrogate pair is never split.
-// Zero-width and bidi controls are dropped, so the title cannot hide or reorder text.
-const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
-const flat = (text: string): string => text.replace(INVISIBLE, '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim()
-
-const cutTitle = (title: string): string => {
-  // A double quote becomes a single one, so the title cannot close its own quoting.
-  const chars = Array.from(flat(title).replace(/"/g, "'"))
-  return chars.length <= MAX_TITLE ? chars.join('') : chars.slice(0, MAX_TITLE - 1).join('') + ELLIPSIS
-}
+// A double quote becomes a single one, so the title cannot close its own quoting.
+const cutTitle = (title: string): string => cutChars(flat(title).replace(/"/g, "'"), MAX_TITLE)
 
 // Cuts to a byte budget on a code point boundary.
 const capBytes = (text: string): string => {
