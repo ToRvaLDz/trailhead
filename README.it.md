@@ -244,6 +244,8 @@ Il burn-down mostra i ticket aperti nel tempo, dal primo ticket della mappa a og
 
 La pipeline band sopra il prompt e la voce di stato sotto mostrano il ticket in gioco e il suo step.
 
+La mod rinomina anche la sessione per mostrare il ticket in gioco e il suo step, per esempio `#373 · execute: Rename the session…`. Si aggiorna solo quando invii un prompt o parte una sessione, mai a metà turno, e un titolo impostato a mano non viene sovrascritto finché lo step non cambia. Quando il ticket è risolto, il prompt successivo nella stessa sessione mostra `#373 ✓ closed`; Resolve chiede `/clear`, che avvia una nuova sessione, quindi una sessione svuotata subito tiene l'ultimo titolo di step. Un run `auto` parallelo mostra invece la sua etichetta (`auto · 1 done · 2 in flight`), e una sessione normale senza un ticket proprio non viene mai rinominata. Solo Claude Code, e serve la mod.
+
 ### Capture: zero attrito, una riga di conferma, non risolve nulla
 
 | Command | Atterra come | Significato |
