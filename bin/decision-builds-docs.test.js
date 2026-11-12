@@ -59,11 +59,7 @@ ok('audit proposals: open the missing build tickets on a yes', /No build/.test(p
 
 // Docs utente
 const readme = read('README.md');
-ok('README: decision engine leaves build tickets', /`decision` diverges options then grills to choose, then opens the build tickets/.test(readme));
-ok('README: audit names decisions with no build', /decisions closed with no build/i.test(readme));
 const readmeIt = read('README.it.md');
-ok('README.it: decision engine leaves build tickets', /`decision` dirama le opzioni poi fa grilling per scegliere, poi apre i ticket build/.test(readmeIt));
-ok('README.it: audit names decisions with no build', /decisioni chiuse senza build/i.test(readmeIt));
 const wf = read('site/src/content/docs/docs/workflow.md');
 ok('workflow.md: decision engine leaves build tickets', /`decision` diverges options then grills to choose, then opens the build tickets/.test(wf));
 const manage = read('site/src/content/docs/docs/commands/manage.md');

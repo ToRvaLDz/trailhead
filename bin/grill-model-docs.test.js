@@ -138,17 +138,19 @@ const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 // --- Parte D: README e README.it.md ---------------------------------------------------
 {
+  // La tabella dei modelli vive sul sito (configuration.mdx).
+  {
+    const lines = fs.readFileSync(path.join(root, 'site', 'src', 'content', 'docs', 'docs', 'configuration.mdx'), 'utf8').split('\n');
+    const row = (prefix) => lines.find((l) => l.startsWith(prefix)) || '';
+    ok('D: configuration.mdx models.{...} row lists grill', /^\| `models\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.{')));
+    ok('D: configuration.mdx models.codex.{...} row lists grill', /^\| `models\.codex\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.codex.{')));
+    ok('D: configuration.mdx carries a grill bullet', lines.some((l) => /^- `grill`/.test(l) && l.includes('trailhead-grill')));
+    ok('D: configuration.mdx says grill follows plan when unset', lines.some((l) => /^- `grill`/.test(l) && l.includes('`plan`') && /unset/.test(l)));
+  }
   for (const file of ['README.md', 'README.it.md']) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
-    const lines = text.split('\n');
-    const row = (prefix) => lines.find((l) => l.startsWith(prefix)) || '';
-    ok(`D: ${file} models.{...} row lists grill`, /^\| `models\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.{')));
-    ok(`D: ${file} models.codex.{...} row lists grill`, /^\| `models\.codex\.\{[^}]*codebase-map,grill\}`/.test(row('| `models.codex.{')));
-    ok(`D: ${file} Models bullets carry a grill bullet`, lines.some((l) => /^- `grill`/.test(l) && l.includes('trailhead-grill')));
     ok(`D: ${file} no longer says grilling runs on the session model`,
       !/charting, grilling/.test(text));
-    ok(`D: ${file} says grill follows plan when unset`, lines.some((l) => /^- `grill`/.test(l) && l.includes('`plan`') && /unset|non impostat/.test(l)));
-  ok(`D: ${file} carries the Codex note`, text.includes('models.codex.grill') && /models\.codex\.plan/.test(lines.find((l) => l.includes('models.codex.grill') && !l.startsWith('|')) || ''));
   }
 }
 

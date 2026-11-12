@@ -28,8 +28,6 @@ const head = (sec) => {
 };
 
 const docs = [
-  { name: 'README.md', rel: 'README.md', re: /^### .*Autonomous run: `auto`\s*$/m, it: false },
-  { name: 'README.it.md', rel: 'README.it.md', re: /^### .*Run autonoma: `auto`\s*$/m, it: true },
   { name: 'workflow.md', rel: 'site/src/content/docs/docs/workflow.md', re: /^## Autonomous run: `auto`\s*$/m, it: false },
 ];
 
@@ -58,6 +56,7 @@ for (const [name, rel] of [['README.md', 'README.md'], ['README.it.md', 'README.
   const t = read(rel);
   const pitch = t.slice(0, t.search(/^## .*Install/m));
   ok(`${name}: the pitch names /trailhead:auto`, pitch.includes('/trailhead:auto'));
+  ok(`${name}: no em-dash`, !t.includes(EM));
 }
 
 const landing = read('site/src/components/landing/HowItWorks.astro');

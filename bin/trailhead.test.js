@@ -793,19 +793,9 @@ ok('source: configuration-reference.md guided-setup menu relabels the off option
   /Acceptance testing[\s\S]{0,200}No browser/.test(configReferenceSource));
 
 // --- #178 (4/4): mirror the UAT drive-mode ask in READMEs and /docs ---------
-const readmeSource = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
-const readmeItSource = fs.readFileSync(path.join(repoRoot, 'README.it.md'), 'utf8');
 const ticketTypesSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'ticket-types.md'), 'utf8');
 const workflowSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'workflow.md'), 'utf8');
 const configurationMdxSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'configuration.mdx'), 'utf8');
-
-ok('README.md build row frames acceptance testing as asking who drives', /🔨 `build`[\s\S]{0,400}who drives/.test(readmeSource));
-ok('README.md worked example frames the login-flow acceptance as AI-driven', /asked who drives[\s\S]{0,100}AI-driven/.test(readmeSource));
-ok('README.md acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(readmeSource));
-
-ok('README.it.md build row frames acceptance testing as asking who drives (chi guida)', /🔨 `build`[\s\S]{0,400}chi guida/.test(readmeItSource));
-ok('README.it.md worked example frames the login-flow acceptance as AI-driven', /chi guida[\s\S]{0,100}AI-driven/.test(readmeItSource));
-ok('README.it.md acceptance.browser row says off still runs AI-driven checks', /`acceptance\.browser`[\s\S]{0,400}AI-driven/.test(readmeItSource));
 
 ok('site ticket-types.md build row frames acceptance testing as asking who drives', /`build`[\s\S]{0,400}who drives/.test(ticketTypesSource));
 ok('site workflow.md worked example frames the login-flow acceptance as AI-driven', /asked who drives[\s\S]{0,100}AI-driven/.test(workflowSource));
@@ -892,22 +882,10 @@ ok('source: configuration-reference.md acceptance.browser paragraph names skip a
   /\*\*acceptance\.browser\.\*\*[\s\S]{0,200}human-driven,? or skip/.test(configReferenceSource));
 ok('source: auto.md states auto never picks skip', /never picks skip[^\n]*waiving acceptance/.test(autoSource));
 
-// Docs mirror: README, README.it, site (waiver recorded as unconfirmed; no unconditional "never closes").
-ok('README.md acceptance testing section names the waiver (skip) recorded as unconfirmed',
-  /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(readmeSource));
-ok('README.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(readmeSource));
-ok('README.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(readmeSource));
+// Docs mirror: site (waiver recorded as unconfirmed; no unconditional "never closes").
 const siteAcceptanceSource = fs.readFileSync(path.join(repoRoot, 'site', 'src', 'content', 'docs', 'docs', 'acceptance-testing.md'), 'utf8');
-ok('docs: auto never-picks-skip antecedent is the auto run, in all three docs',
-  /the parent ticket resolves; `\/trailhead:auto` never picks skip/.test(readmeSource) && /the parent ticket resolves; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource) && /il ticket genitore si risolve; `\/trailhead:auto` non sceglie mai skip/.test(readmeItSource));
-ok('README.md build row and acceptance.browser row name skip',
-  /🔨 `build`[\s\S]{0,500}or skip/.test(readmeSource) && /`acceptance\.browser`[\s\S]{0,300}or skip/.test(readmeSource));
-ok('README.it.md acceptance testing section names the waiver (skip) recorded as unconfirmed',
-  /\*\*Skip è una rinuncia, non un rinvio\*\*[^\n]{0,160}`waived by the user \(unconfirmed\)`, cioè non confermata/.test(readmeItSource));
-ok('README.it.md no-performable-step case asks human-driven o skip', /human-driven\*\* o \*\*skip\*\*/.test(readmeItSource));
-ok('README.it.md point 6 allows an explicit waiver', /non si chiude mai su una UAT che nessuno ha eseguito, salvo che tu ci rinunci esplicitamente/.test(readmeItSource));
-ok('README.it.md build row and acceptance.browser row name skip',
-  /🔨 `build`[\s\S]{0,500}o skip/.test(readmeItSource) && /`acceptance\.browser`[\s\S]{0,300}o skip/.test(readmeItSource));
+ok('docs: auto never-picks-skip antecedent is the auto run, in acceptance-testing.md',
+  /the parent ticket resolves; `\/trailhead:auto` never picks skip/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md names the waiver (skip) recorded as unconfirmed', /\*\*Skip is a waiver, not a deferral\*\*[^\n]{0,80}`waived by the user \(unconfirmed\)`, never as a pass/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md no-performable-step case asks human-driven or skip', /human-driven\*\* or \*\*skip\*\*/.test(siteAcceptanceSource));
 ok('site acceptance-testing.md point 6 allows an explicit waiver', /never closes on a UAT nobody ran unless you explicitly waive it/.test(siteAcceptanceSource));
@@ -1978,7 +1956,7 @@ ok('source: auditing.md step 9 re-read repeats the existing-regression check (W4
 ok('source: auditing.md any claimed member makes the whole pair or group related only (I8)',
   /any member[^.]*claimed[^.]*whole pair or group[^.]*related only/.test(auditingSrc) && /any member[^.]*claimed/.test(step9Slice190));
 
-for (const doc of ['README.md', 'README.it.md', path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
+for (const doc of [path.join('site', 'src', 'content', 'docs', 'docs', 'commands.md')]) {
   ok(`docs: ${doc} mentions /trailhead:audit`, fs.readFileSync(path.join(repoRoot, doc), 'utf8').includes('/trailhead:audit'));
 }
 
@@ -2033,7 +2011,7 @@ const auditMention = (doc) => {
   if (doc === siteManageDoc) return (src.match(/### \/trailhead:audit[\s\S]*?(?=\n### |\nNext:|$)/) || [''])[0];
   return src.split('\n').filter((l) => l.includes('/trailhead:audit')).join('\n');
 };
-for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
+for (const doc of [siteManageDoc]) {
   const auditPara192 = auditMention(doc);
   ok(`docs: ${doc} audit mention covers unchanged and evolved`, /unchanged|invariat/i.test(auditPara192) && /evolved|evolut/i.test(auditPara192));
 }
@@ -2071,7 +2049,7 @@ ok('source: auditing.md step 5 dispatches the agent-bound set and reads code at 
 ok('source: auditing.md step 8 counts sum to the audited set with the light-check share',
   /light check/i.test(step8Slice192) && /light-check share/.test(step8Slice192) && /not implemented, unverifiable/.test(step8Slice192));
 ok('source: auditing.md step 10 flags unverifiable from step 4 or step 6', /\(step 4 or step 6\)/.test(step10Slice190));
-for (const doc of ['README.md', 'README.it.md', siteManageDoc]) {
+for (const doc of [siteManageDoc]) {
   const para = auditMention(doc);
   ok(`docs: ${doc} audit mention names the Refs trailer fast path`, /Refs: #<n>/.test(para));
   ok(`docs: ${doc} audit mention covers tasks and prototypes in the light check`, /task/i.test(para) && /prototyp|prototipi/i.test(para));
@@ -2229,8 +2207,7 @@ ok('source: work SKILL.md quick isolation bullet drops trailhead:paused at the c
     /off the frontier until (it is )?resumed/.test(siteWorkSource));
   ok('source: site view.md describes the Paused group off the frontier', /Paused/.test(siteViewSource) && /not paused|off the frontier/.test(siteViewSource));
   const conceptsSource = fs.readFileSync(path.join(siteDocs, 'concepts.md'), 'utf8');
-  ok('source: concepts.md, README.md and README.it.md frontier definitions mention paused',
-    /not paused/.test(conceptsSource) && /not paused/.test(readmeSource) && /in pausa/.test(readmeItSource));
+  ok('source: concepts.md frontier definition mentions paused', /not paused/.test(conceptsSource));
   ok('source: CHANGELOG Unreleased > Changed has a #263 entry', /### Changed[\s\S]*?\(#263\)/.test(changelogSource.split('## 0.14.0')[0]));
 }
 

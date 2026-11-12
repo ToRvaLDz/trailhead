@@ -42,19 +42,15 @@ ok('auto.md: crash signature and idempotence are stated on the latest checkpoint
 ok('auto.md: a slot ticket at the resolve step is exempt from reconstruction', /work state step is `resolve`[^\n]*exempt from (the )?reconstruction/.test(auto));
 ok('auto.md: reconstruction happens when the ticket is resumed, not for a waiting extra', /Reconstruction happens when the ticket is actually resumed[^\n]*untouched/.test(auto));
 const docs = {
-  'README.md': 'README.md',
-  'README.it.md': 'README.it.md',
   'workflow.md': 'site/src/content/docs/docs/workflow.md',
   'commands/work.md': 'site/src/content/docs/docs/commands/work.md',
 };
 const root = path.resolve(__dirname, '..');
 for (const [name, rel] of Object.entries(docs)) {
   const t = fs.readFileSync(path.join(root, rel), 'utf8');
-  const it = name === 'README.it.md';
   ok(`${name}: no interrupt-time PAUSED checkpoint promise`, !/(Stop\/Esc|Esc or Stop|Esc)[^\n]*(keeps its claim and gets|keeps its claim with|mantiene il claim e riceve)[^\n]*`PAUSED`/.test(t) && !/gets a `PAUSED` checkpoint naming/.test(t));
-  ok(`${name}: Esc writes nothing and the next auto writes the missing PAUSED checkpoint`, it
-    ? /Esc[^\n]*non scrive nulla[^\n]*stessa traccia di un crash[^\n]*`\/trailhead:auto`[^\n]*checkpoint `PAUSED` mancante[^\n]*workspace e branch/.test(t) && /stessa sessione[^\n]*riusa[^\n]*nuova sessione[^\n]*chiede di nuovo/.test(t)
-    : /Esc[^\n]*writes nothing[^\n]*same trace as a crash[^\n]*`\/trailhead:auto`[^\n]*missing `PAUSED` checkpoint[^\n]*workspace and branch/.test(t) && /same session[^\n]*reuses[^\n]*new session[^\n]*asks again/.test(t));
+  ok(`${name}: Esc writes nothing and the next auto writes the missing PAUSED checkpoint`,
+    /Esc[^\n]*writes nothing[^\n]*same trace as a crash[^\n]*`\/trailhead:auto`[^\n]*missing `PAUSED` checkpoint[^\n]*workspace and branch/.test(t) && /same session[^\n]*reuses[^\n]*new session[^\n]*asks again/.test(t));
 }
 ok('auto.md: no em-dash', !auto.includes(String.fromCharCode(0x2014)));
 console.log(`auto-run-docs.test.js: ${passed} checks passed`);

@@ -52,11 +52,11 @@ ok('the label-guard Action strips any trailhead:* by prefix, so it needs no chan
 // Config.
 ok('configuration-reference documents inbox.needs_info_days, default 14', /\| `inbox\.needs_info_days` \| positive integer \(\*\*`14`\*\*\)/.test(reference) && reference.includes('**inbox.needs_info_days.**'));
 
-// README mirror and site pages.
-for (const f of ['README.md', 'README.it.md', 'site/src/content/docs/docs/configuration.mdx']) {
+// Site pages.
+for (const f of ['site/src/content/docs/docs/configuration.mdx']) {
   ok(`${f} documents inbox.needs_info_days`, fs.readFileSync(path.join(root, f), 'utf8').includes('`inbox.needs_info_days`'));
 }
-for (const f of ['README.md', 'README.it.md', 'site/src/content/docs/docs/concepts.md']) {
+for (const f of ['site/src/content/docs/docs/concepts.md']) {
   ok(`${f} lists the needs-info state label`, fs.readFileSync(path.join(root, f), 'utf8').includes('`needs-info` ('));
 }
 ok('chart.md shows four sections', fs.readFileSync(path.join(root, 'site/src/content/docs/docs/commands/chart.md'), 'utf8').includes('Shows four sections by name'));

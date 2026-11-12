@@ -63,7 +63,6 @@ ok('ticket-engines.md: unconfigured runs once, no record, reviewers get none', v
 ok('ticket-engines.md: no garbled as-before sentence', verifyLines.every((l) => !l.includes('behave as before')));
 ok('ticket-engines.md: Execute/Fix focused clause kept', verifyLines.every((l) => l.includes('--kind targeted --files <a,b>')));
 ok('configuration-reference.md: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration-reference.md']));
-ok('README.md: scoping names testing.full', /without `testing\.full`/i.test(docs['README.md']));
 ok('configuration.mdx: scoping names testing.full', /without `testing\.full`/i.test(docs['configuration.mdx']));
 
 // The reviewers never invoke the helper.
@@ -92,8 +91,6 @@ ok('debug.md: full suite through the helper', /full suite green[^\n]*trailhead-t
 
 // Config docs.
 ok('configuration-reference.md: once per ticket', docs['configuration-reference.md'].includes('once per ticket'));
-ok('README.md: once per ticket', docs['README.md'].includes('once per ticket'));
-ok('README.it.md: una volta per ticket', docs['README.it.md'].includes('una volta per ticket'));
 ok('configuration.mdx: once per ticket', docs['configuration.mdx'].includes('once per ticket'));
 
 for (const [name, text] of Object.entries(docs)) ok(`${name} has no em-dash`, !text.includes('—'));

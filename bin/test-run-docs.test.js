@@ -30,7 +30,7 @@ ok('ticket-engines.md names the full run command', docs['ticket-engines.md'].inc
 ok('ticket-engines.md names the targeted run', docs['ticket-engines.md'].includes('--kind targeted --files'));
 ok('ticket-engines.md names the unconfigured fallback', docs['ticket-engines.md'].includes('`unconfigured` falls back'));
 
-for (const name of ['configuration-reference.md', 'README.md', 'README.it.md', 'configuration.mdx']) {
+for (const name of ['configuration-reference.md', 'configuration.mdx']) {
   for (const key of ['testing.full', 'testing.targeted', 'testing.maxParallel']) {
     ok(`${name} documents ${key}`, docs[name].includes(key));
   }
@@ -39,8 +39,8 @@ const ref = docs['configuration-reference.md'];
 for (const needle of ['**Test runs.**', 'TRAILHEAD_CACHE_DIR', 'nice -n 10', 'ionice -c 3', '--no-cache', 'tree SHA + command', '🧪 Test suite', 'safe to delete when no test run is active']) {
   ok(`configuration-reference.md carries: ${needle}`, ref.includes(needle));
 }
-ok('README.md carries the Test runs paragraph', docs['README.md'].includes('**Test runs.**'));
-ok('README.it.md carries the mirrored paragraph', docs['README.it.md'].includes('**Esecuzioni dei test.**'));
+
+ok('configuration.mdx carries the Test runs paragraph', docs['configuration.mdx'].includes('**Test runs.**'));
 
 for (const [name, text] of Object.entries(docs)) ok(`${name} has no em-dash`, !text.includes('—'));
 

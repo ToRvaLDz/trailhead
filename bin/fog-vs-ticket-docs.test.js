@@ -41,16 +41,13 @@ ok('handoff: no em-dash', !handoff.includes(EM));
 
 // Docs utente
 const docs = [
-  ['README.md', read('README.md'), false],
-  ['README.it.md', read('README.it.md'), true],
-  ['concepts.md', read('site/src/content/docs/docs/concepts.md'), false],
+  ['concepts.md', read('site/src/content/docs/docs/concepts.md')],
 ];
-for (const [n, t, it] of docs) {
-  ok(`${n}: fog no longer clears "one at a time"`, it ? !/una alla volta, finché non resta/.test(t) : !/ticket, one at a time, until nothing/.test(t));
-  ok(`${n}: a phrasable question is a ticket, blocked if needed`, it
-    ? /domanda già formulabile[^.]*ticket[^.]*bloccat/i.test(t)
-    : /question you can already phrase[^.]*ticket[^.]*blocked/i.test(t));
+for (const [n, t] of docs) {
+  ok(`${n}: fog no longer clears "one at a time"`, !/ticket, one at a time, until nothing/.test(t));
+  ok(`${n}: a phrasable question is a ticket, blocked if needed`, /question you can already phrase[^.]*ticket[^.]*blocked/i.test(t));
   ok(`${n}: no em-dash`, !t.includes(EM));
 }
+for (const n of ['README.md', 'README.it.md']) ok(`${n}: no em-dash`, !read(n).includes(EM));
 
 console.log(`fog-vs-ticket-docs.test.js: ${passed} checks passed`);

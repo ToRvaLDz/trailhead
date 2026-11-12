@@ -50,10 +50,8 @@ const techniques = read('skills/_shared/techniques.md');
 ok('techniques.md: the outcome is awaited up to the bound, a stalled plan reviewer ends as a recorded drop', /the outcome always awaited \(up to its bound[^\n]*stalled reviewer ends as a dropped reviewer, recorded in `PLAN-REVIEW`, never an open wait/.test(techniques));
 
 const root = path.resolve(__dirname, '..');
-const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-const readmeIt = fs.readFileSync(path.join(root, 'README.it.md'), 'utf8');
 const site = fs.readFileSync(path.join(root, 'site', 'src', 'content', 'docs', 'docs', 'configuration.mdx'), 'utf8');
-for (const [name, text] of [['README.md', readme], ['README.it.md', readmeIt], ['configuration.mdx', site]]) {
+for (const [name, text] of [['configuration.mdx', site]]) {
   ok(`${name}: has the plan_review.context row`, /^\| `plan_review\.context` \|/m.test(text));
 }
 

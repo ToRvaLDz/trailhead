@@ -21,7 +21,6 @@ const engines = read(skills, 'trailhead-work', 'references', 'ticket-engines.md'
 const auditing = read(skills, 'trailhead-manage', 'references', 'auditing.md');
 const manage = read(docs, 'commands', 'manage.md');
 const concepts = read(docs, 'concepts.md');
-const readmes = [['README.md', read(root, 'README.md')], ['README.it.md', read(root, 'README.it.md')]];
 
 // The format and who writes it: codebase-map.md.
 ok('map: facet stamp format', map.includes('`_as of <short sha>_`'));
@@ -69,11 +68,5 @@ ok('auditing 9: stale facets get no proposal', /\*\*Stale facets\*\* → no prop
 // Reader-facing docs.
 ok('site manage: audit mentions stale codebase facets', /codebase facet/i.test(manage) && /as of/.test(manage));
 ok('site concepts: codebase bullet mentions the stamp', concepts.split('\n').some((l) => l.includes('`trailhead:codebase`') && /as of/.test(l)));
-
-for (const [name, text] of readmes) {
-  const lines = text.split('\n');
-  ok(`${name}: codebase bullet mentions the stamp`, lines.some((l) => l.includes('`trailhead:codebase`') && l.includes('`_as of <short sha>_`')));
-  ok(`${name}: audit paragraph mentions stale codebase facets`, lines.some((l) => l.startsWith('`/trailhead:audit') && l.includes('`_as of <short sha>_`')));
-}
 
 console.log(`facet-stamp-docs.test.js: ${passed} checks passed`);

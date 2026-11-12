@@ -142,11 +142,11 @@ fs.rmSync(tmp, { recursive: true, force: true });
 // Docs
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 const readmeIt = fs.readFileSync(path.join(root, 'README.it.md'), 'utf8');
-for (const [name, doc] of [['README.md', readme], ['README.it.md', readmeIt]]) {
-  ok(`${name} names the Action`, doc.includes('ToRvaLDz/trailhead/actions/capture@'));
-  ok(`${name} names issues: write`, doc.includes('issues: write'));
-  ok(`${name} names dedupe-key`, doc.includes('dedupe-key'));
-}
+// La guida sul sito (Working as a team) porta lo snippet della Action.
+const teamwork = fs.readFileSync(path.join(root, 'site', 'src', 'content', 'docs', 'docs', 'teamwork.md'), 'utf8');
+ok('teamwork.md names the Action', teamwork.includes('ToRvaLDz/trailhead/actions/capture@'));
+ok('teamwork.md names issues: write', teamwork.includes('issues: write'));
+ok('teamwork.md names dedupe-key', teamwork.includes('dedupe-key'));
 const capDoc = fs.readFileSync(path.join(root, 'plugins', 'trailhead', 'skills', 'trailhead-capture', 'references', 'capture.md'), 'utf8');
 ok('capture.md names the Action', capDoc.includes('actions/capture'));
 for (const [name, text] of [['action.yml', yml], ['README.md', readme], ['README.it.md', readmeIt], ['capture.md', capDoc], ['test', fs.readFileSync(__filename, 'utf8').replace(/String\.fromCharCode\(0x2014\)/g, '')]]) {
@@ -154,14 +154,14 @@ for (const [name, text] of [['action.yml', yml], ['README.md', readme], ['README
 }
 ok('real helper path used by the run block exists',
   fs.existsSync(path.join(root, 'actions/capture', '../../plugins/trailhead/templates/trailhead-capture.js')));
-for (const [name, doc] of [['README.md', readme], ['README.it.md', readmeIt]]) {
-  const keys = [...doc.matchAll(/^\s*dedupe-key: (.+)$/gm)].map((m) => m[1]);
-  ok(`${name} has a dedupe-key example`, keys.length > 0);
+{
+  const keys = [...teamwork.matchAll(/^\s*dedupe-key: (.+)$/gm)].map((m) => m[1]);
+  ok('teamwork.md has a dedupe-key example', keys.length > 0);
   for (const k of keys) {
-    ok(`${name} dedupe-key example avoids unsafe contexts`, !/github\.(ref_name|workflow|head_ref|ref)\b/.test(k));
+    ok('teamwork.md dedupe-key example avoids unsafe contexts', !/github\.(ref_name|workflow|head_ref|ref)\b/.test(k));
     // job ids are [A-Za-z0-9_-]; run_id and run_number are digits
     const resolved = k.replace(/\$\{\{\s*github\.(job|run_id|run_number)\s*\}\}/g, 'x1');
-    ok(`${name} dedupe-key example matches the helper regex`, /^[A-Za-z0-9._:-]{1,100}$/.test(resolved));
+    ok('teamwork.md dedupe-key example matches the helper regex', /^[A-Za-z0-9._:-]{1,100}$/.test(resolved));
   }
 }
 console.log(`capture-action.test.js: ${passed} checks passed`);
