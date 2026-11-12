@@ -79,6 +79,17 @@ test('the file removed after a titled prompt gives closed once', async ($, on) =
   expect(await prompt($)).toBeUndefined()
 })
 
+test('another session taking over the file after a titled prompt sets nothing', async ($, on) => {
+  const r = rig(on)
+  r.file = stateText()
+  await $.session.start(START)
+  await prompt($)
+  r.file = stateText({ session: 'sess-other' })
+  expect(await prompt($)).toBeUndefined()
+  r.file = null
+  expect(await prompt($)).toBe('#373 ✓ closed')
+})
+
 test('resolve then clear: the new session is not titled from the old state', async ($, on) => {
   const r = rig(on)
   r.file = stateText()

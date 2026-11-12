@@ -63,9 +63,16 @@ test('closed once after the own state goes', () => {
   expect(nextTitle(closed.last, null, S, null).emit).toBeNull()
 })
 
-test('a foreign state after an own one also closes', () => {
+test('a foreign or sessionless state after an own one emits nothing and keeps last', () => {
   const first = nextTitle(null, state(), S, null)
-  expect(nextTitle(first.last, state({ session: 'other' }), S, null).emit).toBe('#373 ✓ closed')
+  expect(nextTitle(first.last, state({ session: 'other' }), S, null)).toEqual({ emit: null, last: first.last })
+  expect(nextTitle(first.last, state({ session: null }), S, null)).toEqual({ emit: null, last: first.last })
+  expect(nextTitle(first.last, state({ session: 'other' }), S, { done: 1, inFlight: 1 })).toEqual({ emit: null, last: first.last })
+})
+
+test('a state with no ticket counts as no state: closed', () => {
+  const first = nextTitle(null, state(), S, null)
+  expect(nextTitle(first.last, state({ ticket: null }), S, null).emit).toBe('#373 ✓ closed')
 })
 
 test('never on a session that never had a ticket', () => {
