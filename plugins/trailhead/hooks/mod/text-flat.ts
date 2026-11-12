@@ -2,7 +2,7 @@
 const ELLIPSIS = '…'
 
 // Zero-width and bidi controls are dropped, so a title cannot hide or reorder text.
-const INVISIBLE = /[​-‏‪-‮⁦-⁩﻿]/g
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
 
 // Flat single line.
 export const flat = (text: string): string => text.replace(INVISIBLE, '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim()
