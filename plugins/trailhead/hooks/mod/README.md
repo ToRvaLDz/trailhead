@@ -59,8 +59,12 @@ for example `#373 · execute: Rename the session…`, whatever entry point start
 - **When**: `classic.UserPromptSubmit` and `classic.SessionStart` answer with `sessionTitle`, so it
   updates on a prompt or at session start, never mid-turn. It is set only when it changed since the last
   one the mod set, so a rename made by hand between steps is not overwritten on every prompt.
+- **A prompt that starts a ticket** (`/trailhead:work|resume|quick <n>`, the panel's press included)
+  titles it at once as `#<n>: <title>` (`#<n>` when the title is not known: only the panel row hands
+  it over), since the engine writes the ticket's state later in that turn; the step joins on the next prompt.
 - **`#<n> ✓ closed`**: when the state goes away after a title was set (no file, or a state with no
-  ticket), the next prompt replaces the title with it, once. Another session's state, or a sessionless
+  ticket) in the repo the title was set in, the next prompt replaces the title with it, once. A `cd`
+  into another repo finds no state there and keeps the title. Another session's state, or a sessionless
   one, taking over the shared file keeps the title as it is. Resolve clears the state mid-turn and its handoff asks for `/clear`, which starts a new
   session: `✓ closed` shows only if another prompt is sent in the same session before the `/clear`;
   otherwise the session keeps the last step title it got. The record of the last title is module state,
