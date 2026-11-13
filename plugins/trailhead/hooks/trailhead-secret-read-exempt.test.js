@@ -223,6 +223,8 @@ const NESTED = { secretRead: { exempt: [NAME] } };
   const wt = path.join(path.dirname(main), `${path.basename(main)}-wt`);
   roots.push(wt);
   git(main, 'worktree', 'add', '-q', '--detach', wt);
+  fs.mkdirSync(path.join(wt, '.trailhead'));
+  fs.writeFileSync(path.join(wt, '.trailhead', 'config.json'), JSON.stringify(NESTED));
   ok('a linked worktree (.git is a file) works', allowed(bash(`cat ${NAME}`, wt)));
 }
 

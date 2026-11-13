@@ -108,6 +108,17 @@
 // such piece (`. venv/bin/activate && make`) it passes. The closed list is
 // lib/unmodelled.js.
 //
+// #376: a project can exempt tracked placeholders that carry a secret-looking name
+// (`.env.local` committed with dummy values) through `secretRead.exempt` in its own
+// `.trailhead/config.json` (repo-relative paths; lib/secret-read-exempt.js holds the key rules
+// and every git/fs condition: tracked regular file, no symlink, not ignored, content as
+// committed). The exemption applies only AFTER an operand is judged secret-looking, from the
+// payload `cwd`, and only to an operand the guard can resolve with certainty: a Read
+// `file_path`, or a plain top-level Bash operand (`cat`-like reader verb, or a `<` redirect) that
+// is a literal path (no `$`, `~`, glob, quote, backslash or `..`) with no `cd`/`pushd`/`popd` earlier
+// in the command. `<rev>:<path>`, nested/substitution/heredoc contexts and search verbs stay
+// blocked. Any error, a missing cwd or git, or an unconfigured project: today's behaviour.
+//
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
 // trailhead-search-guard.js's job) — it only asks "does any token here
@@ -134,6 +145,7 @@ const {
   SEARCH_VERB_CONFIG,
   scanArgsSkippingPattern,
 } = require('./lib/shell-scan.js');
+const nodePath = require('path');
 
 // --- path helpers ------------------------------------------------------------
 
@@ -269,13 +281,55 @@ function stripTrailingPunct(t) {
   return String(t).replace(TRAILING_PUNCT_RE, '');
 }
 
+// --- #376: esenzione dei placeholder tracciati (secretRead.exempt) -------------
+
+// Verbi che leggono i propri operandi come file e non hanno opzioni che cambiano directory
+// (`env -C`, `make -C`, ...): solo con questi un operando posizionale e' esentabile.
+const EXEMPT_READER_VERBS = new Set(['cat', 'head', 'tail', 'less', 'more', 'nl', 'tac', 'wc', 'bat', 'sort']);
+// Il token grezzo deve essere un path letterale: niente espansioni, apici, glob, backslash.
+const EXEMPT_RAW_BAD_RE = /[$~*?[\]"'`\\<>|&;(){}!#\s]/;
+// Uno statement che cambia directory (anche in subshell/gruppo): da li' in poi il cwd e' ignoto.
+const CD_RE = /(^|[\s;&|(){`"'\\!])(cd|pushd|popd)($|[\s;&|(){`"'\\)])/;
+
+let exemptLib; // caricata al primo uso: una lib mancante spegne solo l'esenzione
+function loadExemptLib() {
+  if (exemptLib === undefined) {
+    try {
+      exemptLib = require('./lib/secret-read-exempt.js');
+    } catch {
+      exemptLib = null;
+    }
+  }
+  return exemptLib;
+}
+
+// Contesto d'esenzione dal `cwd` del payload, o null (cwd assente o non assoluto).
+function exemptContext(cwd) {
+  return typeof cwd === 'string' && nodePath.isAbsolute(cwd) ? { cwd, cdSeen: false } : null;
+}
+
+// Vero se `raw` (path letterale, relativo al cwd o assoluto) e' un placeholder esente.
+function rawPathExempt(raw, cwd) {
+  if (!raw || EXEMPT_RAW_BAD_RE.test(raw) || raw.split('/').includes('..')) return false;
+  const lib = loadExemptLib();
+  return !!lib && lib.isExemptFor(nodePath.resolve(cwd, raw), cwd);
+}
+
+// `ex` = { cwd, bin } dello statement corrente (null: nessuna esenzione). Una redirect `<`
+// e' risolta dalla shell sul cwd qualunque sia il verbo; un posizionale solo per i lettori.
+function exemptAllows(ex, raw, redirect) {
+  if (!ex) return false;
+  if (!redirect && !EXEMPT_READER_VERBS.has(ex.bin)) return false;
+  return rawPathExempt(raw, ex.cwd);
+}
+
 // Scan one already-tokenized statement's argument tokens (verb NOT stripped)
 // for a secret path used as a plain positional, an option value
 // (`--file=.env`, `-f .env`, glued `-f.env`), or a `<` (or glued `<file`)
 // redirect target. Returns the offending token or null. `exemptFlags` (#180)
 // names flags whose value must be skipped entirely rather than scanned, in
 // both the `--flag=value` and spaced `--flag value` forms.
-function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
+function scanTokensForSecretPath(tokens, exemptFlags, skipIndices, ex) {
   const exempt = exemptFlags || NO_EXEMPT_FLAGS;
   const skip = skipIndices || NO_SKIP;
   for (let i = 0; i < tokens.length; i++) {
@@ -289,11 +343,14 @@ function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
     if (t.startsWith('<') && !t.startsWith('<<')) {
       const glued = t.slice(1);
       if (glued) {
-        if (isSecretPathArg(glued)) return glued;
+        if (isSecretPathArg(glued) && !exemptAllows(ex, glued, true)) return glued;
         continue;
       }
       const next = i + 1 < tokens.length ? stripTrailingPunct(tokens[i + 1]) : null;
-      if (next && isSecretPathArg(next)) return next;
+      if (next && isSecretPathArg(next)) {
+        if (!exemptAllows(ex, next, true)) return next;
+        i++; // operando della redirect esente: non riletto come posizionale
+      }
       continue;
     }
 
@@ -304,7 +361,7 @@ function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
         const flagName = t.slice(0, eq);
         if (exempt.has(flagName)) continue; // #180: value never scanned
         const val = t.slice(eq + 1);
-        if (isSecretPathArg(val)) return val;
+        if (isSecretPathArg(val) && !exemptAllows(ex, val, false)) return val;
         continue;
       }
       // #180: exempt flag's separate-token value is skipped entirely, not
@@ -313,7 +370,10 @@ function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
       // `-f value` / `--file value` (separate-token value).
       if (VALUE_FLAGS.has(t)) {
         const next = i + 1 < tokens.length ? stripTrailingPunct(tokens[i + 1]) : null;
-        if (next && !skip.has(i + 1) && isSecretPathArg(next)) return next;
+        if (next && !skip.has(i + 1) && isSecretPathArg(next)) {
+          if (!exemptAllows(ex, next, false)) return next;
+          i++;
+        }
         continue;
       }
       // Glued short-option value (`-f.env`, finding #2): a single-dash flag
@@ -323,14 +383,14 @@ function scanTokensForSecretPath(tokens, exemptFlags, skipIndices) {
         const shortFlag = t.slice(0, 2);
         if (VALUE_FLAGS.has(shortFlag)) {
           const glued = t.slice(2);
-          if (isSecretPathArg(glued)) return glued;
+          if (isSecretPathArg(glued) && !exemptAllows(ex, glued, false)) return glued;
         }
       }
       continue; // some other flag: not itself a file operand
     }
 
     // Plain positional (file operand or search pattern token).
-    if (isSecretPathArg(t)) return t;
+    if (isSecretPathArg(t) && !exemptAllows(ex, t, false)) return t;
   }
   return null;
 }
@@ -702,7 +762,7 @@ function wrappedNestedShell(tokens) {
 // awk through the shared pattern-skipping walk (finding #4), and falls back
 // to the plain per-token walk for everything else (cat, head, redirects,
 // etc.).
-function scanStatementForSecretPath(stmt) {
+function scanStatementForSecretPath(stmt, ctx) {
   const tokens = tokenize(stmt);
   if (!tokens.length) return null;
 
@@ -735,7 +795,9 @@ function scanStatementForSecretPath(stmt) {
   // standalone docker-compose/podman-compose binaries) get --env-file's value
   // exempted; every other verb keeps today's behaviour unchanged.
   const exempt = ENV_FILE_EXEMPT_VERBS.has(bin) ? ENV_FILE_EXEMPT_FLAGS : NO_EXEMPT_FLAGS;
-  const plain = scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens));
+  // #376: l'esenzione vale solo al livello alto e prima di ogni cd (ctx assente nei contesti annidati).
+  const ex = ctx && !ctx.cdSeen ? { cwd: ctx.cwd, bin } : null;
+  const plain = scanTokensForSecretPath(tokens, exempt, nameOnlyTokenIndices(bin, tokens), ex);
   if (plain) return plain;
   // #316: only when a secret-looking piece sits in the statement (`timeout 5 bash -c 'echo hi'` stays allowed).
   const wrapped = wrappedNestedShell(tokens);
@@ -790,7 +852,7 @@ function invokesInterpreter(stmt) {
 // an option value, or a `<` redirect target. Returns the offending token
 // (quotes/punctuation not necessarily stripped) or null. Best-effort: not a
 // full shell parser.
-function scanBashForSecretPath(cmd) {
+function scanBashForSecretPath(cmd, ctx) {
   const work = [{ text: String(cmd), depth: 0 }];
   let bytes = 0;
   for (let w = 0; w < work.length; w++) {
@@ -816,7 +878,9 @@ function scanBashForSecretPath(cmd) {
       pipe = [];
     };
     for (const entry of entries) {
-      const hit = scanStatementForSecretPath(entry.text);
+      // #376: solo il testo di primo livello (w === 0) puo' essere esentato; un cd lo spegne
+      if (ctx && CD_RE.test(entry.text)) ctx.cdSeen = true;
+      const hit = scanStatementForSecretPath(entry.text, w === 0 ? ctx : null);
       if (hit) return hit;
       const docs = bodies.slice(next, next + countHeredocs(entry));
       next += docs.length;
@@ -873,16 +937,21 @@ function unmodelledSecretPiece(cmd) {
 
 // Detect a secret-file read across a Read or Bash tool call. Returns
 // { path } on a hit, or null. Pure, exported for tests.
-function detectSecretRead(toolName, toolInput) {
+// `ctx` = { cwd } del payload (#376); senza, nessuna esenzione.
+function detectSecretRead(toolName, toolInput, ctx) {
   const input = toolInput || {};
+  const ex = exemptContext(ctx && ctx.cwd);
   if (toolName === 'Read') {
     const p = input.file_path;
-    if (p && isSecretPathArg(String(p))) return { path: String(p) };
+    if (p && isSecretPathArg(String(p))) {
+      if (ex && rawPathExempt(String(p), ex.cwd)) return null;
+      return { path: String(p) };
+    }
     return null;
   }
   if (toolName === 'Bash') {
     const cmd = input.command || '';
-    const hit = scanBashForSecretPath(cmd);
+    const hit = scanBashForSecretPath(cmd, ex);
     if (hit) return typeof hit === 'object' ? hit : { path: hit }; // object: an unmodelled hit (#273)
     const um = unmodelledSecretPiece(cmd); // a final gate: the precise scan keeps priority
     return um ? { path: um.piece, unmodelled: um.hit } : null;
@@ -909,7 +978,8 @@ function block(hit) {
     '(.env / .env.* / .secrets). This replaces the Read() deny permission rules ' +
     "removed in #135 with a hook-level deny, so secrets stay unreadable without " +
     "arming Claude Code 2.1.259's cd-compound-read approval prompt. If this file " +
-    'genuinely needs inspecting, do so outside the agent session.';
+    'genuinely needs inspecting, do so outside the agent session. A tracked placeholder ' +
+    'with dummy values can be listed under `secretRead.exempt` in .trailhead/config.json.';
   process.stdout.write(JSON.stringify({ decision: 'block', code: 'SECRET_READ_BLOCKED', reason }));
   process.exit(2);
 }
@@ -922,7 +992,7 @@ function run(data) {
     process.exit(0); // unparseable input: nothing to gate
   }
   try {
-    const hit = detectSecretRead(parsed.tool_name, parsed.tool_input);
+    const hit = detectSecretRead(parsed.tool_name, parsed.tool_input, { cwd: parsed.cwd });
     if (hit) block(hit);
   } catch {
     // fall through to allow: a guard must never wedge the workflow
