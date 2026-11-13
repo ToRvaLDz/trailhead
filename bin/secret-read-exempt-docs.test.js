@@ -13,9 +13,9 @@ let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; };
 
 const EXPECT = {
-  'plugins/trailhead/skills/_shared/configuration-reference.md': ['`secretRead.exempt`', 'Secret-read exemption', 'Project config only', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`'],
-  'site/src/content/docs/docs/configuration.mdx': ['`secretRead.exempt`', 'Project config only', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`'],
-  'site/src/content/docs/docs/hooks.md': ['`secretRead.exempt`', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`'],
+  'plugins/trailhead/skills/_shared/configuration-reference.md': ['`secretRead.exempt`', 'Secret-read exemption', 'Project config only', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`', 'only statement of the command'],
+  'site/src/content/docs/docs/configuration.mdx': ['`secretRead.exempt`', 'Project config only', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`', 'only statement of the command'],
+  'site/src/content/docs/docs/hooks.md': ['`secretRead.exempt`', 'not a symlink', 'not gitignored', 'unchanged from the commit', '`rev:path`', 'only statement of the command'],
 };
 
 for (const [rel, needles] of Object.entries(EXPECT)) {
