@@ -20,14 +20,17 @@ function blockVerdict(code, reason) {
 
 // Token-walk: is this shell string a `git commit …`? Handles env-var prefixes
 // (FOO=bar git …), full-path git, and global flags (-C path, -c k=v, --git-dir=…).
+// Le opzioni globali con valore separato vengono da lib/git-globals.js (#375),
+// require pigro dentro evaluate(): una lib mancante cade nel catch → allow.
 function isGitCommit(cmd) {
+  const { takesSeparateValue } = require('./lib/git-globals.js');
   const toks = cmd.trim().split(/\s+/);
   let i = 0;
   while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // env prefix
   if (i >= toks.length || !/(^|\/)git$/.test(toks[i])) return false;       // the git binary
   i++;
   while (i < toks.length && toks[i].startsWith('-')) {                     // global flags
-    if (/^-(C|c|-git-dir|-work-tree|-namespace)$/.test(toks[i]) && !toks[i].includes('=')) i++;
+    if (takesSeparateValue(toks[i])) i++;                                  // il valore non è il sottocomando
     i++;
   }
   return toks[i] === 'commit';
