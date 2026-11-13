@@ -15,7 +15,7 @@ import { isMainTurnRunning, markTurnComplete, markTurnStart } from './turn-state
 import { isForeignState, isOwnState, locateOwnState, noteFound, wasFoundElsewhere } from './work-state-locate'
 import { sessionLiveness } from './session-registry'
 import { pressTitleOf } from './press-title'
-import { nextTitle, startedTicket } from './session-title'
+import { commandTitle, nextTitle, startedTicket } from './session-title'
 import type { Titled } from './session-title'
 import { promptSection, snapshotKey } from './work-state-prompt'
 import { ELSEWHERE, fit, isMissing, nextOwnTicket, parseWorkState, pipeline, sameValue, statusLine } from './work-state-view'
@@ -336,7 +336,9 @@ async function titleHook<R extends object>($: Dollar, result: R, prompt: string 
     const repo = pinned === null ? null : pinKey(pinned)
     const ticket = prompt === null ? null : startedTicket(prompt)
     const started = ticket === null ? null : { ticket, title: pressTitleOf(ticket) }
-    const step = nextTitle(titled.get(session) ?? null, await read($, workState), session, await read($, autoRun), { repo, started })
+    const command = prompt === null ? null : commandTitle(prompt)
+    const counts = await read($, runCounts)
+    const step = nextTitle(titled.get(session) ?? null, await read($, workState), session, await read($, autoRun), { repo, started, command, counts })
     if (step.last !== null) titled.set(session, step.last)
     return step.emit === null ? result : { ...result, sessionTitle: step.emit }
   } catch (err) {

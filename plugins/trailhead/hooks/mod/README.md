@@ -69,8 +69,16 @@ for example `#373 · execute: Rename the session…`, whatever entry point start
   session: `✓ closed` shows only if another prompt is sent in the same session before the `/clear`;
   otherwise the session keeps the last step title it got. The record of the last title is module state,
   so a hot reload loses it (the last step title stays; never a wrong rename).
-- **Parallel `auto` run**: slots write a state with no session, so they never title; a session with no
-  ticket of its own but a live run shows the run label (`auto · 1 done · 2 in flight`).
+- **A trailhead command prompt** titles the session at once. `/trailhead:auto [<n>]` gives `auto · map #<n>`
+  (`auto` with no map), always, even over the session's own ticket, since the run record is written later in
+  that turn. Any other verb gives `trailhead · <verb>` (`trailhead · new: <text>` with its argument), only on a
+  session with no ticket of its own, so a `/trailhead:map` mid-ticket keeps the ticket title. `panel` sets nothing.
+- **`auto` run**: slots write a state with no session, so they never title; a session with no
+  ticket of its own but a live run shows the run label (`auto · 1 done · 2 in flight`, then the scope's
+  `needs you` and `paused` counts when not zero). The session's own ticket in a run (`auto: true`) carries
+  the run label first: `auto · 2 done · 1 in flight · #373 · execute: Rename the session`. Like every
+  title it moves only on a prompt or a session start: a run is one long turn, so the counts are those of
+  the last prompt.
 
 ## System prompt
 

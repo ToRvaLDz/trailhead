@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { nextTitle, startedTicket, titleFor } from '../hooks/mod/session-title'
+import { commandTitle, nextTitle, startedTicket, titleFor } from '../hooks/mod/session-title'
 import type { WorkState } from '../types'
 
 const S = 'sess-A'
@@ -122,4 +122,43 @@ test('a prompt starting another ticket titles it at once, before its state is wr
 test('a prompt naming the ticket the own state already holds keeps the full title', () => {
   const first = nextTitle(null, state(), S, null)
   expect(nextTitle(first.last, state(), S, null, { started: { ticket: 373, title: 'x' } }).emit).toBeNull()
+})
+
+test('commandTitle names the trailhead command a prompt launches', () => {
+  expect(commandTitle('/trailhead:auto 12')).toBe('auto · map #12')
+  expect(commandTitle('/trailhead auto #7')).toBe('auto · map #7')
+  expect(commandTitle('/trailhead:auto')).toBe('auto')
+  expect(commandTitle('/trailhead:new ZipTV player\nweb')).toBe('trailhead · new: ZipTV player web')
+  expect(commandTitle('/trailhead:map')).toBe('trailhead · map')
+  expect(commandTitle('/trailhead:work')).toBe('trailhead · work')
+  expect(commandTitle('/trailhead:work 844')).toBeNull()
+  expect(commandTitle('/trailhead:panel')).toBeNull()
+  expect(commandTitle('please /trailhead:map')).toBeNull()
+  expect(commandTitle('/mapping')).toBeNull()
+  expect(Array.from(commandTitle(`/trailhead:new ${'a'.repeat(200)}`) as string)).toHaveLength(80)
+})
+
+test('an auto prompt titles at once, even over an own ticket', () => {
+  const first = nextTitle(null, state(), S, null)
+  const auto = nextTitle(first.last, state(), S, null, { command: 'auto · map #12' })
+  expect(auto.emit).toBe('auto · map #12')
+  expect(auto.last).toEqual({ ticket: null, title: 'auto · map #12' })
+})
+
+test('another command titles only a session with no own ticket', () => {
+  expect(nextTitle(null, null, S, null, { command: 'trailhead · map' }).emit).toBe('trailhead · map')
+  const first = nextTitle(null, state(), S, null)
+  expect(nextTitle(first.last, state(), S, null, { command: 'trailhead · map' }).emit).toBeNull()
+})
+
+test('the own ticket of an auto run carries the run label first', () => {
+  const run = { done: 2, inFlight: 1 }
+  const t = nextTitle(null, state({ auto: true }), S, run, { counts: { needsYou: 1, paused: 0 } })
+  expect(t.emit).toBe('auto · 2 done · 1 in flight · 1 needs you · #373 · execute: Rename the session')
+  expect(t.last?.ticket).toBe(373)
+  expect(Array.from(t.emit as string).length).toBeLessThanOrEqual(80)
+})
+
+test('a parallel run label carries the scope counts', () => {
+  expect(nextTitle(null, null, S, { done: 3, inFlight: 2 }, { counts: { needsYou: 1, paused: 1 } }).emit).toBe('auto · 3 done · 2 in flight · 1 needs you · 1 paused')
 })
