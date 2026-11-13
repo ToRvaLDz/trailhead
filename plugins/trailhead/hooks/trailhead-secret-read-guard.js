@@ -114,10 +114,12 @@
 // and every git/fs condition: tracked regular file, no symlink, not ignored, content as
 // committed). The exemption applies only AFTER an operand is judged secret-looking, from the
 // payload `cwd`, and only to an operand the guard can resolve with certainty: a Read
-// `file_path`, or a plain top-level Bash operand (`cat`-like reader verb, or a `<` redirect) that
-// is a literal path (no `$`, `~`, glob, quote, backslash or `..`) with no `cd`/`pushd`/`popd` earlier
-// in the command. `<rev>:<path>`, nested/substitution/heredoc contexts and search verbs stay
-// blocked. Any error, a missing cwd or git, or an unconfigured project: today's behaviour.
+// `file_path`, or a plain Bash operand (`cat`-like reader verb, or a `<` redirect) that is a
+// literal path (no `$`, `~`, glob, quote, backslash or `..`) of a command that is ONE simple
+// statement: any separator (`;` `&` `|` newline), substitution, heredoc, group or subshell
+// anywhere in the command (even after the read: a pipeline runs concurrently) leaves the
+// guard unable to know the file is still the judged one when the read runs (an earlier
+// statement could swap it), so no exemption. `<rev>:<path>` and search verbs stay blocked. Any error, a missing cwd or git, or an unconfigured project: today's behaviour.
 //
 // Deliberately best-effort on the Bash leg, like the sibling guards: not a
 // full shell parser. It does not care about `cd` shape at all (that is
@@ -302,6 +304,10 @@ function loadExemptLib() {
   }
   return exemptLib;
 }
+
+// #376: comando = un solo statement semplice. Controllo grezzo sul testo intero (anche dentro
+// apici: fail closed): separatori, backtick, sostituzioni/subshell/gruppi `(` `)` `{` `}`, heredoc.
+const MULTI_STATEMENT_RE = /[;&|\n\r`(){}]|<</;
 
 // Contesto d'esenzione dal `cwd` del payload, o null (cwd assente o non assoluto).
 function exemptContext(cwd) {
@@ -951,7 +957,8 @@ function detectSecretRead(toolName, toolInput, ctx) {
   }
   if (toolName === 'Bash') {
     const cmd = input.command || '';
-    const hit = scanBashForSecretPath(cmd, ex);
+    const single = !MULTI_STATEMENT_RE.test(cmd);
+    const hit = scanBashForSecretPath(cmd, single ? ex : null);
     if (hit) return typeof hit === 'object' ? hit : { path: hit }; // object: an unmodelled hit (#273)
     const um = unmodelledSecretPiece(cmd); // a final gate: the precise scan keeps priority
     return um ? { path: um.piece, unmodelled: um.hit } : null;
