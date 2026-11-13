@@ -17,7 +17,9 @@
 //   problem  null | missing | unknown-token | conflicting | counts | fields (null iff not reask)
 //   report   the original text on accept and reask; the normalised text on normalise
 //   fields   label -> trimmed value for the report's fields (executor, fix, plan, debug,
-//            research, codebase-map, grill); {} for verify and code-review; null on reask
+//            research, codebase-map, grill); for verify `human pending` (its claim lines)
+//            when any claim carries `reason: human-pending`, else {}; {} for code-review;
+//            null on reask
 //   body     plan with `ready` only: the normalised report without its status line, the
 //            PLAN to post verbatim; null otherwise
 // Exit 0 for all three actions; exit 2 on a usage error (missing or unknown
@@ -208,7 +210,32 @@ function raisedVerify(verdict, lines, cands, statusIdx) {
     const m = new RegExp(`(?:^|[\\s,;(])class\\s*:\\s*(${VERIFY_CLASSES.join('|')})\\b(?![-\\w])`, 'i').exec(strip(lines[i]));
     return m ? [CLASS_VERDICT[m[1].toLowerCase()]] : [];
   });
-  return classes.reduce((v, c) => (VERIFY_RANK[c] > VERIFY_RANK[v] ? c : v), verdict);
+  const raised = classes.reduce((v, c) => (VERIFY_RANK[c] > VERIFY_RANK[v] ? c : v), verdict);
+  // A human-pending claim is never satisfied by the code: it lifts met to inconclusive.
+  return humanPending(lines, cands, statusIdx).length > 0 && VERIFY_RANK[raised] < VERIFY_RANK.inconclusive ? 'inconclusive' : raised;
+}
+
+const CLASS_RE = /(?:^|[\s,;(])class\s*:/i;
+const HUMAN_RE = /(?:^|[\s,;(])reason\s*:\s*human-pending\b(?![-\w])/i;
+
+// The verify claims whose reason is human-pending (a step only the human can do, which the
+// ticket requires), each as its claim line: the line carrying the reason when it has a
+// `class:`, else the nearest earlier claim line, else the reason line itself.
+function humanPending(lines, cands, statusIdx) {
+  const rows = cands.filter((i) => !statusIdx.has(i)).map((i) => strip(lines[i]));
+  const claims = rows.flatMap((s, k) => {
+    if (!HUMAN_RE.test(s)) return [];
+    if (CLASS_RE.test(s)) return [s];
+    const prev = rows.slice(0, k).reverse().find((p) => CLASS_RE.test(p));
+    return [prev === undefined ? s : prev];
+  });
+  return [...new Set(claims)];
+}
+
+// The verify fields: `human pending` (the claim lines, one per line) when any claim has it.
+function verifyFields(lines, cands, statusIdx) {
+  const claims = humanPending(lines, cands, statusIdx);
+  return claims.length > 0 ? { 'human pending': claims.join('\n') } : {};
 }
 
 // The verdict after the content check: the declared one, or the stricter one it contradicts.
@@ -301,6 +328,8 @@ function checkReport(text, technique) {
     if (fieldsProblem(contract, verdict, parsed.fields, parsed.duplicate, text)) return reask(original, 'fields');
     fields = parsed.fields;
     if (family === 'plan' && verdict === 'ready') body = text;
+  } else if (technique === 'verify') {
+    fields = verifyFields(lines, cands, new Set(statusLines.map((c) => c.i)));
   }
 
   const exact = cleanLayout && statusLines.length === 1 && statusLines[0].i === 0 && lines[0] === `status: ${verdict}` && verdict === declared

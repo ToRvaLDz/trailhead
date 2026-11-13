@@ -196,6 +196,31 @@ for (const [name, technique, input, expected] of rows) {
   }
 }
 
+// --- verify: the human-pending claims, a deterministic field the Resolve guard reads ---
+// [name, input, expected]; expected = [action, verdict, human-pending value or undefined]
+const humanRows = [
+  ['a human-pending claim on one line raises met and is listed', 'status: met\n- Store declarations, class: inconclusive, reason: human-pending\n',
+    ['normalise', 'inconclusive', 'Store declarations, class: inconclusive, reason: human-pending']],
+  ['the reason on the line after the claim', 'status: inconclusive\n- Legal review, class: inconclusive\n  reason: human-pending\n',
+    ['accept', 'inconclusive', 'Legal review, class: inconclusive']],
+  ['two human-pending claims, one per line', 'status: inconclusive\n- a, class: inconclusive, reason: human-pending\n- b, class: inconclusive\n  reason: human-pending\n',
+    ['accept', 'inconclusive', 'a, class: inconclusive, reason: human-pending\nb, class: inconclusive']],
+  ['a gap still leads, the human claim is still listed', 'status: gaps_found\n- a, class: unmet\n- b, class: inconclusive, reason: human-pending\n',
+    ['accept', 'gaps_found', 'b, class: inconclusive, reason: human-pending']],
+  ['a human-pending reason without a class still raises met', 'status: met\n- Apply on prod, reason: human-pending\n',
+    ['normalise', 'inconclusive', 'Apply on prod, reason: human-pending']],
+  ['another reason is not human-pending', 'status: inconclusive\n- a, class: inconclusive, reason: unrunnable-check\n',
+    ['accept', 'inconclusive', undefined]],
+  ['a human-pending line inside a fence is ignored', 'status: met\n```\n- a, class: inconclusive, reason: human-pending\n```\n',
+    ['accept', 'met', undefined]],
+];
+for (const [name, input, [action, verdict, human]] of humanRows) {
+  const r = checkReport(input, V);
+  ok(`verify / ${name}: action ${action}`, r.action === action);
+  ok(`verify / ${name}: verdict ${verdict}`, r.verdict === verdict);
+  ok(`verify / ${name}: human pending`, JSON.stringify(r.fields) === JSON.stringify(human === undefined ? {} : { 'human pending': human }));
+}
+
 // --- the field families (#249) ---------------------------------------------------
 const EX = 'executor';
 const fullImpl = (status, blockers, extra = '') =>
@@ -319,6 +344,8 @@ const techniqueTokens = (file) => {
 };
 ok('vocabulary: verify tokens equal the ones verify.md defines',
   JSON.stringify([...TOKENS.verify].sort()) === JSON.stringify(techniqueTokens('verify.md')) && TOKENS.verify.length === 3);
+ok('vocabulary: verify.md defines the human-pending reason the checker reads',
+  /^\| `human-pending` \|/m.test(fs.readFileSync(path.join(techDir, 'verify.md'), 'utf8')));
 ok('vocabulary: code-review tokens equal the ones code-review.md defines',
   JSON.stringify([...TOKENS['code-review']].sort()) === JSON.stringify(techniqueTokens('code-review.md')) && TOKENS['code-review'].length === 2);
 
