@@ -1156,4 +1156,24 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   ok('an alias behind sudo -a style is not hidden', runHook("alias g='gh issue comment 1 --body x'; sudo -a style g").code === 2);
 }
 
+// --- env -S / -iS payload is the command, wrappers stop at -- (#374 review) ---
+{
+  const T = 'ghp_' + 'A'.repeat(36);
+  const G = `gh issue comment 1 --body ${T}`;
+  const blocks = (c) => runHook(c).code === 2;
+  for (const pre of ["env -S '", "env -iS '", "env -S'", "env --split-string='", "env -i -S '", "sudo env -S '"]) {
+    ok(`${pre} payload with a token blocks`, blocks(`${pre}${G}'`));
+  }
+  ok('env -S separate payload blocks', blocks(`env -S "${G}"`));
+  ok('env --split-string payload blocks', blocks(`env --split-string '${G}'`));
+  ok('env -S with a clean payload passes', runHook("env -S 'gh issue comment 1 --body hello'").code === 0);
+  ok('env -S payload is seen by ghWrites', ghWrites("env -S 'gh issue comment 1 --body x'").length === 1);
+  ok('ionice -P value is not the command', blocks(`ionice -P 5 ${G}`));
+  ok('ionice -u value is not the command', blocks(`ionice -u 5 ${G}`));
+  ok('stdbuf -oL before a write blocks', blocks(`stdbuf -oL ${G}`));
+  ok('-- ends env options before the write', blocks(`env -- ${G}`));
+  ok('sudo -- before the write blocks', blocks(`sudo -- ${G}`));
+  ok('an alias behind ionice is not hidden', blocks("alias g='gh issue comment 1 --body " + T + "'; ionice -c 3 g"));
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

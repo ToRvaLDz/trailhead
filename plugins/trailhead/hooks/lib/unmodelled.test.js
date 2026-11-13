@@ -180,4 +180,17 @@ ok('a construct the guard already models is skipped', firstRelevant(findUnmodell
   ok('doas is a wrapper word', require('./unmodelled.js').isWrapperWord('doas'));
 }
 
+// --- shared peel set, env -S, -- (#374 review) ---
+{
+  const A = "alias g='gh issue comment 1 --body x'";
+  for (const pre of ['ionice', 'ionice -c 3', 'ionice -P 5', 'ionice -u 5', 'stdbuf -oL', 'stdbuf -i0 -o L', 'env -S', "env -S'", 'env -iS', 'env --', 'sudo --']) {
+    ok(`eval behind ${pre} is detected`, has(`${pre} eval "$X"`, 'eval'));
+  }
+  for (const pre of ['ionice', 'stdbuf -oL', 'env --']) ok(`alias behind ${pre} is relevant`, relevant(`${A}; ${pre} g`));
+  ok('eval behind env -S payload is detected', has("env -S 'eval \"$X\"'", 'eval'));
+  ok('eval behind env -iS payload is detected', has("env -iS 'eval x'", 'eval'));
+  ok('alias behind env -S payload is relevant', relevant(`${A}; env -S 'g'`));
+  ok('stdbuf is a wrapper word', require('./unmodelled.js').isWrapperWord('stdbuf') && require('./unmodelled.js').isWrapperWord('ionice'));
+}
+
 console.log(`✓ unmodelled: ${passed} assertions passed`);

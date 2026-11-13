@@ -28,11 +28,18 @@ const WRAPPER_FLAGS = {
   nice: new Set(['-n', '--adjustment']),
   stdbuf: new Set(['-i', '-o', '-e', '--input', '--output', '--error']),
   setsid: new Set(),
-  ionice: new Set(['-c', '--class', '-n', '--classdata', '-p', '--pid']),
+  ionice: new Set(['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid']), // -t takes no value
   command: new Set(), // -v / -V only look a name up: see isLookupFlag
   builtin: new Set(),
   exec: new Set(['-a']),
 };
+
+// Which wrappers each guard peels, named so a table entry never changes a guard by
+// accident. The secret guard and lib/unmodelled.js share COMMAND_WRAPPERS (`xargs` stays
+// an opaque runner for the secret guard and `time` a prefix word, so neither is here).
+// The install guard keeps its own set: it peels `xargs`/`time`/`setsid` but not `builtin`.
+const COMMAND_WRAPPERS = new Set(['env', 'sudo', 'doas', 'nice', 'ionice', 'timeout', 'stdbuf', 'exec', 'command', 'builtin', 'nohup']);
+const INSTALL_WRAPPERS = new Set(Object.keys(WRAPPER_FLAGS).filter((w) => w !== 'builtin'));
 
 // Is `name` (already unquoted, no path) a wrapper in the table?
 function isWrapper(name) {
@@ -77,4 +84,49 @@ function isLookupFlag(f) {
   return !f.startsWith('--') && /[vV]/.test(f);
 }
 
-module.exports = { WRAPPER_FLAGS, isWrapper, flagValue, flagWidth, isSplitFlag, isLookupFlag };
+// The flags of the wrapper at toks[k] (and its values), read once for every guard.
+// Returns { toks, next }: `next` is the index just past the wrapper's options, and `toks`
+// is rewritten when an `env -S` payload was re-tokenized in place (the payload is then
+// the command line, so `next` is where it starts). opts:
+//   norm      word -> the word as the shell sees it (dequote); default identity
+//   tokenize  payload text -> tokens, for `env -S`; without it -S is a plain value flag
+//   assign    RegExp of NAME=value words skipped after an env/sudo (default: none)
+//   lookup    true: `command -v` / `-V` ends the line (next = toks.length)
+//   name      the wrapper name when it is not norm(toks[k])
+// Stops at `--`; a `timeout` also takes its DURATION operand.
+function skipWrapperFlags(toks, k, opts = {}) {
+  const norm = opts.norm || ((t) => t);
+  const w = opts.name || norm(toks[k]);
+  const valueFlags = isWrapper(w) ? WRAPPER_FLAGS[w] : new Set();
+  const takesAssign = opts.assign && (w === 'env' || w === 'sudo');
+  const skipAssigns = (j) => { while (takesAssign && j < toks.length && opts.assign.test(norm(toks[j]))) j++; return j; };
+  let rest = toks;
+  let j = k + 1;
+  while (j < rest.length) {
+    const t = norm(rest[j]);
+    if (t === '--') { j = skipAssigns(j + 1); break; }
+    if (t.startsWith('-')) {
+      if (w === 'env' && opts.tokenize && isSplitFlag(t)) {
+        const src = rest[j].startsWith('-') ? rest[j] : t; // slice the raw token when it is the flag
+        const sIdx = src.indexOf('S');
+        let payload;
+        let end = j + 1;
+        if (src.startsWith('--')) {
+          const eq = src.indexOf('=');
+          if (eq !== -1) payload = src.slice(eq + 1); else { payload = rest[j + 1]; end = j + 2; }
+        } else if (sIdx === src.length - 1) { payload = rest[j + 1]; end = j + 2; } else payload = src.slice(sIdx + 1);
+        rest = [...rest.slice(0, k), ...opts.tokenize(payload || ''), ...rest.slice(end)];
+        return { toks: rest, next: k };
+      }
+      if (opts.lookup && w === 'command' && isLookupFlag(t)) return { toks: rest, next: rest.length };
+      j += flagWidth(t, w);
+    } else if (takesAssign && opts.assign.test(t)) j++;
+    else break;
+  }
+  if (w === 'timeout' && j < rest.length) j++;
+  return { toks: rest, next: j };
+}
+
+module.exports = {
+  WRAPPER_FLAGS, COMMAND_WRAPPERS, INSTALL_WRAPPERS, isWrapper, flagValue, flagWidth, isSplitFlag, isLookupFlag, skipWrapperFlags,
+};

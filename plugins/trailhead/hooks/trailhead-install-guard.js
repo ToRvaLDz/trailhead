@@ -29,7 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const { basename, splitStatements, tokenize, stripQuotes, stripRedirections } = require('./lib/shell-scan.js');
-const { WRAPPER_FLAGS, isWrapper, flagValue, isSplitFlag, isLookupFlag } = require('./lib/wrappers.js');
+const { INSTALL_WRAPPERS, skipWrapperFlags } = require('./lib/wrappers.js');
 
 const SENTINEL = /(?:^|\s)TRAILHEAD_VERIFIED_INSTALL=1(?:\s|$)/;
 
@@ -80,26 +80,14 @@ function skipWrappers(input) {
   for (;;) {
     while (i < toks.length && ENV_ASSIGN.test(toks[i])) i++;
     const wrapper = basename(toks[i] || '');
-    if (!isWrapper(wrapper)) return { toks, i };
-    const valueFlags = WRAPPER_FLAGS[wrapper];
-    i++; // past the wrapper
-    while (i < toks.length && toks[i].startsWith('-')) {
-      const f = toks[i++];
-      if (f === '--') break; // end of the wrapper's options
-      if (wrapper === 'env' && isSplitFlag(f)) {
-        const eq = f.indexOf('=');
-        const sIdx = f.indexOf('S');
-        let payload;
-        if (f.startsWith('--')) payload = eq !== -1 ? f.slice(eq + 1) : toks[i++];
-        else payload = sIdx === f.length - 1 ? toks[i++] : f.slice(sIdx + 1);
-        toks = [...tokenize(payloadText(payload)), ...toks.slice(i)];
-        i = 0; // the payload and the rest now form the command line
-        break;
-      }
-      if (wrapper === 'command' && isLookupFlag(f)) return { toks, i: toks.length };
-      if (flagValue(f, valueFlags).next) i++; // consume its separate-token value
-    }
-    if (wrapper === 'timeout' && i < toks.length) i++; // the DURATION operand
+    if (!INSTALL_WRAPPERS.has(wrapper)) return { toks, i };
+    const r = skipWrapperFlags(toks, i, {
+      name: wrapper,
+      lookup: true,
+      tokenize: (payload) => tokenize(payloadText(payload)), // env -S: the payload is the command line
+    });
+    toks = r.toks;
+    i = r.next;
   }
 }
 

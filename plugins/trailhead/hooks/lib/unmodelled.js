@@ -24,7 +24,7 @@ const {
 } = require('./shell-scan.js');
 const { words, ASSIGN_TOKEN_RE } = require('./body-sources.js');
 const { parseGhSubcommand, dequote } = require('./gh-subcommand.js');
-const { flagWidth } = require('./wrappers.js');
+const { COMMAND_WRAPPERS, skipWrapperFlags } = require('./wrappers.js');
 
 // The closed list. `reach` says what makes a hit relevant to a guard:
 //   payload  the code it hides holds a write (eval, funsub), or the construct is
@@ -52,26 +52,17 @@ const SAMPLE_MAX = 80;
 // --- command word ----------------------------------------------------------------
 
 const LEADERS = new Set(['!', '{', '(', 'then', 'do', 'else', 'elif', 'if', 'while', 'until', 'time']);
-// The wrappers this module peels; their value flags come from the shared table.
-const WRAPPERS = new Set(['env', 'sudo', 'doas', 'nice', 'timeout', 'command', 'builtin', 'exec', 'nohup']);
-
-// Is `word` (as written, quotes allowed) a command wrapper from the list above? #316
+// Is `word` (as written, quotes allowed) a command wrapper, one the shared peel set
+// (lib/wrappers.js) lists? #316
 function isWrapperWord(word) {
-  return WRAPPERS.has(dequote(word));
+  return COMMAND_WRAPPERS.has(dequote(word));
 }
 
-// Index just past a wrapper's own flags (and assignments), from the wrapper at toks[k].
-function skipWrapper(toks, k) {
-  const w = dequote(toks[k]);
-  let j = k + 1;
-  while (j < toks.length) {
-    const t = dequote(toks[j]);
-    if (t.startsWith('-')) j += flagWidth(t, w);
-    else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;
-    else break;
-  }
-  if (w === 'timeout' && j < toks.length) j++; // the duration
-  return j;
+// The tokens from the wrapper at toks[0] on, past its flags (and assignments); an
+// `env -S` payload is re-tokenized into place so it is read as the command.
+function peelWrapper(toks) {
+  const r = skipWrapperFlags(toks, 0, { norm: dequote, assign: ASSIGN_TOKEN_RE, tokenize: (payload) => words(dequote(payload)) });
+  return r.toks.slice(r.next);
 }
 
 // The words of a statement from its command word on: reserved words, a leading `(`,
@@ -86,7 +77,7 @@ function commandInfo(text) {
     if (LEADERS.has(d) || ASSIGN_TOKEN_RE.test(toks[0])) { toks = toks.slice(1); continue; }
     if (d === 'case' && toks.includes('in')) { toks = toks.slice(toks.indexOf('in') + 1); continue; }
     if (/^[^\s()$"'`]*\)$/.test(toks[0])) { toks = toks.slice(1); continue; } // case arm pattern)
-    if (WRAPPERS.has(d)) { toks = toks.slice(skipWrapper(toks, 0)); continue; }
+    if (COMMAND_WRAPPERS.has(d)) { toks = peelWrapper(toks); continue; }
     break;
   }
   return { toks, cmd: toks.length ? dequote(toks[0]) : '', args: toks.slice(1) };

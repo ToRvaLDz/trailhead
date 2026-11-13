@@ -45,7 +45,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
-const { flagWidth } = require('./lib/wrappers.js');
+const { COMMAND_WRAPPERS, skipWrapperFlags } = require('./lib/wrappers.js');
 const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize, stripQuotes } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
@@ -130,28 +130,24 @@ function braceBuiltWrite(text, overflow) {
 
 // Reserved words and prefixes that can precede a command inside a compound construct.
 const PREFIX_WORDS = new Set(['do', 'then', 'else', 'elif', '{', '!', 'time', 'if', 'while', 'until']);
-// Wrappers this guard peels (the shared table in lib/wrappers.js decides their value
-// flags). `xargs` is an opaque runner here and `time` a prefix word, so neither is listed.
-const WRAPPERS = new Set(['env', 'sudo', 'doas', 'nice', 'ionice', 'timeout', 'stdbuf', 'exec', 'command', 'builtin', 'nohup']);
+// Wrappers this guard peels: COMMAND_WRAPPERS of lib/wrappers.js (`xargs` is an opaque
+// runner here and `time` a prefix word, so neither is in it).
 // Commands that run text we cannot analyse statically.
 const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
 // A gh write's words after a command word we could not resolve (`$CMD issue comment ...`).
 const BRACE_COMBO_LIMIT = 256;
 const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)\b|\bapi\b[\s\S]*?(?:\bbody=|--input)/;
 
-// Index just past a wrapper command's own flags (and values), starting at the
-// wrapper token toks[k]. `timeout` also takes a DURATION positional.
-function skipWrapperArgs(toks, k) {
-  const w = dequote(toks[k]);
-  let j = k + 1;
-  while (j < toks.length) {
-    const t = dequote(toks[j]); // a quoted flag is the same flag (#219)
-    if (t.startsWith('-')) j += flagWidth(t, w);
-    else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;
-    else break;
-  }
-  if (w === 'timeout' && j < toks.length) j++;
-  return j;
+// The wrapper at toks[k] with its flags peeled by the shared reader (lib/wrappers.js):
+// returns the tokens with the wrapper and its options gone (an `env -S` payload is
+// re-tokenized into place, so it is scanned as the command).
+function peelWrapper(toks, k) {
+  const r = skipWrapperFlags(toks, k, {
+    norm: dequote, // a quoted flag is the same flag (#219)
+    assign: ASSIGN_TOKEN_RE,
+    tokenize: (payload) => words(dequote(payload)),
+  });
+  return [...r.toks.slice(0, k), ...r.toks.slice(r.next)];
 }
 
 // One leading construct stripped from `toks`, or null: a subshell opener, a reserved
@@ -168,8 +164,8 @@ function stripLeader(toks) {
   if (/^[^\s()$"'`]*\)$/.test(t0)) return { toks: toks.slice(1) }; // case arm pattern)
   let k = 0;
   while (k < toks.length && ASSIGN_TOKEN_RE.test(toks[k])) k++;
-  if (k < toks.length && WRAPPERS.has(dequote(toks[k]))) { // a quoted `"env"` runs the same command (#219)
-    return { toks: [...toks.slice(0, k), ...toks.slice(skipWrapperArgs(toks, k))] };
+  if (k < toks.length && COMMAND_WRAPPERS.has(dequote(toks[k]))) { // a quoted `"env"` runs the same command (#219)
+    return { toks: peelWrapper(toks, k) };
   }
   return null;
 }

@@ -304,6 +304,10 @@ ok('unparseable stdin allowed (exit 0)', u.code === 0);
   ok('sudo -c class npm i lodash is gated', named('sudo -c class npm i lodash') === 'lodash');
   ok('env -S payload is still re-tokenized', named("env -S 'npm i lodash'") === 'lodash');
   ok('command -v npm is a lookup, not an install', named('command -v npm i lodash') === null);
+// builtin is not peeled here (unchanged since before #374's shared table); -- ends wrapper options
+  ok('builtin npm i is not peeled', named('builtin npm i lodash') === null);
+  ok('ionice -P is a value flag', named('ionice -P 5 npm i lodash') === 'lodash');
+  ok('-- ends wrapper options', named('env -- npm i lodash') === 'lodash');
 }
 
 console.log(`✓ install-guard: ${passed} assertions passed`);
