@@ -75,7 +75,6 @@ const NESTED = { secretRead: { exempt: [NAME] } };
   ok('Bash with a second, non-exempt secret still blocks', blocked(bash(`cat ${NAME} .env.production`, d)));
   ok('Bash with a non-exempt secret first still blocks', blocked(bash(`cat .env.production ${NAME}`, d)));
   ok('a different, untracked secret name still blocks', blocked(bash('cat .env.production', d)));
-  ok('Bash cat after a pipe still allowed', allowed(bash(`cat ${NAME} | head -1`, d)));
   ok('the block reason names the key', /secretRead\.exempt/.test(bash('cat .env.production', d).out));
 
   // sottodirectory: cwd diverso dal top, solo percorsi assoluti
@@ -117,7 +116,40 @@ const NESTED = { secretRead: { exempt: [NAME] } };
   ]) {
     ok(`stays blocked: ${command.replace(/\n/g, '\\n')}`, blocked(bash(command, d)));
   }
-  ok('a cd later in the command does not affect an earlier read', allowed(bash(`cat ${NAME}; cd sub`, d)));
+  ok('a cd later in the command no longer exempts an earlier read (single statement only)', blocked(bash(`cat ${NAME}; cd sub`, d)));
+}
+
+// --- #376 C1: l'esenzione vale solo se la lettura e' l'unico statement del comando ---
+{
+  const d = mkRepo({ config: NESTED });
+  const other = mkRepo({});
+  fs.writeFileSync(path.join(other, NAME), 'KEY=real-secret\n');
+  for (const command of [
+    `cp -r ${other}/. . && cat ${NAME}`,
+    `cp -r ${other}/. . ; cat ${NAME}`,
+    `cp -r ${other}/. . || cat ${NAME}`,
+    `true; cat ${NAME}`,
+    `true && cat ${NAME}`,
+    `true\ncat ${NAME}`,
+    `cat ${NAME} | head`,
+    `true | cat ${NAME}`,
+    `cat ${NAME} & cp -r ${other}/. .`,
+    `cat ${NAME} &`,
+    `cat ${NAME} $(true)`,
+    `cat ${NAME} \`true\``,
+    `cat ${NAME} <(true)`,
+    `cat ${NAME} >(true)`,
+    `cat <<EOF ${NAME}\nx\nEOF`,
+    `(cat ${NAME})`,
+    `{ cat ${NAME}; }`,
+    `cat < ${NAME} && true`,
+  ]) {
+    ok(`blocked beyond a single statement: ${command.replace(/\n/g, '\\n')}`, blocked(bash(command, d)));
+  }
+  ok('the copy-over swap leaves the placeholder unread', fs.readFileSync(path.join(d, NAME), 'utf8') === 'KEY=placeholder\n');
+  ok('a single cat stays allowed', allowed(bash(`cat ${NAME}`, d)));
+  ok('a single cat < stays allowed', allowed(bash(`cat < ${NAME}`, d)));
+  ok('a single cat with flags stays allowed', allowed(bash(`cat -n ${NAME}`, d)));
 }
 
 // --- senza configurazione: invariato ---
