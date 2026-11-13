@@ -1135,4 +1135,25 @@ ok('could-not-scan advisory does NOT fire on a read', f2.code === 0 && f2.out.tr
   fs.rmSync(dir, { recursive: true });
 }
 
+// --- wrapper flags: doas and every sudo value flag, detached / attached / long (#374) ---
+{
+  const T = 'ghp_' + 'A'.repeat(36);
+  const G = `gh issue comment 1 --body ${T}`;
+  const blocks = (c) => runHook(c).code === 2;
+  const prefixes = [
+    'doas', 'doas -u root', 'doas -uroot', 'doas -a style', 'doas -astyle', 'doas -C /etc/doas.conf', 'doas -C/etc/doas.conf',
+    'doas -n -u root', 'sudo -a style', 'sudo -astyle', 'sudo -c class', 'sudo -cclass', 'sudo --login-class class',
+    'sudo --login-class=class', 'sudo --auth-type style', 'sudo --user root', 'sudo --user=root', 'sudo --group wheel',
+    'sudo -T 5', 'sudo -T5', 'sudo --command-timeout 5', 'sudo -Hu root', 'sudo -Huroot',
+    'sudo -u root doas -a style',
+  ];
+  for (const pre of prefixes) ok(`${pre} in front of a gh write with a token blocks`, blocks(`${pre} ${G}`));
+  ok('doas in front of a clean write passes', runHook(`doas -u root gh issue comment 1 --body hello`).code === 0);
+  ok('sudo --user root in front of a read passes', runHook('sudo --user root gh issue list').code === 0);
+  ok('a wrapper flag value is not taken for the command', ghWrites('sudo --user root gh issue comment 1 --body x').length === 1);
+  ok('doas -u root: the write is seen by ghWrites', ghWrites('doas -u root gh issue comment 1 --body x').length === 1);
+  ok('an alias behind doas is not hidden', runHook("alias g='gh issue comment 1 --body x'; doas g").code === 2);
+  ok('an alias behind sudo -a style is not hidden', runHook("alias g='gh issue comment 1 --body x'; sudo -a style g").code === 2);
+}
+
 console.log(`✓ secret-guard: ${passed} assertions passed`);

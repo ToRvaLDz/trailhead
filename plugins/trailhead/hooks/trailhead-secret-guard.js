@@ -45,6 +45,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
+const { flagWidth } = require('./lib/wrappers.js');
 const { splitStatementsWithSeparators, heredocBodies, countHeredocs, tokenize, stripQuotes } = require('./lib/shell-scan.js');
 const {
   ASSIGN_TOKEN_RE,
@@ -129,22 +130,10 @@ function braceBuiltWrite(text, overflow) {
 
 // Reserved words and prefixes that can precede a command inside a compound construct.
 const PREFIX_WORDS = new Set(['do', 'then', 'else', 'elif', '{', '!', 'time', 'if', 'while', 'until']);
-// Wrappers that run the rest of the line as a command, with the flags of each that
-// take a separate value (skipped together with it).
-const WRAPPER_VALUE_FLAGS = {
-  env: ['-u', '-C', '-S'],
-  sudo: ['-u', '-g', '-h', '-p', '-C', '-r', '-t', '-U', '-D', '-R'],
-  nice: ['-n'],
-  ionice: ['-c', '-n', '-p'],
-  timeout: ['-k', '-s'],
-  stdbuf: ['-i', '-o', '-e'],
-  exec: ['-a'],
-  command: [],
-  builtin: [],
-  nohup: [],
-};
+// Wrappers this guard peels (the shared table in lib/wrappers.js decides their value
+// flags). `xargs` is an opaque runner here and `time` a prefix word, so neither is listed.
+const WRAPPERS = new Set(['env', 'sudo', 'doas', 'nice', 'ionice', 'timeout', 'stdbuf', 'exec', 'command', 'builtin', 'nohup']);
 // Commands that run text we cannot analyse statically.
-const WRAPPERS = new Set(Object.keys(WRAPPER_VALUE_FLAGS));
 const OPAQUE_RUNNERS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'xargs']);
 // A gh write's words after a command word we could not resolve (`$CMD issue comment ...`).
 const BRACE_COMBO_LIMIT = 256;
@@ -154,12 +143,10 @@ const WRITE_WORDS_RE = /\b(?:issue|pr)\b[\s\S]*?\b(?:create|comment|edit|review)
 // wrapper token toks[k]. `timeout` also takes a DURATION positional.
 function skipWrapperArgs(toks, k) {
   const w = dequote(toks[k]);
-  const valueFlags = WRAPPER_VALUE_FLAGS[w];
   let j = k + 1;
   while (j < toks.length) {
     const t = dequote(toks[j]); // a quoted flag is the same flag (#219)
-    if (valueFlags.includes(t)) j += 2;
-    else if (t.startsWith('-')) j++;
+    if (t.startsWith('-')) j += flagWidth(t, w);
     else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;
     else break;
   }

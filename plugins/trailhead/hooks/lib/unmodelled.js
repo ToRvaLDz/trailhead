@@ -24,6 +24,7 @@ const {
 } = require('./shell-scan.js');
 const { words, ASSIGN_TOKEN_RE } = require('./body-sources.js');
 const { parseGhSubcommand, dequote } = require('./gh-subcommand.js');
+const { flagWidth } = require('./wrappers.js');
 
 // The closed list. `reach` says what makes a hit relevant to a guard:
 //   payload  the code it hides holds a write (eval, funsub), or the construct is
@@ -51,20 +52,12 @@ const SAMPLE_MAX = 80;
 // --- command word ----------------------------------------------------------------
 
 const LEADERS = new Set(['!', '{', '(', 'then', 'do', 'else', 'elif', 'if', 'while', 'until', 'time']);
-const WRAPPER_VALUE_FLAGS = {
-  env: ['-u', '-C', '-S'],
-  sudo: ['-u', '-g', '-h', '-p', '-C', '-r', '-t', '-U', '-D', '-R'],
-  nice: ['-n'],
-  timeout: ['-k', '-s'],
-  command: [],
-  builtin: [],
-  exec: ['-a'],
-  nohup: [],
-};
+// The wrappers this module peels; their value flags come from the shared table.
+const WRAPPERS = new Set(['env', 'sudo', 'doas', 'nice', 'timeout', 'command', 'builtin', 'exec', 'nohup']);
 
 // Is `word` (as written, quotes allowed) a command wrapper from the list above? #316
 function isWrapperWord(word) {
-  return Object.prototype.hasOwnProperty.call(WRAPPER_VALUE_FLAGS, dequote(word));
+  return WRAPPERS.has(dequote(word));
 }
 
 // Index just past a wrapper's own flags (and assignments), from the wrapper at toks[k].
@@ -73,8 +66,7 @@ function skipWrapper(toks, k) {
   let j = k + 1;
   while (j < toks.length) {
     const t = dequote(toks[j]);
-    if (WRAPPER_VALUE_FLAGS[w].includes(t)) j += 2;
-    else if (t.startsWith('-')) j++;
+    if (t.startsWith('-')) j += flagWidth(t, w);
     else if ((w === 'env' || w === 'sudo') && ASSIGN_TOKEN_RE.test(t)) j++;
     else break;
   }
@@ -94,7 +86,7 @@ function commandInfo(text) {
     if (LEADERS.has(d) || ASSIGN_TOKEN_RE.test(toks[0])) { toks = toks.slice(1); continue; }
     if (d === 'case' && toks.includes('in')) { toks = toks.slice(toks.indexOf('in') + 1); continue; }
     if (/^[^\s()$"'`]*\)$/.test(toks[0])) { toks = toks.slice(1); continue; } // case arm pattern)
-    if (Object.prototype.hasOwnProperty.call(WRAPPER_VALUE_FLAGS, d)) { toks = toks.slice(skipWrapper(toks, 0)); continue; }
+    if (WRAPPERS.has(d)) { toks = toks.slice(skipWrapper(toks, 0)); continue; }
     break;
   }
   return { toks, cmd: toks.length ? dequote(toks[0]) : '', args: toks.slice(1) };

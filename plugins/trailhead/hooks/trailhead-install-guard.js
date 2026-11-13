@@ -29,6 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const { basename, splitStatements, tokenize, stripQuotes, stripRedirections } = require('./lib/shell-scan.js');
+const { WRAPPER_FLAGS, isWrapper, flagValue, isSplitFlag, isLookupFlag } = require('./lib/wrappers.js');
 
 const SENTINEL = /(?:^|\s)TRAILHEAD_VERIFIED_INSTALL=1(?:\s|$)/;
 
@@ -54,65 +55,11 @@ const VALUE_FLAGS = new Set([
   '--filter', '-F', // pnpm workspace selector: its value is a project, not a package
 ]);
 
-// Command wrappers that run the rest of the line as a command, mapped to the
-// flags that consume a SEPARATE-TOKEN value (so it is not read as the command).
-// Attached forms (`-uroot`, `--user=root`, GNU xargs `-i`/`-e`/`-l`) need no entry.
-const WRAPPERS = {
-  sudo: new Set([
-    '-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from',
-    '-U', '--other-user', '-r', '--role', '-t', '--type', '-D', '--chdir', '-R', '--chroot',
-    '-T', '--command-timeout',
-  ]),
-  env: new Set(['-u', '--unset', '-C', '--chdir', '-a', '--argv0']), // -S handled apart
-  time: new Set(['-f', '--format', '-o', '--output']),
-  nohup: new Set(),
-  xargs: new Set([
-    '-n', '--max-args', '-I', '-a', '--arg-file', '-d', '--delimiter', '-E', '-L', '--max-lines',
-    '-P', '--max-procs', '-s', '--max-chars',
-  ]),
-  timeout: new Set(['-s', '--signal', '-k', '--kill-after']), // + one DURATION operand
-  nice: new Set(['-n', '--adjustment']),
-  stdbuf: new Set(['-i', '-o', '-e', '--input', '--output', '--error']),
-  setsid: new Set(),
-  ionice: new Set(['-c', '--class', '-n', '--classdata']),
-  doas: new Set(['-a', '-C', '-u']),
-  command: new Set(), // -v / -V only look a name up: see isLookupFlag
-  exec: new Set(['-a']),
-};
+// Command wrappers that run the rest of the line as a command: the shared table
+// (lib/wrappers.js) says which of their flags consume a SEPARATE-TOKEN value, so it is
+// not read as the command. Attached forms (`-uroot`, `--user=root`, GNU xargs
+// `-i`/`-e`/`-l`) need no entry.
 const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
-
-// How a wrapper flag consumes its value. Returns { next } (value is the NEXT
-// token), { attached } (value is inside this token) or {} (flagless). A short
-// cluster is read like getopt: the first value-taking letter ends it, so `-nu root`
-// takes the next token and `-uroot` carries its value attached.
-function flagValue(f, valueFlags) {
-  if (f.startsWith('--')) {
-    const eq = f.indexOf('=');
-    if (eq !== -1) return { attached: f.slice(eq + 1) };
-    return valueFlags.has(f) ? { next: true } : {};
-  }
-  for (let k = 1; k < f.length; k++) {
-    if (!valueFlags.has('-' + f[k])) continue;
-    return k === f.length - 1 ? { next: true } : { attached: f.slice(k + 1) };
-  }
-  return {};
-}
-
-// `env -S` / `--split-string`: its payload IS the command line, not a flag value.
-function isSplitFlag(f) {
-  if (f.startsWith('--')) return f === '--split-string' || f.startsWith('--split-string=');
-  for (let k = 1; k < f.length; k++) {
-    if (f[k] === 'S') return true;
-    if ('uCa'.includes(f[k])) return false; // value letter first: S is part of its value
-  }
-  return false;
-}
-
-// `command -v` / `-V` (also inside a cluster like `-pv`) only describe a name and
-// execute nothing, so nothing follows that can be an install.
-function isLookupFlag(f) {
-  return !f.startsWith('--') && /[vV]/.test(f);
-}
 
 // The text of an `env -S` payload token. A double-quoted payload (outer quotes
 // stripped) also loses its bash escapes (`\$`, `\``, `\"`, `\\`); single-quoted
@@ -133,8 +80,8 @@ function skipWrappers(input) {
   for (;;) {
     while (i < toks.length && ENV_ASSIGN.test(toks[i])) i++;
     const wrapper = basename(toks[i] || '');
-    const valueFlags = WRAPPERS[wrapper];
-    if (!valueFlags) return { toks, i };
+    if (!isWrapper(wrapper)) return { toks, i };
+    const valueFlags = WRAPPER_FLAGS[wrapper];
     i++; // past the wrapper
     while (i < toks.length && toks[i].startsWith('-')) {
       const f = toks[i++];

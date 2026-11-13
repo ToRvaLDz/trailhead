@@ -170,4 +170,14 @@ ok('a construct the guard already models is skipped', firstRelevant(findUnmodell
   ok('without a redactor the sample is withheld', !/ghp_/.test(unmodelledReason('g', 'w', hit)));
 }
 
+// --- wrappers with value flags (#374) ---
+{
+  const A = "alias g='gh issue comment 1 --body x'";
+  for (const pre of ['doas', 'doas -u root', 'doas -uroot', 'doas -a style', 'doas -C /etc/doas.conf', 'sudo -a style', 'sudo -c class', 'sudo --user root', 'sudo -T 5', 'sudo -Hu root']) {
+    ok(`alias behind ${pre} is still relevant`, relevant(`${A}; ${pre} g`));
+    ok(`eval behind ${pre} is detected`, has(`${pre} eval "$X"`, 'eval'));
+  }
+  ok('doas is a wrapper word', require('./unmodelled.js').isWrapperWord('doas'));
+}
+
 console.log(`✓ unmodelled: ${passed} assertions passed`);

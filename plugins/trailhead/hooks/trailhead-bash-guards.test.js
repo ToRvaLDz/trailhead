@@ -250,4 +250,12 @@ fs.rmSync(SCRATCH, { recursive: true, force: true });
     !/trailhead-(commit|secret|install|search|body)-guard\.js/.test(JSON.stringify(reg)));
 }
 
+// --- the merged runner peels doas and sudo value flags before the secret guard (#374) ---
+{
+  const T = 'ghp_' + 'A'.repeat(36);
+  for (const pre of ['doas', 'doas -u root', 'sudo -a style', 'sudo --user root']) {
+    eq(`merged hook: ${pre} in front of a gh write with a token blocks`, runHook(`${pre} gh issue comment 1 --body ${T}`).code, 2);
+  }
+}
+
 console.log(`trailhead-bash-guards.test.js: ${passed} checks passed`);

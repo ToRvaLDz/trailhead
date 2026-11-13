@@ -295,4 +295,15 @@ const u = (() => {
 })();
 ok('unparseable stdin allowed (exit 0)', u.code === 0);
 
+// --- wrappers shared with the secret guard (#374) ---
+{
+  const named = (c) => { const d = detectInstall(c); return d && d.packages.join(','); };
+  ok('doas -u root npm i lodash is gated', named('doas -u root npm i lodash') === 'lodash');
+  ok('sudo -a style npm i lodash is gated', named('sudo -a style npm i lodash') === 'lodash');
+  ok('sudo --user root npm i lodash is gated', named('sudo --user root npm i lodash') === 'lodash');
+  ok('sudo -c class npm i lodash is gated', named('sudo -c class npm i lodash') === 'lodash');
+  ok('env -S payload is still re-tokenized', named("env -S 'npm i lodash'") === 'lodash');
+  ok('command -v npm is a lookup, not an install', named('command -v npm i lodash') === null);
+}
+
 console.log(`✓ install-guard: ${passed} assertions passed`);
