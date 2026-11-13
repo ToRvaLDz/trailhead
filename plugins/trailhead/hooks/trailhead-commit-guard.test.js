@@ -99,4 +99,31 @@ ok('double-quoted valid -m with escaped \\$( is allowed (exit 0)', r14.code === 
 const r15 = runHook('git commit -m "fix: rename \\`getUser\\` to \\`fetchUser\\`"');
 ok('double-quoted valid -m with escaped backticks is allowed (exit 0)', r15.code === 0 && r15.out.trim() === '');
 
+// --- #375: le opzioni globali di git con valore non vanno lette come sottocomando.
+// Ogni opzione con valore, in forma separata e `--opt=value` (le corte -C/-c solo separate).
+const GLOBAL_VALUE_FORMS = [
+  ['-C', ['-C .']],
+  ['-c', ['-c core.x=1']],
+  ['--git-dir', ['--git-dir .git', '--git-dir=.git']],
+  ['--work-tree', ['--work-tree .', '--work-tree=.']],
+  ['--namespace', ['--namespace ns', '--namespace=ns']],
+  ['--config-env', ['--config-env core.x=V', '--config-env=core.x=V']],
+  ['--attr-source', ['--attr-source HEAD', '--attr-source=HEAD']],
+  ['--super-prefix', ['--super-prefix x/', '--super-prefix=x/']],
+];
+for (const [name, forms] of GLOBAL_VALUE_FORMS) {
+  for (const f of forms) {
+    const bad = runHook(`git ${f} commit -m "bad subject"`);
+    ok(`git ${f} commit with a bad subject is blocked (${name})`, bad.code === 2 && /CONVENTIONAL_COMMITS_VIOLATION/.test(bad.out));
+    const good = runHook(`git ${f} commit -m "feat: ok subject"`);
+    ok(`git ${f} commit with a good subject is allowed (${name})`, good.code === 0 && good.out.trim() === '');
+  }
+}
+const rCombo = runHook('git -C . --config-env core.x=V commit -m "bad subject"');
+ok('-C then --config-env then commit with a bad subject is blocked', rCombo.code === 2);
+const rStatus = runHook('git --config-env core.x=V status');
+ok('--config-env value followed by a non-commit subcommand is allowed', rStatus.code === 0 && rStatus.out.trim() === '');
+const rBogus = runHook('git --bogus commit -m "bad subject"');
+ok('an unknown global option is skipped as a flag, commit still checked', rBogus.code === 2);
+
 console.log(`✓ commit-guard: ${passed} assertions passed`);
