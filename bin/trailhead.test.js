@@ -927,6 +927,8 @@ ok('codex: skills/trailhead/hooks/lib/body-sources.js exists (secret-guard requi
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'body-sources.js')));
 ok('codex: skills/trailhead/hooks/lib/unmodelled.js exists (guards require target, #227)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'unmodelled.js')));
+ok('codex: skills/trailhead/hooks/lib/secret-read-exempt.js exists (secret-read guard require target, #376)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'secret-read-exempt.js')));
 ok('codex: skills/trailhead/hooks/lib/inherit-session.js exists (required by model-route and model-defaults-review, #323)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'inherit-session.js')));
 ok('codex: skills/trailhead/hooks/lib/model-route.js exists (grilling routing helper, #323)',
@@ -1139,6 +1141,8 @@ ok('claude: hooks/lib/body-sources.js exists (secret-guard require target, #210)
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'body-sources.js')));
 ok('claude: hooks/lib/unmodelled.js exists (guards require target, #227)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'unmodelled.js')));
+ok('claude: hooks/lib/secret-read-exempt.js exists (secret-read guard require target, #376)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'secret-read-exempt.js')));
 ok('claude: hooks/lib/inherit-session.js exists (required by model-route and model-defaults-review, #323)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'inherit-session.js')));
 ok('claude: hooks/lib/model-route.js exists (grilling routing helper, #323)',
