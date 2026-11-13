@@ -240,14 +240,8 @@ const GIT_PATHSPEC_SUBCOMMANDS = new Map([
 // (vedi walkGitGlobals): per il sottocomando esenta nulla (fail closed, un
 // valore non è mai letto come sottocomando: `git -C ls-files show HEAD:.env`
 // esegue `show`), per gli `-c` successivi li lascia comunque controllati.
-const GIT_GLOBAL_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--attr-source', '--super-prefix']);
-const GIT_GLOBAL_FLAGS = new Set([
-  '-p', '--paginate', '-P', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
-  '--no-optional-locks', '--no-advice', '--bare', '--literal-pathspecs', '--glob-pathspecs',
-  '--noglob-pathspecs', '--icase-pathspecs', '--exec-path', '--html-path', '--man-path', '--info-path',
-]);
-// Flag che accetta anche la forma `--opt=value` ma mai un valore separato.
-const GIT_GLOBAL_EQ_FLAGS = new Set(['--exec-path', '--list-cmds']);
+// Gli insiemi vivono in lib/git-globals.js, condivisi con il commit guard (#375).
+const { GIT_GLOBAL_VALUE_OPTIONS, GIT_GLOBAL_FLAGS, GIT_GLOBAL_EQ_FLAGS } = require('./lib/git-globals.js');
 
 // `cp`/`mv` scrivono la destinazione e non la stampano: un nome segreto che è
 // SOLO la destinazione di una copia/spostamento a sorgente singola è un nome

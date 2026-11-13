@@ -929,6 +929,8 @@ ok('codex: skills/trailhead/hooks/lib/unmodelled.js exists (guards require targe
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'unmodelled.js')));
 ok('codex: skills/trailhead/hooks/lib/secret-read-exempt.js exists (secret-read guard require target, #376)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'secret-read-exempt.js')));
+ok('codex: skills/trailhead/hooks/lib/git-globals.js exists (secret-read and commit guards require target, #375)',
+  fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'git-globals.js')));
 ok('codex: skills/trailhead/hooks/lib/inherit-session.js exists (required by model-route and model-defaults-review, #323)',
   fs.existsSync(path.join(codexDir, 'skills', 'trailhead', 'hooks', 'lib', 'inherit-session.js')));
 ok('codex: skills/trailhead/hooks/lib/model-route.js exists (grilling routing helper, #323)',
@@ -1143,6 +1145,8 @@ ok('claude: hooks/lib/unmodelled.js exists (guards require target, #227)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'unmodelled.js')));
 ok('claude: hooks/lib/secret-read-exempt.js exists (secret-read guard require target, #376)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'secret-read-exempt.js')));
+ok('claude: hooks/lib/git-globals.js exists (secret-read and commit guards require target, #375)',
+  fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'git-globals.js')));
 ok('claude: hooks/lib/inherit-session.js exists (required by model-route and model-defaults-review, #323)',
   fs.existsSync(path.join(claudeDir, 'hooks', 'lib', 'inherit-session.js')));
 ok('claude: hooks/lib/model-route.js exists (grilling routing helper, #323)',
