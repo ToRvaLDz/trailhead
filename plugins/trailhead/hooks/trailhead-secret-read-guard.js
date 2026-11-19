@@ -330,45 +330,45 @@ function exemptAllows(ex, raw, redirect) {
   return rawPathExempt(raw, ex.cwd);
 }
 
-// --- #381: walk dedicato di jq --------------------------------------------------
+// --- #381: dedicated jq walk ----------------------------------------------------
 
-// Opzioni jq senza valore (forme lunghe) e lettere corte senza valore (valide anche in cluster).
+// jq options without a value (long forms) and value-less short letters (also valid in a cluster).
 const JQ_LONG_FLAGS = new Set([
   '--null-input', '--raw-input', '--slurp', '--raw-output', '--raw-output0', '--compact-output',
   '--sort-keys', '--color-output', '--monochrome-output', '--ascii-output', '--join-output',
   '--exit-status', '--tab', '--stream', '--seq', '--stream-errors', '--unbuffered', '--binary',
 ]);
 const JQ_SHORT_FLAGS = new Set(['n', 'r', 'c', 's', 'R', 'S', 'C', 'M', 'a', 'j', 'e', 'b']);
-const JQ_TWO_OPERAND = new Set(['--arg', '--argjson']); // nome + valore, nessuno e' un file
-const JQ_FILE_OPERAND = new Set(['--slurpfile', '--rawfile']); // nome + FILE (letto)
-const JQ_ONE_VALUE = new Set(['--library-path', '--indent']); // un valore, mai un file letto
+const JQ_TWO_OPERAND = new Set(['--arg', '--argjson']); // name + value, neither is a file
+const JQ_FILE_OPERAND = new Set(['--slurpfile', '--rawfile']); // name + FILE (read)
+const JQ_ONE_VALUE = new Set(['--library-path', '--indent']); // one value, never a file that is read
 // Redirection shapes (same as lib/shell-scan.js, which does not export them).
 const JQ_FD_DUP_RE = /^\d*[<>]&(?:\d+|-)$/; //          2>&1  >&2  >&-  0<&3
 const JQ_OUT_SEP_RE = /^(?:\d*|&)>(?:>|&)?\|?$/; //     >  >>  >|  2>  &>  &>>  >&  (target is the next token)
 const JQ_OUT_GLUED_RE = /^(?:\d*|&)>>?\|?./; //         >file  2>/dev/null  &>f  2>>f
-const JQ_FALLBACK = Symbol('jq-fallback'); // forma sconosciuta: si torna al walk generico
+const JQ_FALLBACK = Symbol('jq-fallback'); // unknown form: go back to the generic walk
 
-// Cluster corto (`-rn`, `-nf`, `-L/tmp`): aggiorna lo stato; ritorna null se una lettera e'
-// sconosciuta, altrimenti quanti token in piu' consuma (0 o 1, per `-L dir`).
+// Short cluster (`-rn`, `-nf`, `-L/tmp`): updates the state; returns null if a letter is
+// unknown, otherwise how many extra tokens it consumes (0 or 1, for `-L dir`).
 function jqShortCluster(t, st) {
   for (let k = 1; k < t.length; k++) {
     const c = t[k];
     if (JQ_SHORT_FLAGS.has(c)) continue;
     if (c === 'f') { st.fromFile = true; continue; }
-    if (c === 'L') return k + 1 < t.length ? 0 : 1; // valore incollato o nel token dopo
+    if (c === 'L') return k + 1 < t.length ? 0 : 1; // value glued or in the next token
     return null;
   }
   return 0;
 }
 
-// Cammina gli argomenti di jq (verbo escluso). Ritorna il token segreto, null, o JQ_FALLBACK.
+// Walks jq's arguments (verb excluded). Returns the secret token, null, or JQ_FALLBACK.
 function scanJqArgs(args, ex) {
   const st = { fromFile: false, programSeen: false, strings: false, optsEnded: false };
   const secret = (t) => isSecretPathArg(t) && !exemptAllows(ex, t, false);
   for (let i = 0; i < args.length; i++) {
     const t = stripTrailingPunct(args[i]);
     if (!t) continue;
-    // redirect `<`: bersaglio letto dalla shell, esentabile come nel walk generico
+    // `<` redirect: target read by the shell, exemptable as in the generic walk
     if (t.startsWith('<') && !t.startsWith('<<')) {
       const target = t.length > 1 ? t.slice(1) : stripTrailingPunct(args[i + 1] || '');
       if (t.length === 1) i++;
@@ -391,7 +391,7 @@ function scanJqArgs(args, ex) {
       if (t === '--from-file') { st.fromFile = true; continue; }
       if (t === '--args' || t === '--jsonargs') { st.strings = true; continue; }
       if (JQ_TWO_OPERAND.has(t) || JQ_FILE_OPERAND.has(t)) {
-        if (i + 2 >= args.length) return JQ_FALLBACK; // operando mancante
+        if (i + 2 >= args.length) return JQ_FALLBACK; // missing operand
         if (JQ_FILE_OPERAND.has(t) && secret(stripTrailingPunct(args[i + 2]))) return stripTrailingPunct(args[i + 2]);
         i += 2;
         continue;
@@ -401,18 +401,18 @@ function scanJqArgs(args, ex) {
         i++;
         continue;
       }
-      if (t.startsWith('--')) return JQ_FALLBACK; // opzione lunga sconosciuta (anche `--x=y`)
+      if (t.startsWith('--')) return JQ_FALLBACK; // unknown long option (also `--x=y`)
       const extra = jqShortCluster(t, st);
       if (extra === null || i + extra >= args.length) return JQ_FALLBACK;
       i += extra;
       continue;
     }
-    if (!st.programSeen) { // primo posizionale: il programma, letto come file solo con -f
+    if (!st.programSeen) { // first positional: the program, read as a file only with -f
       st.programSeen = true;
       if (st.fromFile && secret(t)) return t;
       continue;
     }
-    if (st.strings) continue; // dopo --args/--jsonargs: stringhe, non file
+    if (st.strings) continue; // after --args/--jsonargs: strings, not files
     if (secret(t)) return t;
   }
   return null;
@@ -886,7 +886,7 @@ function scanStatementForSecretPath(stmt, ctx) {
   if (SEARCH_VERBS.has(bin)) {
     return scanArgsSkippingPattern(tokens.slice(1), SEARCH_VERB_CONFIG[bin], isSecretPathArg);
   }
-  // #381: jq ha il suo walk; una forma sconosciuta ricade sul walk generico qui sotto.
+  // #381: jq has its own walk; an unknown form falls back to the generic walk below.
   if (bin === 'jq') {
     const jqHit = scanJqArgs(tokens.slice(1), ctx && !ctx.cdSeen ? { cwd: ctx.cwd, bin } : null);
     if (jqHit !== JQ_FALLBACK) return jqHit;
