@@ -709,6 +709,27 @@ for (const command of [
 ]) {
   ok(`#381 deny (jq reads a secret file): ${command}`, !!detectSecretRead('Bash', { command }));
 }
+// #381 (review W1): redirections after a jq program must not turn the program into a file.
+for (const command of [
+  "jq '.env' x.json 2>/dev/null",
+  "jq '.env' x.json 2>&1",
+  "jq '.env' x.json > out.json",
+  'jq .env x.json >out.json',
+  "jq '.env' x.json &>/dev/null",
+  "jq '.env' x.json 2>> log.txt",
+  "jq '.env' x.json >&2",
+]) {
+  ok(`#381 allow (jq redirect, program is not a file): ${command}`, !detectSecretRead('Bash', { command }));
+}
+for (const command of [
+  'jq . > .env',
+  'jq . a.json 2>/dev/null .env',
+  'jq . .env 2>/dev/null',
+  'jq . <<< x .env',
+  'jq . .env > out.json',
+]) {
+  ok(`#381 deny (jq redirect, secret still read): ${command}`, !!detectSecretRead('Bash', { command }));
+}
 ok('#381 hook allows jq program named .env', runHook('Bash', { command: "jq '.env' package.json" }).code === 0);
 ok('#381 hook denies jq input file .env', runHook('Bash', { command: 'jq . .env' }).code === 2);
 ok('#381 hook denies jq --rawfile .env', runHook('Bash', { command: "jq --rawfile x .env -n '$x'" }).code === 2);

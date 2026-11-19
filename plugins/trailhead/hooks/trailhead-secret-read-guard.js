@@ -342,6 +342,10 @@ const JQ_SHORT_FLAGS = new Set(['n', 'r', 'c', 's', 'R', 'S', 'C', 'M', 'a', 'j'
 const JQ_TWO_OPERAND = new Set(['--arg', '--argjson']); // nome + valore, nessuno e' un file
 const JQ_FILE_OPERAND = new Set(['--slurpfile', '--rawfile']); // nome + FILE (letto)
 const JQ_ONE_VALUE = new Set(['--library-path', '--indent']); // un valore, mai un file letto
+// Redirection shapes (same as lib/shell-scan.js, which does not export them).
+const JQ_FD_DUP_RE = /^\d*[<>]&(?:\d+|-)$/; //          2>&1  >&2  >&-  0<&3
+const JQ_OUT_SEP_RE = /^(?:\d*|&)>(?:>|&)?\|?$/; //     >  >>  >|  2>  &>  &>>  >&  (target is the next token)
+const JQ_OUT_GLUED_RE = /^(?:\d*|&)>>?\|?./; //         >file  2>/dev/null  &>f  2>>f
 const JQ_FALLBACK = Symbol('jq-fallback'); // forma sconosciuta: si torna al walk generico
 
 // Cluster corto (`-rn`, `-nf`, `-L/tmp`): aggiorna lo stato; ritorna null se una lettera e'
@@ -371,7 +375,16 @@ function scanJqArgs(args, ex) {
       if (target && isSecretPathArg(target) && !exemptAllows(ex, target, true)) return target;
       continue;
     }
-    if (/^\d*[<>]/.test(t) || t.startsWith('<<')) return JQ_FALLBACK; // altre redirect/heredoc
+    if (/^\d*<<./.test(t) || /^\d*<<[<-]?$/.test(t)) return JQ_FALLBACK; // heredoc / here-string
+    if (JQ_FD_DUP_RE.test(t)) continue; // pure fd duplication: no file involved
+    if (JQ_OUT_SEP_RE.test(t) || JQ_OUT_GLUED_RE.test(t)) { // output write: its target is not a program or input
+      const glued = JQ_OUT_SEP_RE.test(t) ? '' : t.replace(/^(?:\d*|&)>>?\|?/, '');
+      const target = glued || stripTrailingPunct(args[i + 1] || '');
+      if (!glued) i++;
+      if (target && isSecretPathArg(target)) return target; // `jq . > .env` stays blocked
+      continue;
+    }
+    if (/^\d*</.test(t)) return JQ_FALLBACK; // other input forms (`0<file`): generic walk
     if (!st.optsEnded && t.startsWith('-') && t !== '-') {
       if (t === '--') { st.optsEnded = true; continue; }
       if (JQ_LONG_FLAGS.has(t)) continue;
