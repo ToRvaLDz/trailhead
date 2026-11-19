@@ -680,4 +680,37 @@ for (const command of [
   ok(`#316 deny (unchanged): ${command}`, !!detectSecretRead('Bash', { command }));
 }
 
+// #381: il primo posizionale di jq e' il PROGRAMMA (`.env` e' un filtro), non un file.
+for (const command of [
+  "jq '.env' ~/.claude/settings.json",
+  'jq .env package.json',
+  "jq -r '.env.FOO' x.json",
+  "jq --arg k v '.env' a.json",
+  "jq '.env.X' settings.json",
+  'jq -rn .env',
+  'jq --indent 2 .env a.json',
+  'jq --args .env a b',
+]) {
+  ok(`#381 allow (jq program is not a file): ${command}`, !detectSecretRead('Bash', { command }));
+}
+for (const command of [
+  'jq . .env',
+  'jq -f .env data.json',
+  'jq -f p.jq .env',
+  'jq -nf .env',
+  "jq --rawfile x .env -n '$x'",
+  'jq --slurpfile x .env -n .',
+  'jq --arg x y . .env',
+  'jq -- . .env',
+  'jq -s . a.json .env',
+  'jq . < .env',
+  'jq --weird-new-flag .env a.json',
+  'jq -L/tmp . .env',
+]) {
+  ok(`#381 deny (jq reads a secret file): ${command}`, !!detectSecretRead('Bash', { command }));
+}
+ok('#381 hook allows jq program named .env', runHook('Bash', { command: "jq '.env' package.json" }).code === 0);
+ok('#381 hook denies jq input file .env', runHook('Bash', { command: 'jq . .env' }).code === 2);
+ok('#381 hook denies jq --rawfile .env', runHook('Bash', { command: "jq --rawfile x .env -n '$x'" }).code === 2);
+
 console.log(`✓ secret-read-guard: ${passed} assertions passed`);
