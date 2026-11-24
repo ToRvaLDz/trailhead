@@ -99,6 +99,7 @@ Open a ticket of any type on the fly.
 
 1. Diverges briefly first: opening a ticket is a micro-charting act, so it checks whether this is really one session-sized ticket or a small cluster (a decision that needs a research before it, a UI build that needs a prototype), and whether it implies a blocker.
 2. Surfaces those neighbours to you, then creates the ticket or tickets. Anything known to be blocked is created already blocked and wired to its blocker.
+3. For a decision, checks the closed decisions of the same destination and asks once when one seems to cover the same question. Only an explicit yes writes a `Revisits:` line naming that one decision; a no, or a ticket with no match, is created as usual and not asked again in the session.
 
 **What it writes**
 
