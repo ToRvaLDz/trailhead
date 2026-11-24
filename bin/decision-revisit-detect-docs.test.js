@@ -45,7 +45,7 @@ ok('ticket: no em-dash', !chart.includes(EM));
 
 // Motore decision: Diverge
 const engines = read(`${SK}/trailhead-work/references/ticket-engines.md`);
-const d = line(engines, /^1\. \*\*Diverge \(only if the option space isn't already clear\)\.\*\*.*$/m);
+const d = line(engines, /^1\. \*\*Diverge \(the revisit check always; the option work only if the option space isn't already clear\)\.\*\*.*$/m);
 ok('diverge: step found', d.length > 0);
 const rc = line(d, /\*\*Revisit check \(always, before the option check\)\.\*\*.*?(?= Mapping the frontier)/);
 ok('diverge: revisit check lead-in', rc.length > 0);
@@ -54,7 +54,7 @@ ok('diverge: a whiteboard decision is skipped', /whiteboard/i.test(rc) && /does 
 ok('diverge: enumerates Decisions so far and compares the Question', rc.includes('*Decisions so far*') && rc.includes('`## Question`'));
 ok('diverge: same skip rule, successor-revisited not a candidate', /same skip rule/i.test(rc) && /resolved successor/i.test(rc));
 ok('diverge: the check always runs, even when the option space is clear', /always/i.test(rc) && /whether or not the option space is already clear/i.test(rc));
-ok('diverge: open-ticket dedupe', rc.includes('is:issue is:open') && /number or URL/.test(rc) && /stop and name/i.test(rc) && /never two open revisits/i.test(rc));
+ok('diverge: open-ticket dedupe', rc.includes('is:issue is:open') && /number or URL/.test(rc) && /name that ticket/i.test(rc));
 ok('diverge: no match, no ask', /no match[^.]*no ask/i.test(rc));
 ok('diverge: one ask, one predecessor, no delegate option', /one ask/i.test(rc) && /one predecessor/i.test(rc) && /no delegate option/i.test(rc) && /none/i.test(rc));
 ok('diverge: pick appends `Revisits:` to the preamble with the fail-safe helper',
@@ -63,6 +63,13 @@ ok('diverge: step 4 Complete a revisit then applies at Resolve', /Complete a rev
 ok('diverge: explicit none not asked again, silence waits', /explicit "none"/i.test(rc) && /not asked again in that session/i.test(rc) && /silence waits/i.test(rc));
 ok('diverge: no label change', /no label change/i.test(rc));
 ok('diverge: old resolution is context for the option check', /`Ruled out:`/.test(rc) && /`Revisit if:`/.test(rc));
+ok('diverge: successor-revisited decision is not a candidate, its successor is', /not a candidate, its successor is/.test(rc));
+ok('diverge: several resolved successors never settled by picking one', /never settled by picking one/.test(rc));
+ok('diverge: dedupe continues with a human-owned ask, no second open `Revisits:`',
+  /name that ticket and ask/i.test(rc) && /without a `Revisits:` line or to work that one instead/.test(rc) && /never add a second open `Revisits:` for the same decision/.test(rc) && /human-owned, no delegate option/.test(rc));
+ok('diverge: dedupe comes before the ask', rc.indexOf('Dedupe first') > -1 && rc.indexOf('Dedupe first') < rc.indexOf('Matches lead to one ask'));
+ok('diverge: mirrors the ticket check, edited together', /mirrors the `\/trailhead:ticket` Revisit check in trailhead-chart\/SKILL\.md/.test(rc) && /edited together/.test(rc));
+for (const ph of [/not (itself )?a candidate/, /Dedupe first/, /never settled by picking one/]) ok(`shared phrase in ticket and engine: ${ph}`, ph.test(t) && ph.test(rc));
 ok('engines: no em-dash', !engines.includes(EM));
 
 // Docs utente
