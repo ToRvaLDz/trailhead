@@ -32,7 +32,7 @@ const dec = section(engines, /^## `decision`.*$/m);
 const converge = line(dec, /^2\. \*\*Converge\.\*\*.*$/m);
 ok('decision converge: step found', converge.length > 0);
 ok('decision converge: resolution carries a `Ruled out:` list', converge.includes('`Ruled out:`'));
-ok('decision converge: each rejected option with its reason', /reason/i.test(converge));
+ok('decision converge: each rejected option with its reason', /with its reason/i.test(converge));
 ok('decision converge: optional `Revisit if:` line', converge.includes('`Revisit if:`') && /optional/i.test(converge));
 ok('decision converge: `Revisit if:` names an observable condition', /observable/i.test(converge));
 ok('decision converge: `Revisit if:` never invented', /never invent/i.test(converge));
@@ -53,7 +53,7 @@ ok('build engine: no em-dash', !build.includes(EM));
 // Work the map step 5: la riga di Decisions so far
 const work = read(`${SK}/trailhead-work/SKILL.md`);
 const step5 = line(work, /^5\. Record the resolution:.*$/m);
-ok('work step 5: Decisions so far line is the choice plus `Revisit if:`', step5.includes('`Revisit if:`') && /choice/.test(step5));
+ok('work step 5: Decisions so far line is the choice plus `Revisit if:`', step5.includes('`Revisit if:`') && /the choice plus/.test(step5));
 ok('work step 5: `Ruled out:` stays on the ticket', /`Ruled out:`[^.]*stays on the ticket/.test(step5));
 
 // Grill che risolve un decision
@@ -79,6 +79,7 @@ const props = section(audit, /^## 9\. Proposals.*$/m);
 const revisit = line(props, /^- \*\*Revisit\*\*.*$/m);
 ok('audit proposals: revisit opens a linked `Revisits:` decision on an explicit yes', revisit.includes('`Revisits: <name+link>`') && /new `decision`/.test(revisit) && /explicit yes/.test(revisit));
 ok('audit proposals: the old decision stays closed, its map line replaced', /stays closed/.test(revisit) && /Decisions so far/.test(revisit));
+ok('audit revisit: already-tracked decisions are not proposed again', /`Revisits:`[^.]*already tracked/.test(pass) && /already tracked/.test(revisit));
 ok('audit proposals: never reopened automatically', /never/i.test(revisit) && /automatic/i.test(revisit));
 ok('audit: no em-dash', !audit.includes(EM));
 
