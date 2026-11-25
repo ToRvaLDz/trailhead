@@ -69,6 +69,17 @@ for (const c of [
   'git status; git push --tags',
   'bash -c "npm publish"',
   '/usr/bin/git push --tags',
+  '(cd pkg && npm publish)',
+  'cd pkg && (npm publish)',
+  '{ npm publish; }',
+  'if true; then npm publish; fi',
+  'while x; do npm publish; done',
+  'if x; then echo a; else git push --tags; fi',
+  '! npm publish',
+  'echo $(npm publish)',
+  'echo `gh release create v1`',
+  'x=$(cd pkg && pnpm publish)',
+  'git push -n origin refs/tags/v1 && npm publish',
 ]) ok(`matches: ${c}`, hit(c));
 
 // --- detectOutward: what does not ------------------------------------------
@@ -89,9 +100,21 @@ for (const c of [
   'cat <<EOF\nnpm publish\nEOF',
   'git commit -m "gh release create"',
   'ls',
+  'npm publish --dry-run',
+  'pnpm publish --dry-run',
+  'git push --tags --dry-run',
+  'git push -n origin refs/tags/v1',
+  'gh release create --help',
+  'npm publish -h',
+  '(npm publish --dry-run)',
+  'echo "(npm publish)"',
+  'echo "$(echo npm publish)"',
+  "echo '$(npm publish)'",
+  'cat <<EOF\n(npm publish)\nEOF',
 ]) ok(`no match: ${c}`, !hit(c));
 
 // --- detectOutward: configured commands ------------------------------------
+ok('npm -n is not a dry run', hit('npm publish -n'));
 ok('config prefix matches', hit('vercel deploy --prod --yes', ['vercel deploy --prod']));
 ok('config prefix matches behind a wrapper', hit('sudo ./scripts/deploy.sh x', ['./scripts/deploy.sh']));
 ok('config prefix is compared exactly (no basename folding)', !hit('/tmp/deploy.sh', ['./scripts/deploy.sh']));

@@ -30,7 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { basename, splitStatements, tokenize, stripQuotes, stripRedirections, skipEnvPrefix } = require('./lib/shell-scan.js');
+const { basename, splitStatements, substitutionBodies, tokenize, stripQuotes, stripRedirections, skipEnvPrefix } = require('./lib/shell-scan.js');
 const { INSTALL_WRAPPERS, skipWrapperFlags } = require('./lib/wrappers.js');
 const { parseGhSubcommand } = require('./lib/gh-subcommand.js');
 const { takesSeparateValue } = require('./lib/git-globals.js');
@@ -56,8 +56,30 @@ function payloadText(payload) {
 
 // One statement as plain words: NAME=value prefixes, wrappers (with their flags),
 // redirections and quotes removed. [] when nothing is left.
+const LEADERS = new Set(['!', '{', '(', 'then', 'do', 'else', 'elif', 'if', 'while', 'until']);
+
+// Leading reserved words, brace/paren openers (also glued: `(npm`, `{npm`) of a statement.
+function stripLeaders(toks) {
+  let out = toks.slice();
+  for (;;) {
+    if (out.length === 0) return out;
+    if (LEADERS.has(out[0])) { out = out.slice(1); continue; }
+    const open = /^[({]+(?=[^({])/.exec(out[0]);
+    if (open && !/^[({]+['"]/.test(out[0])) { out = [out[0].slice(open[0].length), ...out.slice(1)]; continue; }
+    return out;
+  }
+}
+
+// Closing `)` / `}` tokens at the end of a statement, glued (`publish)`) or alone.
+function stripClosers(words) {
+  const out = words.slice();
+  while (out.length && /^[)}]+$/.test(out[out.length - 1])) out.pop();
+  if (out.length) out[out.length - 1] = out[out.length - 1].replace(/(?<=[^)}\s])[)}]+$/, '');
+  return out;
+}
+
 function normalise(stmt) {
-  let toks = tokenize(stmt);
+  let toks = stripLeaders(tokenize(stmt));
   let i = 0;
   for (;;) {
     i += skipEnvPrefix(toks.slice(i));
@@ -72,7 +94,14 @@ function normalise(stmt) {
     toks = r.toks;
     i = r.next;
   }
-  return stripRedirections(toks.slice(i)).map(stripQuotes);
+  return stripClosers(stripRedirections(toks.slice(i)).map(stripQuotes));
+}
+
+// A harmless run of a matched command: --dry-run, --help, -h (and -n / --dry-run for git push).
+function isHarmless(words) {
+  const bin = basename(words[0] || '');
+  const git = bin === 'git' && words.includes('push');
+  return words.slice(1).some((w) => w === '--dry-run' || w === '--help' || w === '-h' || (git && w === '-n'));
 }
 
 // npm / pnpm / yarn flags whose value is the next token.
@@ -170,7 +199,14 @@ function detect(cmd, extra, depth) {
   for (const stmt of splitStatements(String(cmd))) {
     const words = normalise(stmt);
     const name = defaultMatch(words, depth) || configMatch(words, extra);
-    if (name) return { name };
+    if (name && !isHarmless(words)) return { name };
+    if (depth < MAX_DEPTH) {
+      // $(...) and `...` bodies run as commands too
+      for (const body of substitutionBodies(stmt)) {
+        const inner = detect(body, extra, depth + 1);
+        if (inner) return inner;
+      }
+    }
   }
   return null;
 }
