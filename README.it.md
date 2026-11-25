@@ -4,7 +4,7 @@
 
 🇬🇧 [English](README.md) · 🇮🇹 **Italiano**
 
-[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-24%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-10%20hooks-e8710a?style=flat-square)
+[![website](https://img.shields.io/badge/website-trailhead.marcomigozzi.it-3C7A5A?style=flat-square)](https://trailhead.marcomigozzi.it) [![npm](https://img.shields.io/npm/v/@marcomigozzi/trailhead?style=flat-square&label=npm&color=CB3837)](https://www.npmjs.com/package/@marcomigozzi/trailhead) [![license](https://img.shields.io/github/license/ToRvaLDz/trailhead?style=flat-square&color=3C7A5A)](LICENSE) ![hosts](https://img.shields.io/badge/hosts-Claude%20Code%20%C2%B7%20Codex-1E2A54?style=flat-square) ![commands](https://img.shields.io/badge/commands-24%20verbs-0e8a16?style=flat-square) ![guardrails](https://img.shields.io/badge/guardrails-11%20hooks-e8710a?style=flat-square)
 
 ### Il tuo coding agent è bravissimo su un ticket.<br>trailhead gli dà l'intero progetto.
 
@@ -92,7 +92,7 @@ Vedi la schermata prima che venga scritta, e chiudi una funzionalità solo dopo 
 <td valign="top">
 
 ### 🛡️ Self-contained, con le guardie
-Niente altro da installare: trailhead ha i propri agent del motore e dieci hook di guardia, su Claude Code e Codex CLI.
+Niente altro da installare: trailhead ha i propri agent del motore e undici hook di guardia, su Claude Code e Codex CLI.
 
 </td>
 </tr>
