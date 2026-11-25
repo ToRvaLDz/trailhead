@@ -121,6 +121,17 @@ function statuslineActive(cwd) {
   }
 }
 
+// Claude form of the update command, from the shared commandForm. Lazy require
+// inside a try; if the lib is missing, fall back to a generic phrase with no
+// command literal, so the notice still shows and the hook never fails (#398).
+function claudeUpdateCommand() {
+  try {
+    const cmd = require('./lib/model-defaults-review.js').commandForm('claude', 'update');
+    if (typeof cmd === 'string' && cmd) return cmd;
+  } catch { /* fall through */ }
+  return 'the trailhead update command';
+}
+
 // Computes the update notice. Codex: always (it has no statusline). Claude:
 // only when trailhead's full statusline is not the active one, because it is
 // the only one that shows the update flag (#398).
@@ -158,15 +169,15 @@ function updateNotice(cwd) {
 
   const available = verdict && verdict.updateAvailable === true && SEMVER.test(clean(verdict.latest));
   if (!available) return null;
-  // Codex non ha una statusline: l'hook stesso deve segnalare l'update
-  // disponibile via additionalContext, su OGNI sessione (non solo quando la
-  // finestra di throttle si riapre).
+  // Codex has no statusline: the hook itself must report the available
+  // update via additionalContext, on EVERY session (not only when the
+  // throttle window reopens).
   if (info.host === 'codex') {
     return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`;
   }
   // Claude Code: if trailhead's statusline is active it already shows the flag.
   if (statuslineActive(cwd)) return null;
-  return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run /trailhead:update to install it.`;
+  return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run ${claudeUpdateCommand()} to install it.`;
 }
 
 // Notice di revisione dei pin dei modelli (#186): calcolata PRIMA e a
