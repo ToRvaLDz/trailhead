@@ -56,5 +56,47 @@ for (const source of ['resume', 'compact']) {
 ok('no token var: no auth notice', !run('startup', { FAKE_GH_STORED: 'good' }).includes(AUTH));
 ok('valid token: no auth notice', !run('startup', { GITHUB_TOKEN: 'good' }).includes(AUTH));
 
+// --- notice update su Claude Code (#398) ---
+const cfg = path.join(tmp, 'cfg');
+const cacheDir = path.join(tmp, 'cache', 'trailhead');
+const UPD = '/trailhead:update';
+function seed(updateAvailable) {
+  fs.mkdirSync(path.join(cfg, 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(cfg, 'plugins', 'installed_plugins.json'),
+    JSON.stringify({ plugins: { 'trailhead@trailhead': [{ version: '0.14.0', installPath: '/x' }] } }));
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(path.join(cacheDir, 'update-check.json'), JSON.stringify({
+    channel: 'plugin', installed: '0.14.0', latest: '0.15.0', updateAvailable, where: '/x', checkedAt: Date.now(),
+  }));
+}
+function settings(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, typeof content === 'string' ? content : JSON.stringify(content));
+}
+const userSettings = path.join(cfg, 'settings.json');
+const projSettings = path.join(repo, '.claude', 'settings.json');
+const sl = (command) => ({ statusLine: { type: 'command', command } });
+const reset = () => { fs.rmSync(userSettings, { force: true }); fs.rmSync(path.join(repo, '.claude'), { recursive: true, force: true }); };
+
+seed(true);
+reset();
+ok('no statusLine: update notice shown', run('startup', {}).includes(UPD));
+ok('update notice carries versions', run('startup', {}).includes('trailhead 0.15.0 is available (you have 0.14.0)'));
+settings(userSettings, sl(`bash "${cfg}/statusline-trailhead.sh"`));
+ok('trailhead statusline active: no notice', !run('startup', {}).includes(UPD));
+settings(userSettings, sl(`bash "${cfg}/statusline-trailhead.sh" --ticket-only`));
+ok('trailhead widget flag: notice shown', run('startup', {}).includes(UPD));
+settings(userSettings, sl('npx -y ccstatusline@latest'));
+ok('foreign statusline: notice shown', run('startup', {}).includes(UPD));
+settings(userSettings, sl(`bash "${cfg}/statusline-trailhead.sh"`));
+settings(projSettings, sl('ccstatusline'));
+ok('project foreign overrides user trailhead: notice shown', run('startup', {}).includes(UPD));
+reset();
+settings(userSettings, '{ not json');
+ok('malformed user settings: notice shown', run('startup', {}).includes(UPD));
+reset();
+seed(false);
+ok('updateAvailable false: no notice', !run('startup', {}).includes(UPD));
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`trailhead-check-update: ${passed} passed`);

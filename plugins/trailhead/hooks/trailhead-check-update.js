@@ -13,6 +13,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 // Un GIT_DIR ereditato batterebbe -C: le chiamate git non lo seguono (#349).
 const { gitEnv } = require('./lib/trailhead-git-env.js');
+const { isTrailheadStatuslineActive } = require('./lib/statusline-active.js');
 
 const REPO = 'ToRvaLDz/trailhead';
 const NPM_PKG = '@marcomigozzi/trailhead';
@@ -107,9 +108,11 @@ function latestGitHub() {
   return '';
 }
 
-// Calcola la notice dell'update (solo Codex, comportamento invariato).
+// Calcola la notice dell'update. Codex: sempre (non ha statusline). Claude:
+// solo se la statusline completa di trailhead non e' quella attiva, perche'
+// e' l'unica che mostra il flag update (#398).
 // Ritorna null se non c'è nulla da segnalare.
-function updateNotice() {
+function updateNotice(cwd) {
   const info = detect();
   if (!SEMVER.test(clean(info.version))) return null; // versione installata sconosciuta: non azzardare
   const out = cacheFile(info.host); // cache per-host: Codex non eredita il verdetto di Claude
@@ -140,13 +143,17 @@ function updateNotice() {
     } catch { /* ignore */ }
   }
 
+  const available = verdict && verdict.updateAvailable === true && SEMVER.test(clean(verdict.latest));
+  if (!available) return null;
   // Codex non ha una statusline: l'hook stesso deve segnalare l'update
   // disponibile via additionalContext, su OGNI sessione (non solo quando la
-  // finestra di throttle si riapre). Su Claude (info.host è undefined) resta
-  // sempre null: comportamento invariato.
-  if (info.host === 'codex' && verdict && verdict.updateAvailable === true && SEMVER.test(clean(verdict.latest))) {
+  // finestra di throttle si riapre).
+  if (info.host === 'codex') {
     return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`;
   }
+  // Claude Code: se la statusline di trailhead e' attiva mostra gia' il flag.
+  if (isTrailheadStatuslineActive({ cwd, configDir: configDir() })) return null;
+  return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run /trailhead:update to install it.`;
   return null;
 }
 
@@ -232,7 +239,7 @@ function main(input) {
   const auth = authNotice(input);
   const review = reviewNotice(cwd);
   const guard = labelGuardNotice(cwd);
-  const update = updateNotice();
+  const update = updateNotice(cwd);
 
   const parts = [auth, review, guard, update].filter(Boolean);
   if (!parts.length) return;
