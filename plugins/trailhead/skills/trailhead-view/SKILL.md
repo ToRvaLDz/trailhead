@@ -55,7 +55,7 @@ The map body it renders (the sections are matched by their **text**; the emoji a
 
 ## ✅ Decisions so far
 <!-- the index: one line per closed ticket -->
-- [<closed ticket title>](link): <one-line gist of the answer>
+- [<closed ticket title>](link): binds: <rule; rule | none> · <one-line gist of the answer>
 
 ## 🌫️ Not yet specified
 <!-- fog of war: in-scope fog not yet ticketable; graduates as the frontier advances -->
