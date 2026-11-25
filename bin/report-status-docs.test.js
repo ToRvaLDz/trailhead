@@ -196,6 +196,28 @@ ok('codebase-map: distils the answer fields; inconclusive notes the gap; needs_i
 ok('debug: a Report line points at the investigating contract', has(debug, '**Report.**', 'investigating report', 'never commits or creates a branch', '`DIAGNOSIS`'));
 ok('brief: the report names the implementing Return contract', has(brief, 'implementing `Return contract`', '`blockers:`'));
 
+// --- choices and deviations record (#387) -----------------------------------------
+for (const [label, step] of [['Execute', execute], ['Fix', fixStep]]) {
+  ok(`${label}: the choices and deviations form an append-only record from the checker fields, in spawn order`,
+    has(step, 'append-only record', '`fields.choices`', '`fields.deviations`', 'spawn order', 'never edited or deduplicated'));
+  ok(`${label}: an EXECUTE comment after every checked spawn, two sections, complete record`,
+    has(step, 'After every checked spawn', '`EXECUTE` comment', '`choices:` then `deviations:`', 'latest `EXECUTE` comment is always the complete record'));
+  ok(`${label}: a re-spawn gets the record (from the list, or the latest EXECUTE comment when resumed)`,
+    has(step, 'Every re-spawn gets the record', 'resumed session', 'latest `EXECUTE` comment'));
+  ok(`${label}: replaces: marks a changed choice`, step.includes('(replaces: <the earlier what>)'));
+  ok(`${label}: the dispatch runtime inputs list the recorded choices and deviations`,
+    step.includes('the choices and deviations already recorded for this ticket'));
+}
+ok('both Verify steps pass the checker-returned record to the goal check',
+  (engines.match(/passed the choices and deviations record from the checker-returned list \(latest `EXECUTE` comment only in a resumed session\)/g) || []).length === 2);
+ok('brief: choices after deviations, replaces:, the record already recorded is not repeated',
+  has(brief, '`deviations:`, `choices:`, `blockers:`', '`<what>: <why>`', '(replaces: <the earlier what>)', 'do not repeat them', 'the choices and deviations already recorded for this ticket'));
+ok('verify.md: each choice in force is a consistent | contradicts claim, met / unmet',
+  has(verify, '`choice: <what> · consistent | contradicts <map decision link or acceptance criterion>`', '`consistent` is `class: met`', '`contradicts` is `class: unmet`',
+    '`choices: none` adds no claim', 'no passed choices'));
+ok('verify.md: a choice against acceptance loops back; against a map decision routes like a violated constraint',
+  has(verify, 'contradicts the ticket\'s acceptance loops back to Execute/Fix like any gap', 'contradicts a map decision routes like a violated constraint', 'never an accepted pass'));
+
 for (const [label, src] of [['techniques.md', techniques], ['verify.md', verify], ['code-review.md', codeReview], ['ticket-engines.md', engines], ['executor-brief.md', brief], ['research.md', research], ['codebase-map.md', codebaseMap], ['debug.md', debug], ['charting.md', charting]]) {
   ok(`${label}: no em-dash`, !src.includes('—'));
 }

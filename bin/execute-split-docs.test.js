@@ -97,7 +97,7 @@ ok('Execute: dispatches trailhead-executor on config.models.execute',
   has(execute, '`trailhead-executor`', 'config.models.execute'));
 ok('Execute: the brief is the only protocol text', has(execute, 'executor-brief.md', 'only protocol text'));
 ok('Execute: lists the runtime inputs',
-  has(lx, 'ticket number', 'plan', 'base sha', 'config.tdd', 'mockup link', 'accepted mockup deviations'));
+  has(lx, 'ticket number', 'plan', 'base sha', 'config.tdd', 'mockup link', 'accepted mockup deviations', 'choices and deviations already recorded'));
 ok('Execute: inline when the model is unset or equals the session model', lx.includes('inline') && lx.includes('session'));
 
 // --- the bug Fix block: self-contained ------------------------------------------------------------
@@ -105,7 +105,7 @@ const lf = fix.toLowerCase();
 ok('Fix: dispatches trailhead-fix on config.models.execute with the brief as the only protocol text',
   has(fix, '`trailhead-fix`', 'config.models.execute', 'executor-brief.md', 'only protocol text'));
 ok('Fix: lists the runtime inputs',
-  has(lf, 'ticket number', 'base sha', 'config.tdd', 'mockup link', 'accepted mockup deviations'));
+  has(lf, 'ticket number', 'base sha', 'config.tdd', 'mockup link', 'accepted mockup deviations', 'choices and deviations already recorded'));
 ok('Fix: UI-fix Prototype + approval',
   has(fix, 'Prototype technique', 'config.design', 'config.design.approval') && lf.includes('ui'));
 ok('Fix: posts the fidelity list as a ticket comment',

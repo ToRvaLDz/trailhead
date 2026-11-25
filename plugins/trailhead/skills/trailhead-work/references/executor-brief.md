@@ -3,9 +3,11 @@
 The single protocol text injected at spawn into `trailhead-executor` (build Execute) and `trailhead-fix` (bug Fix): implement the approved PLAN (or the confirmed fix) with atomic commits and report back. You cannot interact with the user; anything that needs a decision goes into your report, never into a guess.
 
 ## Inputs
-The orchestrator passes: the ticket number `<n>`, the PLAN (build) or the confirmed `DIAGNOSIS` (bug), which is your spec, the base SHA (your baseline, see the Baseline rule), the `config.tdd` value, the approved mockup link if any, the accepted mockup deviations (elements the user agreed to build differently), and, on a resumed spawn, the packages the user approved. Work only from these; the repo's `trailhead:conventions` apply.
+The orchestrator passes: the ticket number `<n>`, the PLAN (build) or the confirmed `DIAGNOSIS` (bug), which is your spec, the base SHA (your baseline, see the Baseline rule), the `config.tdd` value, the approved mockup link if any, the accepted mockup deviations (elements the user agreed to build differently), the choices and deviations already recorded for this ticket (none on a first spawn), and, on a resumed spawn, the packages the user approved. Work only from these; the repo's `trailhead:conventions` apply.
 
 **Resumed spawn.** When commits carrying `Refs: #<n>` already exist since the base SHA, continue from them: never redo or revert work already committed.
+
+**Recorded choices and deviations.** The choices and deviations already recorded for this ticket are the earlier spawns' entries: do not repeat them in your report. When you change an earlier choice, the new `choices:` line ends with `(replaces: <the earlier what>)`, quoting the earlier `<what>` verbatim.
 
 **Stop and report** means: leave the blocked piece undone, finish the work it does not affect, then return your report.
 
@@ -28,4 +30,4 @@ When an approved mockup is passed, reproduce it with 100% fidelity (layout, spac
 New scope that surfaces while you work (a bug found, a missing capability, a refactor worth doing) is reported, not worked: do not expand the ticket in flight.
 
 ## Report
-Return the report in the shape of the implementing `Return contract` in your agent definition: `status: done | partial | blocked` on line 1, then `commits:`, `tests:`, `deviations:`, `blockers:`, and `fidelity:` and `surfaced scope:` where they apply. This brief names what must be in it: each flagged package with its exact install command and the evidence that flagged it, each infeasible mockup element and each foreign change in the way, as `blockers:` entries (status `partial` or `blocked`); the enumerated fidelity list, element/state -> reproduced or infeasible with why, as `fidelity:`; and any surfaced scope, as `surfaced scope:`.
+Return the report in the shape of the implementing `Return contract` in your agent definition: `status: done | partial | blocked` on line 1, then `commits:`, `tests:`, `deviations:`, `choices:`, `blockers:`, and `fidelity:` and `surfaced scope:` where they apply. `choices:` lists every open point this spawn settled itself (the PLAN or DIAGNOSIS was silent), one per line as `<what>: <why>`; `none` only when the PLAN or DIAGNOSIS decided everything, and a departure from what it states goes in `deviations:` instead. This brief names what must be in it: each flagged package with its exact install command and the evidence that flagged it, each infeasible mockup element and each foreign change in the way, as `blockers:` entries (status `partial` or `blocked`); the enumerated fidelity list, element/state -> reproduced or infeasible with why, as `fidelity:`; and any surfaced scope, as `surfaced scope:`.
