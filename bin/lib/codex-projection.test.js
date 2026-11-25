@@ -191,8 +191,8 @@ const entries = codexHookEntries('/h');
 ok('codexHookEntries returns 5 entries', Array.isArray(entries) && entries.length === 5);
 const bashEntries = entries.filter((e) => e.event === 'PreToolUse' && e.matcher === 'Bash');
 ok('codexHookEntries: exactly one PreToolUse/Bash registration', bashEntries.length === 1);
-ok('codexHookEntries: the Bash entry is the merged hook with exactly --guards=commit,secret,install,body,labels,test',
-  bashEntries[0].command === 'node "/h/trailhead-bash-guards.js" --guards=commit,secret,install,body,labels,test');
+ok('codexHookEntries: the Bash entry is the merged hook with exactly --guards=commit,secret,install,body,labels,test,outward',
+  bashEntries[0].command === 'node "/h/trailhead-bash-guards.js" --guards=commit,secret,install,body,labels,test,outward');
 ok('codexHookEntries: no per-guard script is registered on its own', entries.every((e) =>
   !/trailhead-(commit|secret|install|search|body|test)-guard\.js/.test(e.command)));
 ok('codexHookEntries: secret-read-guard is PreToolUse/Read|Bash', entries.some((e) =>
