@@ -107,20 +107,23 @@ function latestGitHub() {
   return '';
 }
 
-// Il require e' lazy e dentro un try: una lib mancante (install parziale) non
-// deve far crashare l'hook al caricamento. Fallback: "non attiva", quindi la
-// notice compare (#398).
+// The require is lazy and inside a try: a missing lib (partial install) must
+// not crash the hook at load time. Fallback: "not active", so the notice shows
+// (#398). The project dir is CLAUDE_PROJECT_DIR (set by Claude Code for hooks),
+// else the session cwd, so a session started in a subdirectory still finds the
+// root .claude/settings*.json.
 function statuslineActive(cwd) {
   try {
-    return require('./lib/statusline-active.js').isTrailheadStatuslineActive({ cwd, configDir: configDir() }) === true;
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || cwd;
+    return require('./lib/statusline-active.js').isTrailheadStatuslineActive({ projectDir, configDir: configDir() }) === true;
   } catch {
     return false;
   }
 }
 
-// Calcola la notice dell'update. Codex: sempre (non ha statusline). Claude:
-// solo se la statusline completa di trailhead non e' quella attiva, perche'
-// e' l'unica che mostra il flag update (#398).
+// Computes the update notice. Codex: always (it has no statusline). Claude:
+// only when trailhead's full statusline is not the active one, because it is
+// the only one that shows the update flag (#398).
 // Ritorna null se non c'è nulla da segnalare.
 function updateNotice(cwd) {
   const info = detect();
@@ -161,7 +164,7 @@ function updateNotice(cwd) {
   if (info.host === 'codex') {
     return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`;
   }
-  // Claude Code: se la statusline di trailhead e' attiva mostra gia' il flag.
+  // Claude Code: if trailhead's statusline is active it already shows the flag.
   if (statuslineActive(cwd)) return null;
   return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run /trailhead:update to install it.`;
 }

@@ -1,9 +1,9 @@
-// Rileva se la statusline di trailhead e' quella attiva (completa) su Claude Code.
-// "Attiva" = la statusLine effettiva (primo file che definisce la chiave, in
-// ordine: <cwd>/.claude/settings.local.json, <cwd>/.claude/settings.json,
-// <configDir>/settings.json) ha un command che richiama statusline-trailhead.sh
-// senza i flag dei widget a segmento singolo (che non mostrano il flag update).
-// Un settings illeggibile o malformato e' saltato. Ogni errore -> false.
+// Detects whether trailhead's statusline is the active (full) one on Claude Code.
+// "Active" = the effective statusLine (first file that defines the key, in
+// order: <projectDir>/.claude/settings.local.json, <projectDir>/.claude/settings.json,
+// <configDir>/settings.json) has a command that calls statusline-trailhead.sh
+// without the single-segment widget flags (those never show the update flag).
+// An unreadable or malformed settings file is skipped. Any error -> false.
 
 'use strict';
 const fs = require('fs');
@@ -19,10 +19,10 @@ function readSettings(p) {
   } catch { return null; }
 }
 
-function effectiveStatusLine({ cwd, configDir }) {
+function effectiveStatusLine({ projectDir, configDir }) {
   const files = [
-    cwd && path.join(cwd, '.claude', 'settings.local.json'),
-    cwd && path.join(cwd, '.claude', 'settings.json'),
+    projectDir && path.join(projectDir, '.claude', 'settings.local.json'),
+    projectDir && path.join(projectDir, '.claude', 'settings.json'),
     path.join(configDir, 'settings.json'),
   ].filter(Boolean);
   for (const f of files) {
@@ -32,9 +32,9 @@ function effectiveStatusLine({ cwd, configDir }) {
   return undefined;
 }
 
-function isTrailheadStatuslineActive({ cwd, configDir }) {
+function isTrailheadStatuslineActive({ projectDir, configDir }) {
   try {
-    const sl = effectiveStatusLine({ cwd, configDir });
+    const sl = effectiveStatusLine({ projectDir, configDir });
     const cmd = sl && typeof sl === 'object' ? sl.command : null;
     if (typeof cmd !== 'string' || !cmd.includes(SCRIPT)) return false;
     return !WIDGET_FLAGS.some((f) => cmd.includes(f));

@@ -30,15 +30,15 @@ fs.writeFileSync(path.join(bin, 'gh'), fakeGh, { mode: 0o755 });
 const repo = path.join(tmp, 'repo');
 execFileSync('git', ['init', '-q', repo]);
 
-function run(source, extraEnv) {
+function run(source, extraEnv, cwdOverride) {
   const env = { ...process.env, ...extraEnv };
-  delete env.GH_TOKEN; delete env.GITHUB_TOKEN;
+  delete env.GH_TOKEN; delete env.GITHUB_TOKEN; delete env.CLAUDE_PROJECT_DIR;
   Object.assign(env, extraEnv, {
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
     XDG_CACHE_HOME: path.join(tmp, 'cache'),
     CLAUDE_CONFIG_DIR: path.join(tmp, 'cfg'),
   });
-  const input = { cwd: repo };
+  const input = { cwd: cwdOverride || repo };
   if (source) input.source = source;
   const out = execFileSync('node', [hookPath], { input: JSON.stringify(input), encoding: 'utf8', env });
   return out ? JSON.parse(out).hookSpecificOutput.additionalContext : '';
@@ -56,7 +56,7 @@ for (const source of ['resume', 'compact']) {
 ok('no token var: no auth notice', !run('startup', { FAKE_GH_STORED: 'good' }).includes(AUTH));
 ok('valid token: no auth notice', !run('startup', { GITHUB_TOKEN: 'good' }).includes(AUTH));
 
-// --- notice update su Claude Code (#398) ---
+// --- update notice on Claude Code (#398) ---
 const cfg = path.join(tmp, 'cfg');
 const cacheDir = path.join(tmp, 'cache', 'trailhead');
 const UPD = '/trailhead:update';
@@ -91,6 +91,12 @@ ok('foreign statusline: notice shown', run('startup', {}).includes(UPD));
 settings(userSettings, sl(`bash "${cfg}/statusline-trailhead.sh"`));
 settings(projSettings, sl('ccstatusline'));
 ok('project foreign overrides user trailhead: notice shown', run('startup', {}).includes(UPD));
+reset();
+const sub = path.join(repo, 'pkg', 'deep');
+fs.mkdirSync(sub, { recursive: true });
+settings(projSettings, sl(`bash "${cfg}/statusline-trailhead.sh"`));
+ok('subdirectory cwd without CLAUDE_PROJECT_DIR: notice shown', run('startup', {}, sub).includes(UPD));
+ok('subdirectory cwd with CLAUDE_PROJECT_DIR at the root: no notice', !run('startup', { CLAUDE_PROJECT_DIR: repo }, sub).includes(UPD));
 reset();
 settings(userSettings, '{ not json');
 ok('malformed user settings: notice shown', run('startup', {}).includes(UPD));
