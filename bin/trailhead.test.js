@@ -1201,6 +1201,20 @@ ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
   }
   return !out.includes('MODULE_NOT_FOUND') && !out.includes('Cannot find module');
 })());
+// Ogni hook installato che fa require('./lib/<f>') deve trovare <f> accanto a
+// se': HOOK_LIB_FILES copia le lib per nome, quindi una dimenticanza fa
+// crashare l'hook al caricamento (#398).
+{
+  const hooksInstalled = path.join(claudeDir, 'hooks');
+  const missing = [];
+  for (const h of fs.readdirSync(hooksInstalled).filter((f) => /^trailhead-.*\.js$/.test(f) && !f.endsWith('.test.js'))) {
+    const src = fs.readFileSync(path.join(hooksInstalled, h), 'utf8');
+    for (const m of src.matchAll(/require\(\s*['"]\.\/lib\/([^'"]+)['"]\s*\)/g)) {
+      if (!fs.existsSync(path.join(hooksInstalled, 'lib', m[1]))) missing.push(`${h} -> lib/${m[1]}`);
+    }
+  }
+  ok(`claude: every ./lib require of an installed hook is copied (missing: ${missing.join(', ') || 'none'})`, missing.length === 0);
+}
 ok('claude: SKILL.md does not start with the codex adapter header', !fs.readFileSync(claudeSkillPath, 'utf8').startsWith('<codex_skill_adapter>'));
 
 // --- claude: engine agents registered as user subagents -----------------------
