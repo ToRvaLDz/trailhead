@@ -229,4 +229,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { configDir, evaluate, readFull, normalise, runsFull };
+module.exports = { configDir, gitTop, readJson, evaluate, readFull, normalise, runsFull };
