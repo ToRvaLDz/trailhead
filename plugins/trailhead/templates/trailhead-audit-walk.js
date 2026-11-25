@@ -622,39 +622,87 @@ function attribute(repo, n, claims, index) {
 }
 
 // --- facet freshness (auditing.md step 7b) ----------------------------------------------
-// Backticked tokens of a facet's text that can be repo paths: a trailing `:<line>`
-// or `:<line>-<line>` and a trailing `/` are stripped; absolute paths, `..`,
+// A backticked token as a repo path, or null when it cannot be one: a trailing
+// `:<line>` or `:<line>-<line>` and a trailing `/` are stripped; absolute paths, `..`,
 // whitespace and a leading `-` or `:` are dropped, so nothing odd reaches git's argv.
+function sanitizeToken(raw) {
+  const token = String(raw).trim().replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
+  if (!token || token.startsWith('/') || /^[-:]/.test(token) || token.includes('..') || /\s/.test(token)) return null;
+  return token;
+}
+
+// Sanitised, de-duplicated backticked tokens of a facet's text.
 function citedTokens(text) {
   const found = [];
   for (const m of String(text).matchAll(/`([^`\n]+)`/g)) {
-    const token = m[1].trim().replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
-    if (!token || token.startsWith('/') || /^[-:]/.test(token) || token.includes('..') || /\s/.test(token)) continue;
-    if (!found.includes(token)) found.push(token);
+    const token = sanitizeToken(m[1]);
+    if (token && !found.includes(token)) found.push(token);
   }
   return found;
 }
 
+const MAX_CITES = 5;
+
+// A cited path that is a doc or a test file: basename README* / CHANGELOG*, a `docs`
+// segment, a *.test.* / *.spec.* file, or a test / tests / __tests__ segment.
+function isExcludedCite(p) {
+  const parts = p.split('/');
+  const base = parts[parts.length - 1];
+  return /^(?:README|CHANGELOG)/i.test(base)
+    || parts.slice(0, -1).some((seg) => /^(?:docs|tests?|__tests__)$/i.test(seg))
+    || /^docs$/i.test(base)
+    || /\.(?:test|spec)\./i.test(base);
+}
+
+// Problems of a facet's `Cites:` line, deterministic and without changing the status.
+// `exists` (null for a facet with no stamp to check against) tells whether a cited path
+// exists at the stamp; an unstamped or unresolved facet gets the path-only checks
+// (too-many-cites, excluded-cite) and no no-cites-line or missing-cite.
+function citeProblems(facet, exists) {
+  const problems = [];
+  if (facet.cites === null) return facet.sha && exists ? ['no-cites-line'] : problems;
+  const entries = [];
+  for (const raw of facet.cites) {
+    const t = sanitizeToken(raw);
+    const entry = t === null ? raw.trim() : t;
+    if (!entries.includes(entry)) entries.push(entry);
+  }
+  if (entries.length > MAX_CITES) problems.push('too-many-cites');
+  for (const entry of entries) {
+    const safe = sanitizeToken(entry);
+    if (exists && (safe === null || !exists(safe))) problems.push(`missing-cite:${entry}`);
+    if (isExcludedCite(entry)) problems.push(`excluded-cite:${entry}`);
+  }
+  return problems;
+}
+
 // Freshness of one facet against HEAD. Status: current | stale | unstamped |
 // unresolved (stamp unknown, or not an ancestor of HEAD) | no-paths (no cited
-// file exists at the stamp, so there is nothing to compare).
+// file exists at the stamp, so there is nothing to compare). Compared paths are the
+// facet's `Cites:` line when it has one, else every backticked token (legacy facets).
 function facetStatus(ctx, facet, head) {
-  const out = { name: facet.name, sha: facet.sha, status: 'unstamped', paths: [], changed: [] };
-  if (!facet.sha) return out;
+  const out = { name: facet.name, sha: facet.sha, status: 'unstamped', paths: [], changed: [], problems: [] };
+  const pathOnly = { ...out, problems: citeProblems(facet, null) };
+  if (!facet.sha) return pathOnly;
   let full;
   try {
     full = git(ctx.repo, ['rev-parse', '--verify', '-q', `${facet.sha}^{commit}`]).trim();
   } catch (err) {
-    return { ...out, status: 'unresolved' };
+    return { ...pathOnly, status: 'unresolved' };
   }
-  if (!SHA_RE.test(full) || !isAncestor(ctx, full, head)) return { ...out, status: 'unresolved' };
-  const paths = citedTokens(facet.text).filter((p) => objectExists(ctx, `${full}:${p}`));
-  if (!paths.length) return { ...out, status: 'no-paths' };
+  if (!SHA_RE.test(full) || !isAncestor(ctx, full, head)) return { ...pathOnly, status: 'unresolved' };
+  const exists = (p) => objectExists(ctx, `${full}:${p}`);
+  const problems = citeProblems(facet, exists);
+  const candidates = facet.cites !== null
+    ? facet.cites.map(sanitizeToken).filter((t, i, a) => t !== null && a.indexOf(t) === i)
+    : citedTokens(facet.text);
+  const paths = candidates.filter(exists);
+  if (!paths.length) return { ...out, status: 'no-paths', problems };
   // Plain paths: GIT_LITERAL_PATHSPECS already makes them literal. --no-renames
   // lists a renamed or deleted cited file under its old name.
   const changed = git(ctx.repo, ['diff', '--name-only', '-z', '--no-renames', full, head, '--', ...paths])
     .split('\0').filter(Boolean).sort();
-  return { ...out, status: changed.length ? 'stale' : 'current', paths, changed };
+  return { ...out, status: changed.length ? 'stale' : 'current', paths, changed, problems };
 }
 
 function facetsReport(repo, bodyFile) {

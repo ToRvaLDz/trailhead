@@ -84,8 +84,8 @@ function headingName(line) {
   return m[1].replace(/^[^\p{L}\p{N}]+/u, '').trim();
 }
 
-// Indexes of the `## ` headings outside fenced code blocks.
-function headingIndexes(lines) {
+// Indexes of the lines outside fenced code blocks (the fence lines themselves excluded).
+function unfencedIndexes(lines) {
   const out = [];
   let fence = null;
   lines.forEach((line, i) => {
@@ -95,9 +95,14 @@ function headingIndexes(lines) {
       return;
     }
     if (f) { fence = { char: f[1][0], len: f[1].length }; return; }
-    if (headingName(line) !== null) out.push(i);
+    out.push(i);
   });
   return out;
+}
+
+// Indexes of the `## ` headings outside fenced code blocks.
+function headingIndexes(lines) {
+  return unfencedIndexes(lines).filter((i) => headingName(lines[i]) !== null);
 }
 
 // Locates a section: { head, from, to } where lines[from..to) is its content
@@ -221,15 +226,26 @@ function stampIn(lines, from, to) {
   return null;
 }
 
-// `## ` sections of a body as { name, sha, text }: sha is the stamp or null, text
-// the section content. Fence-aware (headingIndexes), so a fenced `## ` is no facet.
+// Backticked tokens of the first unfenced `Cites:` line of lines[from..to), or null
+// when the section has no such line (`Cites: none` gives an empty array).
+function citesIn(lines, from, to) {
+  for (const i of unfencedIndexes(lines)) {
+    if (i < from || i >= to || !/^Cites:/.test(lines[i].trim())) continue;
+    return Array.from(lines[i].matchAll(/`([^`\n]+)`/g), (m) => m[1]);
+  }
+  return null;
+}
+
+// `## ` sections of a body as { name, sha, text, cites }: sha is the stamp or null,
+// text the section content, cites the `Cites:` line entries or null. Fence-aware
+// (headingIndexes), so a fenced `## ` is no facet.
 function facetsOf(body) {
   const { lines } = splitBody(String(body));
   const heads = headingIndexes(lines);
   return heads.map((h, k) => {
     const to = k + 1 < heads.length ? heads[k + 1] : lines.length;
     const stamp = stampIn(lines, h + 1, to);
-    return { name: headingName(lines[h]), sha: stamp ? stamp.sha : null, text: lines.slice(h + 1, to).join('\n') };
+    return { name: headingName(lines[h]), sha: stamp ? stamp.sha : null, text: lines.slice(h + 1, to).join('\n'), cites: citesIn(lines, h + 1, to) };
   });
 }
 

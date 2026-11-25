@@ -860,5 +860,51 @@ function cli(args) {
   ok('facets: unreadable body file is a fatal error', missing === 2 && JSON.parse(text).error);
 }
 
+// --- facets: the Cites line and its problems ------------------------------------
+{
+  const facetsRun = (dir, body) => {
+    const file = path.join(dir, '.git', 'cites-body.md');
+    fs.writeFileSync(file, body);
+    let text = '';
+    const code = walk.main(['facets', '--repo', dir, '--body-file', file], { stdout: { write: (t) => { text += t; } } });
+    return { code, out: JSON.parse(text) };
+  };
+  const cited = (name, sha, line, extra = '') => `## ${name}\n\n${sha ? `_as of ${sha}_\n\n` : ''}${line === null ? '' : `${line}\n\n`}${extra}\n\n`;
+  const byName = (r, name) => r.out.facets.find((f) => f.name === name);
+  const dir = mkrepo();
+  const c1 = commit(dir, {
+    'src/a.js': 'a\n', 'src/b.js': 'b\n', 'src/c.js': 'c\n', 'src/d.js': 'd\n', 'src/e.js': 'e\n', 'src/f.js': 'f\n',
+    'README.md': 'r\n', 'docs/x.md': 'x\n', 'src/a.test.js': 't\n', 'src/b.spec.ts': 's\n', 'test/t.js': 't\n', 'pkg/__tests__/z.js': 'z\n', 'CHANGELOG.md': 'c\n',
+  }, 'feat: base');
+  const s1 = c1.slice(0, 7);
+  commit(dir, { 'src/b.js': 'b2\n' }, 'fix: edit prose-only path');
+  const body = '# Codebase\n\n' + [
+    cited('Prose', s1, 'Cites: `src/a.js`', '- `src/b.js` named in prose'),
+    cited('Legacy', s1, null, '- `src/a.js` only backticks'),
+    cited('FencedBt', s1, null, '```\nCites: `src/a.js`\n```\n- `src/a.js`'),
+    cited('FencedTilde', s1, null, '~~~\nCites: `src/a.js`\n~~~'),
+    cited('FencedIndent', s1, null, '  ```\n  Cites: `src/a.js`\n  ```'),
+    cited('None', s1, 'Cites: none'),
+    cited('Many', s1, 'Cites: `src/a.js`, `src/b.js`, `src/c.js`, `src/d.js`, `src/e.js`, `src/f.js`'),
+    cited('Missing', s1, 'Cites: `src/a.js`, `nope/gone.js`'),
+    cited('Unsafe', s1, 'Cites: `src/a.js`, `../etc/passwd`'),
+    cited('Excluded', s1, 'Cites: `README.md`, `docs/x.md`, `src/a.test.js`, `src/b.spec.ts`, `test/t.js`, `pkg/__tests__/z.js`, `CHANGELOG.md`'),
+    cited('Unstamped', null, 'Cites: `README.md`'),
+  ].join('');
+  const r = facetsRun(dir, body);
+  eq('cites: a prose-only edited path does not make a Cites facet stale', [byName(r, 'Prose').status, byName(r, 'Prose').paths, byName(r, 'Prose').problems], ['current', ['src/a.js'], []]);
+  eq('cites: no Cites line falls back to backticks and reports no-cites-line', [byName(r, 'Legacy').status, byName(r, 'Legacy').problems], ['current', ['no-cites-line']]);
+  eq('cites: a Cites line in a backtick fence is ignored', byName(r, 'FencedBt').problems, ['no-cites-line']);
+  eq('cites: a Cites line in a tilde fence is ignored', byName(r, 'FencedTilde').problems, ['no-cites-line']);
+  eq('cites: a Cites line in an indented fence is ignored', byName(r, 'FencedIndent').problems, ['no-cites-line']);
+  eq('cites: Cites none is no-paths', [byName(r, 'None').status, byName(r, 'None').problems], ['no-paths', []]);
+  eq('cites: more than five cites is too-many-cites', byName(r, 'Many').problems, ['too-many-cites']);
+  eq('cites: a nonexistent cite is missing-cite, status from the rest', [byName(r, 'Missing').status, byName(r, 'Missing').paths, byName(r, 'Missing').problems], ['current', ['src/a.js'], ['missing-cite:nope/gone.js']]);
+  eq('cites: an unsafe cite is missing-cite', byName(r, 'Unsafe').problems, ['missing-cite:../etc/passwd']);
+  eq('cites: doc and test files are excluded-cite (seven entries also read too-many-cites)', byName(r, 'Excluded').problems,
+    ['too-many-cites', ...['README.md', 'docs/x.md', 'src/a.test.js', 'src/b.spec.ts', 'test/t.js', 'pkg/__tests__/z.js', 'CHANGELOG.md'].map((p) => `excluded-cite:${p}`)]);
+  eq('cites: an unstamped facet keeps the path-only excluded check', [byName(r, 'Unstamped').status, byName(r, 'Unstamped').problems], ['unstamped', ['excluded-cite:README.md']]);
+}
+
 cleanup();
 console.log(`✓ audit-walk: ${passed} assertions passed`);

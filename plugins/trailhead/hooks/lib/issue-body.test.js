@@ -279,6 +279,22 @@ const EMPTY_DECISIONS = ['Intro line for the map, long enough.', '', '## Decisio
   const fl = mod.facetsOf(FACETS);
   ok('facetsOf: names, shas and null for unstamped', fl.map((f) => f.name).join() === 'Layout,Stack,Empty,Pending' && fl[1].sha === null && fl[0].sha === 'aaaaaaa');
 
+  // Cites line: the first unfenced line starting with `Cites:`.
+  const CITED = ['# C', '', '## A', '', '_as of aaaaaaa_', '', 'Cites: `src/a.js`, `bin/b.js`', '', '- `other/x.js` prose', '',
+    '## B', '', '```', 'Cites: `fenced.js`', '```', '', '## C2', '', 'Cites: none', '', '## D', '', '~~~', 'Cites: `t.js`', '~~~', '', '   Cites: `indented.js`', ''].join('\n');
+  const cf = mod.facetsOf(CITED);
+  ok('facetsOf: cites are the backticked tokens of the Cites line', JSON.stringify(cf[0].cites) === JSON.stringify(['src/a.js', 'bin/b.js']));
+  ok('facetsOf: a Cites line inside a fence is ignored (null)', cf[1].cites === null);
+  ok('facetsOf: Cites: none is an empty array', Array.isArray(cf[2].cites) && cf[2].cites.length === 0);
+  ok('facetsOf: tilde fence ignored, an indented Cites line counts after trim', JSON.stringify(cf[3].cites) === JSON.stringify(['indented.js']));
+  ok('facetsOf: no Cites line is null', fl.every((f) => f.cites === null));
+
+  const CF = '# C\n\n## Layout\n\n_as of aaaaaaa_\n\nCites: `src/a.js`\n\n- `src/` prose\n';
+  const cr = applyOp(CF, { kind: 'replace', section: 'Layout', text: 'Cites: `new/a.js`\n\n- fresh\n', stamp: STAMP });
+  ok('stamp: replace keeps a Cites line right under the new stamp', /## Layout\n\n_as of abc1234_\n\nCites: `new\/a.js`\n\n- fresh\n/.test(cr.body));
+  const ca = applyOp(CF, { kind: 'append', section: 'Layout', line: '- more', stamp: STAMP });
+  ok('stamp: append keeps the existing Cites line in place', /## Layout\n\n_as of abc1234_\n\nCites: `src\/a.js`\n\n- `src\/` prose\n- more\n/.test(ca.body));
+
   for (const stamp of ['XYZ', 'ABCDEF1', 'abc12', 'a'.repeat(41), '']) {
     const r = mod.parseArgs(['append', '--issue', '1', '--section', 'x', '--line', 'y', '--stamp', stamp]);
     ok(`stamp: parseArgs rejects "${stamp}"`, !!r.error);
