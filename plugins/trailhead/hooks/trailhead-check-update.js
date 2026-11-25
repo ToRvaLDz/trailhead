@@ -13,7 +13,6 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 // Un GIT_DIR ereditato batterebbe -C: le chiamate git non lo seguono (#349).
 const { gitEnv } = require('./lib/trailhead-git-env.js');
-const { isTrailheadStatuslineActive } = require('./lib/statusline-active.js');
 
 const REPO = 'ToRvaLDz/trailhead';
 const NPM_PKG = '@marcomigozzi/trailhead';
@@ -108,6 +107,17 @@ function latestGitHub() {
   return '';
 }
 
+// Il require e' lazy e dentro un try: una lib mancante (install parziale) non
+// deve far crashare l'hook al caricamento. Fallback: "non attiva", quindi la
+// notice compare (#398).
+function statuslineActive(cwd) {
+  try {
+    return require('./lib/statusline-active.js').isTrailheadStatuslineActive({ cwd, configDir: configDir() }) === true;
+  } catch {
+    return false;
+  }
+}
+
 // Calcola la notice dell'update. Codex: sempre (non ha statusline). Claude:
 // solo se la statusline completa di trailhead non e' quella attiva, perche'
 // e' l'unica che mostra il flag update (#398).
@@ -152,9 +162,8 @@ function updateNotice(cwd) {
     return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run $trailhead update to install it.`;
   }
   // Claude Code: se la statusline di trailhead e' attiva mostra gia' il flag.
-  if (isTrailheadStatuslineActive({ cwd, configDir: configDir() })) return null;
+  if (statuslineActive(cwd)) return null;
   return `Heads up: trailhead ${verdict.latest} is available (you have ${verdict.installed}). Run /trailhead:update to install it.`;
-  return null;
 }
 
 // Notice di revisione dei pin dei modelli (#186): calcolata PRIMA e a
