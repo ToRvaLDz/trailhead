@@ -68,7 +68,7 @@ const VERIFY_CLASSES = frozen(['met', 'unmet', 'partial', 'inconclusive']);
 const CONTRACTS = Object.freeze({
   implementing: Object.freeze({
     tokens: frozen(['done', 'partial', 'blocked']),
-    required: frozen(['commits', 'tests', 'deviations', 'blockers']),
+    required: frozen(['commits', 'tests', 'deviations', 'choices', 'blockers']),
     optional: frozen(['fidelity', 'surfaced scope']),
     invariants: Object.freeze([
       Object.freeze({ when: frozen(['done']), field: 'blockers', rule: 'none' }),

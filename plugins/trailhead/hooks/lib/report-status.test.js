@@ -224,15 +224,15 @@ for (const [name, input, [action, verdict, human]] of humanRows) {
 // --- the field families (#249) ---------------------------------------------------
 const EX = 'executor';
 const fullImpl = (status, blockers, extra = '') =>
-  `status: ${status}\ncommits:\nabc1234 feat: x\ndef5678 test: y\ntests: npm test, green\ndeviations: none\nblockers: ${blockers}\n${extra}`;
+  `status: ${status}\ncommits:\nabc1234 feat: x\ndef5678 test: y\ntests: npm test, green\ndeviations: none\nchoices: none\nblockers: ${blockers}\n${extra}`;
 // [name, technique, input, expected]; expected = [action, verdict, problem, fields-or-null, body, report-for-normalise]
 const frows = [
   // --- accept ---
   ['done, fields parsed', EX, fullImpl('done', 'none'), ['accept', 'done', null,
-    { commits: 'abc1234 feat: x\ndef5678 test: y', tests: 'npm test, green', deviations: 'none', blockers: 'none' }, null]],
+    { commits: 'abc1234 feat: x\ndef5678 test: y', tests: 'npm test, green', deviations: 'none', choices: 'none', blockers: 'none' }, null]],
   ['fix uses the implementing contract', 'fix', fullImpl('done', 'none'), ['accept', 'done', null, null, null]],
-  ['done with blockers: empty', EX, 'status: done\ncommits: a b\ntests: t\ndeviations:\nblockers:\n', ['accept', 'done', null,
-    { commits: 'a b', tests: 't', deviations: '', blockers: '' }, null]],
+  ['done with blockers: empty', EX, 'status: done\ncommits: a b\ntests: t\ndeviations:\nchoices:\nblockers:\n', ['accept', 'done', null,
+    { commits: 'a b', tests: 't', deviations: '', choices: '', blockers: '' }, null]],
   ['partial with a blocker', EX, fullImpl('partial', 'infeasible: the gradient header'), ['accept', 'partial', null, null, null]],
   ['blocked, multi-line blockers', EX, fullImpl('blocked', '\n- pkg-x: `npm i pkg-x`, first seen yesterday\n- foreign change in a.js'), ['accept', 'blocked', null, null, null]],
   ['optional fields are parsed', EX, fullImpl('done', 'none', 'fidelity:\n- header -> reproduced\nsurfaced scope: a follow-up\n'), ['accept', 'done', null, null, null]],
@@ -246,27 +246,30 @@ const frows = [
     { settled: 'none', frontier: 'Q1, Q2', question: '1. Which db?', recommended: 'A\nWeak point: it costs more.', amendments: 'none', conflicts: 'none' }, null]],
   ['grilling review round', 'grill', 'status: review\nsettled: Q1 A, because x\nfrontier: none\namendments: Q1: tighten the wording\nconflicts: Q1 vs Q2: reconcile them. Weak point: none\n', ['accept', 'review', null, null, null]],
   // --- normalise: layout, fields intact ---
-  ['bold label and token, bullets', EX, '**Status:** DONE\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- blockers: none\n', ['normalise', 'done', null,
-    { commits: 'abc1234 feat: x', tests: 'ok', deviations: 'none', blockers: 'none' }, null,
-    'status: done\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- blockers: none\n']],
+  ['bold label and token, bullets', EX, '**Status:** DONE\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- choices: none\n- blockers: none\n', ['normalise', 'done', null,
+    { commits: 'abc1234 feat: x', tests: 'ok', deviations: 'none', choices: 'none', blockers: 'none' }, null,
+    'status: done\n- **commits:** abc1234 feat: x\n- tests: ok\n- deviations: none\n- choices: none\n- blockers: none\n']],
   ['labels in any case and with spaces', 'debug', 'Intro\nStatus: Found\nAnswer: a\nEVIDENCE: e\nOpen Questions: none', ['normalise', 'found', null,
     { answer: 'a', evidence: 'e', 'open questions': 'none' }, null, 'status: found\nIntro\nAnswer: a\nEVIDENCE: e\nOpen Questions: none']],
   ['plan ready, status not first: body without the status line', 'plan', 'Here is the plan.\n\nstatus: ready\nStep 1\n', ['normalise', 'ready', null, {}, 'Here is the plan.\n\nStep 1',
     'status: ready\nHere is the plan.\n\nStep 1\n']],
-  ['a label inside a code fence is not a field', EX, 'status: done\ncommits: a b\ntests: t\ndeviations: none\n```\nblockers: x\n```\nblockers: none\n', ['accept', 'done', null,
-    { commits: 'a b', tests: 't', deviations: 'none\n```\nblockers: x\n```', blockers: 'none' }, null]],
-  ['a label in a blockquote is not a field', EX, 'status: done\ncommits: a\ntests: t\ndeviations: none\n> blockers: x\nblockers: none\n', ['accept', 'done', null, null, null]],
-  ['a label that is not in the closed list is part of the value', EX, 'status: done\ncommits: a\nnote: x\ntests: t\ndeviations: none\nblockers: none\n', ['accept', 'done', null,
-    { commits: 'a\nnote: x', tests: 't', deviations: 'none', blockers: 'none' }, null]],
+  ['a label inside a code fence is not a field', EX, 'status: done\ncommits: a b\ntests: t\ndeviations: none\nchoices: none\n```\nblockers: x\n```\nblockers: none\n', ['accept', 'done', null,
+    { commits: 'a b', tests: 't', deviations: 'none', choices: 'none\n```\nblockers: x\n```', blockers: 'none' }, null]],
+  ['a label in a blockquote is not a field', EX, 'status: done\ncommits: a\ntests: t\ndeviations: none\nchoices: none\n> blockers: x\nblockers: none\n', ['accept', 'done', null, null, null]],
+  ['a label that is not in the closed list is part of the value', EX, 'status: done\ncommits: a\nnote: x\ntests: t\ndeviations: none\nchoices: none\nblockers: none\n', ['accept', 'done', null,
+    { commits: 'a\nnote: x', tests: 't', deviations: 'none', choices: 'none', blockers: 'none' }, null]],
 
   // --- reask: the status problems keep precedence over fields ---
-  ['missing status', EX, 'commits: a\ntests: t\ndeviations: none\nblockers: none\n', ['reask', null, 'missing']],
+  ['missing status', EX, 'commits: a\ntests: t\ndeviations: none\nchoices: none\nblockers: none\n', ['reask', null, 'missing']],
   ['conflicting outranks fields', EX, 'status: done\nstatus: blocked\nblockers: none\n', ['reask', null, 'conflicting']],
   ['unknown token outranks fields', EX, 'status: met\ncommits: a\n', ['reask', null, 'unknown-token']],
   ['a review token is unknown for a field technique', 'plan', 'status: met\n', ['reask', null, 'unknown-token']],
   ['an implementing token is unknown for investigating', 'research', 'status: done\n', ['reask', null, 'unknown-token']],
   // --- reask: fields ---
-  ['missing required field (tests)', EX, 'status: done\ncommits: a\ndeviations: none\nblockers: none\n', ['reask', null, 'fields']],
+  ['missing required field (tests)', EX, 'status: done\ncommits: a\ndeviations: none\nchoices: none\nblockers: none\n', ['reask', null, 'fields']],
+  ['missing required field (choices)', EX, 'status: done\ncommits: a\ntests: t\ndeviations: none\nblockers: none\n', ['reask', null, 'fields']],
+  ['choices multi-line value is returned in fields', EX, 'status: done\ncommits: a\ntests: t\ndeviations: none\nchoices:\nretry count: 3, the PLAN named none\nfile layout: one module, small\nblockers: none\n', ['accept', 'done', null,
+    { commits: 'a', tests: 't', deviations: 'none', choices: 'retry count: 3, the PLAN named none\nfile layout: one module, small', blockers: 'none' }, null]],
   ['no fields at all', 'debug', 'status: found\nThe cause is X.\n', ['reask', null, 'fields']],
   ['done with blockers', EX, fullImpl('done', 'a flagged package'), ['reask', null, 'fields']],
   ['partial without blockers', EX, fullImpl('partial', 'none'), ['reask', null, 'fields']],

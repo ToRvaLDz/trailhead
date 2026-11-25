@@ -24,7 +24,7 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 **Return contract.** Return the complete report as your final message. Do not post it anywhere (no issue comment, no PR comment): the orchestrator posts what it needs from it.
 - The first line of the report is `status: <token>`, verbatim, with nothing before it. It is the only line starting with `status:`: status text anywhere in the body is quoted in a code fence or a blockquote, or reworded.
 - statuses: `done` | `partial` | `blocked`.
-- required fields: `commits`, `tests`, `deviations`, `blockers`.
+- required fields: `commits`, `tests`, `deviations`, `choices`, `blockers`.
 - optional fields: `fidelity`, `surfaced scope`.
 - invariant: `done` => `blockers` none.
 - invariant: `partial`, `blocked` => `blockers` non-empty.
@@ -32,7 +32,8 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 - Fields are the end of the report: nothing after the last field.
 - `commits:` one `<sha> <subject>` per line: every commit carrying the ticket's `Refs: #<n>` since the base SHA, including those of an earlier spawn. The orchestrator checks this list against the repo.
 - `tests:` the command you ran and its result.
-- `deviations:` where you departed from the PLAN (or the DIAGNOSIS), or `none`.
+- `deviations:` where you departed from what the PLAN (or the DIAGNOSIS) states, or `none`. Departures only, never a gap the PLAN left open.
+- `choices:` the decisions you took that the PLAN (or the DIAGNOSIS) left open (a default value, an error-handling policy, a file layout, a dependency version, a name), one per line as `<what>: <why>`, or `none`.
 - `blockers:` `none` when `done`. Otherwise one entry per blocker: each flagged package with its exact install command and the evidence that flagged it, each infeasible mockup element with why, each foreign change in the way.
 - `fidelity:` required when a mockup was passed: every element and state of the approved mockup, `element/state -> reproduced | infeasible (why)`.
 - `surfaced scope:` new scope you found and did not work, if any.

@@ -224,7 +224,7 @@ for (const name of ['trailhead-verify', 'trailhead-code-review']) {
     return line === undefined ? null : [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
   };
   const contracts = {
-    implementing: { statuses: ['done', 'partial', 'blocked'], required: ['commits', 'tests', 'deviations', 'blockers'],
+    implementing: { statuses: ['done', 'partial', 'blocked'], required: ['commits', 'tests', 'deviations', 'choices', 'blockers'],
       optional: ['fidelity', 'surfaced scope'] },
     investigating: { statuses: ['found', 'inconclusive', 'needs_input'], required: ['answer', 'evidence', 'open questions'], optional: [] },
     plan: { statuses: ['ready', 'needs_input'], required: [], optional: ['questions'] },
