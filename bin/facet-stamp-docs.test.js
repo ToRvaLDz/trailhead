@@ -69,4 +69,24 @@ ok('auditing 9: stale facets get no proposal', /\*\*Stale facets\*\* → no prop
 ok('site manage: audit mentions stale codebase facets', /codebase facet/i.test(manage) && /as of/.test(manage));
 ok('site concepts: codebase bullet mentions the stamp', concepts.split('\n').some((l) => l.includes('`trailhead:codebase`') && /as of/.test(l)));
 
+// #394: the Cites line and the backfill.
+ok('map: a Cites line of 1 to 5 load-bearing files', map.includes('`Cites:`') && /1 to 5/.test(map));
+ok('map: repo-root-relative paths in backticks', /repo-root-relative/.test(map));
+ok('map: never README, CHANGELOG, docs or test files', /never (?:the )?README, CHANGELOG, docs or test files/i.test(map));
+ok('map: a patch keeps the Cites line', /patch keeps the `Cites:` line/.test(map));
+ok('substrate: Codebase row mentions the Cites line', codebaseRow.includes('`Cites:`'));
+for (const [name, line] of [['build', resolves[0] || ''], ['bug', resolves[1] || '']]) {
+  ok(`engines ${name}: the facet patch keeps the Cites line`, line.includes('`Cites:`'));
+}
+ok('auditing 7b: the Cites line is what is compared', /`Cites:` line[^.]*(?:is|are) (?:what is )?compared|compares[^.]*`Cites:` line/.test(sec) && sec.includes('`problems`'));
+ok('auditing 7b: names the problem kinds', ['no-cites-line', 'too-many-cites', 'missing-cite', 'excluded-cite'].every((k) => sec.includes(k)));
+ok('auditing 8: lists unstamped, no-paths and problem facets with reasons', /unstamped[^.]*`no-paths`[^.]*problems?[^.]*reason/i.test(report) && /outside the (?:class )?sum/.test(report));
+const backfill = proposals.split('\n').find((l) => /Unstamped, uncited or no-paths facets/.test(l)) || '';
+ok('auditing 9: backfill proposal exists', backfill.includes('backfill'));
+ok('auditing 9: backfill is an agent pass routed as codebase-map', /agent pass/.test(backfill) && backfill.includes('codebase-map'));
+ok('auditing 9: backfill patches with replace --stamp', backfill.includes('trailhead-issue-body.js replace') && backfill.includes('--stamp'));
+ok('auditing 9: backfill is human-owned and never script-only', /plain yes\/no/.test(backfill) && /never a script-only stamp/i.test(backfill));
+ok('site manage: audit offers a backfill', /backfill/i.test(manage) && /Cites:/.test(manage));
+ok('site concepts: codebase bullet mentions the Cites line', concepts.split('\n').some((l) => l.includes('`trailhead:codebase`') && l.includes('Cites:')));
+
 console.log(`facet-stamp-docs.test.js: ${passed} checks passed`);
