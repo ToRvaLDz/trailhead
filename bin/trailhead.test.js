@@ -1201,9 +1201,9 @@ ok('claude: trailhead-commit-guard.js loads without MODULE_NOT_FOUND', (() => {
   }
   return !out.includes('MODULE_NOT_FOUND') && !out.includes('Cannot find module');
 })());
-// Ogni hook installato che fa require('./lib/<f>') deve trovare <f> accanto a
-// se': HOOK_LIB_FILES copia le lib per nome, quindi una dimenticanza fa
-// crashare l'hook al caricamento (#398).
+// Every installed hook that does require('./lib/<f>') must find <f> next to
+// it: HOOK_LIB_FILES copies libs by name, so a forgotten entry crashes the
+// hook at load time (#398).
 {
   const hooksInstalled = path.join(claudeDir, 'hooks');
   const missing = [];
