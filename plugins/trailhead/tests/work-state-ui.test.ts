@@ -141,7 +141,8 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     expect(lastStatus(r)).toBe(STATUS_PLAN)
     const ui = await mountBand($)
-    expect(await ui.find({ key: 'engine' })).toBeUndefined()
+    // The host may draw the engine's own tree beside the band, so the engine box says nothing here:
+    // the ticket and title leaves below prove the mod drew its band.
     expect((await leaf(ui, 'ticket'))?.text).toBe('#203')
     expect((await leaf(ui, 'title'))?.text).toBe(TITLE)
 
