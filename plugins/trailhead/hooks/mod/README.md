@@ -171,7 +171,8 @@ projection leaves the `panel` verb out (`CODEX_MOD_ONLY_VERBS` in `bin/lib/codex
   footer shows an `update to X.Y.Z` button: it runs `/trailhead:update` in the current conversation (no `/clear`) on the
   same press slot, held and cancellable during a turn like `work`. After it the row says the update was requested and a
   plugin reload or restart is needed, never that it is done. Once the new version is installed and Claude Code is
-  restarted, the button clears: the session-start hook re-derives the cached verdict against the installed version. Claude Code only.
+  restarted, the button clears. A plugin reload also drops the note (it is tied to the module load that sent it), and
+  the cache read decides again: the session-start hook re-derives the cached verdict against the installed version. Claude Code only.
   With no turn running the press starts at once and the row reads `starting` (no cancel) until the calls settle,
   across the reset too. One press at a time: another while one is held or starting is ignored. A session that ends
   while a press is held drops it. A press while the session is not in the pinned repo (a shell `cd` moved it) still
