@@ -7,6 +7,8 @@
 //           [--gh-repo <owner/name>] [--before <file>] [--comment-file <file>]
 //   restamp --repo <dir> --ticket <n> --issue <codebase n> --facet <name> --stamp <sha>
 //           --reason "<file>: <why>" [--gh-repo <owner/name>]
+//   select  --repo <dir> --issue <codebase n> [--file <path>]... [--text-file <file>]
+//           [--gh-repo <owner/name>]       (read-only: the Plan step's by-file facet filter)
 //
 // Prints one JSON line. Exit 0 on success, 2 on a usage error, a fatal error or a
 // refusal ({"error":...} / {"status":"error"|"refused",...}), 1 when the guarded write
@@ -19,7 +21,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { gitEnv } = require('./trailhead-git-env.js');
-const { sanitizeToken, citedTokens } = require('./trailhead-audit-walk.js');
+const { sanitizeToken, citedTokens, facetStatus, makeCtx } = require('./trailhead-audit-walk.js');
 const { facetsOf, applyOp, guardedWrite, readIssue, defaultGh } = require('./trailhead-issue-body.js');
 
 const SHA_RE = /^[0-9a-f]{7,40}$/;
@@ -255,25 +257,68 @@ function restamp(o, io) {
   return { code: 0, result: { status: 'restamped', line: `Codebase: ${o.facet} restamped, no change (${reason.file}: ${reason.why})` } };
 }
 
+// --- select ------------------------------------------------------------------------------
+// Candidate files of a Plan: each --file path whole (a comma is never split), plus the
+// backticked path tokens of the text file; both sanitised like a facet's cites.
+function candidatesOf(o) {
+  const out = [];
+  const add = (t) => { if (t !== null && !out.includes(t)) out.push(t); };
+  for (const raw of o.files) add(sanitizeToken(raw));
+  if (o.textFile) {
+    let text;
+    try { text = fs.readFileSync(o.textFile, 'utf8'); } catch (e) { throw new Fail(`cannot read --text-file ${o.textFile}: ${e.message}`); }
+    for (const t of citedTokens(text)) add(t);
+  }
+  return out.sort();
+}
+
+// Read-only: the facets citing a candidate, each with its freshness against HEAD.
+function select(o, io) {
+  const read = readIssue(o.issue, { gh: io.gh, repo: o.ghRepo });
+  if (read.error) throw new Fail(read.error);
+  const facets = facetsOf(read.body);
+  assertUniqueNames(facets);
+  const candidates = candidatesOf(o);
+  const head = git(o.repo, ['rev-parse', 'HEAD']).trim();
+  const ctx = makeCtx(o.repo);
+  const selected = [];
+  for (const f of facets) {
+    const cites = touchedCites(citedPaths(f), candidates);
+    if (!cites.length) continue;
+    const st = facetStatus(ctx, f, head);
+    selected.push({ name: f.name, stamp: f.sha, status: st.status, cites, changed: st.changed, text: f.text });
+  }
+  const warnings = selected.filter((s) => s.status === 'stale').map((s) => `${s.name} stale since ${s.stamp}: ${s.changed.join(', ')}`);
+  const unchecked = selected.filter((s) => s.status === 'unstamped' || s.status === 'unresolved');
+  const audit = unchecked.length
+    ? `${unchecked.length} selected facet(s) cannot be checked for freshness (${unchecked.map((u) => `${u.name}: ${u.status}`).join(', ')}): run the trailhead audit verb to backfill them`
+    : null;
+  return { status: 'ok', head, candidates, selected, warnings, audit };
+}
+
 // --- CLI -----------------------------------------------------------------------------------
 const FLAGS = {
   check: { '--repo': 'repo', '--ticket': 'ticket', '--issue': 'issue', '--gh-repo': 'ghRepo', '--floor': 'floor', '--before': 'before', '--comment-file': 'commentFile' },
+  select: { '--repo': 'repo', '--issue': 'issue', '--gh-repo': 'ghRepo', '--file': 'files', '--text-file': 'textFile' },
   restamp: { '--repo': 'repo', '--ticket': 'ticket', '--issue': 'issue', '--gh-repo': 'ghRepo', '--facet': 'facet', '--stamp': 'stamp', '--reason': 'reason' },
 };
-const REQUIRED = { check: ['ticket', 'issue', 'floor'], restamp: ['ticket', 'issue', 'facet', 'stamp'] };
+const REQUIRED = { check: ['ticket', 'issue', 'floor'], restamp: ['ticket', 'issue', 'facet', 'stamp'], select: ['issue'] };
+const REPEATABLE = new Set(['files']);
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (!FLAGS[command]) throw new Fail('usage: trailhead-facet-touch.js <check|restamp> --repo <dir> --ticket <n> --issue <n> ...');
-  const o = { command, repo: '.' };
+  if (!FLAGS[command]) throw new Fail('usage: trailhead-facet-touch.js <check|restamp|select> --repo <dir> --ticket <n> --issue <n> ...');
+  const o = { command, repo: '.', files: [] };
   for (let i = 0; i < rest.length; i++) {
     const key = FLAGS[command][rest[i]];
     if (!key) throw new Fail(`usage: unknown argument: ${rest[i]}`);
     if (i + 1 >= rest.length) throw new Fail(`usage: ${rest[i]} requires a value`);
-    o[key] = rest[++i];
+    if (REPEATABLE.has(key)) o[key].push(rest[++i]);
+    else o[key] = rest[++i];
   }
   for (const k of REQUIRED[command]) if (o[k] === undefined) throw new Fail(`usage: ${command} needs --${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}`);
   for (const k of ['ticket', 'issue']) {
+    if (o[k] === undefined) continue;
     if (!/^\d+$/.test(o[k])) throw new Fail(`usage: --${k} must be a number, got: ${o[k]}`);
     o[k] = Number(o[k]);
   }
@@ -288,6 +333,7 @@ function main(argv, { gh, stdout, guard, tmpdir, firstEditDelta2, cwd } = {}) {
     o.repo = path.resolve(cwd || process.cwd(), o.repo);
     const io = { gh: gh || defaultGh, guard, tmpdir, firstEditDelta2 };
     if (o.command === 'check') { emit(check(o, io)); return 0; }
+    if (o.command === 'select') { emit(select(o, io)); return 0; }
     const r = restamp(o, io);
     emit(r.result);
     return r.code;

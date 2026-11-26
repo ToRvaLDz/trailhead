@@ -334,5 +334,51 @@ const BODY0 = bodyOf(facet('Alpha', S.c0, ['src/a.js', 'src/keep.js'], 'Alpha te
   ok('restamp: check then clears the facet', names(after.json.pending).length === 0 && after.json.flagged[0].covered === true);
 }
 
+// --- select: the facets citing files the change will touch -----------------------------
+const sel = (extra) => ['select', '--repo', S.dir, '--issue', '5', '--gh-repo', 'o/r', ...extra];
+{
+  const t = makeTracker(bodyOf(
+    facet('Alpha', S.c0, ['src/a.js']),
+    facet('Fresh', S.c4, ['src/a.js']),
+    facet('Beta', S.c4, ['src/b.js']),
+    facet('Dir', S.c0, ['src']),
+    facet('Unst', null, ['src/a.js']),
+    facet('Legacy', S.c4, null, 'Reads `src/a.js`.'),
+    facet('Comma', S.c4, ['docs/a,b.md']),
+  ));
+  const r = run(sel(['--file', 'src/a.js']), t);
+  eq('select: exit 0, one JSON line', [r.code, r.out.trim().split('\n').length], [0, 1]);
+  eq('select: status ok and head', [r.json.status, r.json.head], ['ok', S.c4]);
+  eq('select: only the facets citing a candidate (a directory cite matches files under it)', names(r.json.selected), ['Alpha', 'Dir', 'Fresh', 'Legacy', 'Unst']);
+  const by = (n) => r.json.selected.find((x) => x.name === n);
+  eq('select: statuses', ['Alpha', 'Fresh', 'Unst', 'Dir'].map((n) => by(n).status), ['stale', 'current', 'unstamped', 'stale']);
+  eq('select: cites are the matched candidates', by('Alpha').cites, ['src/a.js']);
+  eq('select: changed files of a stale facet', by('Alpha').changed, ['src/a.js']);
+  ok('select: facet text is carried', /Describes the module/.test(by('Alpha').text) && by('Alpha').stamp === S.c0);
+  eq('select: one warning per stale facet, none for a current one', r.json.warnings, [
+    `Alpha stale since ${S.c0}: src/a.js`,
+    `Dir stale since ${S.c0}: src/a.js, src/b.js, src/gone.js, src/new.js, src/old.js`,
+  ]);
+  ok('select: unstamped facet gives the audit pointer, not a warning', /audit verb/.test(r.json.audit) && /Unst/.test(r.json.audit) && !r.json.warnings.some((w) => w.startsWith('Unst')));
+  eq('select: candidates echoed', r.json.candidates, ['src/a.js']);
+  eq('select: never writes to the tracker', [t.writes.length, t.edits], [0, 0]);
+  const none = run(sel([]), t);
+  eq('select: no candidates is an empty selection, exit 0', [none.code, none.json.selected, none.json.warnings], [0, [], []]);
+  const other = run(sel(['--file', 'NOTES.md']), t);
+  eq('select: no matching facet is an empty selection', [other.code, other.json.selected], [0, []]);
+  const comma = run(sel(['--file', 'docs/a,b.md', '--file', 'src/b.js']), t);
+  eq('select: repeatable --file keeps a comma path whole', [names(comma.json.selected), comma.json.candidates], [['Beta', 'Comma', 'Dir'], ['docs/a,b.md', 'src/b.js']]);
+  const text = run(sel(['--text-file', save('Change `src/b.js` and `not a path` here.\n')]), t);
+  eq('select: backticked paths of the text file are candidates', [names(text.json.selected), text.json.candidates], [['Beta', 'Dir'], ['src/b.js']]);
+  const bad = run(['select', '--repo', S.dir, '--gh-repo', 'o/r', '--file', 'x'], t);
+  eq('select: a missing --issue is exit 2', [bad.code, bad.json.status], [2, 'error']);
+  const nofile = run(sel(['--text-file', path.join(scratch, 'nope.txt')]), t);
+  eq('select: an unreadable --text-file is exit 2', [nofile.code, nofile.json.status], [2, 'error']);
+  t.set('');
+  eq('select: a failed read is exit 2', run(sel(['--file', 'src/a.js']), t).code, 2);
+  const tc = makeTracker(bodyOf(facet('Dup', S.c4, ['src/a.js']), facet('Dup', S.c4, ['src/b.js'])));
+  eq('select: duplicate facet names fail closed', run(sel(['--file', 'src/a.js']), tc).code, 2);
+}
+
 for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
 console.log(`✓ facet-touch: ${passed} assertions passed`);

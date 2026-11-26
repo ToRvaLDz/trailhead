@@ -777,7 +777,7 @@ function main(argv, { cwd, stdout } = {}) {
   }
 }
 
-module.exports = { gitDiffers, parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute, parseArgs, main, sanitizeToken, citedTokens };
+module.exports = { gitDiffers, parseRefs, parseHunks, hunkTouches, buildTrailerIndex, fastPath, attribute, parseArgs, main, sanitizeToken, citedTokens, facetStatus, makeCtx };
 
 if (require.main === module) {
   // exitCode, not process.exit(): a large index on a pipe must flush first.
