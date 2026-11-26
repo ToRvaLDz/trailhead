@@ -97,6 +97,10 @@ const envPct = (tok, v, o = {}) => pct(tok, { ...o, env: { CLAUDE_CODE_AUTO_COMP
 for (const v of ['500k', '500K', '0.5m', '0.5M', '500,000', '500 000', '500_000', '5e5', '500000abc', ' 500k ']) {
   eq(`env ${JSON.stringify(v)} -> 500k`, envPct(400000, v), 86);
 }
+// cifre enormi: valore non usabile, ricade su settings/tetto modello (niente eccezione)
+for (const v of ['9'.repeat(400), '9'.repeat(400) + 'k', '9'.repeat(5000)]) {
+  eq(`env huge ${v.length} chars falls back`, envPct(900000, v), 93);
+}
 eq('env 1M', envPct(900000, '1M'), 93);
 eq('env 1e6 like 1M', envPct(900000, '1e6'), 93);
 eq('env 5M capped at model ceiling', envPct(900000, '5M'), 93);

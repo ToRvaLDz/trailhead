@@ -231,6 +231,8 @@ def env_window(s):
     if last in ("k", "m"):
         mt = re.match(r"^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?", o, re.A)
         if not mt: return None
+        # prefisso numerico enorme: non usabile (evita OverflowError di float)
+        if len(mt.group(0)) > 64: return None
         v = float(mt.group(0)) * (1e6 if last == "m" else 1000)
     elif len(o) <= 32 and re.match(r"^[+-]?(\d+(\.\d*)?|\.\d+)[eE][+-]?\d+$", o, re.A):
         v = float(o)
@@ -239,7 +241,8 @@ def env_window(s):
         v = float(int(re.sub(r"[^0-9]", "", o)) * (-1 if o[0] == "-" else 1))
     else:
         mt = re.match(r"^[+-]?\d+", o, re.A)
-        if not mt: return None
+        # oltre 16 cifre non è un intero sicuro: non usabile (evita Overflow o ValueError)
+        if not mt or len(mt.group(0).lstrip("+-")) > 16: return None
         v = float(int(mt.group(0)))
     if v != v or v in (float("inf"), float("-inf")): return None
     v = math.floor(v + 0.5)   # come Math.round di JS
