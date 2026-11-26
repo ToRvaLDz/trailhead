@@ -74,7 +74,7 @@ Never `cd` (or `pushd`/`env -C`) into a directory first; the full rule is in `_s
 - invariant: `needs_input` => `questions` non-empty.
 - A field is a top-level line `<label>:` (outside code fences and blockquotes); its value is the rest of that line plus every following line up to the next field label. An empty value or `none` means none.
 - With `needs_input`, fields are the end of the report: nothing after the last field.
-- `ready`: the rest of the report is the PLAN (the `body`): the steps, the seams (one line each, `<seam>: catches <what a test here fails on>; misses <what gets through it>`), the files touched and the verification criteria. A `Constrained by:` section follows them (see the Plan step). It is posted verbatim, so write nothing in it that is not the PLAN.
+- `ready`: the rest of the report is the PLAN (the `body`): the steps, the seams (one line each, `<seam>: catches <what a test here fails on>; misses <what gets through it>`), the files touched and the verification criteria. A `Constrained by:` section follows them, then a `Codebase:` section built from the last run of the `select` recheck command the orchestrator handed you (run it per file touched, read the facets it adds, and run it again after every revision that changes the files touched, until a revision leaves them unchanged and no unread facet comes back); a stale facet is a warning line there, never a blocker and never a `needs_input` (see the Plan step). It is posted verbatim, so write nothing in it that is not the PLAN.
 - `needs_input`: `questions:` holds the blocking questions only; no PLAN.
 <!-- /trailhead:agent-block plan -->
 
