@@ -143,7 +143,11 @@ const stateText = (over: Record<string, unknown> = {}): string =>
   })
 
 // The plugin's atoms, which the engine resets on /clear.
-const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'pendingPhase', 'paneAutoOpened', 'ownTicket', 'repoPin', 'myTickets']
+const ATOM_KEYS = ['workState', 'isOrphaned', 'promptSnapshot', 'mapPane', 'activeMap', 'viewedMap', 'isDashboard', 'dashboardPane', 'pendingWork', 'pendingPhase', 'updateAvailable', 'updateSent', 'paneAutoOpened', 'ownTicket', 'repoPin', 'myTickets']
+
+// The update-check cache the pane reads (HOME and no XDG_CACHE_HOME in the rig).
+const UPDATE_CACHE = '/home/u/.cache/trailhead/update-check.json'
+const updateCache = (over: Record<string, unknown> = {}) => JSON.stringify({ installed: '0.15.0', latest: '0.16.0', updateAvailable: true, ...over })
 
 const PANE_PROPS = {
   title: 'Map',
@@ -237,6 +241,8 @@ const rig = (on: On, engine?: any) => {
     runs: [] as { command: string; args: string }[],
     gate: null as Promise<void> | null,
     refuse: null as string | null,
+    // The update-check cache file's text (null: no file).
+    update: null as string | null,
     // The built-in `clear`: `clearGate` holds it, `refuseClear` rejects it.
     clearGate: null as Promise<void> | null,
     refuseClear: null as string | null,
@@ -301,7 +307,9 @@ const rig = (on: On, engine?: any) => {
     if (argv[2] === 'view') return ok(JSON.stringify(isOther ? r.otherMap : r.map))
     return ok(JSON.stringify(argv.includes('all') ? (isOther ? r.otherHistory : r.history) : isOther ? r.otherTickets : r.tickets))
   }
+  on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
   on('fs.read', async (_$, e) => {
+    if (e.path === UPDATE_CACHE) return r.update === null ? { deny: `ENOENT: no such file or directory, open '${e.path}'` } : { value: r.update }
     // A relative path reaches the hook already resolved against the host's directory, not the repo's: put
     // it under the session's working directory, which is what the engine resolves it against. A path under
     // one of the repos is absolute (a pinned read) and stays.
@@ -4020,5 +4028,224 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Bash', command: 'gh issue create -t t --label trailhead:task' } as never)
     await settle(r)
     expect(r.toasts).toEqual([])
+  })
+
+  // The update button (#400): one row above the footer, on the ticket press slot.
+  const UPDATE_RUN = { command: 'trailhead:update', args: '' }
+  const NOTE = 'update to 0.16.0 requested: once it installs, reload plugins or restart Claude Code'
+
+  test(`the cache reporting an update draws the update button [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    expect((await ui.find({ key: 'update' }))?.props).toMatchObject({ label: 'update to 0.16.0' })
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+  })
+
+  for (const [what, text] of [
+    ['no cache file', null],
+    ['a false verdict', updateCache({ updateAvailable: false })],
+    ['a non-semver latest', updateCache({ latest: 'soon' })],
+    ['an unreadable cache', 'not json'],
+  ] as const) {
+    test(`${what} draws no update row [${surface}]`, async ($, on) => {
+      const r = rig(on, $)
+      r.update = text
+      await $.session.start(START)
+      const ui = await openAndMount($, r)
+      expect(await hasKey(ui, 'update')).toBe(false)
+      expect(await hasKey(ui, 'update-row')).toBe(false)
+    })
+  }
+
+  test(`an update press with no turn runs /trailhead:update once, with no /clear, and asks for a reload [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(r.runs).toEqual([UPDATE_RUN])
+    expect(r.session).toBe(SESSION)
+    await ui.redraw()
+    expect(await textOf(ui, 'update-note')).toBe(NOTE)
+    expect(await hasKey(ui, 'update')).toBe(false)
+    expect(await hasKey(ui, 'update-starting')).toBe(false)
+    // The slot is free again: a ticket press goes through.
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(r.runs).toEqual([UPDATE_RUN, { command: 'clear', args: '' }, { command: 'trailhead:work', args: '209' }])
+  })
+
+  test(`an update press during a running turn is held with a cancel button and runs when the turn ends [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(await textOf(ui, 'update-queued')).toBe('update queued')
+    expect((await ui.find({ key: 'update-queued' }))?.children[0]).toMatchObject({ props: { color: AMBER } })
+    expect((await ui.find({ key: 'update-cancel' }))?.props).toMatchObject({ label: 'cancel' })
+    expect(await hasKey(ui, 'update')).toBe(false)
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([UPDATE_RUN])
+    await ui.redraw()
+    expect(await textOf(ui, 'update-note')).toBe(NOTE)
+    expect(await hasKey(ui, 'update-queued')).toBe(false)
+  })
+
+  test(`a cancel of a held update press sends nothing and puts the button back [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    await ui.press({ key: 'update-cancel' })
+    await settle(r)
+    expect(await hasKey(ui, 'update-queued')).toBe(false)
+    expect(await hasKey(ui, 'update')).toBe(true)
+    await completeTurn($)
+    await settle(r)
+    expect(r.runs).toEqual([])
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+  })
+
+  test(`a session that ends while an update press is held drops it [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    await $.session.end({ reason: 'resume', sessionId: r.session, resume: {} })
+    await settle(r)
+    expect(r.runs).toEqual([])
+    await ui.redraw()
+    expect(await hasKey(ui, 'update-queued')).toBe(false)
+    expect(await hasKey(ui, 'update')).toBe(true)
+  })
+
+  test(`the reload note stays when the cache then reads no update [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    r.update = updateCache({ updateAvailable: false })
+    await r.clock.advance(FLOOR)
+    await ui.press({ key: 'refresh' })
+    await settle(r)
+    await ui.redraw()
+    expect(await textOf(ui, 'update-note')).toBe(NOTE)
+    expect(await hasKey(ui, 'update')).toBe(false)
+  })
+
+  test(`the reload note survives a /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    await $.command.run({ command: 'clear', args: '' })
+    await settle(r)
+    await ui.redraw()
+    expect(await textOf(ui, 'update-note')).toBe(NOTE)
+    expect(await hasKey(ui, 'update')).toBe(false)
+  })
+
+  test(`an update press while a ticket press holds the slot does nothing, and the other way round [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await startMainTurn($)
+    await ui.press({ key: 'work-209' })
+    await settle(r)
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(await hasKey(ui, 'update-queued')).toBe(false)
+    expect(await textOf(ui, 'queued-209')).toBe('queued')
+    await ui.press({ key: 'cancel-209' })
+    await settle(r)
+
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(await textOf(ui, 'update-queued')).toBe('update queued')
+    await ui.press({ key: 'work-210' })
+    await settle(r)
+    expect(await hasKey(ui, 'queued-210')).toBe(false)
+    await completeTurn($)
+    await settle(r)
+    // Only the update ran: the work press never took the slot.
+    expect(r.runs).toEqual([UPDATE_RUN])
+  })
+
+  test(`an update command that is refused toasts, keeps the button and shows no reload note [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    r.refuse = 'no such command'
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(r.runs).toEqual([UPDATE_RUN])
+    expect(r.toasts).toHaveLength(1)
+    expect(r.toasts[0]).toMatch(/^update not started: /)
+    await ui.redraw()
+    expect(await hasKey(ui, 'update')).toBe(true)
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+    expect(await hasKey(ui, 'update-starting')).toBe(false)
+  })
+
+  test(`an update claim left queued with no press behind it is cleared by the row's cancel [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.forced = { pendingWork: 0, pendingPhase: 'queued' }
+    await ui.redraw()
+    expect(await hasKey(ui, 'update-cancel')).toBe(true)
+    await ui.press({ key: 'update-cancel' })
+    await settle(r)
+    await ui.redraw()
+    expect(r.runs).toEqual([])
+    expect(await hasKey(ui, 'update-queued')).toBe(false)
+    expect(await hasKey(ui, 'update')).toBe(true)
+  })
+
+  test(`an update claim left starting with no press behind it is cleared when the pane draws [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.forced = { pendingWork: 0, pendingPhase: 'starting' }
+    await ui.redraw()
+    expect(await textOf(ui, 'update-starting')).toBe('updating…')
+    await settle(r)
+    await ui.redraw()
+    expect(await hasKey(ui, 'update-starting')).toBe(false)
+    expect(await hasKey(ui, 'update')).toBe(true)
+  })
+
+  test(`the update row sits above the footer on the dashboard too [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    await pressDashboard(ui, r)
+    expect(await hasKey(ui, 'update')).toBe(true)
   })
 }
