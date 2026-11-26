@@ -4240,6 +4240,36 @@ for (const surface of SURFACES) {
     expect(await hasKey(ui, 'update')).toBe(true)
   })
 
+  test(`a reload note written by another module load draws the button, and a press works [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    // What a plugin reload leaves: the atom survives, the module that wrote it is gone.
+    r.forced = { updateSent: { latest: '0.16.0', load: 'an-earlier-load' } }
+    await ui.redraw()
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+    expect((await ui.find({ key: 'update' }))?.props).toMatchObject({ label: 'update to 0.16.0' })
+    await ui.press({ key: 'update' })
+    await settle(r)
+    expect(r.runs).toEqual([UPDATE_RUN])
+    await ui.redraw()
+    expect(await textOf(ui, 'update-note')).toBe(NOTE)
+  })
+
+  test(`a note from another module load is not carried across a /clear [${surface}]`, async ($, on) => {
+    const r = rig(on, $)
+    r.update = updateCache()
+    await $.session.start(START)
+    const ui = await openAndMount($, r)
+    r.forced = { updateSent: { latest: '0.16.0', load: 'an-earlier-load' } }
+    await $.command.run({ command: 'clear', args: '' })
+    await settle(r)
+    await ui.redraw()
+    expect(await hasKey(ui, 'update-note')).toBe(false)
+    expect(await hasKey(ui, 'update')).toBe(true)
+  })
+
   test(`the update row sits above the footer on the dashboard too [${surface}]`, async ($, on) => {
     const r = rig(on, $)
     r.update = updateCache()

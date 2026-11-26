@@ -157,7 +157,11 @@ export const pendingPhase = atom({ plugin: 'trailhead', key: 'pendingPhase' } as
 // The newer version the update-check cache reports (#400), re-read on every refresh; null: no button.
 export const updateAvailable = atom({ plugin: 'trailhead', key: 'updateAvailable' } as const, null as { latest: string } | null)
 // The version whose update was asked for: from then on the row says a reload or restart is needed, whatever the cache says.
-export const updateSent = atom({ plugin: 'trailhead', key: 'updateSent' } as const, null as string | null)
+// Atoms outlive a mod reload, so the value carries the id of the module load that wrote it: another load's is no note (#400).
+export const updateSent = atom({ plugin: 'trailhead', key: 'updateSent' } as const, null as { latest: string; load: string } | null)
+const LOAD_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+// The version this load asked for, or null: unset, or written by an earlier load of the module.
+const sentBy = (value: { latest: string; load: string } | null | undefined): string | null => (value?.load === LOAD_ID ? value.latest : null)
 // Set once the auto-open is done: the pane was seen drawn, or the person acted on it (the command, a close by
 // hand, the close button). An unasked open that stays undrawn does not set it; never auto-opened after it is set.
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
@@ -619,7 +623,7 @@ async function carryOverClear($: Dollar) {
     viewed: await read($, viewedMap),
     active: await read($, activeMap),
     isDashboard: await read($, isDashboard),
-    updateSent: await read($, updateSent),
+    updateSent: sentBy(await read($, updateSent)),
   }
 }
 
@@ -633,7 +637,7 @@ async function restoreAfterClear($: Dollar) {
     await syncPin($)
     if (kept?.isAutoOpened === true) await update($, paneAutoOpened, () => true)
     if (kept?.isDashboard === true) await update($, isDashboard, () => true)
-    if (kept?.updateSent != null) await update($, updateSent, () => kept.updateSent)
+    if (kept?.updateSent != null) await update($, updateSent, () => ({ latest: kept.updateSent as string, load: LOAD_ID }))
     const active = await readActiveMap($)
     const viewed = kept?.viewed ?? null
     if (viewed !== null && viewed !== active && active === kept?.active) await update($, viewedMap, () => viewed)
@@ -711,7 +715,7 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number, tit
 async function startUpdate($: Dollar) {
   if (held !== null || inFlight !== null) return
   const latest = (await read($, updateAvailable))?.latest
-  if (latest === undefined || (await read($, updateSent)) !== null) return
+  if (latest === undefined || sentBy(await read($, updateSent)) !== null) return
   const { value, version } = await $.state.get(PENDING)
   if (value != null) return
   if (held !== null || inFlight !== null) return
@@ -805,7 +809,7 @@ async function dispatch($: Dollar, press: HeldPress) {
     }
     await clearing
     // Asked for, not known done: the note says a reload or restart is needed. A throw or rejection skips this line.
-    if (press.verb === 'update') return void (await update($, updateSent, () => press.latest))
+    if (press.verb === 'update') return void (await update($, updateSent, () => ({ latest: press.latest, load: LOAD_ID })))
     // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
     if ((await $.session.id()) === before) return debug($, `trailhead mod: ${press.verb} ${press.number} skipped, the conversation was not cleared`)
     // The clear emptied the atoms: the row is still starting in the new session.
@@ -1135,7 +1139,7 @@ export function registerMapPane(on: On) {
     const pending = await read($, pendingWork)
     const phase = await read($, pendingPhase)
     const offered = await read($, updateAvailable)
-    const sent = await read($, updateSent)
+    const sent = sentBy(await read($, updateSent))
     if (pending !== null && phase !== 'queued') $.clock.after(0, () => void clearStale($))
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
