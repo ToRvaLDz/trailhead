@@ -141,7 +141,7 @@ const S = mkrepo();
   eq('check: unstamped and no-paths are uncheckable, not flagged', r.json.uncheckable.map((u) => `${u.name}:${u.reason}`).sort(), ['Delta:no-paths', 'Gamma:unstamped']);
   eq('check: an untouched facet (Beta) is neither flagged nor uncheckable', names(r.json.flagged).includes('Beta') || names(r.json.uncheckable).includes('Beta'), false);
   eq('check: all flagged are pending below the floor', names(r.json.pending), ['Alpha', 'Deleted', 'Legacy', 'Renamed']);
-  ok('check: audit line points to /trailhead:audit', /\/trailhead:audit/.test(r.json.audit) && /Gamma/.test(r.json.audit) && /Delta/.test(r.json.audit));
+  ok('check: audit line points to the audit verb', /audit verb/.test(r.json.audit) && /Gamma/.test(r.json.audit) && /Delta/.test(r.json.audit));
   ok('check: bodyHash is a sha256', /^[0-9a-f]{64}$/.test(r.json.bodyHash));
 }
 

@@ -48,7 +48,7 @@ ok('substrate Codebase row mirrors the check', substrate.includes('trailhead-fac
 const concepts = read(path.join(root, 'site/src/content/docs/docs/concepts.md'));
 ok('concepts names the facet check at Resolve', /Resolve checks the facets that cite the files a ticket touched/.test(concepts));
 for (const f of ['plugins/trailhead/skills/trailhead-work/references/ticket-engines.md', 'plugins/trailhead/skills/_shared/techniques/codebase-map.md', 'plugins/trailhead/skills/_shared/substrate.md', 'site/src/content/docs/docs/concepts.md']) {
-  ok(`${f}: no em-dash`, !read(path.join(root, f)).includes('—'));
+  ok(`${f}: no em-dash`, !read(path.join(root, f)).includes('\u2014'));
 }
 
 console.log(`✓ facet-touch-docs: ${passed} assertions passed`);

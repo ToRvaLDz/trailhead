@@ -203,7 +203,7 @@ function check(o, io) {
     lineProblems.push(...j.lineProblems);
   }
   const audit = uncheckable.length
-    ? `${uncheckable.length} facet(s) cannot be checked against files (${uncheckable.map((u) => `${u.name}: ${u.reason}`).join(', ')}): run /trailhead:audit`
+    ? `${uncheckable.length} facet(s) cannot be checked against files (${uncheckable.map((u) => `${u.name}: ${u.reason}`).join(', ')}): run the trailhead audit verb to backfill them`
     : null;
   return {
     status: 'ok', ticket: o.ticket, issue: o.issue, floor: ctx.floor, commits: ctx.commits, touched: ctx.touched,
