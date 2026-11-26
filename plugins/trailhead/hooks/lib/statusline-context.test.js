@@ -92,6 +92,22 @@ eq('env bad falls back to setting', pct(617000, { env: { CLAUDE_CODE_AUTO_COMPAC
   settings: { user: win650 } }), 100);
 eq('window above model capped', pct(966000, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '5000000' } }), 100);
 eq('window above model capped 900k', pct(900000, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '5000000' } }), 93);
+// suffissi, separatori e clamp a 100k (parser env di Claude Code, #382)
+const envPct = (tok, v, o = {}) => pct(tok, { ...o, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: v } });
+for (const v of ['500k', '500K', '0.5m', '0.5M', '500,000', '500 000', '500_000', '5e5', '500000abc', ' 500k ']) {
+  eq(`env ${JSON.stringify(v)} -> 500k`, envPct(400000, v), 86);
+}
+eq('env 1M', envPct(900000, '1M'), 93);
+eq('env 1e6 like 1M', envPct(900000, '1e6'), 93);
+eq('env 5M capped at model ceiling', envPct(900000, '5M'), 93);
+eq('env 5_00000 clamps to 100k', envPct(33500, '5_00000'), 50);
+for (const v of ['50000', '1.5k', '1,000', '34000']) {
+  eq(`env ${v} clamps to 100k`, envPct(33500, v), 50);
+}
+for (const v of ['k', 'abc', '0', '-5', 'nan', 'inf']) {
+  eq(`env ${v} unusable -> fallback`, envPct(900000, v), 93);
+  eq(`env ${v} unusable -> setting`, envPct(617000, v, { settings: { user: win650 } }), 100);
+}
 
 // --- CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ---
 eq('pct 50 at threshold', pct(500000, { env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' } }), 100);
@@ -130,11 +146,11 @@ eq('ratio bypasses window setting', pct(400000, { env: { CONTEXT_USABLE_RATIO: '
 eq('ratio invalid ignored', pct(900000, { env: { CONTEXT_USABLE_RATIO: '2' } }), 93);
 
 // --- bordo soglia: finestra 34k -> soglia 1000 ---
-const edge = { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '34000' } };
+const edge = { settings: { user: { autoCompactWindow: 34000 } } };
 eq('edge threshold-1', pct(994, edge), 99);
 eq('edge threshold', pct(1000, edge), 100);
 // finestra minuscola: soglia mai sotto 1
-eq('tiny window guard', pct(5, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '10' } }), 100);
+eq('tiny window guard', pct(5, { settings: { user: { autoCompactWindow: 10 } } }), 100);
 
 // --- credenziali: il blocco usage legge .credentials.json da CLAUDE_CONFIG_DIR (#320) ---
 // Segnale osservabile: la dir cache viene creata solo se il guard sulle credenziali passa.

@@ -170,7 +170,7 @@ CTX="$(
   CTX_CWD="$(j '.cwd')" \
   CTX_USAGE="$(printf '%s' "$input" | jq -c '.context_window.current_usage // empty' 2>/dev/null)" \
   python3 -c '
-import sys, os, json, re
+import sys, os, json, re, math
 
 def as_int(x):
     try: return int(float(x))
@@ -222,6 +222,30 @@ def pos_num(x):
     except Exception: return None
     return v if v == v and v not in (float("inf"),) and v > 0 else None
 
+def env_window(s):
+    # parser di CLAUDE_CODE_AUTO_COMPACT_WINDOW (come Claude Code): suffissi k/m, separatori, minimo 100k
+    # nessun valore usabile -> None (il chiamante ricade su settings e tetto modello)
+    o = (s or "").strip()
+    if not o: return None
+    last = o[-1].lower()
+    if last in ("k", "m"):
+        mt = re.match(r"^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?", o, re.A)
+        if not mt: return None
+        v = float(mt.group(0)) * (1e6 if last == "m" else 1000)
+    elif len(o) <= 32 and re.match(r"^[+-]?(\d+(\.\d*)?|\.\d+)[eE][+-]?\d+$", o, re.A):
+        v = float(o)
+        if v != v or v in (float("inf"), float("-inf")) or v != int(v): return None
+    elif len(o) <= 32 and re.match(r"^[+-]?\d{1,3}([_, \u00a0\u202f])\d{3}(?:\1\d{3})*$", o, re.A):
+        v = float(int(re.sub(r"[^0-9]", "", o)) * (-1 if o[0] == "-" else 1))
+    else:
+        mt = re.match(r"^[+-]?\d+", o, re.A)
+        if not mt: return None
+        v = float(int(mt.group(0)))
+    if v != v or v in (float("inf"), float("-inf")): return None
+    v = math.floor(v + 0.5)   # come Math.round di JS
+    if abs(v) > 2**53 - 1 or v < 1: return None
+    return max(v, 100000)
+
 def truthy(name):
     return (os.environ.get(name) or "").strip().lower() in ("1", "true", "yes", "on")
 
@@ -255,7 +279,7 @@ def setting_window(model):
 
 def threshold_for(limit):
     model = re.sub(r"\[[^\]]*\]\s*$", "", os.environ.get("CTX_MODEL_ID") or "")
-    w = pos_num(os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")) or setting_window(model) or limit
+    w = env_window(os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")) or setting_window(model) or limit
     w = int(min(w, limit))
     thr = max(1, w - 20000 - 13000)
     p = pos_num(os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"))
