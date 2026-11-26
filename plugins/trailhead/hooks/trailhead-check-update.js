@@ -148,6 +148,23 @@ function updateNotice(cwd) {
   let verdict;
   if (prev && prev.checkedAt && Date.now() - prev.checkedAt < THROTTLE_MS) {
     verdict = prev;
+    // La versione installata e' cambiata dall'ultimo controllo (aggiornamento a mano + riavvio): il verdetto
+    // in cache parla di quella vecchia. Lo si ricalcola dalla latest gia' nota, senza rete; checkedAt resta
+    // quello dell'ultimo controllo di rete, cosi' il throttle non slitta (#400).
+    if (SEMVER.test(clean(prev.latest)) && clean(prev.installed) !== clean(info.version)) {
+      verdict = {
+        ...prev,
+        channel: info.channel,
+        installed: clean(info.version),
+        updateAvailable: cmp(prev.latest, info.version) > 0,
+        where: info.where || '',
+      };
+      try {
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(out + '.tmp', JSON.stringify(verdict));
+        fs.renameSync(out + '.tmp', out);
+      } catch { /* ignore */ }
+    }
   } else {
     const latest = (info.channel === 'npm' || info.channel === 'codex') ? latestNpm() : latestGitHub();
     if (!SEMVER.test(clean(latest))) return null; // rete/fonte non disponibile: lascia la cache com'è

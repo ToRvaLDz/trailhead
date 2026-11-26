@@ -104,5 +104,30 @@ reset();
 seed(false);
 ok('updateAvailable false: no notice', !run('startup', {}).includes(UPD));
 
+// --- a fresh cache after the installed version moved (#400): re-derived from the cached latest, no network ---
+// The fake gh fails every update call, so a rewrite that carries the derived verdict can only come from the cache.
+const cachePath = path.join(cacheDir, 'update-check.json');
+const readCache = () => JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+reset();
+seed(true);
+const staleText = fs.readFileSync(cachePath, 'utf8');
+const stale = JSON.parse(staleText);
+ok('same installed version: notice shown', run('startup', {}).includes(UPD));
+ok('same installed version: cache untouched', fs.readFileSync(cachePath, 'utf8') === staleText);
+fs.writeFileSync(path.join(cfg, 'plugins', 'installed_plugins.json'),
+  JSON.stringify({ plugins: { 'trailhead@trailhead': [{ version: '0.15.0', installPath: '/y' }] } }));
+ok('installed version reached latest: no notice', !run('startup', {}).includes(UPD));
+const moved = readCache();
+ok('installed version reached latest: cache says no update', moved.updateAvailable === false);
+ok('installed version reached latest: installed follows', moved.installed === '0.15.0');
+ok('installed version reached latest: latest, where and checkedAt kept', moved.latest === '0.15.0' && moved.checkedAt === stale.checkedAt && moved.where === '/y');
+ok('installed version reached latest: no tmp file left', !fs.existsSync(cachePath + '.tmp'));
+// Still behind the cached latest: the update stays on offer, against the new installed version.
+fs.writeFileSync(cachePath, JSON.stringify({ ...stale, latest: '0.16.0' }));
+fs.writeFileSync(path.join(cfg, 'plugins', 'installed_plugins.json'),
+  JSON.stringify({ plugins: { 'trailhead@trailhead': [{ version: '0.15.0', installPath: '/y' }] } }));
+ok('installed version still behind latest: notice shows the new installed', run('startup', {}).includes('trailhead 0.16.0 is available (you have 0.15.0)'));
+ok('installed version still behind latest: cache keeps the update', readCache().updateAvailable === true && readCache().installed === '0.15.0');
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`trailhead-check-update: ${passed} passed`);
