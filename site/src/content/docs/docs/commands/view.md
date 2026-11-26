@@ -135,7 +135,8 @@ None.
 
 5. Refreshes from the tracker on session start, turn end, a Bash `gh issue` write, the `refresh` button and a slow timer, never more than once every 15 seconds and never while the panel is closed. If `gh` fails it keeps the last list and shows one dim reason with the age of that list.
 6. The footer has `refresh` and the status on the left and `close` on the right; a status too long to fit beside the buttons moves to a row of its own. `close` closes the panel like closing it by hand, so it never opens by itself again that session.
-7. In fullscreen, opens by itself once when a map is active; it never opens by itself on the main screen, and never again after you close it.
+7. When the update check (the one that runs at session start) found a newer trailhead, an amber row above the footer shows an `update to X.Y.Z` button. A press runs `/trailhead:update` in the current conversation, held with a `cancel` button while a turn runs like a `work` press. The row then says the update was requested and that you need to reload plugins or restart Claude Code once it installs; it never says it is done.
+8. In fullscreen, opens by itself once when a map is active; it never opens by itself on the main screen, and never again after you close it.
 
 **Also on screen**
 
