@@ -542,8 +542,9 @@ const asideWidth = (a: RowAside | null): number =>
     ? 0
     : a.text.length + (a.kind === 'work' || a.kind === 'resume' ? BUTTON_CHROME : 0) + 1 + (a.kind === 'queued' ? CANCEL_WIDTH : 0)
 
-// The press the panel holds back while a turn runs, and releases when it ends.
-export type HeldPress = { id: number; verb: 'work' | 'resume'; number: number }
+// The press the panel holds back while a turn runs, and releases when it ends. The update press (#400) takes the
+// same slot with the sentinel claim 0 (no ticket has it) and carries the version it was offered.
+export type HeldPress = { id: number; verb: 'work' | 'resume'; number: number } | { id: number; verb: 'update'; number: 0; latest: string }
 
 // What one row draws, cut to the pane width: mark column, `#n title`, type, right-hand part.
 export const rowLayout = (t: PaneTicket, ctx: RowContext): RowLayout => {

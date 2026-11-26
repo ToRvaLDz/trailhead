@@ -123,6 +123,10 @@ declare module 'claude-code' {
       pendingWork: number | null
       // Whether the pending press waits for the turn to end or has been sent.
       pendingPhase: 'queued' | 'starting' | null
+      // The newer trailhead the update-check cache reports (null: none), for the panel's update button.
+      updateAvailable: { latest: string } | null
+      // The version whose update the panel asked for: the note says a reload or restart is needed.
+      updateSent: string | null
       paneAutoOpened: boolean
       // The repo the pane and band read from; null until a GitHub working copy was seen.
       repoPin: RepoPin | null

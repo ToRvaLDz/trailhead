@@ -49,6 +49,7 @@ import {
   withLabel,
 } from './map-pane-view'
 import { elsewhereInProgress, myTicketsFromRows, parseLogin, scopeLine } from './my-tickets'
+import { parseUpdateCheck, updateCachePath, updateLabel, updateNote } from './update-view'
 import { checkoutArg, currentRepo, isPinCheckout, isSamePin, pinKey, pinPath, refreshPin, toplevelOf } from './repo-pin'
 import { gitArgv, scrubGitEnv } from './git-env'
 import { stripHeredocBodies } from './heredoc'
@@ -153,12 +154,19 @@ export const myTickets = atom({ plugin: 'trailhead', key: 'myTickets' } as const
 export const pendingWork = atom({ plugin: 'trailhead', key: 'pendingWork' } as const, null as number | null)
 // Whether that press waits for the running turn to end (cancellable) or was sent to the host.
 export const pendingPhase = atom({ plugin: 'trailhead', key: 'pendingPhase' } as const, null as 'queued' | 'starting' | null)
+// The newer version the update-check cache reports (#400), re-read on every refresh; null: no button.
+export const updateAvailable = atom({ plugin: 'trailhead', key: 'updateAvailable' } as const, null as { latest: string } | null)
+// The version whose update was asked for: from then on the row says a reload or restart is needed, whatever the cache says.
+export const updateSent = atom({ plugin: 'trailhead', key: 'updateSent' } as const, null as string | null)
 // Set once the auto-open is done: the pane was seen drawn, or the person acted on it (the command, a close by
 // hand, the close button). An unasked open that stays undrawn does not set it; never auto-opened after it is set.
 export const paneAutoOpened = atom({ plugin: 'trailhead', key: 'paneAutoOpened' } as const, false)
 const PENDING = { plugin: 'trailhead', key: 'pendingWork' } as const
 const WORK_COMMAND = 'trailhead:work'
 const RESUME_COMMAND = 'trailhead:resume'
+const UPDATE_COMMAND = 'trailhead:update'
+// The update press shares the ticket press slot: its claim in pendingWork is this, a number no ticket has.
+const UPDATE_CLAIM = 0
 // The built-in that empties the conversation; the work verb starts in a clean one.
 const CLEAR_COMMAND = 'clear'
 // The same refs the band's atoms are written under; read here to mark the ticket in play.
@@ -195,7 +203,7 @@ let lastWriteAt: number | null = null
 let trailing: Tracked | null = null
 let ticker: Tracked | null = null
 // What /clear would take from the pane, kept across it (module variables survive it, atoms do not).
-type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean }
+type Carried = { isAutoOpened: boolean; viewed: number | null; active: number | null; isDashboard: boolean; updateSent: string | null }
 let carried: Carried | null = null
 // A `work` or `resume` press made during a running turn: the panel keeps it, and sends nothing, until the
 // main turn ends. One slot, shared with `inFlight` (the pendingWork claim): never both at once.
@@ -550,6 +558,7 @@ type Request = { bypassFloor?: boolean; isWrite?: boolean; isTick?: boolean; isT
 // just after a refresh still shows.
 async function decide($: Dollar, request: Request) {
   if (!(await isPaneUp($))) return
+  await readUpdateCheck($)
   // Nothing pinned: no repo to read, so no call.
   const pin = await syncPin($)
   const moves = pinMoves
@@ -580,6 +589,20 @@ async function decide($: Dollar, request: Request) {
   else await fetchMap($, pin, generation, moves, again)
 }
 
+// The update-check cache the SessionStart hook keeps: a local file read, written to the atom only on change. A missing
+// or unreadable file is no update (debug log only): the button never depends on it.
+async function readUpdateCheck($: Dollar) {
+  try {
+    const path = updateCachePath({ xdg: await $.env.get('XDG_CACHE_HOME'), home: await $.env.get('HOME') })
+    const next = path === null ? null : parseUpdateCheck((await $.fs.read(path)) as string)
+    if (!sameValue(await read($, updateAvailable), next)) await update($, updateAvailable, () => next)
+  } catch (err) {
+    // No cache yet is the ordinary case: only another failure is worth a line.
+    if (!isMissing(err)) debug($, `trailhead mod: update check not read: ${String(err)}`)
+    if ((await read($, updateAvailable).catch(() => null)) !== null) await update($, updateAvailable, () => null).catch(() => undefined)
+  }
+}
+
 // Does nothing while the pane is closed: the data exists only for the pane.
 export function requestRefresh($: Dollar, request: Request = {}): Promise<void> {
   queue = queue.then(() => decide($, request)).catch(err => debug($, `trailhead mod: map pane refresh failed: ${String(err)}`))
@@ -596,6 +619,7 @@ async function carryOverClear($: Dollar) {
     viewed: await read($, viewedMap),
     active: await read($, activeMap),
     isDashboard: await read($, isDashboard),
+    updateSent: await read($, updateSent),
   }
 }
 
@@ -609,6 +633,7 @@ async function restoreAfterClear($: Dollar) {
     await syncPin($)
     if (kept?.isAutoOpened === true) await update($, paneAutoOpened, () => true)
     if (kept?.isDashboard === true) await update($, isDashboard, () => true)
+    if (kept?.updateSent != null) await update($, updateSent, () => kept.updateSent)
     const active = await readActiveMap($)
     const viewed = kept?.viewed ?? null
     if (viewed !== null && viewed !== active && active === kept?.active) await update($, viewedMap, () => viewed)
@@ -678,7 +703,25 @@ async function startVerb($: Dollar, verb: 'work' | 'resume', number: number, tit
   if (value != null) return
   if (held !== null || inFlight !== null) return
   if (!(await $.state.set(PENDING, number, { ifVersion: version })).isSet) return
-  const press: HeldPress = { id: (pressCount += 1), verb, number }
+  await holdOrSend($, { id: (pressCount += 1), verb, number })
+}
+
+// The update button (#400): the same slot and claim as a ticket press (so the two never both pass), the sentinel
+// claim 0, and the version the button offered. It is repo-bound in no way: no pin or checkout check, no /clear.
+async function startUpdate($: Dollar) {
+  if (held !== null || inFlight !== null) return
+  const latest = (await read($, updateAvailable))?.latest
+  if (latest === undefined || (await read($, updateSent)) !== null) return
+  const { value, version } = await $.state.get(PENDING)
+  if (value != null) return
+  if (held !== null || inFlight !== null) return
+  if (!(await $.state.set(PENDING, UPDATE_CLAIM, { ifVersion: version })).isSet) return
+  await holdOrSend($, { id: (pressCount += 1), verb: 'update', number: UPDATE_CLAIM, latest })
+}
+
+// With the claim taken: hold the press while a turn runs, else send it.
+async function holdOrSend($: Dollar, press: HeldPress) {
+  const { verb, number } = press
   claiming = { number, isCancelled: false }
   try {
     // A press that needs no hold is never shown queued: no turn running, no cancel button.
@@ -728,6 +771,7 @@ async function dispatch($: Dollar, press: HeldPress) {
   inFlight = press.id
   dispatching = { id: press.id, number: press.number, isCancelled: false, isSent: false }
   let isReheld = false
+  const isUpdate = press.verb === 'update'
   try {
     let clearing: Promise<unknown> | null = null
     let before = ''
@@ -735,14 +779,17 @@ async function dispatch($: Dollar, press: HeldPress) {
     while (clearing === null) {
       await update($, pendingPhase, () => 'starting')
       before = await $.session.id()
-      // Read at the send, not only at the press: a held press may find the session moved or the checkout gone.
-      const place = await placeOf($)
-      if ('refusal' in place) return refuse($, press.number, place.refusal)
-      args = place.where === 'out' ? `${press.number} ${checkoutArg(place.pin)}` : String(press.number)
+      if (!isUpdate) {
+        // Read at the send, not only at the press: a held press may find the session moved or the checkout gone.
+        const place = await placeOf($)
+        if ('refusal' in place) return refuse($, press.number, place.refusal)
+        args = place.where === 'out' ? `${press.number} ${checkoutArg(place.pin)}` : String(press.number)
+      }
       // A cancel pressed while the row still read queued: dropped here, the last line before the clear.
       if (dispatching?.isCancelled === true) return debug($, `trailhead mod: ${press.verb} ${press.number} cancelled before the clear`)
       if (!isMainTurnRunning()) {
-        clearing = $.command.run({ command: CLEAR_COMMAND, args: '' })
+        // The update runs in the conversation as it is: no /clear, nothing to wait on before it.
+        clearing = isUpdate ? $.command.run({ command: UPDATE_COMMAND, args: '' }) : $.command.run({ command: CLEAR_COMMAND, args: '' })
         dispatching = { ...dispatching!, isSent: true }
         break
       }
@@ -757,6 +804,8 @@ async function dispatch($: Dollar, press: HeldPress) {
       }
     }
     await clearing
+    // Asked for, not known done: the note says a reload or restart is needed. A throw or rejection skips this line.
+    if (press.verb === 'update') return void (await update($, updateSent, () => press.latest))
     // A clear another hook answered without running resolves too: the verb must not start in the old conversation.
     if ((await $.session.id()) === before) return debug($, `trailhead mod: ${press.verb} ${press.number} skipped, the conversation was not cleared`)
     // The clear emptied the atoms: the row is still starting in the new session.
@@ -765,6 +814,7 @@ async function dispatch($: Dollar, press: HeldPress) {
     await $.command.run({ command: press.verb === 'work' ? WORK_COMMAND : RESUME_COMMAND, args })
   } catch (err) {
     debug($, `trailhead mod: ${press.verb} ${press.number} did not start: ${String(err)}`)
+    if (press.verb === 'update') $.ui.toast(`update not started: ${err instanceof Error ? err.message : String(err)}`)
   } finally {
     if (dispatching?.id === press.id) dispatching = null
     // A press held again keeps its marks and its place in `held`; only the in-flight guard goes.
@@ -1084,6 +1134,8 @@ export function registerMapPane(on: On) {
     const pin = await read($, repoPin)
     const pending = await read($, pendingWork)
     const phase = await read($, pendingPhase)
+    const offered = await read($, updateAvailable)
+    const sent = await read($, updateSent)
     if (pending !== null && phase !== 'queued') $.clock.after(0, () => void clearStale($))
     const now = await $.clock.now()
     const cols = e.props.bodyColumns
@@ -1183,6 +1235,38 @@ export function registerMapPane(on: On) {
         {wb.aside === null ? null : text('whiteboard-aside', dim, wb.aside)}
       </Box>
     )
+
+    // The update row, above the footer rule in every view: asked for (a reload or restart is needed, never "done"),
+    // queued or starting while the slot holds the update press, else the button when the cache offers one.
+    const updateRow = (() => {
+      const amber = { color: AMBER }
+      if (sent !== null) return <Box key="update-row" width={cols}>{text('update-note', amber, updateNote(sent))}</Box>
+      if (pending === UPDATE_CLAIM) {
+        return (
+          <Box key="update-row" width={cols} gap={1}>
+            {text(phase === 'queued' ? 'update-queued' : 'update-starting', amber, phase === 'queued' ? 'update queued' : 'updating…')}
+            {phase === 'queued' ? (
+              <Button
+                key="update-cancel"
+                label={CANCEL_LABEL}
+                onPress={() => void cancelQueued($, UPDATE_CLAIM).catch(err => debug($, `trailhead mod: cancel update failed: ${String(err)}`))}
+              />
+            ) : null}
+          </Box>
+        )
+      }
+      if (offered === null) return null
+      return (
+        <Box key="update-row" width={cols}>
+          <Button
+            key="update"
+            label={updateLabel(offered.latest)}
+            variant="primary"
+            onPress={() => void startUpdate($).catch(err => debug($, `trailhead mod: update press failed: ${String(err)}`))}
+          />
+        </Box>
+      )
+    })()
 
     // The total of open tickets across every open map and the whiteboard, one dim line; hidden while unknown.
     const totalText = openTotalLabel(data.openTotal?.total ?? null, data.openTotal?.isMapsCapped ?? false, cols)
@@ -1365,6 +1449,7 @@ export function registerMapPane(on: On) {
           {isEmpty ? text('no-tickets', dim, 'No open whiteboard tickets.') : null}
           {notes(board)}
           <Box key="spacer" flexGrow={1} />
+          {updateRow}
           {footerOf(board)}
         </Box>
       )
@@ -1377,6 +1462,7 @@ export function registerMapPane(on: On) {
           {whiteboardRow}
           {totalLine}
           {mapsGroup}
+          {updateRow}
         </Box>
       )
     }
@@ -1403,6 +1489,7 @@ export function registerMapPane(on: On) {
           {whiteboardRow}
           {totalLine}
           {mapsGroup}
+          {updateRow}
         </Box>
       )
     }
@@ -1443,6 +1530,7 @@ export function registerMapPane(on: On) {
         {isCurrent ? notes(data) : null}
         {series === null || data.history === null ? null : burndown(series, data.history)}
         <Box key="spacer" flexGrow={1} />
+        {updateRow}
         {footerOf(data)}
       </Box>
     )
