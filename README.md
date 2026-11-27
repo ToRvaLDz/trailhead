@@ -131,7 +131,7 @@ The bundled mod puts the map beside the conversation: your tickets in progress, 
 
 ## 🚀 Get started
 
-You need an authenticated [`gh` CLI](https://cli.github.com) and a GitHub repo.
+You need an authenticated [`gh` CLI](https://cli.github.com) and a GitHub repo. New to Git and GitHub? [Start here](https://trailhead.marcomigozzi.it/docs/getting-started#new-to-git-and-github).
 
 ```bash
 # Claude Code plugin

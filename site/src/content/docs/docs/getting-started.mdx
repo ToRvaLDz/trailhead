@@ -13,6 +13,45 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 - A GitHub repo to work in.
 - For the npm path, Node 18+.
 
+New to Git and GitHub? Start with [the section below](#new-to-git-and-github).
+
+## New to Git and GitHub?
+
+Already have a GitHub account and `gh` logged in? Skip to [Install](#install).
+
+**The three words you need**
+
+- A *repository* (repo) is the project folder GitHub tracks. trailhead's code lives in one.
+- An *issue* is a GitHub to-do item. Every trailhead map and ticket is an issue.
+- A *commit* is a saved snapshot of code changes. When trailhead works a ticket, it makes commits linked to that ticket.
+
+**From zero to a working setup**
+
+1. Create a free [GitHub account](https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github).
+2. Install [Git](https://git-scm.com/downloads) and the [GitHub CLI](https://cli.github.com) (`gh`).
+3. Run `gh auth login` and follow the prompts to sign in to GitHub.com. The browser login is the easiest, and letting it set up Git with your GitHub credentials means pushes just work. The prompts vary by version; the [official manual](https://cli.github.com/manual/gh_auth_login) is the authority.
+4. Check it worked:
+
+   ```
+   gh auth status
+   ```
+
+   It should report that you are logged in to github.com with your account.
+5. Create a private repo and enter it ([manual](https://cli.github.com/manual/gh_repo_create); or use the [web page](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-new-repository) instead):
+
+   ```
+   gh repo create my-project --private --clone
+   cd my-project
+   ```
+6. Start your agent in that folder and continue with [Install](#install), then [After installing](#after-installing).
+
+Step 5 is the explicit route, not the only one: `/trailhead:new` (Codex: `$trailhead new`) in a folder with no GitHub repo offers to create a private one for you.
+
+**Going deeper**
+
+- [About GitHub and Git](https://docs.github.com/en/get-started/start-your-journey/about-github-and-git)
+- [Set up Git](https://docs.github.com/en/get-started/git-basics/set-up-git)
+
 ## Install
 
 <Tabs>

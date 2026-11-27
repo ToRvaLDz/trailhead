@@ -403,6 +403,36 @@ if (existsSync(gettingStartedIndex)) {
     failures.push('docs/getting-started does not link to /docs/workflow#autonomous-run-auto');
   }
 }
+// #389: the "New to Git and GitHub?" section of Getting started: stable id,
+// the two gh commands, a link from Prerequisites (inside the article body, so
+// the generated TOC does not count) placed before the section heading, and
+// both READMEs pointing at the anchor on the live site.
+const newToGitId = 'new-to-git-and-github';
+if (existsSync(gettingStartedIndex)) {
+  const html = readFileSync(gettingStartedIndex, 'utf8');
+  if (!html.includes(`id="${newToGitId}"`)) {
+    failures.push(`docs/getting-started has no id="${newToGitId}" (anchor the READMEs link to)`);
+  }
+  const text = normalizedText(gettingStartedIndex);
+  for (const needle of ['gh auth login', 'gh auth status']) {
+    if (!text.includes(needle)) {
+      failures.push(`docs/getting-started missing expected content: ${needle}`);
+    }
+  }
+  const article = articleHtml(gettingStartedIndex);
+  const linkAt = article.indexOf(`href="#${newToGitId}"`);
+  const headingAt = article.indexOf(`id="${newToGitId}"`);
+  if (linkAt === -1 || (headingAt !== -1 && linkAt > headingAt)) {
+    failures.push(`docs/getting-started: Prerequisites must link to #${newToGitId} before the section heading`);
+  }
+}
+const newToGitUrl = `https://trailhead.marcomigozzi.it/docs/getting-started#${newToGitId}`;
+for (const readme of ['README.md', 'README.it.md']) {
+  const file = path.join(siteRoot, '..', readme);
+  if (!existsSync(file) || !readFileSync(file, 'utf8').includes(newToGitUrl)) {
+    failures.push(`${readme} Get started block does not link to ${newToGitUrl}`);
+  }
+}
 const teamworkIndex = docsPage('teamwork');
 if (existsSync(teamworkIndex)) {
   if (!readFileSync(teamworkIndex, 'utf8').includes('href="/docs/hooks#commit-msg-hook"')) {

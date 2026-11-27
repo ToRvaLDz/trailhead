@@ -131,7 +131,7 @@ La mod inclusa mette la mappa accanto alla conversazione: i tuoi ticket in corso
 
 ## 🚀 Per iniziare
 
-Ti servono la [`gh` CLI](https://cli.github.com) autenticata e un repo GitHub.
+Ti servono la [`gh` CLI](https://cli.github.com) autenticata e un repo GitHub. Sei nuovo a Git e GitHub? [Parti da qui](https://trailhead.marcomigozzi.it/docs/getting-started#new-to-git-and-github).
 
 ```bash
 # Plugin Claude Code
