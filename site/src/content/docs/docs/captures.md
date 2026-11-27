@@ -37,5 +37,8 @@ Tickets that spin off from other work carry a lineage pointer in their body, so 
 | `Split from:` | a child of a ticket that was split |
 | `Regression of:` | a bug in the work of a closed ticket |
 | `Surfaced from:` | an idea/ticket that came up while working another ticket |
+| `Follows up:` | follow-up work meant for a ticket that was already closed |
+
+Before writing findings, notes or follow-up work onto an existing ticket or map, trailhead checks it is still open. An open one gets the write. A closed one gets nothing, since nobody would see it there again: trailhead opens a new ticket instead, carrying `Surfaced from:` (the ticket in play) and `Follows up:` (the closed one), and tells you in one line. Under `/trailhead:auto` it does the same without asking.
 
 Next: [Working as a team](/docs/teamwork) for how captures and claims behave with several contributors, or [capture commands](/docs/commands/capture) for the exact capture syntax, or [Workflow](/docs/workflow) for how a capture fits into the lifecycle loop.
