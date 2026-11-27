@@ -19,5 +19,12 @@ A surfaced ticket lands on a **map** or on the **whiteboard**, by the first rule
 
 A `bug --of <ticket>` keeps its inherit-the-origin rule (`capture.md`, the `bug` bullet), which already settles the destination. **Under an autonomous run** (`auto`), rules 1, 2 and 4 apply unchanged; a case that falls to rule 3 is a human decision, so do not guess: record it as a pending follow-up (the **Pending follow-up guard** in `session-handoff.md`) and name it in the run-end summary.
 
+## Writing onto an existing ticket: check it is still open
+Whenever you are about to write findings, notes, follow-up work or surfaced scope onto an existing ticket by reference (a comment, a body append, a `## Blocked by` line, a `deferred → <ticket>` ledger target), first read the target's state: `gh issue view <n> --json state`.
+- **Open** → write there as proposed.
+- **Closed** → do not write there: a closed ticket is not tracking, so nothing written on it surfaces again. Open a new ticket instead, carrying `Surfaced from: <ticket in play name+link>` plus a pointer to the closed one (`Follows up: <closed ticket name+link>`), landed by the rules above. Tell the user in one line that the intended target was closed and what was opened instead.
+
+This holds for map issues too: a closed map is not a destination, route per the rules above. Under an autonomous run the same holds; a new ticket that falls to rule 3 becomes a pending follow-up, as stated above.
+
 ## Say what you opened, and where
 Right after creating it, tell the user in one line, in their conversation language: the ticket's name and number, and **where it landed**: the map by name and number, or the whiteboard (e.g. *Opened Add login rate limit (#45) on map Auth rework (#12)*). Add *why there* in a few words when the landing was inferred (rules 1 and 2), so a wrong guess is easy to spot and move. Then continue with X. A whiteboard landing refreshes the dashboard per the capture rule; a map landing does not.

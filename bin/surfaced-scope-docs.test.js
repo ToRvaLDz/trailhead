@@ -54,4 +54,22 @@ ok('capture-core: surfaced-scope.md rules are drift-stamped', /<!-- core: surfac
 const uat = read(`${SK}/_shared/techniques/acceptance-testing.md`);
 ok('uat: the failing-step follow-up lands per surfaced-scope.md', /On a failing step[^\n]*surfaced-scope\.md/.test(uat));
 
+// Scrivere su un ticket esistente: prima si controlla che sia ancora aperto (#406)
+const HEAD = '## Writing onto an existing ticket: check it is still open';
+ok('rule: has the check-open section', rule.includes(HEAD));
+const sec = rule.includes(HEAD) ? rule.split(HEAD)[1].split(/\n## /)[0] : '';
+ok('rule: section sits between landing and announce sections', rule.indexOf('## Where the surfaced ticket lands') < rule.indexOf(HEAD) && rule.indexOf(HEAD) < rule.indexOf('## Say what you opened, and where'));
+ok('rule: reads the target state with --json state', /gh issue view <n> --json state/.test(sec));
+ok('rule: open target is written as proposed', /Open[^\n]*write (it )?there/i.test(sec));
+ok('rule: closed target gets a new ticket with Surfaced from and a pointer to the closed one', /Closed[^\n]*new ticket[^\n]*`Surfaced from: [^\n]*`Follows up: /.test(sec));
+ok('rule: a closed map is not a destination', /closed map is not a destination/.test(sec));
+ok('rule: user told in one line', /one line[^\n]*closed/i.test(sec));
+ok('rule: section has no em-dash', !sec.includes(EM));
+const crText = read(`${SK}/_shared/techniques/code-review.md`);
+ok('code-review: deferred target state checked per surfaced-scope.md', /deferred[^\n]*Writing onto an existing ticket[^\n]*surfaced-scope\.md/.test(crText));
+const coreText = read(`${SK}/_shared/capture-core.md`);
+const mbw = coreText.split('## Map body writes')[1] || '';
+ok('capture-core: map body writes check the target state per surfaced-scope.md', /Writing onto an existing ticket[^\n]*surfaced-scope\.md/.test(mbw));
+ok('code-review/capture-core: no em-dash', !crText.includes(EM) && !coreText.includes(EM));
+
 console.log(`surfaced-scope-docs.test.js: ${passed} checks passed`);
