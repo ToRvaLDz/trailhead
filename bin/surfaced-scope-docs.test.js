@@ -69,7 +69,8 @@ const crText = read(`${SK}/_shared/techniques/code-review.md`);
 ok('code-review: deferred target state checked per surfaced-scope.md', /deferred[^\n]*Writing onto an existing ticket[^\n]*surfaced-scope\.md/.test(crText));
 const coreText = read(`${SK}/_shared/capture-core.md`);
 const mbw = coreText.split('## Map body writes')[1] || '';
-ok('capture-core: map body writes check the target state per surfaced-scope.md', /Writing onto an existing ticket[^\n]*surfaced-scope\.md/.test(mbw));
+// capture-core.md may not name another _shared file outside drift markers, so it cites the rule by name
+ok('capture-core: map body writes check the target state per the surfaced-scope rule', /--json state[^\n]*surfaced-scope rule[^\n]*Writing onto an existing ticket/.test(mbw));
 ok('code-review/capture-core: no em-dash', !crText.includes(EM) && !coreText.includes(EM));
 
 console.log(`surfaced-scope-docs.test.js: ${passed} checks passed`);

@@ -102,9 +102,7 @@ node <templates>/trailhead-issue-body.js append --issue <map> --section "Not yet
 node <templates>/trailhead-issue-body.js append --issue <ticket> --section "Blocked by" --line "<blocker name+link>"
 ```
 
-A captured bug that blocks the ticket in play also goes into that ticket's `## Blocked by` with the second command above, then the native dependency and `trailhead:blocked` label from the blocker commands in "Labels and create commands" (dependency POST with `<blocked>` the ticket in play, `--add-label` on it).
-
-Before appending to the body of a map or of a ticket other than the ticket in play, check its state per **Writing onto an existing ticket** in `surfaced-scope.md` (closed: do not write; a closed map is not a destination).
+A captured bug that blocks the ticket in play also goes into that ticket's `## Blocked by` with the second command above, then the native dependency and `trailhead:blocked` label from the blocker commands in "Labels and create commands" (dependency POST with `<blocked>` the ticket in play, `--add-label` on it). Before appending to the body of a map or of a ticket other than the ticket in play, check its state with `gh issue view <n> --json state`, per the surfaced-scope rule **Writing onto an existing ticket** (closed: do not write there, open a new ticket instead; a closed map is not a destination).
 
 `<templates>` is the first of `${CLAUDE_PLUGIN_ROOT}/templates/` (skipped when unset or empty), `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/trailhead/templates/` and `~/.codex/skills/trailhead/templates/` that contains the script; pass node an absolute path. If no directory has it or it errors, re-read the map body right before editing, append the one line under the section, and write it back (never write an empty or whitespace-only body, abort on a failed read).
 <!-- core: substrate.md | **Fail-safe body rewrites.** | dc53895d -->
