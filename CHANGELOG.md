@@ -2,6 +2,31 @@
 
 All notable changes to trailhead are recorded here. This project follows [Semantic Versioning](https://semver.org).
 
+## 0.20.0 (2026-11-27)
+
+### Why
+Decisions now carry their weight forward: what a decision binds reaches the plan and the verify of later work, a revisited decision is tracked end to end, and the codebase map stays true to the files a ticket touches. The guards close more bypasses, and trailhead can update itself from the map panel.
+
+### Added
+- **Decision binds (#386).** Each `Decisions so far` line opens with a `binds:` part. The PLAN lists the map decisions it must respect under `Constrained by:`, and Verify checks each one against the code; a violated one blocks the pass until the code changes or the decision is revisited.
+- **Revisiting a decision (#384, #391, #392).** A decision records the options it ruled out and what would trigger a revisit. `ticket` and `work` ask whether a new decision revisits a closed one, and only a yes writes `Revisits:`. When the successor resolves, it replaces the older line in `Decisions so far`, leaves a `Revisited by:` comment on the older decision, and puts the builds on the older answer to you; `audit` classes a revisited decision as evolved.
+- **Choices record (#387).** Executor and fix reports carry a required `choices:` field for every open point they settled on their own. The ticket keeps an append-only record of choices and deviations on its latest `EXECUTE` comment, and Verify checks each choice against the ticket and the map decisions.
+- **Codebase facets cite their files (#394, #395, #396).** Each facet names 1 to 5 load-bearing files on a `Cites:` line. Plan reads only the facets citing the files the change touches, Resolve checks those facets before the close (patched or restamped with a reason), and `audit` offers a backfill for unstamped or uncited facets.
+- **Outward guard (#393).** A release, package publish or tag push is blocked while the session's ticket is closed, superseded, paused or out of scope; plain `git push` and dry runs pass. Registered on Codex too.
+- **Update from the map panel (#400).** When a newer trailhead is available, the panel shows an `update to X.Y.Z` button that runs `/trailhead:update`. Claude Code with the mod only.
+- **Session title for every command.** `/trailhead:auto` titles the session at once (`auto · map #<n>`), and any other trailhead command titles a session with no ticket as `trailhead · <verb>`.
+
+### Fixed
+- **Pending human steps hold the close.** A step only a human can do (a store declaration, a legal review, an apply on production) is a verify claim: the code is integrated, but the ticket closes only once you confirm each step, else it is parked needs-you with the steps as a checklist.
+- **Closed ticket as a destination (#406).** Before writing findings, notes or follow-ups onto an existing ticket or map, trailhead checks it is open; a closed one gets a new ticket carrying `Surfaced from:` and `Follows up:` instead.
+- **Commit guard (#375).** It finds `git commit` behind git's global value options (`-C <dir>`, `-c key=value`, …).
+- **Secret guards (#374, #376, #381).** `doas`, every `sudo` value flag and `env -S` payloads are peeled; a `jq` program is no longer read as a file; tracked placeholder files can be exempted with `secretRead.exempt` when the read is the whole command.
+- **Update heads-up on Claude Code (#398).** Without the full trailhead statusline active, the session-start hook announces an available update itself, also from a subdirectory session.
+- **Statusline (#382).** The auto-compact window env accepts `k`/`m` suffixes and ignores absurd digit runs.
+
+### Docs
+- The README is a short landing page; the full documentation lives on the site.
+
 ## 0.19.0 (2026-11-12)
 
 ### Why
