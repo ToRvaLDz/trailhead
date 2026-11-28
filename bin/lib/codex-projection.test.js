@@ -125,6 +125,9 @@ ok('codexSkillAdapterHeader §F explains search-guard is Claude-Code-specific an
   header.includes('search-guard') && header.includes('not projected to Codex'));
 ok('codexSkillAdapterHeader §H maps plan-review external-CLI Bash timeout/background onto Codex shell',
   header.includes('## H.') && header.includes('Cross-AI plan review') && header.includes('run_in_background') && header.includes('shell/exec'));
+ok('codexSkillAdapterHeader §I names the skill-discovery helper with --host-search no and the Codex-home config (#426)',
+  header.includes('## I.') && header.includes('trailhead-skill-discovery.js') && header.includes('--host-search no') &&
+  header.includes('skills.search') && header.includes('Codex home') && header.includes('only its `cli` source applies'));
 ok('codexSkillAdapterHeader §H distinguishes the external-CLI shell path from the §D subagent path',
   header.includes('external-CLI') && header.includes('not a spawned Codex subagent'));
 ok('codexSkillAdapterHeader §H makes backgrounding reviewers the default',
