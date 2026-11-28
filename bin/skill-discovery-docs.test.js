@@ -29,7 +29,7 @@ ok('setup step Skill discovery exists', skillStep !== -1);
 ok('Statusline renumbered to 11 and comes after', statusStep > skillStep);
 ok('no stale step 10 Statusline', !ref.includes('10. **📊 Statusline**'));
 ok('setup step offers Auto and Off', /🤖 Auto/.test(ref.slice(skillStep, statusStep)) && /🔕 Off/.test(ref.slice(skillStep, statusStep)));
-ok('reference has no em-dash', !ref.includes('—'));
+ok('reference has no em-dash', !ref.includes('\u2014'));
 
 const header = codexSkillAdapterHeader();
 ok('Codex adapter section I', header.includes('## I. Skill discovery'));
